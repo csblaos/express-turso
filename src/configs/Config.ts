@@ -1,0 +1,84 @@
+import { DevelopmentConfig } from "@configs/Config.development";
+import { ENV } from "@configs/ENV";
+import { ProductionConfig } from "@configs/Config.production";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (!value || typeof value !== "object") return false;
+	return Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function collectNestedKeys(
+	value: unknown,
+	prefix: string[] = [],
+	out: Set<string> = new Set(),
+): Set<string> {
+	if (!isPlainObject(value)) return out;
+
+	for (const [ key, child ] of Object.entries(value)) {
+		const nextPrefix = [ ...prefix, key ];
+		out.add(nextPrefix.join("."));
+		collectNestedKeys(child, nextPrefix, out);
+	}
+
+	return out;
+}
+
+function findMissingNestedKeys(
+	source: Record<string, unknown>,
+	target: Record<string, unknown>,
+): string[] {
+	const sourceKeys = collectNestedKeys(source);
+	const targetKeys = collectNestedKeys(target);
+
+	const missing: string[] = [];
+	for (const key of sourceKeys) {
+		if (!targetKeys.has(key)) missing.push(key);
+	}
+	return missing.sort();
+}
+
+const devConfig = DevelopmentConfig as unknown as Record<string, unknown>;
+const prodConfig = ProductionConfig as unknown as Record<string, unknown>;
+
+const missingInProd = findMissingNestedKeys(devConfig, prodConfig);
+const missingInDev = findMissingNestedKeys(prodConfig, devConfig);
+
+if (missingInProd.length || missingInDev.length) {
+	throw new Error(
+		[
+			"[config] dev/prod config keys mismatch",
+			missingInProd.length ? `missing in production: ${missingInProd.join(", ")}` : "",
+			missingInDev.length ? `missing in development: ${missingInDev.join(", ")}` : "",
+		]
+			.filter(Boolean)
+			.join(" | "),
+	);
+}
+
+if (ENV.TURSO.DATABASE_URL?.startsWith("libsql://") && !ENV.TURSO.AUTH_TOKEN) {
+	console.warn("[config] TURSO_AUTH_TOKEN is not set; connection may fail");
+}
+
+export const Config = {
+	DEVELOPMENT: "development",
+	PRODUCTION: "production",
+	ExcludeHeadersFromLog: [
+		"authorization",
+		"cookie",
+		"set-cookie",
+		"x-api-key",
+		"x-forwarded-for",
+	],
+	secretParameters: [
+		"password",
+		"pass",
+		"token",
+		"auth_token",
+		"authToken",
+		"api_key",
+		"apikey",
+		"secret",
+		"signature",
+	],
+	...(ENV.SERVER.NODE_ENV === "development" ? DevelopmentConfig : ProductionConfig),
+};
