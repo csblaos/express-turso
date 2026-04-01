@@ -7,10 +7,9 @@ import { ErrorHandler } from "@middlewares/ErrorHandler";
 import { RequestMiddleware } from "@middlewares/RequestMiddleware";
 import { IndexRouter } from "@routers/IndexRouter";
 import { DocsRouter } from "@routers/DocsRouter";
-import { Tracer } from "./Tracer";
 
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
-	res.setHeader("access-control-allow-origin", ENV.SERVER.CORS_ORIGIN);
+	res.setHeader("access-control-allow-origin", "*");
 	res.setHeader("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
 	res.setHeader("access-control-allow-headers", "content-type,authorization,request-id");
 
@@ -26,7 +25,6 @@ const app = express();
 
 app.use(corsMiddleware);
 app.use(RequestMiddleware.requestResponseLog);
-app.use(Tracer.middleware);
 
 app.get("/healthz", (req, res) => {
 	res.status(200).json({ success: true, message: "ok" });

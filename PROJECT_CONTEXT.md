@@ -27,18 +27,17 @@ It replaces the previous context docs:
 	- Runtime alias registration using `module-alias` in `src/Server.ts`
 - Observability:
 	- request-id request/response log per request
-	- optional tracer middleware (currently a no-op unless enabled)
+	- (optional) tracer can be added later if needed
 
 ---
 
 ## 2) Folder structure (actual repo)
 
 ```
-src/
-	App.ts
-	Server.ts
-	Tracer.ts
-	components/
+	src/
+		App.ts
+		Server.ts
+		components/
 	configs/
 	connections/
 	controllers/
@@ -57,14 +56,12 @@ src/
 - `src/Server.ts`
 	- Loads env (`dotenv`)
 	- Registers `module-alias` runtime aliases
-	- Initializes tracer
 	- Connects DB (`DbConn.connect()`) and initializes schema
 	- Starts Express
 	- Implements graceful shutdown for signals + unhandled errors
 - `src/App.ts`
 	- Express setup (`/healthz`, CORS, JSON parsing)
 	- Request-id logging middleware
-	- Tracing middleware
 	- Mounts `IndexRouter` under `/api`
 	- Optionally mounts Swagger docs (disabled in production)
 	- 404 → throws `ApiError.NotFoundError(...)`

@@ -23,10 +23,8 @@ moduleAlias.addAliases({
 async function bootstrap(): Promise<void> {
 	const { ENV } = await import("@configs/ENV");
 	const { DbConn } = await import("@connections/DbConn");
-	const { Tracer } = await import("./Tracer");
 	const { default: app } = await import("./App");
 
-	Tracer.init();
 	await DbConn.connect();
 
 	const server = app.listen(ENV.SERVER.PORT, () => {
