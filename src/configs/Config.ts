@@ -1,6 +1,6 @@
-import { DevelopmentConfig } from "@configs/Config.development";
 import { ENV } from "@configs/ENV";
-import { ProductionConfig } from "@configs/Config.production";
+import Development from "@configs/Config.development";
+import Production from "@configs/Config.production";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (!value || typeof value !== "object") return false;
@@ -37,8 +37,8 @@ function findMissingNestedKeys(
 	return missing.sort();
 }
 
-const devConfig = DevelopmentConfig as unknown as Record<string, unknown>;
-const prodConfig = ProductionConfig as unknown as Record<string, unknown>;
+const devConfig = Development.config as unknown as Record<string, unknown>;
+const prodConfig = Production.config as unknown as Record<string, unknown>;
 
 const missingInProd = findMissingNestedKeys(devConfig, prodConfig);
 const missingInDev = findMissingNestedKeys(prodConfig, devConfig);
@@ -80,5 +80,5 @@ export const Config = {
 		"secret",
 		"signature",
 	],
-	...(ENV.SERVER.NODE_ENV === "development" ? DevelopmentConfig : ProductionConfig),
+	...(ENV.SERVER.NODE_ENV === "development" ? Development.config : Production.config),
 };

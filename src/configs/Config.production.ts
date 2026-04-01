@@ -1,4 +1,9 @@
-export const ProductionConfig = {
-	logLevel: "info",
-};
-
+export default class Production {
+	static readonly config = {
+		logLevel: "info",
+		swagger: {
+			enabled: false,
+			path: "/docs",
+		},
+	};
+}

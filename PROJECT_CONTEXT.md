@@ -66,6 +66,7 @@ src/
 	- Request-id logging middleware
 	- Tracing middleware
 	- Mounts `IndexRouter` under `/api`
+	- Optionally mounts Swagger docs (disabled in production)
 	- 404 → throws `ApiError.NotFoundError(...)`
 	- Uses global error middleware (`ErrorHandler.errorHandler`)
 - `src/routers/*`
