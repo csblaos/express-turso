@@ -1,12 +1,9 @@
 import express, { NextFunction, Request, Response } from "express";
 
-import { Config } from "@configs/Config";
-import { ENV } from "@configs/ENV";
 import { ApiError } from "@middlewares/ApiError";
 import { ErrorHandler } from "@middlewares/ErrorHandler";
 import { RequestMiddleware } from "@middlewares/RequestMiddleware";
 import { IndexRouter } from "@routers/IndexRouter";
-import { DocsRouter } from "@routers/DocsRouter";
 
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 	res.setHeader("access-control-allow-origin", "*");
@@ -29,12 +26,6 @@ app.use(RequestMiddleware.requestResponseLog);
 app.get("/healthz", (req, res) => {
 	res.status(200).json({ success: true, message: "ok" });
 });
-
-if (ENV.SERVER.NODE_ENV !== "production" && Config.swagger.enabled) {
-	app.use(Config.swagger.path, DocsRouter.getInstance().getRouter());
-} else if (ENV.SERVER.NODE_ENV === "production" && Config.swagger.enabled) {
-	console.warn("[swagger] disabled in production");
-}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

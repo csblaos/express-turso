@@ -1,0 +1,13 @@
+{
+	"name": "turso-db-tools",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"export": "node export.mjs",
+		"restore": "node restore.mjs",
+		"wipe:target-db": "node wipe-target-db.mjs"
+	},
+	"dependencies": {
+		"@libsql/client": "^0.15.15"
+	}
+}

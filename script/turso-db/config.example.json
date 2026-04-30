@@ -1,0 +1,12 @@
+{
+	"source": {
+		"url": "libsql://your-source-db-your-org.turso.io",
+		"authToken": "your_source_database_auth_token"
+	},
+	"target": {
+		"url": "libsql://your-target-db-your-org.turso.io",
+		"authToken": "your_target_database_auth_token"
+	},
+	"backupDir": "./backups",
+	"dumpFile": "./backups/latest.sql"
+}

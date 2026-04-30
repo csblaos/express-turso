@@ -63,7 +63,6 @@ It replaces the previous context docs:
 	- Express setup (`/healthz`, CORS, JSON parsing)
 	- Request-id logging middleware
 	- Mounts `IndexRouter` under `/api`
-	- Optionally mounts Swagger docs (disabled in production)
 	- 404 → throws `ApiError.NotFoundError(...)`
 	- Uses global error middleware (`ErrorHandler.errorHandler`)
 - `src/routers/*`
