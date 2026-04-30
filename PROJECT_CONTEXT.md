@@ -57,6 +57,7 @@ It replaces the previous context docs:
 	- Loads env (`dotenv`)
 	- Registers `module-alias` runtime aliases
 	- Connects DB (`DbConn.connect()`) and initializes schema
+	- Connects Redis (`RedisConn.connect()`) using local Redis in dev or Upstash in prod based on env
 	- Starts Express
 	- Implements graceful shutdown for signals + unhandled errors
 - `src/App.ts`
@@ -77,7 +78,7 @@ It replaces the previous context docs:
 - `src/interfaces/*`
 	- Data-access layer (DB queries via `DbConn.getClient()`)
 - `src/connections/*`
-	- Connection singletons (`DbConn`, `AxiosConn`, etc.)
+	- Connection singletons (`DbConn`, `RedisConn`, `AxiosConn`, etc.)
 - `src/middlewares/*`
 	- Request lifecycle (request-id logging, validators)
 	- Error handling (`ApiError`, `ErrorHandler`)
@@ -136,6 +137,9 @@ File:
 Pattern:
 - `ENV` is a class with `static readonly` fields reading from `process.env`.
 - Connection/provider layers read service URLs/tokens from `ENV`, not `Config`.
+- Redis selection is environment-driven via `REDIS_DRIVER`:
+	- `local` uses `REDIS_URL`
+	- `upstash` uses `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
 
 Rule:
 - Keep `.env.example` aligned with the fields used in `ENV.ts`.
@@ -318,3 +322,17 @@ File:
 Tip:
 - If Turso network is blocked, switch to local:
 	- `TURSO_DATABASE_URL=file:./database.db` (or set `DATABASE_URL=file:./database.db`)
+
+## 13) Redis connection
+
+Files:
+- `src/connections/RedisConn.ts`
+- `src/configs/ENV.ts`
+
+- Logs connect/connected at startup:
+	- `[redis] connecting (local|upstash)`
+	- `[redis] connected (local|upstash) in <ms>ms`
+- Driver selection:
+	- `REDIS_DRIVER=local` uses TCP Redis via `REDIS_URL`
+	- `REDIS_DRIVER=upstash` uses REST Redis via Upstash credentials
+- `RedisConn` exposes a driver-agnostic API for basic cache operations (`get`, `set`, `del`, `ping` via connect check).

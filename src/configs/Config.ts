@@ -59,6 +59,16 @@ if (ENV.TURSO.DATABASE_URL?.startsWith("libsql://") && !ENV.TURSO.AUTH_TOKEN) {
 	console.warn("[config] TURSO_AUTH_TOKEN is not set; connection may fail");
 }
 
+if (ENV.REDIS.DRIVER === "upstash") {
+	if (!ENV.REDIS.UPSTASH_REDIS_REST_URL || !ENV.REDIS.UPSTASH_REDIS_REST_TOKEN) {
+		console.warn("[config] Upstash Redis is selected but credentials are incomplete");
+	}
+} else if (ENV.REDIS.DRIVER === "local" && !ENV.REDIS.URL) {
+	console.warn("[config] REDIS_URL is not set; local Redis connection may fail");
+} else if (ENV.REDIS.DRIVER !== "local" && ENV.REDIS.DRIVER !== "upstash") {
+	console.warn(`[config] Unknown REDIS_DRIVER '${ENV.REDIS.DRIVER}'. Expected 'local' or 'upstash'`);
+}
+
 export const Config = {
 	DEVELOPMENT: "development",
 	PRODUCTION: "production",

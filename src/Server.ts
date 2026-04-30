@@ -23,9 +23,11 @@ moduleAlias.addAliases({
 async function bootstrap(): Promise<void> {
 	const { ENV } = await import("@configs/ENV");
 	const { DbConn } = await import("@connections/DbConn");
+	const { RedisConn } = await import("@connections/RedisConn");
 	const { default: app } = await import("./App");
 
 	await DbConn.connect();
+	await RedisConn.connect();
 
 	const server = app.listen(ENV.SERVER.PORT, () => {
 		console.log(`Server running on http://localhost:${ENV.SERVER.PORT}`);
@@ -33,7 +35,10 @@ async function bootstrap(): Promise<void> {
 
 	const shutdown = async (signal: string) => {
 		console.log(`[shutdown] ${signal}`);
-		server.close(() => process.exit(0));
+		server.close(async () => {
+			await RedisConn.disconnect();
+			process.exit(0);
+		});
 		setTimeout(() => process.exit(1), 10_000).unref();
 	};
 
