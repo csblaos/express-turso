@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	:root {
+		color-scheme: light;
+	}
+
+	* {
+		box-sizing: border-box;
+	}
+
+	html,
+	body,
+	#__nuxt {
+		min-height: 100%;
+	}
+
+	body {
+		margin: 0;
+		background:
+			radial-gradient(circle at top left, rgba(216, 109, 50, 0.16), transparent 22%),
+			radial-gradient(circle at top right, rgba(77, 158, 130, 0.14), transparent 24%),
+			linear-gradient(180deg, #fbf7f1 0%, #f4ebdf 100%);
+		color: #221b17;
+		font-family: "Avenir Next", "Manrope", "Segoe UI", sans-serif;
+	}
+
+	button,
+	input {
+		font: inherit;
+	}
+}
+
+@layer utilities {
+	.scrollbar-soft {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(34, 27, 23, 0.22) transparent;
+	}
+
+	.scrollbar-soft::-webkit-scrollbar {
+		height: 8px;
+		width: 8px;
+	}
+
+	.scrollbar-soft::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background: rgba(34, 27, 23, 0.18);
+	}
+}

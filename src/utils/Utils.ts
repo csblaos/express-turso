@@ -1,4 +1,10 @@
+import crypto from "crypto";
+
 export class Utils {
+	static genUUID(): string {
+		return crypto.randomUUID();
+	}
+
 	static jsonStringParse(input: unknown): unknown {
 		if (typeof input !== "string") return input;
 		try {
@@ -33,4 +39,3 @@ export class Utils {
 		);
 	}
 }
-

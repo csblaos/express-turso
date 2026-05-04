@@ -45,5 +45,55 @@ export const ErrorConfig = {
 			message: "Store name required",
 			httpStatusCode: 400,
 		},
+		PRODUCT_NOT_FOUND: {
+			code: 404_002,
+			message: "Product not found",
+			httpStatusCode: 404,
+		},
+		PRODUCT_REQUIRED_FIELDS: {
+			code: 400_002,
+			message: "Product requires store_id, sku, name, base_unit_id, price_base, and cost_base",
+			httpStatusCode: 400,
+		},
+		UNIT_NOT_FOUND: {
+			code: 404_003,
+			message: "Unit not found",
+			httpStatusCode: 404,
+		},
+		UNIT_REQUIRED_FIELDS: {
+			code: 400_003,
+			message: "Unit requires code and name_th",
+			httpStatusCode: 400,
+		},
+		PRODUCT_CATEGORY_NOT_FOUND: {
+			code: 404_004,
+			message: "Product category not found",
+			httpStatusCode: 404,
+		},
+		PRODUCT_CATEGORY_REQUIRED_FIELDS: {
+			code: 400_004,
+			message: "Product category requires store_id and name",
+			httpStatusCode: 400,
+		},
+		PRODUCT_UNIT_NOT_FOUND: {
+			code: 404_005,
+			message: "Product unit not found",
+			httpStatusCode: 404,
+		},
+		PRODUCT_UNIT_REQUIRED_FIELDS: {
+			code: 400_005,
+			message: "Product unit requires product_id, unit_id, and multiplier_to_base",
+			httpStatusCode: 400,
+		},
+		PRODUCT_UNIT_INVALID_MULTIPLIER: {
+			code: 400_006,
+			message: "Product unit multiplier_to_base must be greater than 0",
+			httpStatusCode: 400,
+		},
+		PRODUCT_UNIT_DUPLICATE_PRODUCT_AND_UNIT: {
+			code: 400_007,
+			message: "Product unit with the same product_id and unit_id already exists",
+			httpStatusCode: 400,
+		},
 	},
 };

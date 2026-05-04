@@ -3,14 +3,6 @@ import { randomUUID } from "crypto";
 import { DbConn } from "@connections/DbConn";
 import { CreateStoreInput, Store } from "@models/Store";
 
-function toBoolean(value: unknown): boolean {
-	if (typeof value === "boolean") return value;
-	if (typeof value === "number") return value === 1;
-	if (typeof value === "bigint") return value === 1n;
-	if (typeof value === "string") return value === "1" || value.toLowerCase() === "true";
-	return Boolean(value);
-}
-
 export class StoreInterface {
 	static async findAll(): Promise<Store[]> {
 		const db = DbConn.getClient();
@@ -80,12 +72,6 @@ export class StoreInterface {
 	}
 
 	private static mapRow(row: Record<string, unknown>): Store {
-		return {
-			...(row as unknown as Store),
-			vat_enabled: toBoolean(row["vat_enabled"]),
-			pdf_show_logo: toBoolean(row["pdf_show_logo"]),
-			pdf_show_signature: toBoolean(row["pdf_show_signature"]),
-			pdf_show_note: toBoolean(row["pdf_show_note"]),
-		} as Store;
+		return row as unknown as Store;
 	}
 }
