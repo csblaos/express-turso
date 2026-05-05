@@ -9,38 +9,42 @@ export default <Partial<Config>>{
 		"./plugins/**/*.{js,ts}",
 	],
 	theme: {
-		extend: {
-			colors: {
-				canvas: "#f5efe6",
-				ink: "#221b17",
-				mist: "#6e6259",
-				brand: {
-					50: "#fff2e8",
-					100: "#ffd9ba",
-					500: "#d86d32",
-					600: "#b45721",
-					700: "#8d4316",
+			extend: {
+				colors: {
+					canvas: "#f6f6f3",
+					surface: "#fffefd",
+					"surface-soft": "#fbfbf8",
+					"surface-muted": "#f3f2ee",
+					border: "#e7e4dd",
+					ink: "#1f1c18",
+					mist: "#6b645c",
+					brand: {
+						50: "#fbf1ea",
+						100: "#f8e9de",
+						500: "#c97745",
+						600: "#b56839",
+						700: "#97532c",
+					},
+					sage: {
+						100: "#e8f1eb",
+						500: "#6f9378",
+					},
+					rose: {
+						100: "#f6e8e8",
+						500: "#b77474",
+					},
 				},
-				mint: {
-					100: "#d8f1e7",
-					500: "#4d9e82",
-				},
-				berry: {
-					100: "#f2dde5",
-					500: "#af5d79",
-				},
-			},
 			fontFamily: {
 				sans: ["Avenir Next", "Manrope", "Segoe UI", "sans-serif"],
 			},
-			boxShadow: {
-				panel: "0 24px 60px rgba(73, 48, 24, 0.12)",
-				float: "0 16px 40px rgba(40, 29, 21, 0.16)",
-			},
-			backgroundImage: {
-				"pos-glow":
-					"radial-gradient(circle at top left, rgba(222, 123, 52, 0.18), transparent 26%), radial-gradient(circle at top right, rgba(94, 165, 140, 0.18), transparent 24%), linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.52))",
+				boxShadow: {
+					panel: "0 24px 56px rgba(41, 34, 25, 0.08)",
+					float: "0 14px 36px rgba(41, 34, 25, 0.12)",
+				},
+				backgroundImage: {
+					"pos-glow":
+						"radial-gradient(circle at top left, rgba(201, 119, 69, 0.12), transparent 24%), radial-gradient(circle at top right, rgba(111, 147, 120, 0.1), transparent 22%), linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56))",
+				},
 			},
 		},
-	},
 };

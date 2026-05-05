@@ -1,20 +1,35 @@
 <script setup lang="ts">
-type ServiceMode = "Dine in" | "Take away" | "Delivery";
+type ServiceMode = "หน้าร้าน" | "รับกลับ" | "เดลิเวอรี";
+type QuickView = "all" | "bestseller" | "promo" | "low-stock" | "ready";
+type StockState = "ready" | "low" | "inactive";
+
+type NavItem = {
+	id: string;
+	label: string;
+	icon: string;
+	to: string;
+};
 
 type Category = {
 	id: string;
 	label: string;
-	description: string;
 };
 
 type Product = {
 	id: string;
 	name: string;
 	category: string;
+	sku: string;
+	barcode: string;
 	price: number;
-	prepTime: string;
-	stockLabel: string;
+	compareAt?: number;
+	unitLabel: string;
+	stock: number;
+	soldToday: number;
+	stockState: StockState;
 	tag?: string;
+	hasVariants?: boolean;
+	thumbnail: string;
 	accent: string;
 };
 
@@ -23,122 +38,236 @@ type CartEntry = {
 	qty: number;
 };
 
-const serviceModes: ServiceMode[] = ["Dine in", "Take away", "Delivery"];
+const navItems: NavItem[] = [
+	{ id: "pos", label: "ขายหน้าร้าน", icon: "i-heroicons-shopping-bag", to: "/" },
+	{ id: "products", label: "สินค้า", icon: "i-heroicons-squares-2x2", to: "/products" },
+	{ id: "orders", label: "ออเดอร์", icon: "i-heroicons-receipt-percent", to: "/orders" },
+	{ id: "stock", label: "สต็อก", icon: "i-heroicons-cube", to: "/inventory" },
+	{ id: "purchase", label: "สั่งซื้อ", icon: "i-heroicons-clipboard-document-list", to: "/purchase-orders" },
+	{ id: "reports", label: "รายงาน", icon: "i-heroicons-chart-bar-square", to: "/reports" },
+	{ id: "settings", label: "ตั้งค่า", icon: "i-heroicons-cog-6-tooth", to: "/settings" },
+];
 
 const categories: Category[] = [
-	{ id: "all", label: "All items", description: "Everything on the menu" },
-	{ id: "signature", label: "Signature", description: "Fast-moving favorites" },
-	{ id: "coffee", label: "Coffee", description: "Hot and iced espresso drinks" },
-	{ id: "tea", label: "Tea", description: "Milk tea and fruit refreshers" },
-	{ id: "bakery", label: "Bakery", description: "Fresh pastries and dessert" },
-	{ id: "addons", label: "Add-ons", description: "Toppings and quick extras" },
+	{ id: "all", label: "ทั้งหมด" },
+	{ id: "coffee", label: "กาแฟ" },
+	{ id: "tea", label: "ชา" },
+	{ id: "bakery", label: "เบเกอรี" },
+	{ id: "snack", label: "ของทานเล่น" },
+	{ id: "retail", label: "รีเทล" },
 ];
+
+const quickViews: Array<{ id: QuickView; label: string }> = [
+	{ id: "all", label: "ทั้งหมด" },
+	{ id: "bestseller", label: "ขายดี" },
+	{ id: "promo", label: "โปรโมชัน" },
+	{ id: "low-stock", label: "สต็อกต่ำ" },
+	{ id: "ready", label: "พร้อมขาย" },
+];
+
+const serviceModes: ServiceMode[] = ["หน้าร้าน", "รับกลับ", "เดลิเวอรี"];
 
 const products: Product[] = [
 	{
-		id: "latte",
-		name: "House Latte",
+		id: "iced-latte",
+		name: "ลาเต้เย็น",
 		category: "coffee",
+		sku: "CF-LAT-16",
+		barcode: "8851234500011",
 		price: 95,
-		prepTime: "3 min",
-		stockLabel: "Ready",
-		tag: "Best seller",
-		accent: "linear-gradient(135deg, #f7d5b3 0%, #d86d32 100%)",
+		compareAt: 110,
+		unitLabel: "แก้ว 16 oz",
+		stock: 28,
+		soldToday: 17,
+		stockState: "ready",
+		tag: "ขายดี",
+		hasVariants: true,
+		thumbnail: "LT",
+		accent: "linear-gradient(135deg, #fed7aa 0%, #ea580c 100%)",
 	},
 	{
 		id: "americano",
-		name: "Long Black",
+		name: "อเมริกาโน่",
 		category: "coffee",
+		sku: "CF-AMR-16",
+		barcode: "8851234500012",
 		price: 80,
-		prepTime: "2 min",
-		stockLabel: "Ready",
-		accent: "linear-gradient(135deg, #f1e8da 0%, #7b5b3f 100%)",
+		unitLabel: "แก้ว 16 oz",
+		stock: 19,
+		soldToday: 12,
+		stockState: "ready",
+		thumbnail: "AM",
+		accent: "linear-gradient(135deg, #e7e5e4 0%, #78716c 100%)",
 	},
 	{
-		id: "matcha",
-		name: "Cloud Matcha",
+		id: "matcha-cloud",
+		name: "มัทฉะคลาวด์",
 		category: "tea",
-		price: 110,
-		prepTime: "4 min",
-		stockLabel: "Ready",
-		tag: "New",
-		accent: "linear-gradient(135deg, #edf6d2 0%, #6f9f50 100%)",
+		sku: "TE-MAT-16",
+		barcode: "8851234500013",
+		price: 120,
+		compareAt: 135,
+		unitLabel: "แก้ว 16 oz",
+		stock: 9,
+		soldToday: 8,
+		stockState: "low",
+		tag: "โปร",
+		thumbnail: "MC",
+		accent: "linear-gradient(135deg, #d9f99d 0%, #65a30d 100%)",
 	},
 	{
-		id: "thai-tea",
-		name: "Thai Milk Tea",
+		id: "thai-milk-tea",
+		name: "ชาไทยนมสด",
 		category: "tea",
+		sku: "TE-THM-16",
+		barcode: "8851234500014",
 		price: 90,
-		prepTime: "3 min",
-		stockLabel: "Ready",
-		accent: "linear-gradient(135deg, #ffe0b2 0%, #db7d25 100%)",
+		unitLabel: "แก้ว 16 oz",
+		stock: 24,
+		soldToday: 10,
+		stockState: "ready",
+		thumbnail: "TT",
+		accent: "linear-gradient(135deg, #fdba74 0%, #f97316 100%)",
 	},
 	{
 		id: "croffle",
-		name: "Butter Croffle",
+		name: "ครอฟเฟิลเนยสด",
 		category: "bakery",
+		sku: "BK-CRF-01",
+		barcode: "8851234500015",
 		price: 85,
-		prepTime: "5 min",
-		stockLabel: "6 left",
-		accent: "linear-gradient(135deg, #f9e9d0 0%, #c9964d 100%)",
+		unitLabel: "ชิ้น",
+		stock: 6,
+		soldToday: 11,
+		stockState: "low",
+		thumbnail: "CR",
+		accent: "linear-gradient(135deg, #fde68a 0%, #d97706 100%)",
 	},
 	{
-		id: "cheesecake",
-		name: "Burnt Cheesecake",
+		id: "burnt-cheesecake",
+		name: "ชีสเค้กหน้าไหม้",
 		category: "bakery",
+		sku: "BK-CHS-02",
+		barcode: "8851234500016",
 		price: 125,
-		prepTime: "Ready",
-		stockLabel: "4 left",
-		tag: "Limited",
-		accent: "linear-gradient(135deg, #f8d6d3 0%, #b7645f 100%)",
+		unitLabel: "ชิ้น",
+		stock: 4,
+		soldToday: 5,
+		stockState: "low",
+		tag: "ลิมิเต็ด",
+		thumbnail: "BC",
+		accent: "linear-gradient(135deg, #fecdd3 0%, #e11d48 100%)",
+	},
+	{
+		id: "garlic-fries",
+		name: "เฟรนช์ฟรายกระเทียม",
+		category: "snack",
+		sku: "SN-FRY-01",
+		barcode: "8851234500017",
+		price: 79,
+		unitLabel: "ถาด",
+		stock: 15,
+		soldToday: 7,
+		stockState: "ready",
+		thumbnail: "GF",
+		accent: "linear-gradient(135deg, #fde68a 0%, #ca8a04 100%)",
 	},
 	{
 		id: "sparkling-yuzu",
-		name: "Sparkling Yuzu",
-		category: "signature",
+		name: "ยูซุโซดา",
+		category: "tea",
+		sku: "TE-YUZ-16",
+		barcode: "8851234500018",
 		price: 105,
-		prepTime: "2 min",
-		stockLabel: "Ready",
-		accent: "linear-gradient(135deg, #fff0bf 0%, #d9ae2a 100%)",
+		unitLabel: "แก้ว 16 oz",
+		stock: 18,
+		soldToday: 9,
+		stockState: "ready",
+		thumbnail: "YZ",
+		accent: "linear-gradient(135deg, #fef08a 0%, #eab308 100%)",
 	},
 	{
-		id: "avocado-toast",
-		name: "Avocado Toast",
-		category: "signature",
-		price: 160,
-		prepTime: "8 min",
-		stockLabel: "Ready",
-		accent: "linear-gradient(135deg, #d7f1dd 0%, #4d9e82 100%)",
-	},
-	{
-		id: "extra-shot",
-		name: "Extra Espresso Shot",
-		category: "addons",
-		price: 20,
-		prepTime: "Instant",
-		stockLabel: "Always",
-		accent: "linear-gradient(135deg, #e6ddd4 0%, #8d6d53 100%)",
+		id: "beans-250",
+		name: "เมล็ดกาแฟคั่ว 250 กรัม",
+		category: "retail",
+		sku: "RT-BNS-250",
+		barcode: "8851234500019",
+		price: 240,
+		unitLabel: "ถุง",
+		stock: 12,
+		soldToday: 3,
+		stockState: "ready",
+		thumbnail: "BN",
+		accent: "linear-gradient(135deg, #e7e5e4 0%, #92400e 100%)",
 	},
 	{
 		id: "oat-milk",
-		name: "Oat Milk Swap",
-		category: "addons",
+		name: "นมโอ๊ตสำหรับเพิ่ม",
+		category: "retail",
+		sku: "RT-OAT-01",
+		barcode: "8851234500020",
 		price: 25,
-		prepTime: "Instant",
-		stockLabel: "Always",
-		accent: "linear-gradient(135deg, #f5e5c5 0%, #c59756 100%)",
+		unitLabel: "เพิ่มต่อแก้ว",
+		stock: 0,
+		soldToday: 6,
+		stockState: "inactive",
+		tag: "ปิดขาย",
+		thumbnail: "OM",
+		accent: "linear-gradient(135deg, #e7e5e4 0%, #a8a29e 100%)",
+	},
+	{
+		id: "avocado-toast",
+		name: "อโวคาโดโทสต์",
+		category: "snack",
+		sku: "SN-AVO-02",
+		barcode: "8851234500021",
+		price: 160,
+		compareAt: 185,
+		unitLabel: "จาน",
+		stock: 8,
+		soldToday: 4,
+		stockState: "low",
+		hasVariants: true,
+		tag: "มีตัวเลือก",
+		thumbnail: "AT",
+		accent: "linear-gradient(135deg, #bbf7d0 0%, #059669 100%)",
+	},
+	{
+		id: "black-tea",
+		name: "ชาดำเย็น",
+		category: "tea",
+		sku: "TE-BLK-16",
+		barcode: "8851234500022",
+		price: 70,
+		unitLabel: "แก้ว 16 oz",
+		stock: 21,
+		soldToday: 5,
+		stockState: "ready",
+		thumbnail: "BT",
+		accent: "linear-gradient(135deg, #fed7aa 0%, #c2410c 100%)",
 	},
 ];
 
 const searchQuery = ref("");
 const activeCategory = ref("all");
-const activeMode = ref<ServiceMode>("Dine in");
+const activeQuickView = ref<QuickView>("all");
+const activeMode = ref<ServiceMode>("หน้าร้าน");
 const currentTicket = ref("A-102");
-const orderNote = ref("Less sugar on tea items");
+const selectedCustomer = ref("ลูกค้าทั่วไป");
+const orderNote = ref("ไม่ใส่น้ำตาลในรายการชา");
+const mobileTicketOpen = ref(false);
+const mobileSidebarOpen = ref(false);
+const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => false);
+const scanToast = ref("");
+const route = useRoute();
 const cart = ref<CartEntry[]>([
-	{ productId: "latte", qty: 1 },
-	{ productId: "croffle", qty: 2 },
+	{ productId: "iced-latte", qty: 2 },
+	{ productId: "croffle", qty: 1 },
+	{ productId: "sparkling-yuzu", qty: 1 },
 ]);
+
+let scanIndex = 0;
+let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const numberFormatter = new Intl.NumberFormat("th-TH", {
 	style: "currency",
@@ -150,14 +279,11 @@ const productMap = computed(() =>
 	Object.fromEntries(products.map((product) => [product.id, product])),
 );
 
-const featuredCounts = computed(() =>
+const categoryCounts = computed(() =>
 	categories.reduce<Record<string, number>>((result, category) => {
-		if (category.id === "all") {
-			result[category.id] = products.length;
-			return result;
-		}
-
-		result[category.id] = products.filter((product) => product.category === category.id).length;
+		result[category.id] = category.id === "all"
+			? products.length
+			: products.filter((product) => product.category === category.id).length;
 		return result;
 	}, {}),
 );
@@ -168,12 +294,20 @@ const filteredProducts = computed(() => {
 	return products.filter((product) => {
 		const categoryMatch =
 			activeCategory.value === "all" || product.category === activeCategory.value;
+		const quickViewMatch =
+			activeQuickView.value === "all" ||
+			(activeQuickView.value === "bestseller" && product.soldToday >= 10) ||
+			(activeQuickView.value === "promo" && Boolean(product.compareAt)) ||
+			(activeQuickView.value === "low-stock" && product.stockState === "low") ||
+			(activeQuickView.value === "ready" && product.stockState === "ready");
 		const textMatch =
 			query.length === 0 ||
 			product.name.toLowerCase().includes(query) ||
+			product.sku.toLowerCase().includes(query) ||
+			product.barcode.includes(query) ||
 			product.tag?.toLowerCase().includes(query);
 
-		return categoryMatch && textMatch;
+		return categoryMatch && quickViewMatch && textMatch;
 	});
 });
 
@@ -203,21 +337,26 @@ const subtotal = computed(() =>
 	cartItems.value.reduce((sum, item) => sum + item.lineTotal, 0),
 );
 
-const tax = computed(() => Math.round(subtotal.value * 0.07));
-const serviceCharge = computed(() => (activeMode.value === "Dine in" ? 20 : 0));
-const total = computed(() => subtotal.value + tax.value + serviceCharge.value);
+const discount = computed(() =>
+	cartItems.value.reduce(
+		(sum, item) => sum + ((item.compareAt ?? item.price) - item.price) * item.qty,
+		0,
+	),
+);
 
-const orderStats = computed(() => [
-	{ label: "Queued", value: "08", tone: "bg-brand-50 text-brand-700" },
-	{ label: "Ready", value: "05", tone: "bg-mint-100 text-emerald-800" },
-	{ label: "Avg ticket", value: numberFormatter.format(184), tone: "bg-berry-100 text-rose-800" },
-]);
+const tax = computed(() => Math.round(subtotal.value * 0.07));
+const serviceCharge = computed(() => (activeMode.value === "หน้าร้าน" ? 15 : 0));
+const total = computed(() => subtotal.value + tax.value + serviceCharge.value);
 
 function formatMoney(value: number) {
 	return numberFormatter.format(value);
 }
 
 function addToCart(product: Product) {
+	if (product.stockState === "inactive") {
+		return;
+	}
+
 	const existing = cart.value.find((entry) => entry.productId === product.id);
 
 	if (existing) {
@@ -254,351 +393,647 @@ function decreaseQty(productId: string) {
 function clearCart() {
 	cart.value = [];
 }
+
+function getStockTone(state: StockState) {
+	if (state === "ready") {
+		return "green";
+	}
+
+	if (state === "low") {
+		return "orange";
+	}
+
+	return "gray";
+}
+
+function getStockLabel(product: Product) {
+	if (product.stockState === "ready") {
+		return `คงเหลือ ${product.stock}`;
+	}
+
+	if (product.stockState === "low") {
+		return `ใกล้หมด ${product.stock}`;
+	}
+
+	return "ปิดขาย";
+}
+
+function triggerScanToast(message: string) {
+	scanToast.value = message;
+
+	if (scanToastTimer) {
+		clearTimeout(scanToastTimer);
+	}
+
+	scanToastTimer = setTimeout(() => {
+		scanToast.value = "";
+	}, 2400);
+}
+
+function simulateScan() {
+	const sellableProducts = products.filter((product) => product.stockState !== "inactive");
+	const product = sellableProducts[scanIndex % sellableProducts.length];
+	scanIndex += 1;
+	searchQuery.value = product.barcode;
+	addToCart(product);
+	triggerScanToast(`สแกน ${product.barcode} เพิ่ม ${product.name} ลงบิลแล้ว`);
+}
+
+function isNavActive(path: string) {
+	return path === "/" ? route.path === "/" : route.path.startsWith(path);
+}
 </script>
 
 <template>
-	<main class="min-h-screen">
-		<div class="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-			<header
-				class="rounded-[28px] border border-stone-900/10 bg-pos-glow px-4 py-4 shadow-panel backdrop-blur xl:px-6"
+	<main class="min-h-screen w-full bg-transparent pb-24 xl:h-screen xl:overflow-hidden xl:pb-0">
+		<div class="flex min-h-screen w-full xl:h-screen xl:overflow-hidden">
+			<div
+				v-if="mobileSidebarOpen"
+				class="fixed inset-0 z-40 bg-black/45 lg:hidden"
+				@click="mobileSidebarOpen = false"
+			/>
+
+				<aside
+					class="fixed inset-y-0 left-0 z-50 flex bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-[width,transform] duration-200 ease-out lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none"
+				:class="[
+					sidebarCollapsed ? 'w-[84px]' : 'w-[280px]',
+					mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+				]"
 			>
-				<div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-					<div class="space-y-3">
-						<div class="flex flex-wrap items-center gap-3">
-							<span
-								class="inline-flex items-center rounded-full bg-stone-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-50"
-							>
-								POS starter
-							</span>
-							<span class="rounded-full bg-white/80 px-3 py-1 text-sm text-stone-600">
-								Ticket {{ currentTicket }}
-							</span>
-							<span class="rounded-full bg-white/80 px-3 py-1 text-sm text-stone-600">
-								Tablet + desktop + mobile
-							</span>
+					<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
+					<div class="flex items-center justify-between">
+						<div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f8e9de] text-lg font-semibold text-[#97532c]">
+							P
 						</div>
-
-						<div>
-							<h1 class="max-w-3xl text-3xl font-semibold tracking-[-0.04em] text-ink sm:text-4xl xl:text-5xl">
-								Front counter POS UI ที่เน้นความเร็วในการกดขายและอ่านง่ายทุกขนาดจอ
-							</h1>
-							<p class="mt-3 max-w-2xl text-sm leading-7 text-mist sm:text-base">
-								รอบนี้เป็น starter shell สำหรับรีวิวทิศทาง visual, spacing, responsive
-								layout และ ticket panel ก่อน ยังไม่เชื่อม payment flow หรือ backend จริง
-							</p>
-						</div>
-					</div>
-
-					<div class="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
-						<div
-							v-for="stat in orderStats"
-							:key="stat.label"
-							class="rounded-3xl border border-white/70 bg-white/85 p-4"
-						>
-							<p class="text-xs uppercase tracking-[0.22em] text-stone-500">
-								{{ stat.label }}
-							</p>
-							<p class="mt-3 inline-flex rounded-full px-3 py-1 text-lg font-semibold" :class="stat.tone">
-								{{ stat.value }}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-					<label
-						class="flex items-center gap-3 rounded-3xl border border-stone-900/10 bg-white/85 px-4 py-3 shadow-sm"
-					>
-						<span class="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-							Search
-						</span>
-						<input
-							v-model="searchQuery"
-							type="text"
-							placeholder="Search drink, bakery, tag..."
-							class="w-full border-0 bg-transparent text-sm text-stone-700 outline-none placeholder:text-stone-400"
+						<UButton
+								color="gray"
+							variant="ghost"
+							size="sm"
+							class="lg:hidden"
+							label="ปิด"
+							@click="mobileSidebarOpen = false"
 						/>
-					</label>
-
-					<div class="grid grid-cols-3 gap-2 rounded-3xl bg-stone-900 p-1">
-						<button
-							v-for="mode in serviceModes"
-							:key="mode"
-							type="button"
-							class="rounded-[18px] px-4 py-3 text-sm font-medium transition"
-							:class="
-								activeMode === mode
-									? 'bg-white text-stone-900 shadow-sm'
-									: 'text-stone-300 hover:bg-white/10 hover:text-white'
-							"
-							@click="activeMode = mode"
-						>
-							{{ mode }}
-						</button>
 					</div>
-				</div>
-			</header>
 
-			<div class="grid flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-				<section class="space-y-4">
-					<div class="rounded-[28px] border border-stone-900/10 bg-white/80 p-4 shadow-panel backdrop-blur xl:p-5">
-						<div class="flex items-center justify-between gap-3">
-							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-									Categories
-								</p>
-								<h2 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-ink">
-									Quick product browsing
-								</h2>
-							</div>
-							<p class="rounded-full bg-stone-100 px-3 py-1 text-sm text-stone-500">
-								{{ filteredProducts.length }} items
-							</p>
+						<div class="hidden px-3 lg:block">
+							<UButton
+								color="gray"
+								variant="ghost"
+								size="sm"
+								class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
+								:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex w-full justify-between px-3 py-2.5'"
+								:icon="sidebarCollapsed ? 'i-heroicons-chevron-double-right-20-solid' : 'i-heroicons-chevron-double-left-20-solid'"
+								:title="sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
+								:aria-label="sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
+								@click="sidebarCollapsed = !sidebarCollapsed"
+							/>
 						</div>
 
-						<div class="scrollbar-soft mt-4 flex gap-3 overflow-x-auto pb-2">
-							<button
-								v-for="category in categories"
-								:key="category.id"
-								type="button"
-								class="min-w-[190px] rounded-[24px] border px-4 py-4 text-left transition"
+					<nav class="flex flex-1 flex-col gap-2">
+							<NuxtLink
+								v-for="item in navItems"
+								:key="item.id"
+								:to="item.to"
+								class="flex items-center rounded-2xl px-3 py-3 text-left"
+								:title="item.label"
+								:aria-label="item.label"
 								:class="
-									activeCategory === category.id
-										? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
-										: 'border-stone-200 bg-stone-50/70 text-stone-700 hover:border-stone-300 hover:bg-white'
+									[
+										sidebarCollapsed ? 'gap-0' : 'gap-3',
+										isNavActive(item.to)
+											? (sidebarCollapsed
+												? 'text-[#97532c]'
+												: 'bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]')
+											: 'text-stone-500 hover:bg-[#f7f5f1] hover:text-stone-900'
+									]
 								"
-								@click="activeCategory = category.id"
 							>
-								<div class="flex items-center justify-between gap-3">
-									<p class="font-semibold">{{ category.label }}</p>
-									<span class="rounded-full bg-white/90 px-2.5 py-1 text-xs text-stone-500">
-										{{ featuredCounts[category.id] }}
-									</span>
+								<div
+									class="flex shrink-0 items-center justify-center rounded-2xl text-sm font-semibold"
+									:class="
+										[
+											'h-11 w-11',
+											isNavActive(item.to)
+												? 'bg-white text-[#97532c] ring-1 ring-[#efd7c6]'
+												: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd]'
+										]
+									"
+								>
+									<UIcon :name="item.icon" class="h-5 w-5" />
 								</div>
-								<p class="mt-2 text-sm leading-6 text-stone-500">
-									{{ category.description }}
-								</p>
-							</button>
-						</div>
-					</div>
-
-					<div class="rounded-[28px] border border-stone-900/10 bg-white/80 p-4 shadow-panel backdrop-blur xl:p-5">
-						<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-									Product grid
-								</p>
-								<h2 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-ink">
-									Starter layout สำหรับหน้าขายหน้าร้าน
-								</h2>
+							<div
+								class="min-w-0 overflow-hidden transition-[width,opacity] duration-150 ease-out"
+								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
+								aria-hidden="true"
+							>
+								<p class="truncate text-sm font-medium whitespace-nowrap">{{ item.label }}</p>
 							</div>
-							<p class="max-w-md text-sm leading-6 text-stone-500">
-								ตั้งใจให้ card ใหญ่พอกดบน tablet, ข้อมูลสำคัญอยู่บน fold และระยะห่างยังอ่านง่ายบน mobile
-							</p>
-						</div>
+						</NuxtLink>
+					</nav>
 
-						<div class="mt-5 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-							<button
-								v-for="product in filteredProducts"
-								:key="product.id"
-								type="button"
-								class="group overflow-hidden rounded-[26px] border border-stone-200 bg-stone-50 text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white"
-								@click="addToCart(product)"
+						<UCard
+							class="border-0 bg-white shadow-none ring-1 ring-[#e7e4dd]"
+							:class="sidebarCollapsed ? 'px-0 py-0' : ''"
+						>
+							<div
+								:class="
+									sidebarCollapsed
+										? 'flex min-h-[78px] flex-col items-center justify-center gap-1 px-1 py-2 text-center'
+										: 'space-y-2'
+								"
 							>
-								<div class="h-28 p-4" :style="{ background: product.accent }">
-									<div class="flex items-start justify-between gap-3">
-										<span
-											class="rounded-full bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-700"
-										>
-											{{ product.category }}
-										</span>
-										<span
-											v-if="product.tag"
-											class="rounded-full bg-stone-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white"
-										>
-											{{ product.tag }}
-										</span>
-									</div>
-								</div>
+								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">
+									{{ sidebarCollapsed ? "เปิดอยู่" : "กะขายปัจจุบัน" }}
+								</p>
+								<p :class="sidebarCollapsed ? 'text-base font-semibold text-stone-900' : 'text-lg font-semibold text-stone-900'">
+									{{ sidebarCollapsed ? "A-102" : "บิล A-102" }}
+								</p>
+								<p v-if="!sidebarCollapsed" class="text-sm text-stone-500">Lina Punk . สาขาท่าเดื่อ</p>
+							</div>
+						</UCard>
+				</div>
+			</aside>
 
-								<div class="space-y-4 p-4">
-									<div>
-										<h3 class="text-lg font-semibold tracking-[-0.03em] text-ink">
-											{{ product.name }}
-										</h3>
-										<p class="mt-2 text-sm leading-6 text-stone-500">
-											Prep {{ product.prepTime }} . {{ product.stockLabel }}
+				<div class="min-w-0 flex-1 xl:min-h-0 xl:overflow-hidden">
+					<div class="flex min-h-screen w-full xl:h-screen xl:min-h-0 xl:overflow-hidden">
+						<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 xl:min-h-0 xl:overflow-hidden">
+						<div class="space-y-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)] xl:space-y-0 xl:gap-4">
+										<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:sticky xl:top-0 xl:z-10">
+											<div class="space-y-4">
+												<div class="flex flex-wrap items-center gap-2">
+													<UBadge color="orange" variant="soft" label="POS" />
+													<UBadge color="gray" variant="soft" :label="`บิล ${currentTicket}`" />
+													<UBadge color="green" variant="soft" :label="`พร้อมขาย ${filteredProducts.length} รายการ`" />
+												</div>
+
+												<div class="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+													<div class="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
+														<UButton
+															color="gray"
+															variant="soft"
+															size="lg"
+															class="justify-center lg:hidden"
+															label="เมนู"
+															@click="mobileSidebarOpen = true"
+														/>
+
+														<div class="relative">
+															<UInput
+																v-model="searchQuery"
+																size="lg"
+																icon="i-heroicons-magnifying-glass-20-solid"
+																placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+																color="gray"
+																class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+															/>
+															<UButton
+																v-if="searchQuery"
+																color="gray"
+																variant="ghost"
+																size="xs"
+																icon="i-heroicons-x-mark-20-solid"
+																class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+																aria-label="ล้างคำค้น"
+																title="ล้างคำค้น"
+																@click="searchQuery = ''"
+															/>
+														</div>
+													</div>
+
+													<UButton
+														color="orange"
+														variant="solid"
+														size="lg"
+														icon="i-heroicons-qr-code-20-solid"
+														class="justify-center px-4"
+														aria-label="สแกนบาร์โค้ด"
+														title="สแกนบาร์โค้ด"
+														@click="simulateScan"
+													/>
+
+													<div class="grid grid-cols-2 gap-2">
+														<UButton color="gray" variant="soft" size="lg" label="พักบิล" />
+														<UButton color="gray" variant="outline" size="lg" label="บิลที่พัก 4" />
+													</div>
+												</div>
+
+												<div class="grid gap-3 border-t border-[#e7e4dd] pt-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+													<div class="space-y-2">
+														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+															<UButton
+																v-for="mode in serviceModes"
+																:key="mode"
+																:color="activeMode === mode ? 'gray' : 'gray'"
+																:variant="activeMode === mode ? 'solid' : 'soft'"
+																size="sm"
+																:label="mode"
+																class="whitespace-nowrap"
+																@click="activeMode = mode"
+															/>
+														</div>
+
+														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+															<UButton
+																v-for="category in categories"
+																:key="category.id"
+																:color="activeCategory === category.id ? 'orange' : 'gray'"
+																:variant="activeCategory === category.id ? 'soft' : 'ghost'"
+																size="sm"
+																class="whitespace-nowrap"
+																@click="activeCategory = category.id"
+															>
+																{{ category.label }}
+																<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
+																	{{ categoryCounts[category.id] }}
+																</span>
+															</UButton>
+														</div>
+
+														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+															<UButton
+																v-for="view in quickViews"
+																:key="view.id"
+																:color="activeQuickView === view.id ? 'gray' : 'gray'"
+																:variant="activeQuickView === view.id ? 'solid' : 'soft'"
+																size="sm"
+																:label="view.label"
+																class="whitespace-nowrap"
+																@click="activeQuickView = view.id"
+															/>
+														</div>
+													</div>
+
+													<div class="flex flex-wrap items-start justify-start gap-2 xl:max-w-[280px] xl:justify-end">
+														<UBadge color="gray" variant="soft" :label="`พนักงาน Lina`" />
+														<UBadge color="gray" variant="soft" :label="`ลูกค้า ${selectedCustomer}`" />
+														<UButton color="gray" variant="soft" size="sm" label="เรียงตามขายดี" />
+														<UButton color="gray" variant="soft" size="sm" label="ฟิลเตอร์สาขา" />
+													</div>
+												</div>
+											</div>
+										</UCard>
+
+								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:min-h-0 xl:overflow-hidden">
+								<div class="space-y-4 p-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
+									<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+												Product list
+											</p>
+											<h2 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-900">
+												รายการสินค้าพร้อมขาย
+											</h2>
+										</div>
+
+										<p class="max-w-xl text-sm leading-6 text-stone-500">
+											ลด card ให้แน่นขึ้นสำหรับ retail POS, ยังมีรูปช่วยจำสินค้า แต่ให้ข้อมูล operational สำคัญมาก่อน
 										</p>
 									</div>
 
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-xs uppercase tracking-[0.2em] text-stone-400">
-												Price
-											</p>
-											<p class="mt-1 text-lg font-semibold text-ink">
-												{{ formatMoney(product.price) }}
+									<div class="scrollbar-soft min-h-0 overflow-y-auto xl:pr-1">
+									<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+										<article
+											v-for="product in filteredProducts"
+											:key="product.id"
+											class="min-w-0 text-left"
+										>
+											<UCard
+													class="h-full overflow-hidden border-0 bg-white shadow-sm ring-1 ring-[#e7e4dd] transition hover:-translate-y-0.5 hover:shadow-md"
+												:class="product.stockState === 'inactive' ? 'opacity-60' : 'cursor-pointer'"
+												@click="product.stockState !== 'inactive' && addToCart(product)"
+											>
+													<div class="flex h-full flex-col gap-3">
+													<div class="rounded-2xl px-3 py-2.5 text-white" :style="{ background: product.accent }">
+														<div class="flex min-h-[74px] items-start justify-between gap-3">
+															<div>
+																<p class="text-[11px] uppercase tracking-[0.22em] text-white/80">
+																	{{ product.category }}
+																</p>
+																<p class="mt-2.5 text-[1.75rem] font-semibold leading-none tracking-[-0.05em]">
+																	{{ product.thumbnail }}
+																</p>
+															</div>
+																<UBadge
+																	v-if="product.tag"
+																		color="gray"
+																	variant="soft"
+																	:label="product.tag"
+																	class="max-w-full bg-white/15 text-[10px] text-white ring-0"
+																/>
+															</div>
+														</div>
+
+														<div class="min-w-0 space-y-2.5">
+															<div class="min-w-0">
+																<h3 class="line-clamp-2 text-sm font-semibold leading-5 text-stone-900">
+																		{{ product.name }}
+																	</h3>
+																	<p class="mt-1 truncate text-[11px] text-stone-500">
+																		{{ product.sku }} . {{ product.barcode }}
+																	</p>
+															</div>
+
+															<div class="flex flex-wrap gap-2">
+																<UBadge
+																	:color="getStockTone(product.stockState)"
+																	variant="soft"
+																	:label="getStockLabel(product)"
+																/>
+																<UBadge color="gray" variant="soft" :label="product.unitLabel" />
+																<UBadge
+																	v-if="product.hasVariants"
+																	color="gray"
+																variant="soft"
+																label="มีตัวเลือก"
+															/>
+														</div>
+
+															<p class="text-[11px] text-stone-500">
+																ขายวันนี้ {{ product.soldToday }} รายการ
+															</p>
+													</div>
+
+														<div class="mt-auto flex items-end justify-between gap-3">
+															<div class="min-w-0">
+																<p v-if="product.compareAt" class="text-sm text-stone-400 line-through">
+																	{{ formatMoney(product.compareAt) }}
+															</p>
+															<p class="text-lg font-semibold text-stone-950 tabular-nums">
+																{{ formatMoney(product.price) }}
+															</p>
+														</div>
+															<UButton
+																	:color="product.stockState === 'inactive' ? 'gray' : 'orange'"
+																:variant="product.stockState === 'inactive' ? 'soft' : 'solid'"
+																size="xs"
+																:icon="product.stockState === 'inactive' ? 'i-heroicons-lock-closed-16-solid' : 'i-heroicons-plus-16-solid'"
+																:label="product.stockState === 'inactive' ? 'ปิดขาย' : 'เพิ่ม'"
+																:disabled="product.stockState === 'inactive'"
+																class="shrink-0"
+																@click.stop="product.stockState !== 'inactive' && addToCart(product)"
+															/>
+														</div>
+													</div>
+												</UCard>
+										</article>
+									</div>
+
+									<UCard
+										v-if="filteredProducts.length === 0"
+										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
+									>
+										<div class="py-8 text-center">
+											<p class="text-lg font-semibold text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
+											<p class="mt-2 text-sm text-stone-500">
+												ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยน quick filter ด้านบน
 											</p>
 										</div>
-										<span
-											class="rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition group-hover:bg-brand-600"
-										>
-											Add to ticket
-										</span>
+									</UCard>
 									</div>
 								</div>
-							</button>
-						</div>
-					</div>
-				</section>
-
-				<aside class="xl:sticky xl:top-4 xl:h-[calc(100vh-2rem)]">
-					<div class="flex h-full flex-col rounded-[30px] border border-stone-900/10 bg-stone-950 p-4 text-stone-50 shadow-float">
-						<div class="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
-							<div>
-								<p class="text-xs uppercase tracking-[0.22em] text-stone-400">
-									Active ticket
-								</p>
-								<h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em]">
-									{{ currentTicket }}
-								</h2>
-								<p class="mt-2 text-sm leading-6 text-stone-400">
-									{{ activeMode }} . {{ itemCount }} items
-								</p>
 							</div>
-
-							<button
-								type="button"
-								class="rounded-full border border-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-300 transition hover:border-white/30 hover:text-white"
-								@click="clearCart"
-							>
-								Clear
-							</button>
 						</div>
+					</section>
 
-						<div class="mt-4 rounded-[24px] bg-white/5 p-4">
-							<p class="text-xs uppercase tracking-[0.22em] text-stone-400">
-								Cashier note
-							</p>
-							<p class="mt-2 text-sm leading-6 text-stone-200">
-								{{ orderNote }}
-							</p>
+							<aside class="hidden w-[420px] xl:flex xl:min-h-0 xl:flex-col xl:px-4 xl:py-3">
+								<div class="grid h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl bg-[#fbfbf8] p-4 text-stone-900 shadow-xl ring-1 ring-[#e7e4dd]">
+										<div class="flex items-start justify-between gap-3 border-b border-[#e7e4dd] pb-3">
+											<div class="min-w-0">
+												<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Active ticket</p>
+												<div class="mt-1 flex items-end gap-2">
+													<h2 class="text-2xl font-semibold tracking-[-0.05em] text-stone-950">{{ currentTicket }}</h2>
+													<p class="truncate pb-0.5 text-xs text-stone-500">{{ activeMode }} · {{ itemCount }} รายการ</p>
+												</div>
+											</div>
+											<UButton
+												color="gray"
+												variant="soft"
+												size="xs"
+												icon="i-heroicons-trash"
+												aria-label="ล้างบิล"
+												title="ล้างบิล"
+												@click="clearCart"
+											/>
+										</div>
+
+											<div class="mt-4 grid min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3">
+												<div class="flex flex-wrap gap-2">
+													<UButton color="gray" variant="soft" size="sm" label="แนบลูกค้า" />
+													<UButton color="gray" variant="soft" size="sm" label="ส่วนลด" />
+													<UButton color="gray" variant="soft" size="sm" label="พักบิล" />
+												</div>
+
+												<div class="scrollbar-soft h-full min-h-0 overflow-y-auto pr-1">
+													<div class="space-y-2 pb-1">
+											<UCard
+												v-for="item in cartItems"
+												:key="item.id"
+													class="border-0 bg-white shadow-sm ring-1 ring-[#e7e4dd]"
+										>
+											<div class="space-y-3">
+												<div class="flex items-start justify-between gap-3">
+													<div class="min-w-0">
+														<h3 class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</h3>
+														<p class="mt-1 truncate text-[11px] text-stone-500">{{ item.unitLabel }} . {{ item.sku }}</p>
+													</div>
+													<p class="shrink-0 text-sm font-semibold text-stone-900 tabular-nums">
+														{{ formatMoney(item.lineTotal) }}
+													</p>
+												</div>
+
+												<div class="flex items-center justify-between gap-3">
+													<div class="flex min-w-0 flex-wrap gap-1.5">
+														<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
+														<UBadge color="gray" variant="soft" :label="item.unitLabel" />
+														<UBadge v-if="item.hasVariants" color="gray" variant="soft" label="ตัวเลือก" />
+													</div>
+													<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
+														<UButton color="gray" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+														<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
+															{{ item.qty }}
+														</span>
+														<UButton color="gray" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
+													</div>
+												</div>
+											</div>
+										</UCard>
+
+										<UCard
+											v-if="cartItems.length === 0"
+												class="border border-dashed border-[#d9d5cd] bg-[#f3f2ee] text-stone-500 shadow-none"
+										>
+													<div class="py-8 text-sm leading-7">
+														ยังไม่มีสินค้าในบิลนี้ ลองสแกนบาร์โค้ดหรือกดเพิ่มจากรายการสินค้าทางซ้าย
+													</div>
+												</UCard>
+													</div>
+												</div>
+											</div>
+
+											<div class="sticky bottom-0 z-10 border-t border-[#e7e4dd] bg-[rgba(251,251,248,0.96)] pt-4 backdrop-blur">
+												<div class="space-y-3">
+													<div class="grid grid-cols-2 gap-2 text-xs text-stone-500">
+														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+															<p>Subtotal</p>
+															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(subtotal) }}</p>
+														</div>
+														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+															<p>ส่วนลด</p>
+															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">-{{ formatMoney(discount) }}</p>
+														</div>
+														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+															<p>VAT 7%</p>
+															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(tax) }}</p>
+														</div>
+														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+															<p>Service</p>
+															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(serviceCharge) }}</p>
+														</div>
+													</div>
+
+													<div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+														<div class="flex items-center justify-between gap-3">
+															<div>
+																<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">ยอดชำระ</p>
+																<p class="mt-1 text-sm text-stone-500">{{ itemCount }} รายการ . {{ activeMode }}</p>
+															</div>
+															<p class="text-[1.7rem] font-semibold tracking-[-0.04em] text-stone-950 tabular-nums">
+																{{ formatMoney(total) }}
+															</p>
+														</div>
+													</div>
+
+													<div class="grid grid-cols-2 gap-2">
+														<UButton color="gray" variant="soft" size="lg" label="เงินสด" />
+														<UButton color="gray" variant="soft" size="lg" label="QR / โอน" />
+													</div>
+
+													<UButton color="orange" variant="solid" size="xl" block label="รับชำระเงิน" />
+												</div>
+											</div>
+								</div>
+							</aside>
+				</div>
+			</div>
+		</div>
+
+			<div class="fixed inset-x-0 bottom-0 z-30 border-t border-[#e7e4dd] bg-[rgba(255,255,253,0.96)] px-4 py-3 backdrop-blur xl:hidden">
+			<div class="flex items-center justify-between gap-4">
+				<div>
+					<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">บิลปัจจุบัน</p>
+					<p class="mt-1 text-sm font-medium text-stone-600">{{ itemCount }} รายการ . {{ currentTicket }}</p>
+				</div>
+				<div class="flex items-center gap-3">
+					<p class="text-right text-lg font-semibold text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
+						<UButton color="orange" variant="solid" size="lg" label="ดูบิล" @click="mobileTicketOpen = true" />
+				</div>
+			</div>
+		</div>
+
+		<div
+			v-if="mobileTicketOpen"
+			class="fixed inset-0 z-50 flex items-end bg-black/45 p-3 xl:hidden"
+			@click.self="mobileTicketOpen = false"
+		>
+			<UCard class="max-h-[88vh] w-full overflow-hidden border-0 bg-white shadow-2xl ring-1 ring-black/5">
+				<template #header>
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">บิลปัจจุบัน</p>
+							<h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-900">
+								{{ currentTicket }}
+							</h2>
 						</div>
+							<UButton color="gray" variant="soft" size="sm" label="ปิด" @click="mobileTicketOpen = false" />
+					</div>
+				</template>
 
-						<div class="scrollbar-soft mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
-							<div
-								v-for="item in cartItems"
-								:key="item.id"
-								class="rounded-[24px] border border-white/10 bg-white/5 p-4"
-							>
-								<div class="flex items-start justify-between gap-4">
-									<div>
-										<h3 class="font-semibold">{{ item.name }}</h3>
-										<p class="mt-1 text-sm text-stone-400">
-											{{ formatMoney(item.price) }} each
-										</p>
+					<div class="scrollbar-soft max-h-[calc(88vh-240px)] space-y-3 overflow-y-auto">
+						<UCard
+							v-for="item in cartItems"
+							:key="item.id"
+							class="border-0 bg-white ring-1 ring-[#e7e4dd]"
+						>
+							<div class="space-y-3">
+								<div class="flex items-start justify-between gap-3">
+									<div class="min-w-0">
+										<h3 class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</h3>
+										<p class="mt-1 truncate text-[11px] text-stone-500">{{ item.unitLabel }} . {{ item.sku }}</p>
 									</div>
-									<p class="text-right text-sm font-medium text-stone-200">
+									<p class="shrink-0 text-sm font-semibold text-stone-900 tabular-nums">
 										{{ formatMoney(item.lineTotal) }}
 									</p>
 								</div>
 
-								<div class="mt-4 flex items-center justify-between gap-3">
-									<div class="inline-flex items-center rounded-full bg-black/30 p-1">
-										<button
-											type="button"
-											class="rounded-full px-3 py-2 text-sm text-stone-300 transition hover:bg-white/10 hover:text-white"
-											@click="decreaseQty(item.id)"
-										>
-											-
-										</button>
-										<span class="min-w-[2.5rem] text-center text-sm font-semibold">
+								<div class="flex items-center justify-between gap-3">
+									<div class="flex min-w-0 flex-wrap gap-1.5">
+										<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
+										<UBadge color="gray" variant="soft" :label="item.unitLabel" />
+									</div>
+									<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
+										<UButton color="gray" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+										<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 											{{ item.qty }}
 										</span>
-										<button
-											type="button"
-											class="rounded-full px-3 py-2 text-sm text-stone-300 transition hover:bg-white/10 hover:text-white"
-											@click="increaseQty(item.id)"
-										>
-											+
-										</button>
+										<UButton color="gray" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
 									</div>
+								</div>
+							</div>
+						</UCard>
 
-									<span class="rounded-full bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-stone-300">
-										{{ item.prepTime }}
-									</span>
+					<UCard
+						v-if="cartItems.length === 0"
+						class="border border-dashed border-[#d9d5cd] bg-[#f3f2ee] text-center text-stone-500 shadow-none"
+					>
+						<div class="py-8 text-sm">ยังไม่มีสินค้าในบิลนี้</div>
+					</UCard>
+				</div>
+
+					<template #footer>
+						<div class="space-y-3 border-t border-[#e7e4dd] bg-[rgba(255,255,255,0.98)] pt-4 backdrop-blur">
+							<div class="grid grid-cols-2 gap-2 text-xs text-stone-500">
+								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-2 ring-1 ring-[#e7e4dd]">
+									<p>Subtotal</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(subtotal) }}</p>
+								</div>
+								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-2 ring-1 ring-[#e7e4dd]">
+									<p>ส่วนลด</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">-{{ formatMoney(discount) }}</p>
 								</div>
 							</div>
 
-							<div
-								v-if="cartItems.length === 0"
-								class="rounded-[24px] border border-dashed border-white/15 bg-white/5 px-4 py-8 text-center text-sm leading-7 text-stone-400"
-							>
-								ยังไม่มีสินค้าใน ticket นี้ ลองกดเพิ่มจาก product grid ด้านซ้าย
+							<div class="rounded-2xl bg-[#fbfbf8] px-4 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">ยอดชำระ</p>
+										<p class="mt-1 text-sm text-stone-500">{{ itemCount }} รายการ</p>
+									</div>
+									<p class="text-xl font-semibold tracking-[-0.03em] text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
+								</div>
+							</div>
+
+							<div class="grid grid-cols-2 gap-2">
+								<UButton color="gray" variant="soft" size="lg" label="เงินสด" />
+								<UButton color="gray" variant="soft" size="lg" label="QR / โอน" />
+							</div>
+
+							<div class="grid gap-2">
+								<UButton color="orange" variant="solid" size="xl" label="รับชำระเงิน" />
+								<UButton color="gray" variant="soft" size="lg" label="พักบิล" />
 							</div>
 						</div>
-
-						<div class="mt-4 space-y-3 border-t border-white/10 pt-4">
-							<div class="flex items-center justify-between text-sm text-stone-400">
-								<span>Subtotal</span>
-								<span>{{ formatMoney(subtotal) }}</span>
-							</div>
-							<div class="flex items-center justify-between text-sm text-stone-400">
-								<span>VAT 7%</span>
-								<span>{{ formatMoney(tax) }}</span>
-							</div>
-							<div class="flex items-center justify-between text-sm text-stone-400">
-								<span>Service</span>
-								<span>{{ formatMoney(serviceCharge) }}</span>
-							</div>
-							<div class="flex items-center justify-between text-xl font-semibold tracking-[-0.03em]">
-								<span>Total</span>
-								<span>{{ formatMoney(total) }}</span>
-							</div>
-
-							<div class="grid gap-2 pt-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-								<button
-									type="button"
-									class="rounded-[20px] bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
-								>
-									Charge now
-								</button>
-								<button
-									type="button"
-									class="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-								>
-									Hold ticket
-								</button>
-							</div>
-
-							<p class="text-xs leading-6 text-stone-500">
-								Starter UI only: payment, receipt, member lookup และ backend sync ยังไม่ถูกเชื่อมในรอบนี้
-							</p>
-						</div>
-					</div>
-				</aside>
-			</div>
+					</template>
+			</UCard>
 		</div>
 
-		<div class="sticky bottom-0 z-20 border-t border-stone-900/10 bg-white/90 px-4 py-3 backdrop-blur xl:hidden">
-			<div class="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
-				<div>
-					<p class="text-xs uppercase tracking-[0.22em] text-stone-400">
-						Mobile summary
-					</p>
-					<p class="mt-1 text-sm font-medium text-stone-600">
-						{{ itemCount }} items in {{ currentTicket }}
-					</p>
-				</div>
-				<div class="text-right">
-					<p class="text-lg font-semibold text-ink">
-						{{ formatMoney(total) }}
-					</p>
-					<p class="text-xs text-stone-500">
-						Scroll for full ticket panel
-					</p>
-				</div>
-			</div>
+		<div
+			v-if="scanToast"
+			class="fixed right-3 top-3 z-[60] max-w-sm"
+		>
+			<UCard class="border-0 bg-white shadow-xl ring-1 ring-[#efd7c6]">
+				<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#97532c]">Barcode scanned</p>
+				<p class="mt-1 text-sm text-stone-700">{{ scanToast }}</p>
+			</UCard>
 		</div>
 	</main>
 </template>

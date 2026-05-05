@@ -4,7 +4,18 @@
 
 @layer base {
 	:root {
-		color-scheme: light;
+		color-scheme: only light;
+		--pos-page: #f6f6f3;
+		--pos-surface: #fffefd;
+		--pos-surface-soft: #fbfbf8;
+		--pos-surface-muted: #f3f2ee;
+		--pos-border: #e7e4dd;
+		--pos-border-strong: #d9d5cd;
+		--pos-text: #1f1c18;
+		--pos-text-muted: #6b645c;
+		--pos-text-soft: #90877d;
+		--pos-accent: #c97745;
+		--pos-accent-soft: #f8e9de;
 	}
 
 	* {
@@ -19,12 +30,9 @@
 
 	body {
 		margin: 0;
-		background:
-			radial-gradient(circle at top left, rgba(216, 109, 50, 0.16), transparent 22%),
-			radial-gradient(circle at top right, rgba(77, 158, 130, 0.14), transparent 24%),
-			linear-gradient(180deg, #fbf7f1 0%, #f4ebdf 100%);
-		color: #221b17;
-		font-family: "Avenir Next", "Manrope", "Segoe UI", sans-serif;
+		background: var(--pos-page);
+		color: var(--pos-text);
+		font-family: "Avenir Next", "Segoe UI", sans-serif;
 	}
 
 	button,
@@ -36,16 +44,22 @@
 @layer utilities {
 	.scrollbar-soft {
 		scrollbar-width: thin;
-		scrollbar-color: rgba(34, 27, 23, 0.22) transparent;
+		scrollbar-color: rgba(31, 28, 24, 0.16) transparent;
 	}
 
 	.scrollbar-soft::-webkit-scrollbar {
-		height: 8px;
 		width: 8px;
+		height: 8px;
 	}
 
 	.scrollbar-soft::-webkit-scrollbar-thumb {
 		border-radius: 999px;
-		background: rgba(34, 27, 23, 0.18);
+		background: rgba(31, 28, 24, 0.14);
+	}
+
+	.category-rail {
+		scroll-snap-type: x proximity;
+		mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
+		-webkit-mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
 	}
 }
