@@ -1,14 +1,9 @@
 <script setup lang="ts">
+import { appNavItems } from "~/utils/app-nav";
+
 type ServiceMode = "หน้าร้าน" | "รับกลับ" | "เดลิเวอรี";
 type QuickView = "all" | "bestseller" | "promo" | "low-stock" | "ready";
 type StockState = "ready" | "low" | "inactive";
-
-type NavItem = {
-	id: string;
-	label: string;
-	icon: string;
-	to: string;
-};
 
 type Category = {
 	id: string;
@@ -38,15 +33,8 @@ type CartEntry = {
 	qty: number;
 };
 
-const navItems: NavItem[] = [
-	{ id: "pos", label: "ขายหน้าร้าน", icon: "i-heroicons-shopping-bag", to: "/" },
-	{ id: "products", label: "สินค้า", icon: "i-heroicons-squares-2x2", to: "/products" },
-	{ id: "orders", label: "ออเดอร์", icon: "i-heroicons-receipt-percent", to: "/orders" },
-	{ id: "stock", label: "สต็อก", icon: "i-heroicons-cube", to: "/inventory" },
-	{ id: "purchase", label: "สั่งซื้อ", icon: "i-heroicons-clipboard-document-list", to: "/purchase-orders" },
-	{ id: "reports", label: "รายงาน", icon: "i-heroicons-chart-bar-square", to: "/reports" },
-	{ id: "settings", label: "ตั้งค่า", icon: "i-heroicons-cog-6-tooth", to: "/settings" },
-];
+const navItems = appNavItems;
+const { logout } = useAuthSession();
 
 const categories: Category[] = [
 	{ id: "all", label: "ทั้งหมด" },
@@ -257,7 +245,8 @@ const selectedCustomer = ref("ลูกค้าทั่วไป");
 const orderNote = ref("ไม่ใส่น้ำตาลในรายการชา");
 const mobileTicketOpen = ref(false);
 const mobileSidebarOpen = ref(false);
-const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => false);
+const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
+const logoutConfirmOpen = ref(false);
 const scanToast = ref("");
 const route = useRoute();
 const cart = ref<CartEntry[]>([
@@ -442,11 +431,21 @@ function simulateScan() {
 function isNavActive(path: string) {
 	return path === "/" ? route.path === "/" : route.path.startsWith(path);
 }
+
+function openLogoutConfirm() {
+	logoutConfirmOpen.value = true;
+}
+
+async function confirmLogout() {
+	logoutConfirmOpen.value = false;
+	await logout();
+	return navigateTo("/login");
+}
 </script>
 
 <template>
-	<main class="min-h-screen w-full bg-transparent pb-24 xl:h-screen xl:overflow-hidden xl:pb-0">
-		<div class="flex min-h-screen w-full xl:h-screen xl:overflow-hidden">
+	<main class="min-h-screen w-full bg-transparent pb-24 lg:h-screen lg:overflow-hidden lg:pb-0">
+		<div class="flex min-h-screen w-full lg:h-screen lg:overflow-hidden">
 			<div
 				v-if="mobileSidebarOpen"
 				class="fixed inset-0 z-40 bg-black/45 lg:hidden"
@@ -531,34 +530,35 @@ function isNavActive(path: string) {
 						</NuxtLink>
 					</nav>
 
-						<UCard
-							class="border-0 bg-white shadow-none ring-1 ring-[#e7e4dd]"
-							:class="sidebarCollapsed ? 'px-0 py-0' : ''"
+						<div class="px-3 pt-1">
+							<UButton
+								color="gray"
+								variant="ghost"
+								size="sm"
+								icon="i-heroicons-arrow-left-on-rectangle"
+							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
+							:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
+							:title="sidebarCollapsed ? 'ออกจากระบบ' : undefined"
+							:aria-label="'ออกจากระบบ'"
+							@click="openLogoutConfirm"
 						>
-							<div
-								:class="
-									sidebarCollapsed
-										? 'flex min-h-[78px] flex-col items-center justify-center gap-1 px-1 py-2 text-center'
-										: 'space-y-2'
-								"
-							>
-								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">
-									{{ sidebarCollapsed ? "เปิดอยู่" : "กะขายปัจจุบัน" }}
-								</p>
-								<p :class="sidebarCollapsed ? 'text-base font-semibold text-stone-900' : 'text-lg font-semibold text-stone-900'">
-									{{ sidebarCollapsed ? "A-102" : "บิล A-102" }}
-								</p>
-								<p v-if="!sidebarCollapsed" class="text-sm text-stone-500">Lina Punk . สาขาท่าเดื่อ</p>
-							</div>
-						</UCard>
+								<span
+									class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
+									:class="sidebarCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'"
+									aria-hidden="true"
+								>
+									ออกจากระบบ
+								</span>
+							</UButton>
+						</div>
 				</div>
 			</aside>
 
-				<div class="min-w-0 flex-1 xl:min-h-0 xl:overflow-hidden">
-					<div class="flex min-h-screen w-full xl:h-screen xl:min-h-0 xl:overflow-hidden">
-						<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 xl:min-h-0 xl:overflow-hidden">
-						<div class="space-y-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)] xl:space-y-0 xl:gap-4">
-										<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:sticky xl:top-0 xl:z-10">
+				<div class="min-w-0 flex-1 lg:min-h-0 lg:overflow-hidden">
+					<div class="flex min-h-screen w-full lg:h-screen lg:min-h-0 lg:overflow-hidden">
+						<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:min-h-0 lg:px-5 lg:overflow-hidden">
+						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+										<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-10">
 											<div class="space-y-4">
 												<div class="flex flex-wrap items-center gap-2">
 													<UBadge color="orange" variant="soft" label="POS" />
@@ -673,8 +673,8 @@ function isNavActive(path: string) {
 											</div>
 										</UCard>
 
-								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:min-h-0 xl:overflow-hidden">
-								<div class="space-y-4 p-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
+								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:min-h-0 lg:overflow-hidden">
+								<div class="space-y-4 p-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
 									<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
@@ -1035,5 +1035,11 @@ function isNavActive(path: string) {
 				<p class="mt-1 text-sm text-stone-700">{{ scanToast }}</p>
 			</UCard>
 		</div>
+
+		<LogoutConfirmModal
+			:open="logoutConfirmOpen"
+			@close="logoutConfirmOpen = false"
+			@confirm="confirmLogout"
+		/>
 	</main>
 </template>

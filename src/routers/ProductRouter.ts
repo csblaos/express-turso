@@ -1,6 +1,8 @@
 import { Router } from "express";
 
 import { ProductController } from "@controllers/ProductController";
+import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
+import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
 import CommonValidator from "@validators/CommonValidator";
 import ProductValidator from "@validators/ProductValidator";
 
@@ -9,11 +11,11 @@ export class ProductRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
-		this.router.get("/", ProductValidator.list, ProductController.getAll);
-		this.router.get("/:id", CommonValidator.resourceId, ProductController.getById);
-		this.router.post("/", ProductValidator.create, ProductController.create);
-		this.router.put("/:id", ProductValidator.update, ProductController.update);
-		this.router.delete("/:id", CommonValidator.resourceId, ProductController.delete);
+		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.read"), ProductValidator.list, ProductController.getAll);
+		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.read"), CommonValidator.resourceId, ProductController.getById);
+		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.create"), ProductValidator.create, ProductController.create);
+		this.router.put("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.update"), ProductValidator.update, ProductController.update);
+		this.router.delete("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.deactivate"), CommonValidator.resourceId, ProductController.delete);
 	}
 
 	static getInstance(): ProductRouter {

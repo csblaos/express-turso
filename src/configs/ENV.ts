@@ -19,4 +19,8 @@ export class ENV {
 		UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
 		UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 	};
+
+	static readonly AUTH = {
+		JWT_SECRET: process.env.AUTH_JWT_SECRET || "dev-jwt-secret-change-me",
+	};
 }

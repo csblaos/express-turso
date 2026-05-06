@@ -1,10 +1,5 @@
 <script setup lang="ts">
-type NavItem = {
-	id: string;
-	label: string;
-	icon: string;
-	to: string;
-};
+import { appNavItems } from "~/utils/app-nav";
 
 type StockState = "ready" | "low" | "inactive";
 type ProductStatus = "all" | "active" | "inactive";
@@ -74,16 +69,10 @@ type ProductRecord = {
 
 const route = useRoute();
 const runtimeConfig = useRuntimeConfig();
+const { apiFetch } = useApiClient();
+const { logout, can } = useAuthSession();
 
-const navItems: NavItem[] = [
-	{ id: "pos", label: "ขายหน้าร้าน", icon: "i-heroicons-shopping-bag", to: "/" },
-	{ id: "products", label: "สินค้า", icon: "i-heroicons-squares-2x2", to: "/products" },
-	{ id: "orders", label: "ออเดอร์", icon: "i-heroicons-receipt-percent", to: "/orders" },
-	{ id: "stock", label: "สต็อก", icon: "i-heroicons-cube", to: "/inventory" },
-	{ id: "purchase", label: "สั่งซื้อ", icon: "i-heroicons-clipboard-document-list", to: "/purchase-orders" },
-	{ id: "reports", label: "รายงาน", icon: "i-heroicons-chart-bar-square", to: "/reports" },
-	{ id: "settings", label: "ตั้งค่า", icon: "i-heroicons-cog-6-tooth", to: "/settings" },
-];
+const navItems = appNavItems;
 
 const statusOptions: Array<{ id: ProductStatus; label: string }> = [
 	{ id: "all", label: "ทุกสถานะ" },
@@ -114,7 +103,8 @@ const selectedProductId = ref("");
 const productDetailOpen = ref(false);
 const mobileSidebarOpen = ref(false);
 const mobileSearchOpen = ref(false);
-const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => false);
+const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
+const logoutConfirmOpen = ref(false);
 const scanToast = ref("");
 const searchInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 const products = ref<ProductRecord[]>([]);
@@ -130,6 +120,11 @@ let cameraScannerControls: { stop?: () => void } | null = null;
 let scannerBuffer = "";
 let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
 let lastScannerKeyAt = 0;
+
+const canCreateProduct = computed(() => can("products.create"));
+const canUpdateProduct = computed(() => can("products.update"));
+const canUpdateProductCost = computed(() => can("products.update_cost"));
+const canDeactivateProduct = computed(() => can("products.deactivate"));
 
 const numberFormatter = new Intl.NumberFormat("th-TH", {
 	style: "currency",
@@ -212,6 +207,16 @@ function formatMoney(value: number) {
 
 function isNavActive(path: string) {
 	return path === "/" ? route.path === "/" : route.path.startsWith(path);
+}
+
+function openLogoutConfirm() {
+	logoutConfirmOpen.value = true;
+}
+
+async function confirmLogout() {
+	logoutConfirmOpen.value = false;
+	await logout();
+	return navigateTo("/login");
 }
 
 function getCategoryLabel(categoryId: string) {
@@ -321,9 +326,9 @@ async function loadProducts() {
 
 	try {
 		const [productsResult, categoriesResult, unitsResult] = await Promise.allSettled([
-			$fetch<ApiEnvelope<ApiProduct[]>>(`${runtimeConfig.public.apiBase}/products`),
-			$fetch<ApiEnvelope<ApiProductCategory[]>>(`${runtimeConfig.public.apiBase}/product-categories`),
-			$fetch<ApiEnvelope<ApiUnit[]>>(`${runtimeConfig.public.apiBase}/units`),
+			apiFetch<ApiEnvelope<ApiProduct[]>>("/products"),
+			apiFetch<ApiEnvelope<ApiProductCategory[]>>("/product-categories"),
+			apiFetch<ApiEnvelope<ApiUnit[]>>("/units"),
 		]);
 
 		if (productsResult.status !== "fulfilled") {
@@ -576,8 +581,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<main class="min-h-screen w-full bg-transparent xl:h-screen xl:overflow-hidden">
-		<div class="flex min-h-screen w-full xl:h-screen xl:overflow-hidden">
+	<main class="min-h-screen w-full bg-transparent lg:h-screen lg:overflow-hidden">
+		<div class="flex min-h-screen w-full lg:h-screen lg:overflow-hidden">
 			<div
 				v-if="mobileSidebarOpen"
 				class="fixed inset-0 z-40 bg-black/45 lg:hidden"
@@ -659,34 +664,36 @@ onBeforeUnmount(() => {
 						</NuxtLink>
 					</nav>
 
-					<UCard class="border-0 bg-white shadow-none ring-1 ring-[#e7e4dd]" :class="sidebarCollapsed ? 'px-0 py-0' : ''">
-						<div :class="sidebarCollapsed ? 'flex min-h-[78px] flex-col items-center justify-center gap-1 px-1 py-2 text-center' : 'space-y-2'">
-							<p class="text-xs uppercase tracking-[0.18em] text-stone-400">
-								{{ sidebarCollapsed ? "สินค้า" : "สินค้าทั้งหมด" }}
-							</p>
-							<p :class="sidebarCollapsed ? 'text-base font-semibold text-stone-900' : 'text-lg font-semibold text-stone-900'">
-								{{ sidebarCollapsed ? `${totalProducts}` : `${totalProducts} SKU` }}
-							</p>
-							<p v-if="!sidebarCollapsed" class="text-sm text-stone-500">พร้อมขาย {{ activeProductsCount }} · ปิดขาย {{ inactiveCount }}</p>
-						</div>
-					</UCard>
+					<div class="px-3 pt-1">
+						<UButton
+							color="gray"
+							variant="ghost"
+							size="sm"
+							icon="i-heroicons-arrow-left-on-rectangle"
+							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
+							:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
+							:title="sidebarCollapsed ? 'ออกจากระบบ' : undefined"
+							:aria-label="'ออกจากระบบ'"
+							@click="openLogoutConfirm"
+						>
+							<span
+								class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
+								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'"
+								aria-hidden="true"
+							>
+								ออกจากระบบ
+							</span>
+						</UButton>
+					</div>
 				</div>
 			</aside>
 
-			<div class="min-w-0 flex-1 xl:min-h-0 xl:overflow-hidden">
-				<div class="flex min-h-screen w-full xl:h-screen xl:min-h-0 xl:overflow-hidden">
-					<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 xl:min-h-0 xl:overflow-hidden">
-						<div class="space-y-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)] xl:space-y-0 xl:gap-4">
-							<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:sticky xl:top-0 xl:z-10">
-								<div class="space-y-4">
-									<div class="flex flex-wrap items-center gap-2">
-										<UBadge color="orange" variant="soft" label="Products" />
-										<UBadge color="gray" variant="soft" :label="`${totalProducts} SKU`" />
-										<UBadge color="green" variant="soft" :label="`พร้อมขาย ${activeProductsCount}`" />
-										<UBadge color="orange" variant="soft" :label="`สต็อกต่ำ ${lowStockCount}`" />
-									</div>
-
-									<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+			<div class="min-w-0 flex-1 lg:min-h-0 lg:overflow-hidden">
+				<div class="flex min-h-screen w-full lg:h-screen lg:min-h-0 lg:overflow-hidden">
+					<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:min-h-0 lg:px-5 lg:overflow-hidden">
+						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+							<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
+								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 										<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 											<div class="grid grid-cols-4 gap-2 lg:hidden">
 												<UButton
@@ -722,14 +729,15 @@ onBeforeUnmount(() => {
 													@click="openCameraScanner"
 												/>
 
-												<UButton
-													color="orange"
-													variant="solid"
-													size="lg"
+											<UButton
+												color="orange"
+												variant="solid"
+												size="lg"
 													icon="i-heroicons-plus-20-solid"
 													class="justify-center"
 													aria-label="เพิ่มสินค้า"
 													title="เพิ่มสินค้า"
+													:disabled="!canCreateProduct"
 												/>
 											</div>
 
@@ -803,29 +811,25 @@ onBeforeUnmount(() => {
 											class="hidden justify-center px-4 lg:inline-flex"
 											aria-label="เพิ่มสินค้า"
 											title="เพิ่มสินค้า"
+											:disabled="!canCreateProduct"
 										>
 											<span class="hidden sm:inline">เพิ่มสินค้า</span>
 										</UButton>
 									</div>
+							</UCard>
 
-									<div class="grid gap-3 border-t border-[#e7e4dd] pt-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-										<div class="space-y-2">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
+								<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+									<div class="space-y-3">
+										<div class="flex flex-wrap items-center gap-2">
+											<UBadge color="gray" variant="soft" :label="`${totalProducts} SKU`" />
+											<UBadge color="green" variant="soft" :label="`พร้อมขาย ${activeProductsCount}`" />
+											<UBadge color="orange" variant="soft" :label="`สต็อกต่ำ ${lowStockCount}`" />
+											<UBadge color="gray" variant="soft" :label="`ปิดขาย ${inactiveCount}`" />
+										</div>
+
+										<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
 											<div class="space-y-2">
-												<div class="flex flex-wrap items-start justify-between gap-2">
-													<div>
-														<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-															Product categories
-														</p>
-														<p class="mt-1 text-xs text-stone-500">
-															{{ namedCategoryCount }} หมวดหลัก · {{ totalProducts }} รายการ
-														</p>
-													</div>
-
-													<p v-if="hasManyCategories" class="hidden text-[11px] text-stone-400 md:block">
-														เลื่อนแนวนอนเพื่อดูหมวดเพิ่มเติม
-													</p>
-												</div>
-
 												<div class="md:hidden">
 													<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-category-select">
 														เลือกหมวดสินค้า
@@ -867,56 +871,51 @@ onBeforeUnmount(() => {
 														</span>
 													</UButton>
 												</div>
+
+												<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+													<UButton
+														v-for="status in statusOptions"
+														:key="status.id"
+														:color="activeStatus === status.id ? 'gray' : 'gray'"
+														:variant="activeStatus === status.id ? 'solid' : 'soft'"
+														size="sm"
+														:label="status.label"
+														class="whitespace-nowrap"
+														@click="activeStatus = status.id"
+													/>
+												</div>
 											</div>
 
-											<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
+												<UButton color="gray" variant="soft" size="sm" label="นำเข้า" :disabled="!canCreateProduct" />
 												<UButton
-													v-for="status in statusOptions"
-													:key="status.id"
-													:color="activeStatus === status.id ? 'gray' : 'gray'"
-													:variant="activeStatus === status.id ? 'solid' : 'soft'"
+													v-for="sort in sortOptions"
+													:key="sort.id"
+													color="gray"
+													:variant="activeSort === sort.id ? 'solid' : 'soft'"
 													size="sm"
-													:label="status.label"
-													class="whitespace-nowrap"
-													@click="activeStatus = status.id"
+													:label="sort.label"
+													@click="activeSort = sort.id"
 												/>
 											</div>
 										</div>
-
-										<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-											<UButton color="gray" variant="soft" size="sm" label="นำเข้า" />
-											<UButton
-												v-for="sort in sortOptions"
-												:key="sort.id"
-												color="gray"
-												:variant="activeSort === sort.id ? 'solid' : 'soft'"
-												size="sm"
-												:label="sort.label"
-												@click="activeSort = sort.id"
-											/>
-										</div>
 									</div>
-								</div>
-							</UCard>
+								</UCard>
 
-							<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:min-h-0 xl:overflow-hidden">
-								<div class="space-y-4 p-4 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
-									<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-												Product list
-											</p>
-											<h1 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-900">
-												รายการสินค้า
-											</h1>
-										</div>
+								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+									<div class="space-y-4 p-4">
+										<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+											<div>
+												<h1 class="text-xl font-semibold tracking-[-0.03em] text-stone-900">
+													รายการสินค้า
+												</h1>
+											</div>
 
-										<p class="max-w-xl text-sm leading-6 text-stone-500">
+										<p class="hidden max-w-xl text-sm leading-6 text-stone-500 sm:block">
 											คลิกสินค้าเพื่อเปิดรายละเอียดแบบ slide-over โดยไม่บังพื้นที่หลักของรายการ
 										</p>
 									</div>
 
-									<div class="scrollbar-soft min-h-0 overflow-y-auto xl:pr-1">
 										<div class="space-y-3">
 											<UCard
 												v-if="productsPending"
@@ -1179,7 +1178,7 @@ onBeforeUnmount(() => {
 											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
 										</p>
 									</div>
-									<UButton color="orange" variant="soft" size="xs" label="แก้ต้นทุน" />
+									<UButton color="orange" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
 								</div>
 
 								<div class="mt-4 rounded-2xl bg-white px-3 py-3 ring-1 ring-[#e7e4dd]">
@@ -1197,12 +1196,13 @@ onBeforeUnmount(() => {
 
 						<div class="border-t border-[#e7e4dd] pt-4">
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="gray" variant="soft" size="lg" label="คัดลอกสินค้า" />
+								<UButton color="gray" variant="soft" size="lg" label="คัดลอกสินค้า" :disabled="!canCreateProduct" />
 								<UButton
 									color="gray"
 									:variant="selectedProduct.status === 'active' ? 'outline' : 'solid'"
 									size="lg"
 									:label="selectedProduct.status === 'active' ? 'ปิดขาย' : 'เปิดขาย'"
+									:disabled="selectedProduct.status === 'active' ? !canDeactivateProduct : !canUpdateProduct"
 									@click="toggleStatus(selectedProduct.id)"
 								/>
 							</div>
@@ -1312,6 +1312,12 @@ onBeforeUnmount(() => {
 					{{ scanToast }}
 				</div>
 			</Transition>
+
+			<LogoutConfirmModal
+				:open="logoutConfirmOpen"
+				@close="logoutConfirmOpen = false"
+				@confirm="confirmLogout"
+			/>
 		</div>
 	</main>
 </template>
