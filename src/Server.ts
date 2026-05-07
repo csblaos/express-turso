@@ -18,6 +18,7 @@ moduleAlias.addAliases({
 	"@storage": path.join(rootDir, "storage"),
 	"@tstypes": path.join(rootDir, "tstypes"),
 	"@utils": path.join(rootDir, "utils"),
+	"@validators": path.join(rootDir, "validators"),
 });
 
 async function bootstrap(): Promise<void> {
