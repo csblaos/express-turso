@@ -1,19 +1,71 @@
 <script setup lang="ts">
 const { login } = useAuthSession();
+const appToast = useAppToast();
+
+const DEV_PASSWORD = "dev123456";
+const DEV_LOGINS = [
+	{
+		label: "System Admin",
+		role: "system_admin",
+		email: "dev@codesabai.local",
+		password: DEV_PASSWORD,
+		description: "สิทธิ์ระดับระบบกลางสำหรับตรวจ flow admin ทั้งแพลตฟอร์ม",
+	},
+	{
+		label: "Owner",
+		role: "owner",
+		email: "owner@codesabai.local",
+		password: DEV_PASSWORD,
+		description: "เจ้าของร้านสำหรับเช็กหน้ารายงาน, ตั้งค่า และการจัดการร้าน",
+	},
+	{
+		label: "Manager",
+		role: "manager",
+		email: "manager@codesabai.local",
+		password: DEV_PASSWORD,
+		description: "ผู้จัดการร้านสำหรับตรวจ workflow กลางของร้าน",
+	},
+	{
+		label: "Cashier",
+		role: "cashier",
+		email: "cashier@codesabai.local",
+		password: DEV_PASSWORD,
+		description: "แคชเชียร์สำหรับเช็กประสบการณ์ใช้งานฝั่ง POS",
+	},
+	{
+		label: "Stock",
+		role: "inventory_staff",
+		email: "stock@codesabai.local",
+		password: DEV_PASSWORD,
+		description: "พนักงานสต็อกสำหรับเช็ก inventory และงานรับของ",
+	},
+] as const;
 
 const form = reactive({
-	email: "",
-	password: "",
-	branch: "main",
+	email: DEV_LOGINS[0].email,
+	password: DEV_LOGINS[0].password,
 	remember: true,
 });
 
 const submitting = ref(false);
-const error = ref("");
+const showPassword = ref(false);
+
+function extractLoginErrorMessage(error: unknown) {
+	if (typeof error === "object" && error) {
+		const data = Reflect.get(error, "data") as
+			| { message?: string; response?: { message?: string } }
+			| undefined;
+
+		if (data?.response?.message) return data.response.message;
+		if (data?.message) return data.message;
+	}
+
+	if (error instanceof Error && error.message) return error.message;
+	return "เข้าสู่ระบบไม่สำเร็จ";
+}
 
 async function loginToPos() {
 	submitting.value = true;
-	error.value = "";
 	try {
 		await login({
 			emailOrUsername: form.email,
@@ -22,10 +74,47 @@ async function loginToPos() {
 		});
 		return navigateTo("/");
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : "เข้าสู่ระบบไม่สำเร็จ";
+		const message = extractLoginErrorMessage(err);
+		appToast.error({
+			title: "เข้าสู่ระบบไม่สำเร็จ",
+			description: message,
+			timeout: 3600,
+		});
 	} finally {
 		submitting.value = false;
 	}
+}
+
+function fillDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
+	form.email = loginPreset.email;
+	form.password = loginPreset.password;
+	appToast.info({
+		title: "เติมข้อมูลแล้ว",
+		description: `${loginPreset.label} พร้อมเข้าสู่ระบบ`,
+	});
+}
+
+async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
+	const payload = `email: ${loginPreset.email}\npassword: ${loginPreset.password}`;
+
+	try {
+		if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(payload);
+			appToast.success({
+				title: "คัดลอกบัญชีแล้ว",
+				description: `${loginPreset.label} ถูกคัดลอกแล้ว`,
+			});
+			return;
+		}
+	} catch {
+		// fall through to the fallback message below
+	}
+
+	appToast.error({
+		title: "คัดลอกอัตโนมัติไม่สำเร็จ",
+		description: `${loginPreset.email} / ${loginPreset.password}`,
+		timeout: 4200,
+	});
 }
 </script>
 
@@ -77,8 +166,8 @@ async function loginToPos() {
 					</div>
 
 					<div class="flex items-center justify-between text-sm text-stone-400">
-						<p>UI preview only</p>
-						<p>ยังไม่เชื่อม auth API</p>
+						<p>Development login</p>
+						<p>เชื่อม auth API แล้ว</p>
 					</div>
 				</div>
 			</section>
@@ -95,7 +184,7 @@ async function loginToPos() {
 									<UBadge color="gray" variant="soft" label="เข้าสู่ระบบ" />
 									<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">เข้าสู่ระบบร้านค้า</h2>
 									<p class="mt-2 text-sm leading-6 text-stone-500">
-										หน้าทดลองสำหรับเข้าใช้งาน POS system โดยยังไม่เชื่อม logic การยืนยันตัวตน
+										โหมด dev จะ prefill บัญชีทดสอบไว้ให้และสามารถเข้าสู่ระบบผ่าน backend auth API ได้ทันที
 									</p>
 								</div>
 							</div>
@@ -115,29 +204,28 @@ async function loginToPos() {
 
 								<div class="space-y-2">
 									<label class="text-sm font-medium text-stone-700">รหัสผ่าน</label>
-									<UInput
-										v-model="form.password"
-										type="password"
-										size="lg"
-										color="gray"
-										icon="i-heroicons-lock-closed-20-solid"
-										placeholder="••••••••"
-										class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:shadow-sm"
-									/>
+									<div class="relative">
+										<UInput
+											v-model="form.password"
+											:type="showPassword ? 'text' : 'password'"
+											size="lg"
+											color="gray"
+											icon="i-heroicons-lock-closed-20-solid"
+											placeholder="••••••••"
+											class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-11 [&_input]:shadow-sm"
+										/>
+										<UButton
+											color="gray"
+											variant="ghost"
+											size="xs"
+											class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-xl text-stone-500 hover:bg-white hover:text-stone-900"
+											:icon="showPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
+											:aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+											:title="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+											@click="showPassword = !showPassword"
+										/>
+									</div>
 								</div>
-
-								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">สาขา</label>
-									<select
-										v-model="form.branch"
-										class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 shadow-sm outline-none transition focus:border-[#d4b8a5] focus:bg-white"
-									>
-										<option value="main">สาขาท่าเดื่อ</option>
-										<option value="delivery">ครัวเดลิเวอรี</option>
-										<option value="warehouse">คลังกลาง</option>
-									</select>
-								</div>
-
 								<div class="flex items-center justify-between gap-3 pt-1">
 									<label class="flex items-center gap-2 text-sm text-stone-500">
 										<input
@@ -176,13 +264,41 @@ async function loginToPos() {
 								</div>
 							</form>
 
-							<p v-if="error" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-								{{ error }}
-							</p>
+							<div class="space-y-3 rounded-2xl border border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600">
+								<div class="flex items-start justify-between gap-4">
+									<div>
+										<p class="font-medium text-stone-800">บัญชี dev ตาม role</p>
+										<p class="mt-1 leading-6 text-stone-500">ใช้ปุ่ม Fill เพื่อเติมลงฟอร์มทันที หรือ Copy เพื่อคัดลอก credential สำหรับทดสอบ role ต่าง ๆ</p>
+									</div>
+									<UBadge color="orange" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
+								</div>
 
-							<div class="rounded-2xl border border-[#f0e0d3] bg-[#fbf1ea] px-4 py-3 text-sm text-stone-600">
-								<p class="font-medium text-stone-800">โหมดตัวอย่าง</p>
-								<p class="mt-1 leading-6">ตอนนี้ปุ่มเข้าสู่ระบบจะเรียก backend auth API จริงแล้ว แต่ยังไม่ได้ผูก route guard ทั้งระบบครบทุกหน้า</p>
+								<div class="space-y-3">
+									<div
+										v-for="loginPreset in DEV_LOGINS"
+										:key="loginPreset.email"
+										class="rounded-[24px] bg-white/80 p-3 ring-1 ring-[#ead7c7]"
+									>
+										<div class="flex items-start justify-between gap-3">
+											<div class="min-w-0">
+												<div class="flex items-center gap-2">
+													<p class="text-sm font-semibold text-stone-900">{{ loginPreset.label }}</p>
+													<UBadge color="gray" variant="soft" :label="loginPreset.role" />
+												</div>
+												<p class="mt-1 text-xs leading-5 text-stone-500">{{ loginPreset.description }}</p>
+												<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
+											</div>
+											<div class="flex shrink-0 items-center gap-2">
+												<UButton color="gray" variant="soft" size="xs" @click="copyDevLogin(loginPreset)">
+													Copy
+												</UButton>
+												<UButton color="orange" variant="soft" size="xs" @click="fillDevLogin(loginPreset)">
+													Fill
+												</UButton>
+											</div>
+										</div>
+									</div>
+								</div>
 							</div>
 						</div>
 					</UCard>

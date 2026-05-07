@@ -190,21 +190,17 @@ function stringifyBlock(value: unknown) {
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="space-y-4">
-						<div class="flex items-start gap-3">
-							<UButton color="gray" variant="soft" size="lg" class="justify-center lg:hidden" icon="i-heroicons-bars-3-20-solid" aria-label="เปิดเมนู" title="เปิดเมนู" @click="openSidebar" />
-							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<UBadge color="orange" variant="soft" label="กิจกรรม" />
-									<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(events.length)} events`" />
-								</div>
-								<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">กิจกรรมระบบ</h1>
-								<p class="mt-1 text-sm text-stone-500">แนะนำใช้ชื่อเมนู `กิจกรรม` ใน sidebar เพราะสั้นกว่า Audit Log แต่ยังครอบทั้ง audit events และ activity feed ได้ดี</p>
-							</div>
-						</div>
+				<AppPageHeader
+					title="กิจกรรมระบบ"
+					description="แนะนำใช้ชื่อเมนู `กิจกรรม` ใน sidebar เพราะสั้นกว่า Audit Log แต่ยังครอบทั้ง audit events และ activity feed ได้ดี"
+					@menu="openSidebar"
+				>
+					<template #badges>
+						<UBadge color="orange" variant="soft" label="กิจกรรม" />
+						<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(events.length)} events`" />
+					</template>
 
-						<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+					<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
 							<div class="relative">
 								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
 								<input
@@ -246,8 +242,7 @@ function stringifyBlock(value: unknown) {
 								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ numberFormatter.format(uniqueActors) }}</p>
 							</div>
 						</div>
-					</div>
-				</UCard>
+				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
 						<UCard v-if="pending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">
@@ -316,34 +311,17 @@ function stringifyBlock(value: unknown) {
 				</div>
 			</div>
 
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
+			<AppResponsivePanel
+				v-model="detailOpen"
+				desktop-width="460px"
+				panel-z-class="z-[59]"
+				backdrop-z-class="z-[58]"
+				panel-class="bg-[#fffefd]"
+				content-class="p-4 text-stone-900"
+				@close="closeEvent"
 			>
-				<div
-					v-if="detailOpen"
-					class="fixed inset-0 z-[58] bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]"
-					@click="closeEvent"
-				/>
-			</Transition>
-
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-				enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-			>
-				<div
-					v-if="detailOpen && selectedEvent"
-					class="fixed inset-x-0 bottom-0 z-[59] max-h-[88vh] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[460px] lg:rounded-none lg:rounded-l-[28px]"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] p-4 text-stone-900">
+				<template v-if="selectedEvent" #default="{ close }">
+					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
 						<div class="border-b border-[#e7e4dd] pb-4">
 							<div class="flex items-start justify-between gap-3">
 								<div>
@@ -357,7 +335,7 @@ function stringifyBlock(value: unknown) {
 									icon="i-heroicons-x-mark-20-solid"
 									aria-label="ปิดรายละเอียดกิจกรรม"
 									title="ปิดรายละเอียดกิจกรรม"
-									@click="closeEvent"
+									@click="close"
 								/>
 							</div>
 
@@ -424,8 +402,8 @@ function stringifyBlock(value: unknown) {
 							</div>
 						</div>
 					</div>
-				</div>
-			</Transition>
+				</template>
+			</AppResponsivePanel>
 
 		</template>
 	</AppSidebarShell>

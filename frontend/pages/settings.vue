@@ -18,6 +18,36 @@ type SettingsSection = {
 	entries: SettingsEntry[];
 };
 
+const route = useRoute();
+const isSettingsHub = computed(() => route.path === "/settings");
+
+function linkedEntries(section: SettingsSection) {
+	return section.entries.filter((entry) => Boolean(entry.to));
+}
+
+function staticEntries(section: SettingsSection) {
+	return section.entries.filter((entry) => !entry.to);
+}
+
+const accessQuickLinks: SettingsEntry[] = [
+	{
+		id: "access-users",
+		title: "ผู้ใช้งาน",
+		description: "ดูสมาชิกในร้าน, เปลี่ยนบทบาท และรีเซ็ตรหัสผ่าน",
+		icon: "i-heroicons-users",
+		to: "/settings/access/users",
+		badge: "พร้อมใช้งาน",
+	},
+	{
+		id: "access-roles",
+		title: "บทบาท",
+		description: "จัดการ role และ permission ที่แต่ละบทบาทถืออยู่",
+		icon: "i-heroicons-identification",
+		to: "/settings/access/roles",
+		badge: "พร้อมใช้งาน",
+	},
+];
+
 const settingsSections: SettingsSection[] = [
 	{
 		id: "user",
@@ -25,12 +55,12 @@ const settingsSections: SettingsSection[] = [
 		title: "ตั้งค่าทั่วไปของผู้ใช้",
 		description: "ของผู้ใช้ในร้าน เช่น โปรไฟล์, ความปลอดภัย, สิทธิ์, ผู้ใช้, บทบาท และข้อมูลประกอบการขายบางส่วน",
 		entries: [
-			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", badge: "เร็ว ๆ นี้" },
+			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", to: "/profile", badge: "พร้อมใช้งาน" },
 			{ id: "language", title: "Language", description: "ตั้งค่าภาษา UI และรูปแบบการแสดงผล", icon: "i-heroicons-language", badge: "เร็ว ๆ นี้" },
-			{ id: "permissions", title: "Permissions", description: "ดูสิทธิ์ที่ตัวเองมีและสิทธิ์ของ role ปัจจุบัน", icon: "i-heroicons-lock-closed", badge: "เร็ว ๆ นี้" },
+			{ id: "permissions", title: "Permissions", description: "ดูสิทธิ์ที่อนุญาตผ่าน role และ policy ของร้าน", icon: "i-heroicons-lock-closed", to: "/settings/access/roles", badge: "พร้อมใช้งาน" },
 			{ id: "security", title: "Security", description: "ดูข้อมูลความปลอดภัยของบัญชีและ session", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
-			{ id: "roles", title: "Roles", description: "จัดการบทบาทของผู้ใช้งานในร้าน", icon: "i-heroicons-identification", badge: "เร็ว ๆ นี้" },
-			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้านและสิทธิ์การเข้าถึง", icon: "i-heroicons-users", badge: "เร็ว ๆ นี้" },
+			{ id: "roles", title: "Roles", description: "จัดการบทบาทของผู้ใช้งานในร้าน และสิทธิ์ที่ role นั้นถืออยู่", icon: "i-heroicons-identification", to: "/settings/access/roles", badge: "พร้อมใช้งาน" },
+			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/access/users", badge: "พร้อมใช้งาน" },
 			{ id: "categories", title: "Categories", description: "จัดการหมวดหมู่สินค้า", icon: "i-heroicons-tag", to: "/products" },
 			{ id: "units", title: "Units", description: "จัดการหน่วยสินค้าและหน่วยขาย", icon: "i-heroicons-scale", to: "/products" },
 			{ id: "stock-alert", title: "Stock", description: "ตั้งค่า stock alert และ threshold", icon: "i-heroicons-bell-alert", to: "/inventory" },
@@ -59,6 +89,7 @@ const settingsSections: SettingsSection[] = [
 
 <template>
 	<AppSidebarShell
+		v-if="isSettingsHub"
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
@@ -68,36 +99,49 @@ const settingsSections: SettingsSection[] = [
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-						<div class="flex items-start gap-3">
-							<UButton
-								color="gray"
-								variant="soft"
-								size="lg"
-								class="justify-center lg:hidden"
-								icon="i-heroicons-bars-3-20-solid"
-								aria-label="เปิดเมนู"
-								title="เปิดเมนู"
-								@click="openSidebar"
-							/>
-							<div>
-								<div class="flex flex-wrap items-center gap-2">
-									<UBadge color="gray" variant="soft" label="Settings" />
-									<UBadge color="orange" variant="soft" label="User + Store settings" />
-								</div>
-								<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">ศูนย์รวมการตั้งค่า</h1>
-								<p class="mt-1 text-sm text-stone-500">หน้าหลักนี้ใช้เป็น hub สำหรับการตั้งค่าของผู้ใช้และร้านปัจจุบันเท่านั้น</p>
-							</div>
-						</div>
+				<AppPageHeader title="ศูนย์รวมการตั้งค่า" description="หน้าหลักนี้ใช้เป็น hub สำหรับการตั้งค่าของผู้ใช้และร้านปัจจุบันเท่านั้น" @menu="openSidebar">
+					<template #badges>
+						<UBadge color="gray" variant="soft" label="Settings" />
+						<UBadge color="orange" variant="soft" label="User + Store settings" />
+					</template>
 
-						<div class="flex flex-wrap items-center gap-2">
-							<UBadge color="gray" variant="soft" label="User + Store settings hub" />
-						</div>
-					</div>
-				</UCard>
+					<template #actions>
+						<UBadge color="gray" variant="soft" label="User + Store settings hub" />
+					</template>
+				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
+					<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+						<div class="space-y-4">
+							<div>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Access control</p>
+								<h2 class="mt-2 text-xl font-semibold text-stone-950">สิทธิ์การใช้งาน</h2>
+								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">เข้า 2 หน้านี้ได้ตรง ๆ จาก settings เพื่อจัดการผู้ใช้งานและบทบาทของร้าน</p>
+							</div>
+
+							<div class="grid gap-3 md:grid-cols-2">
+								<NuxtLink
+									v-for="entry in accessQuickLinks"
+									:key="entry.id"
+									:to="entry.to"
+									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
+								>
+									<div class="flex items-start justify-between gap-3">
+										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
+											<UIcon :name="entry.icon" class="h-5 w-5" />
+										</div>
+										<UBadge color="green" variant="soft" :label="entry.badge" />
+									</div>
+
+									<div class="mt-4">
+										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
+										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
+									</div>
+								</NuxtLink>
+							</div>
+						</div>
+					</UCard>
+
 					<UCard
 						v-for="section in settingsSections"
 						:key="section.id"
@@ -111,13 +155,11 @@ const settingsSections: SettingsSection[] = [
 							</div>
 
 							<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-								<component
-									:is="entry.to ? 'NuxtLink' : 'div'"
-									v-for="entry in section.entries"
+								<NuxtLink
+									v-for="entry in linkedEntries(section)"
 									:key="entry.id"
 									:to="entry.to"
 									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
-									:class="entry.to ? 'cursor-pointer' : ''"
 								>
 									<div class="flex items-start justify-between gap-3">
 										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
@@ -135,7 +177,30 @@ const settingsSections: SettingsSection[] = [
 										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
 										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
 									</div>
-								</component>
+								</NuxtLink>
+
+								<div
+									v-for="entry in staticEntries(section)"
+									:key="entry.id"
+									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
+								>
+									<div class="flex items-start justify-between gap-3">
+										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
+											<UIcon :name="entry.icon" class="h-5 w-5" />
+										</div>
+										<UBadge
+											v-if="entry.badge"
+											:color="entry.badge === 'พร้อมใช้งาน' ? 'green' : 'gray'"
+											variant="soft"
+											:label="entry.badge"
+										/>
+									</div>
+
+									<div class="mt-4">
+										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
+										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
+									</div>
+								</div>
 							</div>
 						</div>
 					</UCard>
@@ -143,4 +208,6 @@ const settingsSections: SettingsSection[] = [
 			</div>
 		</template>
 	</AppSidebarShell>
+
+	<NuxtPage v-else />
 </template>

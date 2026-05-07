@@ -9,6 +9,7 @@ import { ProductUnitRouter } from "@routers/ProductUnitRouter";
 import { PurchaseOrderRouter } from "@routers/PurchaseOrderRouter";
 import { RbacRouter } from "@routers/RbacRouter";
 import { StoreRouter } from "@routers/StoreRouter";
+import { SystemAdminClientRouter } from "@routers/SystemAdminClientRouter";
 import { SystemConfigRouter } from "@routers/SystemConfigRouter";
 import { UnitRouter } from "@routers/UnitRouter";
 import { SuccessHandler } from "@utils/SuccessHandler";
@@ -33,6 +34,7 @@ export class IndexRouter {
 		this.router.use("/units", UnitRouter.getInstance().getRouter());
 		this.router.use("/product-categories", ProductCategoryRouter.getInstance().getRouter());
 		this.router.use("/settings", SystemConfigRouter.getInstance().getRouter());
+		this.router.use("/system-admin", SystemAdminClientRouter.getInstance().getRouter());
 	}
 
 	static getInstance(): IndexRouter {

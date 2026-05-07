@@ -80,6 +80,17 @@ const STORAGE_KEYS = {
 	access: "pos.auth.access",
 } as const;
 
+const SYSTEM_ROLE_PERMISSION_MAP: Record<string, string[]> = {
+	superadmin: [ "superadmin.manage" ],
+};
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+function getFetchErrorStatus(error: unknown): number | undefined {
+	if (typeof error !== "object" || !error || !("response" in error)) return undefined;
+	return Reflect.get(error.response as object, "status") as number | undefined;
+}
+
 function readStorageValue<T>(key: string): T | null {
 	if (!import.meta.client) return null;
 	const rawValue = window.localStorage.getItem(key);
@@ -109,6 +120,7 @@ export function useAuthSession() {
 	const currentSession = useState<AuthSession | null>("auth.current-session", () => null);
 	const currentAccess = useState<AuthAccess | null>("auth.current-access", () => null);
 	const hydrated = useState<boolean>("auth.hydrated", () => false);
+	const redirectingToLogin = useState<boolean>("auth.redirecting-to-login", () => false);
 
 	function hydrateAuthState() {
 		if (!import.meta.client || hydrated.value) return;
@@ -164,6 +176,53 @@ export function useAuthSession() {
 		persistAuthState();
 	}
 
+	async function handleAuthFailure() {
+		clearAuthState();
+		if (!import.meta.client || redirectingToLogin.value || window.location.pathname === "/login") return;
+
+		redirectingToLogin.value = true;
+		try {
+			await navigateTo("/login");
+		} finally {
+			redirectingToLogin.value = false;
+		}
+	}
+
+	async function refreshAccessToken(): Promise<boolean> {
+		hydrateAuthState();
+		if (!refreshToken.value) {
+			await handleAuthFailure();
+			return false;
+		}
+
+		if (refreshInFlight) {
+			return refreshInFlight;
+		}
+
+		refreshInFlight = (async () => {
+			try {
+				const response = await $fetch<AuthEnvelope<LoginResponse>>(`${runtimeConfig.public.apiBase}/auth/refresh`, {
+					method: "POST",
+					body: {
+						refreshToken: refreshToken.value,
+					},
+				});
+
+				currentUser.value = response.data.user;
+				currentSession.value = response.data.session;
+				setTokens(response.data.tokens.accessToken, response.data.tokens.refreshToken);
+				return true;
+			} catch {
+				await handleAuthFailure();
+				return false;
+			} finally {
+				refreshInFlight = null;
+			}
+		})();
+
+		return refreshInFlight;
+	}
+
 	function setTokens(nextAccessToken: string, nextRefreshToken: string) {
 		accessToken.value = nextAccessToken;
 		refreshToken.value = nextRefreshToken;
@@ -184,9 +243,22 @@ export function useAuthSession() {
 		if (!accessToken.value) return null;
 
 		const queryString = storeId ? `?store_id=${encodeURIComponent(storeId)}` : "";
-		const response = await $fetch<AuthEnvelope<MeResponse>>(`${runtimeConfig.public.apiBase}/auth/me${queryString}`, {
-			headers: authHeaders(),
-		});
+		let response: AuthEnvelope<MeResponse>;
+		try {
+			response = await $fetch<AuthEnvelope<MeResponse>>(`${runtimeConfig.public.apiBase}/auth/me${queryString}`, {
+				headers: authHeaders(),
+			});
+		} catch (error: unknown) {
+			const statusCode = getFetchErrorStatus(error);
+			if (statusCode === 401) {
+				const refreshed = await refreshAccessToken();
+				if (refreshed) {
+					return fetchMe(storeId);
+				}
+				await handleAuthFailure();
+			}
+			throw error;
+		}
 
 		currentUser.value = response.data.user;
 		currentSession.value = response.data.session;
@@ -231,6 +303,17 @@ export function useAuthSession() {
 
 	function can(permissionKey: string): boolean {
 		hydrateAuthState();
+		if (currentUser.value?.systemRole === "system_admin") {
+			return true;
+		}
+
+		if (currentUser.value?.systemRole) {
+			const grantedPermissions = SYSTEM_ROLE_PERMISSION_MAP[currentUser.value.systemRole] || [];
+			if (grantedPermissions.includes(permissionKey)) {
+				return true;
+			}
+		}
+
 		return Boolean(currentAccess.value?.permissions.some((permission) => permission.key === permissionKey));
 	}
 
@@ -249,5 +332,7 @@ export function useAuthSession() {
 		clearAuthState,
 		fetchMe,
 		can,
+		handleAuthFailure,
+		refreshAccessToken,
 	};
 }

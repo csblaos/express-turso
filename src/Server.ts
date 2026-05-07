@@ -24,10 +24,15 @@ async function bootstrap(): Promise<void> {
 	const { ENV } = await import("@configs/ENV");
 	const { DbConn } = await import("@connections/DbConn");
 	const { RedisConn } = await import("@connections/RedisConn");
+	const { AuthInterface } = await import("@interfaces/AuthInterface");
+	const { SystemAdminClientInterface } = await import("@interfaces/SystemAdminClientInterface");
 	const { default: app } = await import("./App");
 
 	await DbConn.connect();
 	await RedisConn.connect();
+	await AuthInterface.ensureUserAuthColumns();
+	await AuthInterface.ensureDevelopmentAccountsPersisted();
+	await SystemAdminClientInterface.ensureColumns();
 
 	const server = app.listen(ENV.SERVER.PORT, () => {
 		console.log(`Server running on http://localhost:${ENV.SERVER.PORT}`);

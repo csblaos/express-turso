@@ -45,6 +45,16 @@ export const ErrorConfig = {
 			message: "Store name required",
 			httpStatusCode: 400,
 		},
+		STORE_OWNER_REQUIRED: {
+			code: 400_010,
+			message: "Store owner is required",
+			httpStatusCode: 400,
+		},
+		STORE_LIMIT_REACHED: {
+			code: 403_002,
+			message: "Store creation quota has been reached",
+			httpStatusCode: 403,
+		},
 		PRODUCT_NOT_FOUND: {
 			code: 404_002,
 			message: "Product not found",
@@ -139,6 +149,21 @@ export const ErrorConfig = {
 			code: 404_008,
 			message: "Store member not found",
 			httpStatusCode: 404,
+		},
+		CLIENT_ACCOUNT_NOT_FOUND: {
+			code: 404_009,
+			message: "Client account not found",
+			httpStatusCode: 404,
+		},
+		CLIENT_ACCOUNT_REQUIRED_FIELDS: {
+			code: 400_009,
+			message: "Client account requires name, email, and password",
+			httpStatusCode: 400,
+		},
+		CLIENT_ACCOUNT_ALREADY_EXISTS: {
+			code: 409_001,
+			message: "Client account with this email already exists",
+			httpStatusCode: 409,
 		},
 	},
 };

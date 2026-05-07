@@ -1,4 +1,6 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { AuthInterface } from "@interfaces/AuthInterface";
+import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { CreateStoreInput, Store } from "@models/Store";
@@ -28,6 +30,10 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 ];
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];
+type StoreActor = {
+	userId: string;
+	systemRole: string;
+};
 
 function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
 	const result: Partial<Record<UpdatableStoreKey, Store[UpdatableStoreKey]>> = {};
@@ -40,36 +46,96 @@ function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
 }
 
 export class StoreComponent {
-	static async getAll(requestId: string): Promise<Store[]> {
-		void requestId;
-		return StoreInterface.findAll();
+	private static async assertAccess(store: Store, actor: StoreActor): Promise<void> {
+		if (actor.systemRole === "system_admin") return;
+		if (actor.systemRole === "superadmin" && store.owner_user_id === actor.userId) return;
+		const access = await RbacInterface.getUserPermissions(actor.userId);
+		if (access.memberships.some((membership) => membership.store_id === store.id)) return;
+		throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 	}
 
-	static async getById(requestId: string, id: string): Promise<Store> {
+	static async getAll(requestId: string, actor: StoreActor): Promise<Store[]> {
+		void requestId;
+		if (actor.systemRole === "system_admin") {
+			return StoreInterface.findAll();
+		}
+
+		if (actor.systemRole === "superadmin") {
+			return StoreInterface.findAll(actor.userId);
+		}
+
+		const access = await RbacInterface.getUserPermissions(actor.userId);
+		const memberStoreIds = new Set(access.memberships.map((membership) => membership.store_id));
+		return (await StoreInterface.findAll()).filter((store) => memberStoreIds.has(store.id));
+	}
+
+	static async getById(requestId: string, id: string, actor: StoreActor): Promise<Store> {
 		void requestId;
 		const store = await StoreInterface.findById(id);
 		if (!store) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
+		await StoreComponent.assertAccess(store, actor);
 		return store;
 	}
 
-	static async create(requestId: string, payload: CreateStoreInput): Promise<Store> {
+	static async create(requestId: string, payload: CreateStoreInput, actor: StoreActor): Promise<Store> {
 		void requestId;
 		if (!payload?.name) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NAME_REQUIRED);
 		}
-		return StoreInterface.create(payload);
+
+		if (actor.systemRole === "superadmin") {
+			const user = await AuthInterface.findUserById(actor.userId);
+			if (!user || !user.can_create_stores) {
+				throw ApiError.ForbiddenError("User cannot create stores");
+			}
+
+			const ownedStores = await StoreInterface.countByOwnerUserId(actor.userId);
+			const maxStores = Math.max(1, Number(user.max_stores || 1));
+			if (ownedStores >= maxStores) {
+				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_LIMIT_REACHED);
+			}
+
+			return StoreInterface.create({
+				...payload,
+				owner_user_id: actor.userId,
+			});
+		}
+
+		if (actor.systemRole === "system_admin") {
+			if (!payload.owner_user_id) {
+				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_OWNER_REQUIRED);
+			}
+			return StoreInterface.create(payload);
+		}
+
+		throw ApiError.ForbiddenError("User cannot create stores");
 	}
 
-	static async update(requestId: string, id: string, data: Record<string, unknown>): Promise<Store> {
+	static async update(requestId: string, id: string, data: Record<string, unknown>, actor: StoreActor): Promise<Store> {
 		void requestId;
+		const existing = await StoreInterface.findById(id);
+		if (!existing) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
+		}
+		await StoreComponent.assertAccess(existing, actor);
+
 		const updateData = pickUpdateFields(data || {});
+		if (actor.systemRole !== "system_admin") {
+			delete (updateData as Partial<Store>).owner_user_id;
+		}
 		return StoreInterface.update(id, updateData);
 	}
 
-	static async delete(requestId: string, id: string): Promise<void> {
+	static async delete(requestId: string, id: string, actor: StoreActor): Promise<void> {
 		void requestId;
+		const store = await StoreInterface.findById(id);
+		if (!store) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
+		}
+		await StoreComponent.assertAccess(store, actor);
+
 		const ok = await StoreInterface.delete(id);
 		if (!ok) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);

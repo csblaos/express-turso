@@ -28,6 +28,16 @@ type LogoutInput = {
 	sessionId?: string;
 };
 
+type UpdateProfileInput = {
+	name: string;
+};
+
+type ChangePasswordInput = {
+	currentPassword: string;
+	newPassword: string;
+	confirmPassword?: string;
+};
+
 type AuthPolicy = {
 	defaultSessionLimit: number;
 	accessTokenTtlMinutes: number;
@@ -120,6 +130,10 @@ function buildUserSummary(user: User) {
 	};
 }
 
+async function getSessionRecord(sessionId: string): Promise<SessionRecord | null> {
+	return getJsonValue<SessionRecord>(getSessionKey(sessionId));
+}
+
 async function verifyPassword(password: string, passwordHash: string): Promise<boolean> {
 	if (!passwordHash) return false;
 
@@ -177,13 +191,63 @@ export class AuthComponent {
 	}
 
 	private static async revokeSession(sessionId: string): Promise<void> {
-		const session = await getJsonValue<SessionRecord>(getSessionKey(sessionId));
+		const session = await getSessionRecord(sessionId);
 		if (session?.userId) {
 			const existingSessionIds = await AuthComponent.getSessionIds(session.userId);
 			const nextSessionIds = existingSessionIds.filter((id) => id !== sessionId);
 			await AuthComponent.saveSessionIds(session.userId, nextSessionIds);
 		}
 		await RedisConn.del(getSessionKey(sessionId));
+	}
+
+	private static async updateSessionSnapshot(sessionId: string, user: User): Promise<void> {
+		const session = await getSessionRecord(sessionId);
+		if (!session) return;
+
+		const nextSession: SessionRecord = {
+			...session,
+			email: user.email,
+			name: user.name,
+			systemRole: user.system_role,
+			updatedAt: new Date().toISOString(),
+		};
+
+		const expiresAtMs = new Date(session.refreshExpiresAt).getTime();
+		const ttlSeconds = Math.max(1, Math.floor((expiresAtMs - Date.now()) / 1000));
+		await setJsonValue(getSessionKey(sessionId), nextSession, ttlSeconds);
+	}
+
+	private static async revokeOtherSessions(userId: string, keepSessionId: string): Promise<void> {
+		const sessionIds = await AuthComponent.getSessionIds(userId);
+		for (const sessionId of sessionIds) {
+			if (sessionId === keepSessionId) continue;
+			await AuthComponent.revokeSession(sessionId);
+		}
+	}
+
+	private static async resolveAuthenticatedUser(req: Request): Promise<{ user: User; sessionId: string }> {
+		if (!req.auth?.userId || !req.auth?.sessionId) {
+			throw ApiError.UnauthorizedError("Missing authenticated user");
+		}
+
+		const user = await AuthInterface.findUserById(req.auth.userId);
+		if (!user) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
+		}
+
+		if (user.client_suspended) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_USER_SUSPENDED);
+		}
+
+		const session = await getSessionRecord(req.auth.sessionId);
+		if (!session || session.userId !== req.auth.userId) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_SESSION_INVALID);
+		}
+
+		return {
+			user,
+			sessionId: req.auth.sessionId,
+		};
 	}
 
 	private static async enforceSessionLimit(user: User, policy: AuthPolicy): Promise<void> {
@@ -410,6 +474,60 @@ export class AuthComponent {
 			user: buildUserSummary(user),
 			session,
 			access,
+		};
+	}
+
+	static async updateProfile(requestId: string, req: Request, input: UpdateProfileInput): Promise<{
+		user: ReturnType<typeof buildUserSummary>;
+	}> {
+		void requestId;
+		const { user, sessionId } = await AuthComponent.resolveAuthenticatedUser(req);
+		const nextName = input.name.trim();
+
+		if (!nextName) {
+			throw ApiError.BadRequestError("name is required");
+		}
+
+		const updatedUser = await AuthInterface.updateUserName(getUserId(user), nextName);
+		if (!updatedUser) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
+		}
+
+		await AuthComponent.updateSessionSnapshot(sessionId, updatedUser);
+
+		return {
+			user: buildUserSummary(updatedUser),
+		};
+	}
+
+	static async changePassword(requestId: string, req: Request, input: ChangePasswordInput): Promise<{
+		user: ReturnType<typeof buildUserSummary>;
+		passwordChanged: true;
+	}> {
+		void requestId;
+		const { user, sessionId } = await AuthComponent.resolveAuthenticatedUser(req);
+		const isValidPassword = await verifyPassword(input.currentPassword || "", user.password_hash);
+
+		if (!isValidPassword) {
+			throw ApiError.BadRequestError("Current password is incorrect");
+		}
+
+		if ((input.currentPassword || "") === (input.newPassword || "")) {
+			throw ApiError.BadRequestError("New password must be different from current password");
+		}
+
+		const passwordHash = await bcrypt.hash(input.newPassword, 10);
+		const updatedUser = await AuthInterface.updateUserPassword(getUserId(user), passwordHash, false);
+		if (!updatedUser) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
+		}
+
+		await AuthComponent.updateSessionSnapshot(sessionId, updatedUser);
+		await AuthComponent.revokeOtherSessions(getUserId(user), sessionId);
+
+		return {
+			user: buildUserSummary(updatedUser),
+			passwordChanged: true,
 		};
 	}
 }

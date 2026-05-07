@@ -64,26 +64,18 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-						<div class="flex items-start gap-3">
-							<UButton color="gray" variant="soft" size="lg" class="justify-center lg:hidden" icon="i-heroicons-bars-3-20-solid" aria-label="เปิดเมนู" title="เปิดเมนู" @click="openSidebar" />
-							<div>
-								<div class="flex flex-wrap items-center gap-2">
-									<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="Settings" /></NuxtLink>
-									<NuxtLink to="/superadmin"><UBadge color="gray" variant="soft" label="Superadmin" /></NuxtLink>
-									<UBadge color="orange" variant="soft" label="Global Config" />
-								</div>
-								<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">Superadmin Global Config</h1>
-								<p class="mt-1 text-sm text-stone-500">ตั้งค่ากลางของระบบฝั่ง superadmin โดยรอบนี้โฟกัสที่ `maxAccountsPerStore` ก่อนตามเอกสาร</p>
-							</div>
-						</div>
-						<div class="flex gap-2">
-							<UButton color="gray" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" @click="loadConfig">รีโหลด</UButton>
-							<UButton color="orange" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem" @click="saveConfig">บันทึก</UButton>
-						</div>
-					</div>
-				</UCard>
+				<AppPageHeader title="Superadmin Global Config" description="ตั้งค่ากลางของระบบฝั่ง superadmin โดยรอบนี้โฟกัสที่ `maxAccountsPerStore` ก่อนตามเอกสาร" @menu="openSidebar">
+					<template #badges>
+						<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="Settings" /></NuxtLink>
+						<NuxtLink to="/superadmin"><UBadge color="gray" variant="soft" label="Superadmin" /></NuxtLink>
+						<UBadge color="orange" variant="soft" label="Global Config" />
+					</template>
+
+					<template #actions>
+						<UButton color="gray" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" @click="loadConfig">รีโหลด</UButton>
+						<UButton color="orange" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem" @click="saveConfig">บันทึก</UButton>
+					</template>
+				</AppPageHeader>
 				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
 					<UCard v-if="pending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"><div class="py-10 text-center text-stone-500">กำลังโหลด global config…</div></UCard>
 					<UCard v-else-if="error" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"><div class="py-10 text-center text-stone-500">{{ error }}</div></UCard>

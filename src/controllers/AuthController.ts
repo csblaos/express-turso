@@ -24,4 +24,14 @@ export class AuthController {
 		const data = await AuthComponent.me(req.requestId, req);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
+
+	static updateProfile = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await AuthComponent.updateProfile(req.requestId, req, req.body || {});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static changePassword = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await AuthComponent.changePassword(req.requestId, req, req.body || {});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
 }

@@ -391,21 +391,17 @@ async function submitCreate() {
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="space-y-4">
-						<div class="flex items-start gap-3">
-							<UButton color="gray" variant="soft" size="lg" class="justify-center lg:hidden" icon="i-heroicons-bars-3-20-solid" aria-label="เปิดเมนู" title="เปิดเมนู" @click="openSidebar" />
-							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<UBadge color="orange" variant="soft" label="Purchase Orders" />
-									<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(orders.length)} รายการ`" />
-								</div>
-								<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">สั่งซื้อสินค้า</h1>
-								<p class="mt-1 text-sm text-stone-500">หน้าเริ่มต้นสำหรับจัดการ PO, supplier และวางแผนรับของเข้าร้าน</p>
-							</div>
-						</div>
+				<AppPageHeader
+					title="สั่งซื้อสินค้า"
+					description="หน้าเริ่มต้นสำหรับจัดการ PO, supplier และวางแผนรับของเข้าร้าน"
+					@menu="openSidebar"
+				>
+					<template #badges>
+						<UBadge color="orange" variant="soft" label="Purchase Orders" />
+						<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(orders.length)} รายการ`" />
+					</template>
 
-						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
 							<div class="relative">
 								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
 								<input
@@ -461,8 +457,7 @@ async function submitCreate() {
 								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ formatMoney(totalEstimated, "THB") }}</p>
 							</div>
 						</div>
-					</div>
-				</UCard>
+				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
 					<UCard v-if="ordersPending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">

@@ -67,12 +67,9 @@ type ProductRecord = {
 	tag?: string;
 };
 
-const route = useRoute();
 const runtimeConfig = useRuntimeConfig();
 const { apiFetch } = useApiClient();
-const { logout, can } = useAuthSession();
-
-const navItems = appNavItems;
+const { can } = useAuthSession();
 
 const statusOptions: Array<{ id: ProductStatus; label: string }> = [
 	{ id: "all", label: "ทุกสถานะ" },
@@ -101,10 +98,7 @@ const activeStatus = ref<ProductStatus>("all");
 const activeSort = ref<SortKey>("updated");
 const selectedProductId = ref("");
 const productDetailOpen = ref(false);
-const mobileSidebarOpen = ref(false);
 const mobileSearchOpen = ref(false);
-const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
-const logoutConfirmOpen = ref(false);
 const scanToast = ref("");
 const searchInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 const products = ref<ProductRecord[]>([]);
@@ -203,20 +197,6 @@ watch(filteredProducts, (value) => {
 
 function formatMoney(value: number) {
 	return numberFormatter.format(value);
-}
-
-function isNavActive(path: string) {
-	return path === "/" ? route.path === "/" : route.path.startsWith(path);
-}
-
-function openLogoutConfirm() {
-	logoutConfirmOpen.value = true;
-}
-
-async function confirmLogout() {
-	logoutConfirmOpen.value = false;
-	await logout();
-	return navigateTo("/login");
 }
 
 function getCategoryLabel(categoryId: string) {
@@ -515,7 +495,9 @@ async function openCameraScanner() {
 	try {
 		const videoElement = scannerVideoRef.value;
 		if (!videoElement) {
-			throw new Error("ไม่พบพื้นที่แสดงภาพจากกล้อง");
+			cameraScannerStarting.value = false;
+			cameraScannerError.value = "ไม่พบพื้นที่แสดงภาพจากกล้อง";
+			return;
 		}
 
 		stopCameraScanner();
@@ -581,116 +563,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<main class="min-h-screen w-full bg-transparent lg:h-screen lg:overflow-hidden">
-		<div class="flex min-h-screen w-full lg:h-screen lg:overflow-hidden">
-			<div
-				v-if="mobileSidebarOpen"
-				class="fixed inset-0 z-40 bg-black/45 lg:hidden"
-				@click="mobileSidebarOpen = false"
-			/>
-
-			<aside
-				class="fixed inset-y-0 left-0 z-50 flex bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-[width,transform] duration-200 ease-out lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none"
-				:class="[
-					sidebarCollapsed ? 'w-[84px]' : 'w-[280px]',
-					mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-				]"
-			>
-				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
-					<div class="flex items-center justify-between">
-						<div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f8e9de] text-lg font-semibold text-[#97532c]">
-							P
-						</div>
-
-						<UButton
-							color="gray"
-							variant="ghost"
-							size="sm"
-							class="lg:hidden"
-							label="ปิด"
-							@click="mobileSidebarOpen = false"
-						/>
-					</div>
-
-					<div class="hidden px-3 lg:block">
-						<UButton
-							color="gray"
-							variant="ghost"
-							size="sm"
-							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
-							:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex w-full justify-between px-3 py-2.5'"
-							:icon="sidebarCollapsed ? 'i-heroicons-chevron-double-right-20-solid' : 'i-heroicons-chevron-double-left-20-solid'"
-							:title="sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
-							:aria-label="sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
-							@click="sidebarCollapsed = !sidebarCollapsed"
-						/>
-					</div>
-
-					<nav class="flex flex-1 flex-col gap-2">
-						<NuxtLink
-							v-for="item in navItems"
-							:key="item.id"
-							:to="item.to"
-							class="flex items-center rounded-2xl px-3 py-3 text-left"
-							:title="item.label"
-							:aria-label="item.label"
-							:class="[
-								sidebarCollapsed ? 'gap-0' : 'gap-3',
-								isNavActive(item.to)
-									? (sidebarCollapsed
-										? 'text-[#97532c]'
-										: 'bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]')
-									: 'text-stone-500 hover:bg-[#f7f5f1] hover:text-stone-900'
-							]"
-						>
-							<div
-								class="flex shrink-0 items-center justify-center rounded-2xl text-sm font-semibold"
-								:class="[
-									'h-11 w-11',
-									isNavActive(item.to)
-										? 'bg-white text-[#97532c] ring-1 ring-[#efd7c6]'
-										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd]'
-								]"
-							>
-								<UIcon :name="item.icon" class="h-5 w-5" />
-							</div>
-							<div
-								class="min-w-0 overflow-hidden transition-[width,opacity] duration-150 ease-out"
-								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
-								aria-hidden="true"
-							>
-								<p class="truncate text-sm font-medium whitespace-nowrap">{{ item.label }}</p>
-							</div>
-						</NuxtLink>
-					</nav>
-
-					<div class="px-3 pt-1">
-						<UButton
-							color="gray"
-							variant="ghost"
-							size="sm"
-							icon="i-heroicons-arrow-left-on-rectangle"
-							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
-							:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
-							:title="sidebarCollapsed ? 'ออกจากระบบ' : undefined"
-							:aria-label="'ออกจากระบบ'"
-							@click="openLogoutConfirm"
-						>
-							<span
-								class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
-								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'"
-								aria-hidden="true"
-							>
-								ออกจากระบบ
-							</span>
-						</UButton>
-					</div>
-				</div>
-			</aside>
-
-			<div class="min-w-0 flex-1 lg:min-h-0 lg:overflow-hidden">
-				<div class="flex min-h-screen w-full lg:h-screen lg:min-h-0 lg:overflow-hidden">
-					<section class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:min-h-0 lg:px-5 lg:overflow-hidden">
+	<AppSidebarShell
+		:nav-items="appNavItems"
+		:active-ids="['products']"
+		sidebar-eyebrow="Products"
+		sidebar-title="สินค้า"
+		sidebar-compact-title="PRD"
+		sidebar-description="จัดการ SKU, barcode, ราคา และสถานะขาย"
+	>
+		<template #default="{ openSidebar }">
+			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
 						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
 							<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -704,7 +586,7 @@ onBeforeUnmount(() => {
 													icon="i-heroicons-bars-3-20-solid"
 													aria-label="เปิดเมนู"
 													title="เปิดเมนู"
-													@click="mobileSidebarOpen = true"
+													@click="openSidebar"
 												/>
 
 												<UButton
@@ -1020,38 +902,16 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 						</div>
-					</section>
-				</div>
-			</div>
-
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
+			<AppResponsivePanel
+				v-if="selectedProduct"
+				v-model="productDetailOpen"
+				desktop-width="440px"
+				:show-handle="false"
+				content-class="!px-4 !py-4 lg:!px-4 lg:!py-4"
+				@close="closeProductDetail"
 			>
-				<div
-					v-if="productDetailOpen"
-					class="fixed inset-0 z-[58] bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]"
-					@click="closeProductDetail"
-				/>
-			</Transition>
-
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-				enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-			>
-				<div
-					v-if="productDetailOpen && selectedProduct"
-					class="fixed inset-x-0 bottom-0 z-[59] max-h-[88vh] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[440px] lg:rounded-none lg:rounded-l-[28px]"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] p-4 text-stone-900">
+				<template #default>
+					<div class="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] text-stone-900">
 						<div class="border-b border-[#e7e4dd] pb-4">
 							<div class="flex items-start justify-between gap-3">
 								<div>
@@ -1208,8 +1068,8 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 					</div>
-				</div>
-			</Transition>
+				</template>
+			</AppResponsivePanel>
 
 			<Transition
 				enter-active-class="transition duration-200 ease-out"
@@ -1312,12 +1172,7 @@ onBeforeUnmount(() => {
 					{{ scanToast }}
 				</div>
 			</Transition>
-
-			<LogoutConfirmModal
-				:open="logoutConfirmOpen"
-				@close="logoutConfirmOpen = false"
-				@confirm="confirmLogout"
-			/>
-		</div>
-	</main>
+			</section>
+		</template>
+	</AppSidebarShell>
 </template>

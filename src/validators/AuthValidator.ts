@@ -21,6 +21,19 @@ export default class AuthValidator extends ValidatorMiddleware {
 		path: [ "refreshToken" ],
 	});
 
+	private static readonly profileBodySchema = z.object({
+		name: z.string().trim().min(1, "name is required").max(120, "name is too long"),
+	});
+
+	private static readonly changePasswordBodySchema = z.object({
+		currentPassword: z.string().min(1, "currentPassword is required"),
+		newPassword: z.string().min(6, "newPassword must be at least 6 characters"),
+		confirmPassword: z.string().min(6, "confirmPassword must be at least 6 characters"),
+	}).refine((value) => value.newPassword === value.confirmPassword, {
+		message: "confirmPassword must match newPassword",
+		path: [ "confirmPassword" ],
+	});
+
 	public static readonly login = AuthValidator.init({
 		body: AuthValidator.loginBodySchema,
 	});
@@ -31,5 +44,13 @@ export default class AuthValidator extends ValidatorMiddleware {
 
 	public static readonly logout = AuthValidator.init({
 		body: AuthValidator.logoutBodySchema,
+	});
+
+	public static readonly updateProfile = AuthValidator.init({
+		body: AuthValidator.profileBodySchema,
+	});
+
+	public static readonly changePassword = AuthValidator.init({
+		body: AuthValidator.changePasswordBodySchema,
 	});
 }

@@ -28,19 +28,12 @@ const entries: Entry[] = [
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="flex items-start gap-3">
-						<UButton color="gray" variant="soft" size="lg" class="justify-center lg:hidden" icon="i-heroicons-bars-3-20-solid" aria-label="เปิดเมนู" title="เปิดเมนู" @click="openSidebar" />
-						<div>
-							<div class="flex flex-wrap items-center gap-2">
-								<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="กลับ Settings" /></NuxtLink>
-								<UBadge color="orange" variant="soft" label="Superadmin" />
-							</div>
-							<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">Superadmin Settings</h1>
-							<p class="mt-1 text-sm text-stone-500">พื้นที่ผู้ดูแลระดับสูงฝั่งธุรกิจ/องค์กร แยกจาก System Admin กลางของแพลตฟอร์ม</p>
-						</div>
-					</div>
-				</UCard>
+				<AppPageHeader title="Superadmin Settings" description="พื้นที่ผู้ดูแลระดับสูงฝั่งธุรกิจ/องค์กร แยกจาก System Admin กลางของแพลตฟอร์ม" @menu="openSidebar">
+					<template #badges>
+						<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="กลับ Settings" /></NuxtLink>
+						<UBadge color="orange" variant="soft" label="Superadmin" />
+					</template>
+				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
 					<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

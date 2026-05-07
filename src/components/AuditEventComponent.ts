@@ -1,4 +1,5 @@
 import { AuditEventCreatePayload, AuditEventFilters, AuditEventInterface, AuditEventRecord } from "@interfaces/AuditEventInterface";
+import { AuthInterface } from "@interfaces/AuthInterface";
 import { ApiError } from "@middlewares/ApiError";
 
 function normalizeOptionalString(value?: string | null): string | null {
@@ -45,6 +46,13 @@ export class AuditEventComponent {
 
 		if (!normalized.scope || !normalized.action || !normalized.entity_type) {
 			throw ApiError.BadRequestError("scope, action and entity_type are required");
+		}
+
+		if (normalized.actor_user_id) {
+			const persistedActor = await AuthInterface.findPersistedUserById(normalized.actor_user_id);
+			if (!persistedActor) {
+				normalized.actor_user_id = null;
+			}
 		}
 
 		return AuditEventInterface.create(normalized);

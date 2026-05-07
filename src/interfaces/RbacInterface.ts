@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 
 import { InValue } from "@libsql/client";
+import bcrypt from "bcryptjs";
 
+import { AuthInterface } from "@interfaces/AuthInterface";
 import { DbConn } from "@connections/DbConn";
 import { Permission } from "@models/Permission";
 import { Role, RoleCreateInput, RoleUpdateInput } from "@models/Role";
@@ -32,6 +34,49 @@ type StoreMemberRoleAssignment = {
 	role_id: string;
 	status?: string;
 	added_by?: string | null;
+};
+
+type StoreMemberListItem = {
+	store_id: string;
+	user_id: string;
+	name: string;
+	email: string;
+	system_role: string;
+	ui_locale: string;
+	status: string;
+	role_id: string;
+	role_name: string;
+	created_at: string;
+	added_by: string | null;
+	permissions_count: number;
+	permissions: Permission[];
+};
+
+type StoreMemberCreateInput = {
+	store_id: string;
+	name: string;
+	email: string;
+	password: string;
+	role_id: string;
+	status?: string;
+	system_role?: string;
+	ui_locale?: string;
+	added_by?: string | null;
+};
+
+type StoreMemberStatusUpdateInput = {
+	store_id: string;
+	user_id: string;
+	status: string;
+	added_by?: string | null;
+};
+
+type StoreMemberPasswordResetInput = {
+	store_id: string;
+	user_id: string;
+	password: string;
+	must_change_password?: boolean;
+	actor_user_id?: string | null;
 };
 
 const DEFAULT_PERMISSION_SEED = [
@@ -236,6 +281,21 @@ export class RbacInterface {
 		return role;
 	}
 
+	static async duplicateRole(
+		id: string,
+		name: string,
+	): Promise<RoleWithPermissions | null> {
+		await RbacInterface.ensurePermissionSeed();
+		const role = await RbacInterface.getRoleById(id);
+		if (!role) return null;
+
+		return RbacInterface.createRole({
+			store_id: role.store_id,
+			name,
+			is_system: 0,
+		}, role.permissions.map((permission) => permission.key));
+	}
+
 	static async updateRole(
 		id: string,
 		data: RoleUpdateInput,
@@ -362,6 +422,207 @@ export class RbacInterface {
 		return RbacInterface.getUserPermissions(payload.user_id, payload.store_id);
 	}
 
+	static async listStoreMembers(params: {
+		store_id: string;
+		search?: string;
+		status?: string;
+		role_id?: string;
+	}): Promise<StoreMemberListItem[]> {
+		await RbacInterface.ensurePermissionSeed();
+		await AuthInterface.ensureUserAuthColumns();
+		const db = DbConn.getClient();
+		const where = [ "sm.store_id = ?" ];
+		const args: InValue[] = [ params.store_id ];
+
+		if (params.status) {
+			where.push("sm.status = ?");
+			args.push(params.status);
+		}
+
+		if (params.role_id) {
+			where.push("sm.role_id = ?");
+			args.push(params.role_id);
+		}
+
+		if (params.search?.trim()) {
+			where.push("(LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ?)");
+			const keyword = `%${params.search.trim().toLowerCase()}%`;
+			args.push(keyword, keyword);
+		}
+
+		const result = await db.execute({
+			sql: `
+				SELECT
+					sm.store_id,
+					sm.user_id,
+					sm.role_id,
+					sm.status,
+					sm.created_at,
+					sm.added_by,
+					u.name,
+					u.email,
+					u.system_role,
+					u.ui_locale,
+					r.name AS role_name,
+					p.id AS permission_id,
+					p.key AS permission_key,
+					p.resource AS permission_resource,
+					p.action AS permission_action
+				FROM store_members sm
+				INNER JOIN users u ON u.id = sm.user_id
+				INNER JOIN roles r ON r.id = sm.role_id
+				LEFT JOIN role_permissions rp ON rp.role_id = r.id
+				LEFT JOIN permissions p ON p.id = rp.permission_id
+				WHERE ${where.join(" AND ")}
+				ORDER BY sm.created_at DESC, u.name ASC, p.resource, p.action, p.key
+			`,
+			args,
+		});
+
+		const items = new Map<string, StoreMemberListItem>();
+		for (const row of result.rows) {
+			const membershipKey = `${String(row.store_id)}:${String(row.user_id)}`;
+			if (!items.has(membershipKey)) {
+				items.set(membershipKey, {
+					store_id: String(row.store_id),
+					user_id: String(row.user_id),
+					name: String(row.name),
+					email: String(row.email),
+					system_role: String(row.system_role || "staff"),
+					ui_locale: String(row.ui_locale || "th"),
+					status: String(row.status),
+					role_id: String(row.role_id),
+					role_name: String(row.role_name),
+					created_at: String(row.created_at),
+					added_by: row.added_by ? String(row.added_by) : null,
+					permissions_count: 0,
+					permissions: [],
+				});
+			}
+
+			if (row.permission_id) {
+				const permission = {
+					id: String(row.permission_id),
+					key: String(row.permission_key),
+					resource: String(row.permission_resource),
+					action: String(row.permission_action),
+				};
+				const item = items.get(membershipKey);
+				if (item && !item.permissions.some((existing) => existing.id === permission.id)) {
+					item.permissions.push(permission);
+					item.permissions_count = item.permissions.length;
+				}
+			}
+		}
+
+		return Array.from(items.values());
+	}
+
+	static async createStoreMember(payload: StoreMemberCreateInput): Promise<StoreMemberListItem> {
+		await RbacInterface.ensurePermissionSeed();
+		await AuthInterface.ensureUserAuthColumns();
+		const db = DbConn.getClient();
+		const normalizedEmail = payload.email.trim().toLowerCase();
+		const existingUser = await db.execute({
+			sql: "SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1",
+			args: [ normalizedEmail ],
+		});
+
+		let userId: string;
+		if (existingUser.rows.length > 0) {
+			userId = String(existingUser.rows[0].id);
+		} else {
+			const passwordHash = await bcrypt.hash(payload.password, 10);
+			const insertResult = await db.execute({
+				sql: `
+					INSERT INTO users (
+						name, email, password_hash, created_at, system_role,
+						must_change_password, password_updated_at, ui_locale, client_suspended
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+				args: [
+					payload.name.trim(),
+					normalizedEmail,
+					passwordHash,
+					new Date().toISOString(),
+					payload.system_role?.trim() || "staff",
+					0,
+					new Date().toISOString(),
+					payload.ui_locale?.trim() || "th",
+					0,
+				],
+			});
+			userId = String(insertResult.lastInsertRowid);
+		}
+
+		await RbacInterface.assignStoreMemberRole({
+			store_id: payload.store_id,
+			user_id: userId,
+			role_id: payload.role_id,
+			status: payload.status,
+			added_by: payload.added_by,
+		});
+
+		const member = await RbacInterface.getStoreMemberById(payload.store_id, userId);
+		if (!member) {
+			throw new Error("Failed to create store member");
+		}
+		return member;
+	}
+
+	static async updateStoreMemberStatus(payload: StoreMemberStatusUpdateInput): Promise<StoreMemberListItem | null> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		await db.execute({
+			sql: `
+				UPDATE store_members
+				SET status = ?, added_by = ?
+				WHERE store_id = ? AND user_id = ?
+			`,
+			args: [
+				payload.status,
+				payload.added_by || null,
+				payload.store_id,
+				payload.user_id,
+			],
+		});
+
+		return RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+	}
+
+	static async getStoreMemberById(storeId: string, userId: string): Promise<StoreMemberListItem | null> {
+		const members = await RbacInterface.listStoreMembers({
+			store_id: storeId,
+		});
+		return members.find((member) => member.user_id === userId) || null;
+	}
+
+	static async resetStoreMemberPassword(payload: StoreMemberPasswordResetInput): Promise<StoreMemberListItem | null> {
+		await RbacInterface.ensurePermissionSeed();
+		await AuthInterface.ensureUserAuthColumns();
+		const db = DbConn.getClient();
+		const passwordHash = await bcrypt.hash(payload.password, 10);
+		await db.execute({
+			sql: `
+				UPDATE users
+				SET
+					password_hash = ?,
+					must_change_password = ?,
+					password_updated_at = ?
+				WHERE id = ?
+			`,
+			args: [
+				passwordHash,
+				payload.must_change_password ? 1 : 0,
+				new Date().toISOString(),
+				payload.user_id,
+			],
+		});
+
+		return RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+	}
+
 	private static async getPermissionsByRoleId(roleId: string): Promise<Permission[]> {
 		const db = DbConn.getClient();
 		const result = await db.execute({
@@ -414,4 +675,11 @@ export class RbacInterface {
 	}
 }
 
-export type { RoleWithPermissions, UserAccessSummary };
+export type {
+	RoleWithPermissions,
+	StoreMemberCreateInput,
+	StoreMemberListItem,
+	StoreMemberPasswordResetInput,
+	StoreMemberStatusUpdateInput,
+	UserAccessSummary,
+};

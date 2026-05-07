@@ -265,30 +265,17 @@ function closeDetail() {
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
-					<div class="space-y-4">
-						<div class="flex items-start gap-3">
-							<UButton
-								color="gray"
-								variant="soft"
-								size="lg"
-								class="justify-center lg:hidden"
-								icon="i-heroicons-bars-3-20-solid"
-								aria-label="เปิดเมนู"
-								title="เปิดเมนู"
-								@click="openSidebar"
-							/>
-							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<UBadge color="orange" variant="soft" label="ออเดอร์" />
-									<UBadge color="gray" variant="soft" label="UI mock" />
-								</div>
-								<h1 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-stone-950">จัดการออเดอร์</h1>
-								<p class="mt-1 text-sm text-stone-500">รอบนี้เป็น UI อย่างเดียวก่อน โฟกัสที่งานค้นหา, ติดตามสถานะ, และเปิดรายละเอียดออเดอร์อย่างรวดเร็ว</p>
-							</div>
-						</div>
+				<AppPageHeader
+					title="จัดการออเดอร์"
+					description="รอบนี้เป็น UI อย่างเดียวก่อน โฟกัสที่งานค้นหา, ติดตามสถานะ, และเปิดรายละเอียดออเดอร์อย่างรวดเร็ว"
+					@menu="openSidebar"
+				>
+					<template #badges>
+						<UBadge color="orange" variant="soft" label="ออเดอร์" />
+						<UBadge color="gray" variant="soft" label="UI mock" />
+					</template>
 
-						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
 							<div class="relative">
 								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
 								<input
@@ -357,8 +344,7 @@ function closeDetail() {
 								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
 							</div>
 						</div>
-					</div>
-				</UCard>
+				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
 					<div
@@ -420,34 +406,16 @@ function closeDetail() {
 				</div>
 			</div>
 
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
+			<AppResponsivePanel
+				v-if="selectedOrder"
+				v-model="detailOpen"
+				desktop-width="460px"
+				:show-handle="false"
+				content-class="!px-4 !py-4 lg:!px-4 lg:!py-4"
+				@close="closeDetail"
 			>
-				<div
-					v-if="detailOpen"
-					class="fixed inset-0 z-[58] bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]"
-					@click="closeDetail"
-				/>
-			</Transition>
-
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-				enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-			>
-				<div
-					v-if="detailOpen && selectedOrder"
-					class="fixed inset-x-0 bottom-0 z-[59] max-h-[88vh] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[460px] lg:rounded-none lg:rounded-l-[28px]"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] p-4 text-stone-900">
+				<template #default>
+					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] text-stone-900">
 						<div class="border-b border-[#e7e4dd] pb-4">
 							<div class="flex items-start justify-between gap-3">
 								<div>
@@ -562,8 +530,8 @@ function closeDetail() {
 							</div>
 						</div>
 					</div>
-				</div>
-			</Transition>
+				</template>
+			</AppResponsivePanel>
 		</template>
 	</AppSidebarShell>
 </template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import "vue-sonner/style.css";
+import { Toaster } from "vue-sonner";
+
 const colorMode = useColorMode();
 
 colorMode.preference = "light";
@@ -25,4 +28,12 @@ if (import.meta.client) {
 	<NuxtLayout>
 		<NuxtPage />
 	</NuxtLayout>
+	<Toaster
+		position="top-right"
+		:rich-colors="true"
+		:close-button="true"
+		:expand="false"
+		:visible-toasts="5"
+		:toast-options="{ duration: 2800 }"
+	/>
 </template>
