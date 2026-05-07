@@ -10,7 +10,7 @@
     "dev:web": "npm --prefix frontend run dev",
     "db:introspect": "node script/turso-db/inspect-app-db.mjs",
     "db:generate-models": "node script/turso-db/generate-models.mjs",
-    "build": "npm run build:api && npm run build:web",
+    "build": "npm run build:api",
     "build:api": "tsc",
     "build:web": "npm --prefix frontend run build",
     "lint:fix": "eslint . --ext .ts --fix",
