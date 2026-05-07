@@ -3,22 +3,33 @@ import { randomUUID } from "crypto";
 import { DbConn } from "@connections/DbConn";
 import { CreateStoreInput, Store } from "@models/Store";
 
-function toBoolean(value: unknown): boolean {
-	if (typeof value === "boolean") return value;
-	if (typeof value === "number") return value === 1;
-	if (typeof value === "bigint") return value === 1n;
-	if (typeof value === "string") return value === "1" || value.toLowerCase() === "true";
-	return Boolean(value);
-}
-
 export class StoreInterface {
-	static async findAll(): Promise<Store[]> {
+	static async ensureOwnerColumn(): Promise<void> {
 		const db = DbConn.getClient();
-		const result = await db.execute("SELECT * FROM stores ORDER BY created_at DESC");
+		const pragmaResult = await db.execute("PRAGMA table_info(stores)");
+		const existingColumns = new Set(
+			pragmaResult.rows.map((row) => String(row.name || "")),
+		);
+
+		if (!existingColumns.has("owner_user_id")) {
+			await db.execute("ALTER TABLE stores ADD COLUMN owner_user_id TEXT");
+		}
+	}
+
+	static async findAll(ownerUserId?: string): Promise<Store[]> {
+		await StoreInterface.ensureOwnerColumn();
+		const db = DbConn.getClient();
+		const result = ownerUserId
+			? await db.execute({
+				sql: "SELECT * FROM stores WHERE owner_user_id = ? ORDER BY created_at DESC",
+				args: [ ownerUserId ],
+			})
+			: await db.execute("SELECT * FROM stores ORDER BY created_at DESC");
 		return result.rows.map(StoreInterface.mapRow);
 	}
 
 	static async findById(id: string): Promise<Store | null> {
+		await StoreInterface.ensureOwnerColumn();
 		const db = DbConn.getClient();
 		const result = await db.execute({
 			sql: "SELECT * FROM stores WHERE id = ? LIMIT 1",
@@ -29,13 +40,25 @@ export class StoreInterface {
 		return StoreInterface.mapRow(result.rows[0]);
 	}
 
+	static async countByOwnerUserId(ownerUserId: string): Promise<number> {
+		await StoreInterface.ensureOwnerColumn();
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: "SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
+			args: [ ownerUserId ],
+		});
+
+		return Number(result.rows[0]?.total || 0);
+	}
+
 	static async create(payload: CreateStoreInput): Promise<Store> {
+		await StoreInterface.ensureOwnerColumn();
 		const db = DbConn.getClient();
 		const id = randomUUID();
 
 		await db.execute({
-			sql: "INSERT INTO stores (id, name) VALUES (?, ?)",
-			args: [ id, payload.name ],
+			sql: "INSERT INTO stores (id, name, owner_user_id) VALUES (?, ?, ?)",
+			args: [ id, payload.name, payload.owner_user_id ?? null ],
 		});
 
 		const created = await StoreInterface.findById(id);
@@ -45,6 +68,7 @@ export class StoreInterface {
 	}
 
 	static async update(id: string, data: Partial<Store>): Promise<Store> {
+		await StoreInterface.ensureOwnerColumn();
 		const keys = Object.keys(data);
 		const values = Object.values(data);
 
@@ -67,6 +91,7 @@ export class StoreInterface {
 	}
 
 	static async delete(id: string): Promise<boolean> {
+		await StoreInterface.ensureOwnerColumn();
 		const db = DbConn.getClient();
 		const existing = await StoreInterface.findById(id);
 		if (!existing) return false;
@@ -82,10 +107,7 @@ export class StoreInterface {
 	private static mapRow(row: Record<string, unknown>): Store {
 		return {
 			...(row as unknown as Store),
-			vat_enabled: toBoolean(row["vat_enabled"]),
-			pdf_show_logo: toBoolean(row["pdf_show_logo"]),
-			pdf_show_signature: toBoolean(row["pdf_show_signature"]),
-			pdf_show_note: toBoolean(row["pdf_show_note"]),
-		} as Store;
+			owner_user_id: row.owner_user_id ? String(row.owner_user_id) : null,
+		};
 	}
 }

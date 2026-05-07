@@ -2,6 +2,10 @@
 
 This file is the single source of truth for this repo’s architecture and conventions.
 
+Additional high-signal docs:
+- `AI_CONTEXT.md` for quick AI/developer handoff
+- `DEPLOYMENT.md` for backend/frontend deployment strategy
+
 It replaces the previous context docs:
 - `AI_PROJECT_BLUEPRINT.md`
 - `ERROR_CONFIG_CONTEXT.md`
@@ -11,8 +15,9 @@ It replaces the previous context docs:
 
 ## 1) Non‑negotiable constraints
 
-- Runtime/language: Node.js + TypeScript (CommonJS output)
-- Web framework: Express
+- Backend runtime/language: Node.js + TypeScript (CommonJS output)
+- Backend web framework: Express
+- Frontend: standalone Nuxt app in `frontend/`
 - Formatting/style:
 	- Indent: tabs
 	- Quotes: double quotes
@@ -49,6 +54,7 @@ It replaces the previous context docs:
 	storage/
 	tstypes/
 	utils/
+	frontend/
 ```
 
 ### Key responsibilities

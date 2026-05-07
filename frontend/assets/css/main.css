@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	:root {
+		color-scheme: only light;
+		--pos-page: #f6f6f3;
+		--pos-surface: #fffefd;
+		--pos-surface-soft: #fbfbf8;
+		--pos-surface-muted: #f3f2ee;
+		--pos-border: #e7e4dd;
+		--pos-border-strong: #d9d5cd;
+		--pos-text: #1f1c18;
+		--pos-text-muted: #6b645c;
+		--pos-text-soft: #90877d;
+		--pos-accent: #c97745;
+		--pos-accent-soft: #f8e9de;
+	}
+
+	* {
+		box-sizing: border-box;
+	}
+
+	html,
+	body,
+	#__nuxt {
+		min-height: 100%;
+	}
+
+	body {
+		margin: 0;
+		background: var(--pos-page);
+		color: var(--pos-text);
+		font-family: "Avenir Next", "Segoe UI", sans-serif;
+	}
+
+	button,
+	input {
+		font: inherit;
+	}
+}
+
+@layer utilities {
+	.scrollbar-soft {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(31, 28, 24, 0.16) transparent;
+	}
+
+	.scrollbar-soft::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	.scrollbar-soft::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background: rgba(31, 28, 24, 0.14);
+	}
+
+	.category-rail {
+		scroll-snap-type: x proximity;
+		mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
+		-webkit-mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
+	}
+}

@@ -69,9 +69,38 @@ if (ENV.REDIS.DRIVER === "upstash") {
 	console.warn(`[config] Unknown REDIS_DRIVER '${ENV.REDIS.DRIVER}'. Expected 'local' or 'upstash'`);
 }
 
+if (ENV.SERVER.NODE_ENV === "production" && ENV.AUTH.JWT_SECRET === "dev-jwt-secret-change-me") {
+	console.warn("[config] AUTH_JWT_SECRET is using the development fallback in production");
+}
+
 export const Config = {
 	DEVELOPMENT: "development",
 	PRODUCTION: "production",
+	StandardHeadersFromLog: [
+		"host",
+		"connection",
+		"content-length",
+		"content-type",
+		"user-agent",
+		"accept",
+		"accept-language",
+		"accept-encoding",
+		"origin",
+		"referer",
+		"cache-control",
+		"pragma",
+		"if-none-match",
+		"if-modified-since",
+		"sec-ch-ua",
+		"sec-ch-ua-mobile",
+		"sec-ch-ua-platform",
+		"sec-fetch-site",
+		"sec-fetch-mode",
+		"sec-fetch-dest",
+		"sec-fetch-user",
+		"upgrade-insecure-requests",
+		"dnt",
+	],
 	ExcludeHeadersFromLog: [
 		"authorization",
 		"cookie",

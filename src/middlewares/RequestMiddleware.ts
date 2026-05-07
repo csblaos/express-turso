@@ -44,10 +44,13 @@ function minimizeResponseBody(body: unknown): unknown {
 function cleanHeaders(
 	headers: Request["headers"],
 	excludeHeaders: Set<string>,
+	standardHeaders: Set<string>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
 	for (const [ key, value ] of Object.entries(headers)) {
-		if (excludeHeaders.has(key.toLowerCase())) continue;
+		const lowerKey = key.toLowerCase();
+		if (excludeHeaders.has(lowerKey)) continue;
+		if (standardHeaders.has(lowerKey)) continue;
 		result[key] = value;
 	}
 	return result;
@@ -61,6 +64,7 @@ export class RequestMiddleware {
 
 		const secretKeys = toLowerSet(Config.secretParameters);
 		const excludeHeaders = toLowerSet(Config.ExcludeHeadersFromLog);
+		const standardHeaders = toLowerSet(Config.StandardHeadersFromLog);
 
 		const requestTime = new Date();
 		Log.logs[requestId] = {
@@ -71,7 +75,7 @@ export class RequestMiddleware {
 			params: req.params,
 			query: redactSecrets(req.query, secretKeys) as Record<string, unknown>,
 			body: {},
-			headers: cleanHeaders(req.headers, excludeHeaders),
+			headers: cleanHeaders(req.headers, excludeHeaders, standardHeaders),
 			error: false,
 			errorTrack: null,
 		};
@@ -98,7 +102,7 @@ export class RequestMiddleware {
 			logEntry.params = req.params;
 			logEntry.query = redactSecrets(req.query, secretKeys) as Record<string, unknown>;
 			logEntry.body = redactSecrets(req.body, secretKeys);
-			logEntry.headers = cleanHeaders(req.headers, excludeHeaders);
+			logEntry.headers = cleanHeaders(req.headers, excludeHeaders, standardHeaders);
 
 			Log.printLog(requestId);
 		});

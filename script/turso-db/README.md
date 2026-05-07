@@ -11,6 +11,8 @@
 - `restore.mjs` restore dump กลับเข้า Turso
 - `shared.mjs` ฟังก์ชันกลางสำหรับโหลด `config.json`, ต่อ DB, และ utility SQL dump
 - `wipe-target-db.mjs` ลบ object ทั้งหมดใน target database เพื่อเตรียม restore
+- `inspect-app-db.mjs` introspect schema จาก `.env` ของโปรเจกต์หลัก แล้วแสดง tables/columns เป็น JSON
+- `generate-models.mjs` generate TypeScript model files จาก schema จริงไปที่ `src/models`
 - `config.example.json` ตัวอย่างค่าตั้งต้น
 - `package.json` dependency ของโฟลเดอร์นี้เอง
 
@@ -50,6 +52,51 @@ export จาก `source.url` ใน `config.json`:
 ```bash
 node export.mjs
 ```
+
+## Inspect Current App DB
+
+ดู schema จากฐานข้อมูลที่ app หลักใช้ผ่าน `.env` ของ repo:
+
+```bash
+npm run db:introspect
+```
+
+ดูเฉพาะตารางเดียว:
+
+```bash
+npm run db:introspect -- stores
+```
+
+สคริปต์นี้อ่านค่าจาก:
+
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- หรือ `DATABASE_URL` ถ้าใช้ local SQLite
+
+## Generate Models
+
+generate models ทุกตารางจากฐานข้อมูลจริง:
+
+```bash
+npm run db:generate-models
+```
+
+generate เฉพาะตารางเดียว:
+
+```bash
+npm run db:generate-models -- stores
+```
+
+ไฟล์จะถูกสร้างที่:
+
+- `src/models/*.ts`
+- `src/models/generated.ts`
+
+แนวคิดของ generator นี้:
+
+- overwrite model ใน `src/models` ให้ตาม schema จริงของ database
+- ใช้ schema จริงจากฐานข้อมูลที่เชื่อมอยู่
+- สร้าง type ชุดพื้นฐาน `Row`, `CreateInput`, `UpdateInput` เพื่อใช้พัฒนา Express ได้เร็วขึ้น
 
 สคริปต์จะเขียนไฟล์ไปที่ `dumpFile` ใน `config.json` ถ้าค่านี้ว่าง จะ fallback ไปสร้างไฟล์ timestamp ใน `backupDir`
 ดังนั้นถ้าตั้ง `./backups/latest.sql` ไฟล์จะถูกเก็บที่ `script/turso-db/backups/latest.sql`

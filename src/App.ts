@@ -4,6 +4,7 @@ import { ApiError } from "@middlewares/ApiError";
 import { ErrorHandler } from "@middlewares/ErrorHandler";
 import { RequestMiddleware } from "@middlewares/RequestMiddleware";
 import { IndexRouter } from "@routers/IndexRouter";
+import { SuccessHandler } from "@utils/SuccessHandler";
 
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 	res.setHeader("access-control-allow-origin", "*");
@@ -24,7 +25,7 @@ app.use(corsMiddleware);
 app.use(RequestMiddleware.requestResponseLog);
 
 app.get("/healthz", (req, res) => {
-	res.status(200).json({ success: true, message: "ok" });
+	SuccessHandler.send(res, req.requestId, "ok");
 });
 
 app.use(express.json());
