@@ -137,7 +137,7 @@ function formatDate(value: string | null) {
 }
 
 function statusTone(status: ClientRecord["status"]) {
-	return status === "active" ? "green" : "orange";
+	return status === "active" ? "success" : "warning";
 }
 
 function openDetail(clientId: string) {
@@ -333,32 +333,39 @@ onMounted(loadClients);
 		sidebar-description="จัดการ client / superadmin accounts ที่จะไปสร้างร้านของตัวเองต่อ"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
-				<AppPageHeader title="Clients" description="" @menu="openSidebar">
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+				<AppPageHeader
+					title="Clients"
+					description=""
+					:tablet-layout="true"
+					@menu="openSidebar"
+				>
 					<template #badges>
-						<NuxtLink to="/system-admin"><UBadge color="gray" variant="soft" label="System Admin" /></NuxtLink>
-						<UBadge color="orange" variant="soft" label="Clients" />
+						<NuxtLink to="/system-admin"><UBadge color="neutral" variant="soft" label="System Admin" /></NuxtLink>
+						<UBadge color="primary" variant="soft" label="Clients" />
 					</template>
 
 					<template #actions>
-						<UButton color="gray" variant="soft" size="lg" class="rounded-md" icon="i-heroicons-arrow-path-20-solid" @click="loadClients">รีโหลด</UButton>
-						<UButton color="orange" variant="solid" size="lg" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</UButton>
+						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+							<AppButton color="neutral" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadClients">รีโหลด</AppButton>
+							<UButton color="primary" variant="solid" size="lg" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</UButton>
+						</div>
 					</template>
 					<template #default>
-						<div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+						<div class="flex flex-col gap-2 md:flex-row md:items-center">
 							<div class="relative min-w-0 flex-1">
 								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 								<input
 									v-model="searchQuery"
 									type="text"
 									placeholder="ค้นหาชื่อหรืออีเมลของ Superadmin"
-									class="w-full rounded-md border border-[#e7e4dd] bg-[#fffefd] py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									@keydown.enter="applyFilters"
 								>
 								<button
 									v-if="searchQuery"
 									type="button"
-									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-stone-400 transition hover:bg-[#f3f2ee] hover:text-stone-700"
+									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
 									@click="searchQuery = ''; applyFilters()"
 								>
 									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
@@ -373,7 +380,7 @@ onMounted(loadClients);
 										{ id: 'suspended', label: 'พักบัญชี' },
 									]"
 									:key="option.id"
-									:color="activeStatus === option.id ? 'orange' : 'gray'"
+									:color="activeStatus === option.id ? 'primary' : 'neutral'"
 									:variant="activeStatus === option.id ? 'solid' : 'soft'"
 									size="sm"
 									class="rounded-md"
@@ -386,23 +393,23 @@ onMounted(loadClients);
 					</template>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 gap-3 lg:grid-rows-[minmax(0,1fr)]">
-					<div class="min-h-0 overflow-hidden rounded-md border border-[#e7e4dd] bg-white shadow-none ring-1 ring-[#ece8df]">
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+					<div class="h-full min-h-0 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)]">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
 									<p class="text-sm font-semibold text-stone-950">Superadmin accounts</p>
-									<p class="mt-1 text-xs text-stone-500">มุมมองตารางช่วยให้ไล่ดูสถานะ, quota และวันที่สร้างได้เร็วกว่า card list</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">มุมมองตารางช่วยให้ไล่ดูสถานะ, quota และวันที่สร้างได้เร็วกว่า card list</p>
 								</div>
-								<div class="rounded-full bg-[#f5f3ef] px-3 py-1 text-xs font-medium text-stone-500">
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ pageSummaryText }}
 								</div>
 							</div>
 
 							<div class="min-h-0 flex-1 overflow-auto">
 								<div v-if="pending" class="min-h-[280px]">
-									<div class="overflow-hidden bg-[#f2ede5]">
-										<div class="client-loading-line h-1 w-1/3 rounded-r-full bg-[#c97745]" />
+									<div class="overflow-hidden bg-neutral-100">
+										<div class="client-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
 									</div>
 								</div>
 								<div v-else-if="error" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
@@ -427,7 +434,7 @@ onMounted(loadClients);
 										<tr
 											v-for="client in clients"
 											:key="client.id"
-											class="cursor-pointer text-sm text-stone-700 transition hover:bg-[#fcf7f1]"
+											class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50"
 											@click="openDetail(client.id)"
 										>
 											<td class="border-b border-[#f1ede6] px-4 py-4">
@@ -444,7 +451,7 @@ onMounted(loadClients);
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.ui_locale.toUpperCase() }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-500">{{ formatDate(client.created_at) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
-												<UButton color="gray" variant="soft" size="sm" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
+												<UButton color="neutral" variant="soft" size="sm" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
 													จัดการ
 												</UButton>
 											</td>
@@ -453,25 +460,60 @@ onMounted(loadClients);
 								</table>
 							</div>
 
-							<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-2.5 backdrop-blur-sm">
-								<div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-									<div class="text-sm text-stone-500">
-										{{ pageLabel }} • {{ pageSummaryText }}
+							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-2.5 shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
+									<div class="flex items-center justify-between gap-3 md:min-w-0 md:flex-1">
+										<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
+											<span class="sm:hidden">{{ pageSummaryText }}</span>
+											<span class="hidden sm:inline">{{ pageLabel }} • {{ pageSummaryText }}</span>
+										</div>
+										<div class="shrink-0 rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-stone-600 sm:hidden">
+											{{ pageLabel }}
+										</div>
 									</div>
 
-									<div class="flex flex-wrap items-center gap-2">
-										<label class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
-										<select
-											:value="pageSize"
-											class="rounded-md border border-[#e7e4dd] bg-white px-3 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
-											@change="updatePageSize(($event.target as HTMLSelectElement).value)"
-										>
-											<option v-for="option in pageSizeOptions" :key="option" :value="option">
-												{{ option }}
-											</option>
-										</select>
-										<UButton color="gray" variant="soft" size="sm" class="rounded-md" :disabled="currentPage <= 1 || pending" @click="goToPage(currentPage - 1)">ก่อนหน้า</UButton>
-										<UButton color="gray" variant="soft" size="sm" class="rounded-md" :disabled="currentPage >= totalPages || pending" @click="goToPage(currentPage + 1)">ถัดไป</UButton>
+									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
+										<div class="flex items-center gap-2">
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<select
+												:value="pageSize"
+												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												@change="updatePageSize(($event.target as HTMLSelectElement).value)"
+											>
+												<option v-for="option in pageSizeOptions" :key="option" :value="option">
+													{{ option }}
+												</option>
+											</select>
+										</div>
+
+										<div class="flex items-center gap-2">
+											<UButton
+												color="neutral"
+												variant="soft"
+												size="sm"
+												class="rounded-md"
+												icon="i-heroicons-chevron-left-20-solid"
+												:disabled="currentPage <= 1 || pending"
+												aria-label="หน้าก่อนหน้า"
+												title="หน้าก่อนหน้า"
+												@click="goToPage(currentPage - 1)"
+											>
+												<span class="hidden sm:inline">ก่อนหน้า</span>
+											</UButton>
+											<UButton
+												color="neutral"
+												variant="soft"
+												size="sm"
+												class="rounded-md"
+												trailing-icon="i-heroicons-chevron-right-20-solid"
+												:disabled="currentPage >= totalPages || pending"
+												aria-label="หน้าถัดไป"
+												title="หน้าถัดไป"
+												@click="goToPage(currentPage + 1)"
+											>
+												<span class="hidden sm:inline">ถัดไป</span>
+											</UButton>
+										</div>
 									</div>
 								</div>
 							</div>
@@ -493,47 +535,47 @@ onMounted(loadClients);
 							<div class="grid gap-4">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
-									<input v-model="createForm.name" type="text" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
-									<input v-model="createForm.email" type="email" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านเริ่มต้น</label>
-									<input v-model="createForm.password" type="text" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.password" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 							</div>
 
 							<div class="grid gap-4 sm:grid-cols-2">
-								<div class="rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 									<p class="text-xs font-medium text-stone-500">โควต้าร้าน</p>
 									<p class="mt-2 text-sm font-semibold text-stone-900">1 Superadmin = 1 Store</p>
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
-									<input v-model="createForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 							</div>
 
-							<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-								<input v-model="createForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<input v-model="createForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 								<div>
 									<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างร้าน</p>
 									<p class="mt-1 text-xs leading-5 text-stone-500">ใช้สำหรับเจ้าของธุรกิจที่จะ onboarding ร้านของตัวเอง</p>
 								</div>
 							</label>
 
-							<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-								<input v-model="createForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<input v-model="createForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 								<div>
 									<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างสาขา</p>
 									<p class="mt-1 text-xs leading-5 text-stone-500">ใช้คู่กับ quota สาขาต่อร้าน</p>
 								</div>
 							</label>
 
-							<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-								<input v-model="createForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<input v-model="createForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 								<div>
 									<p class="text-sm font-medium text-stone-900">บังคับให้เปลี่ยนรหัสผ่านเมื่อ login ครั้งแรก</p>
 								</div>
@@ -543,8 +585,8 @@ onMounted(loadClients);
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-5 pb-5 pt-4 backdrop-blur-sm">
 						<div class="flex justify-end gap-2">
-							<UButton color="gray" variant="soft" size="lg" class="rounded-md" @click="createOpen = false">ยกเลิก</UButton>
-							<UButton color="orange" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="createClient">สร้างบัญชี</UButton>
+							<UButton color="neutral" variant="soft" size="lg" class="rounded-md" @click="createOpen = false">ยกเลิก</UButton>
+							<UButton color="primary" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="createClient">สร้างบัญชี</UButton>
 						</div>
 					</div>
 				</div>
@@ -560,7 +602,7 @@ onMounted(loadClients);
 				<div v-if="selectedClient" class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div class="space-y-5 pb-6">
-							<div class="rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-center justify-between gap-3">
 									<div>
 										<p class="text-lg font-semibold text-stone-950">{{ selectedClient.name }}</p>
@@ -577,42 +619,42 @@ onMounted(loadClients);
 							<div class="grid gap-4">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
-									<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div class="grid gap-4 sm:grid-cols-2">
-									<div class="rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3">
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 										<p class="text-xs font-medium text-stone-500">โควต้าร้าน</p>
 										<p class="mt-2 text-sm font-semibold text-stone-900">คงที่ 1 ร้านต่อบัญชี</p>
 									</div>
 									<div>
 										<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
-										<input v-model="detailForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+										<input v-model="detailForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 									</div>
 								</div>
 							</div>
 
 							<div class="space-y-3">
-								<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-									<input v-model="detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<input v-model="detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
 										<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างร้าน</p>
 									</div>
 								</label>
-								<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-									<input v-model="detailForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<input v-model="detailForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
 										<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างสาขา</p>
 									</div>
 								</label>
-								<label class="flex items-start gap-3 rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-									<input v-model="detailForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
+								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<input v-model="detailForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
 										<p class="text-sm font-medium text-stone-900">บังคับเปลี่ยนรหัสผ่านในการ login ครั้งถัดไป</p>
 									</div>
 								</label>
 							</div>
 
-							<div class="rounded-md border border-[#e7e4dd] bg-[#fffaf6] p-4">
+							<div class="rounded-md border border-warning-200 bg-warning-50 p-4">
 								<p class="text-sm font-medium text-stone-900">สถานะบัญชี</p>
 								<p class="mt-1 text-xs leading-5 text-stone-500">ใช้ส่วนนี้ในการพักบัญชีชั่วคราว หรือเปิดใช้งานกลับเมื่อพร้อม</p>
 								<div v-if="selectedClient.status === 'active'" class="mt-4 space-y-3">
@@ -620,13 +662,13 @@ onMounted(loadClients);
 										v-model="detailForm.suspend_reason"
 										rows="3"
 										placeholder="เหตุผลที่พักบัญชี"
-										class="w-full resize-none rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+										class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									/>
-									<UButton color="orange" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('suspended')">พักบัญชี</UButton>
+									<UButton color="warning" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('suspended')">พักบัญชี</UButton>
 								</div>
 								<div v-else class="mt-4 space-y-3">
 									<p class="text-xs text-stone-500">เหตุผลล่าสุด: {{ selectedClient.client_suspended_reason || "ไม่ได้ระบุ" }}</p>
-									<UButton color="green" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('active')">เปิดใช้งานกลับ</UButton>
+									<UButton color="success" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('active')">เปิดใช้งานกลับ</UButton>
 								</div>
 							</div>
 						</div>
@@ -634,8 +676,8 @@ onMounted(loadClients);
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-5 pb-5 pt-4 backdrop-blur-sm">
 						<div class="flex justify-end gap-2">
-							<UButton color="gray" variant="soft" size="lg" class="rounded-md" @click="detailOpen = false">ปิด</UButton>
-							<UButton color="orange" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem || !detailHasChanges" @click="saveClient">บันทึก</UButton>
+							<UButton color="neutral" variant="soft" size="lg" class="rounded-md" @click="detailOpen = false">ปิด</UButton>
+							<UButton color="primary" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem || !detailHasChanges" @click="saveClient">บันทึก</UButton>
 						</div>
 					</div>
 				</div>

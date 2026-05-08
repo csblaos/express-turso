@@ -66,14 +66,14 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
 				<AppPageHeader title="Superadmin Global Config" description="ตั้งค่ากลางของระบบฝั่ง superadmin โดยรอบนี้โฟกัสที่ `maxAccountsPerStore` ก่อนตามเอกสาร" @menu="openSidebar">
 					<template #badges>
-						<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="Settings" /></NuxtLink>
-						<NuxtLink to="/superadmin"><UBadge color="gray" variant="soft" label="Superadmin" /></NuxtLink>
-						<UBadge color="orange" variant="soft" label="Global Config" />
+						<NuxtLink to="/settings"><UBadge color="neutral" variant="soft" label="Settings" /></NuxtLink>
+						<NuxtLink to="/superadmin"><UBadge color="neutral" variant="soft" label="Superadmin" /></NuxtLink>
+						<UBadge color="primary" variant="soft" label="Global Config" />
 					</template>
 
 					<template #actions>
-						<UButton color="gray" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" @click="loadConfig">รีโหลด</UButton>
-						<UButton color="orange" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem" @click="saveConfig">บันทึก</UButton>
+						<AppButton color="neutral" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">รีโหลด</AppButton>
+						<UButton color="primary" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem" @click="saveConfig">บันทึก</UButton>
 					</template>
 				</AppPageHeader>
 				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">

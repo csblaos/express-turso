@@ -135,7 +135,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 					</div>
 
 					<div class="max-w-2xl space-y-6">
-						<UBadge color="orange" variant="soft" label="Login preview" />
+						<UBadge color="primary" variant="soft" label="Login preview" />
 						<div class="space-y-4">
 							<h2 class="text-5xl leading-tight font-semibold tracking-[-0.05em] text-stone-950">
 								ระบบขายหน้าร้าน, สินค้า, สต็อก และรายงานในหน้าจอเดียวกัน
@@ -181,7 +181,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 									P
 								</div>
 								<div>
-									<UBadge color="gray" variant="soft" label="เข้าสู่ระบบ" />
+									<UBadge color="neutral" variant="soft" label="เข้าสู่ระบบ" />
 									<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">เข้าสู่ระบบร้านค้า</h2>
 									<p class="mt-2 text-sm leading-6 text-stone-500">
 										โหมด dev จะ prefill บัญชีทดสอบไว้ให้และสามารถเข้าสู่ระบบผ่าน backend auth API ได้ทันที
@@ -195,10 +195,10 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 									<UInput
 										v-model="form.email"
 										size="lg"
-										color="gray"
+										color="neutral"
 										icon="i-heroicons-user-20-solid"
 										placeholder="manager@store.com"
-										class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:shadow-sm"
+										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:ps-11 [&_input]:shadow-sm [&_span]:left-3 [&_span]:text-stone-400"
 									/>
 								</div>
 
@@ -209,16 +209,16 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											v-model="form.password"
 											:type="showPassword ? 'text' : 'password'"
 											size="lg"
-											color="gray"
+											color="neutral"
 											icon="i-heroicons-lock-closed-20-solid"
 											placeholder="••••••••"
-											class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-11 [&_input]:shadow-sm"
+											class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:ps-11 [&_input]:pr-12 [&_input]:shadow-sm [&_span]:left-3 [&_span]:text-stone-400"
 										/>
 										<UButton
-											color="gray"
+											color="neutral"
 											variant="ghost"
 											size="xs"
-											class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-xl text-stone-500 hover:bg-white hover:text-stone-900"
+											class="absolute top-1/2 right-2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900 [&_svg]:h-5 [&_svg]:w-5"
 											:icon="showPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 											:aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
 											:title="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
@@ -243,56 +243,56 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 								<div class="space-y-3 pt-2">
 									<UButton
 										type="submit"
-										color="orange"
+										color="primary"
 										size="lg"
-										block
-										icon="i-heroicons-arrow-right-circle-20-solid"
-										class="justify-center rounded-2xl py-3 font-semibold shadow-sm"
-										:loading="submitting"
+										class="w-full justify-center rounded-md py-3 font-semibold shadow-sm"
 										:disabled="submitting"
-										label="เข้าสู่ระบบ"
-									/>
+									>
+										<template #leading>
+											<AppLoadingIcon :loading="submitting" />
+										</template>
+										{{ submitting ? 'กำลังเข้าสู่ระบบ' : 'เข้าสู่ระบบ' }}
+									</UButton>
 									<UButton
 										to="/"
-										color="gray"
+										color="neutral"
 										variant="soft"
 										size="lg"
-										block
-										class="justify-center rounded-2xl py-3 font-medium"
+										class="w-full justify-center rounded-md py-3 font-medium"
 										label="ข้ามไปหน้า POS"
 									/>
 								</div>
 							</form>
 
-							<div class="space-y-3 rounded-2xl border border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600">
+							<div class="space-y-3 rounded-md border border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600">
 								<div class="flex items-start justify-between gap-4">
 									<div>
 										<p class="font-medium text-stone-800">บัญชี dev ตาม role</p>
 										<p class="mt-1 leading-6 text-stone-500">ใช้ปุ่ม Fill เพื่อเติมลงฟอร์มทันที หรือ Copy เพื่อคัดลอก credential สำหรับทดสอบ role ต่าง ๆ</p>
 									</div>
-									<UBadge color="orange" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
+									<UBadge color="primary" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
 								</div>
 
 								<div class="space-y-3">
 									<div
 										v-for="loginPreset in DEV_LOGINS"
 										:key="loginPreset.email"
-										class="rounded-[24px] bg-white/80 p-3 ring-1 ring-[#ead7c7]"
+										class="rounded-md bg-white/80 p-3 ring-1 ring-[#ead7c7]"
 									>
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
 												<div class="flex items-center gap-2">
 													<p class="text-sm font-semibold text-stone-900">{{ loginPreset.label }}</p>
-													<UBadge color="gray" variant="soft" :label="loginPreset.role" />
+													<UBadge color="neutral" variant="soft" :label="loginPreset.role" />
 												</div>
 												<p class="mt-1 text-xs leading-5 text-stone-500">{{ loginPreset.description }}</p>
 												<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
 											</div>
 											<div class="flex shrink-0 items-center gap-2">
-												<UButton color="gray" variant="soft" size="xs" @click="copyDevLogin(loginPreset)">
+												<UButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="copyDevLogin(loginPreset)">
 													Copy
 												</UButton>
-												<UButton color="orange" variant="soft" size="xs" @click="fillDevLogin(loginPreset)">
+												<UButton color="primary" variant="soft" size="xs" class="rounded-md" @click="fillDevLogin(loginPreset)">
 													Fill
 												</UButton>
 											</div>

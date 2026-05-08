@@ -208,18 +208,18 @@ function formatMoney(value: number) {
 }
 
 function statusColor(status: OrderStatus) {
-	if (status === "completed") return "green";
-	if (status === "ready") return "blue";
-	if (status === "cancelled") return "red";
-	if (status === "preparing") return "orange";
-	return "gray";
+	if (status === "completed") return "success";
+	if (status === "ready") return "info";
+	if (status === "cancelled") return "error";
+	if (status === "preparing") return "warning";
+	return "neutral";
 }
 
 function paymentColor(status: PaymentStatus) {
-	if (status === "paid") return "green";
-	if (status === "partial") return "orange";
-	if (status === "refunded") return "red";
-	return "gray";
+	if (status === "paid") return "success";
+	if (status === "partial") return "warning";
+	if (status === "refunded") return "error";
+	return "neutral";
 }
 
 function channelLabel(channel: FulfillmentType) {
@@ -271,8 +271,8 @@ function closeDetail() {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="orange" variant="soft" label="ออเดอร์" />
-						<UBadge color="gray" variant="soft" label="UI mock" />
+						<UBadge color="primary" variant="soft" label="ออเดอร์" />
+						<UBadge color="neutral" variant="soft" label="UI mock" />
 					</template>
 
 					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
@@ -321,9 +321,9 @@ function closeDetail() {
 						</div>
 
 						<div class="flex flex-wrap gap-2">
-							<UButton :color="activeView === 'all' ? 'orange' : 'gray'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
-							<UButton :color="activeView === 'attention' ? 'orange' : 'gray'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
-							<UButton :color="activeView === 'completed' ? 'orange' : 'gray'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
+							<UButton :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
+							<UButton :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
+							<UButton :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
 						</div>
 
 						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -359,7 +359,7 @@ function closeDetail() {
 									<div class="flex flex-wrap items-center gap-2">
 										<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 										<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
-										<UBadge color="gray" variant="soft" :label="channelLabel(order.channel)" />
+										<UBadge color="neutral" variant="soft" :label="channelLabel(order.channel)" />
 									</div>
 									<p class="mt-3 text-base font-semibold text-stone-950">{{ order.orderNumber }} · {{ order.customerName }}</p>
 									<p class="mt-1 text-sm text-stone-500">
@@ -423,7 +423,7 @@ function closeDetail() {
 									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">รายละเอียดออเดอร์</h2>
 								</div>
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="xs"
 									icon="i-heroicons-x-mark-20-solid"
@@ -449,8 +449,8 @@ function closeDetail() {
 
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentColor(selectedOrder.paymentStatus)" variant="soft" :label="paymentLabel(selectedOrder.paymentStatus)" />
-											<UBadge color="gray" variant="soft" :label="channelLabel(selectedOrder.channel)" />
-											<UBadge color="gray" variant="soft" :label="selectedOrder.cashier" />
+											<UBadge color="neutral" variant="soft" :label="channelLabel(selectedOrder.channel)" />
+											<UBadge color="neutral" variant="soft" :label="selectedOrder.cashier" />
 										</div>
 									</div>
 								</div>
@@ -483,7 +483,7 @@ function closeDetail() {
 							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
 								<div class="flex items-center justify-between gap-2">
 									<h3 class="text-sm font-semibold text-stone-950">รายการสินค้าในบิล</h3>
-									<UBadge color="gray" variant="soft" :label="`${selectedOrder.lines.length} รายการ`" />
+									<UBadge color="neutral" variant="soft" :label="`${selectedOrder.lines.length} รายการ`" />
 								</div>
 
 								<div class="mt-4 space-y-3">
@@ -525,8 +525,8 @@ function closeDetail() {
 
 						<div class="border-t border-[#e7e4dd] pt-4">
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="gray" variant="soft" size="lg" label="พิมพ์บิล" />
-								<UButton color="orange" variant="solid" size="lg" label="อัปเดตสถานะ" />
+								<UButton color="neutral" variant="soft" size="lg" label="พิมพ์บิล" />
+								<UButton color="primary" variant="solid" size="lg" label="อัปเดตสถานะ" />
 							</div>
 						</div>
 					</div>

@@ -4,10 +4,12 @@ const props = withDefaults(defineProps<{
 	eyebrow?: string;
 	icon?: string;
 	menuTitle?: string;
+	menuIcon?: string;
 }>(), {
 	eyebrow: "",
 	icon: "",
 	menuTitle: "เมนู",
+	menuIcon: "i-heroicons-bars-3-bottom-left-20-solid",
 });
 
 const slots = useSlots();
@@ -23,43 +25,22 @@ defineEmits<{
 
 <template>
 	<UCard
-		class="rounded-none border-0 border-b border-[#e7e4dd] bg-white shadow-none ring-0"
-		:ui="{ body: { padding: 'p-0 sm:p-0' } }"
+		class="rounded-none border-0 bg-transparent shadow-none ring-0"
+		:ui="{ body: 'p-0 sm:p-0' }"
 	>
-		<div class="flex min-h-[48px] items-center gap-2 px-3 py-1.5 sm:min-h-[52px] sm:px-4 sm:py-2">
+		<div class="flex h-[44px] min-w-0 items-center gap-1.5 overflow-x-hidden px-2.5 py-0 sm:h-[48px] sm:px-3 sm:py-0">
 			<UButton
-				color="gray"
+				color="neutral"
 				variant="soft"
-				size="md"
-				class="justify-center"
-				icon="i-heroicons-bars-3-20-solid"
+				size="lg"
+				:icon="menuIcon"
+				class="h-8 w-12 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 sm:h-10 sm:w-10 lg:h-9 lg:w-9"
 				:title="menuTitle"
 				:aria-label="menuTitle"
 				@click="$emit('menu')"
 			/>
 
-			<div class="min-w-0 flex-1">
-				<div class="flex items-center gap-3">
-					<div
-						v-if="icon"
-						class="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:flex"
-					>
-						<UIcon :name="icon" class="h-4 w-4" />
-					</div>
-
-					<div class="min-w-0">
-						<p
-							v-if="eyebrow"
-							class="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400"
-						>
-							{{ eyebrow }}
-						</p>
-						<p class="truncate text-sm font-semibold text-stone-900">
-							{{ title }}
-						</p>
-					</div>
-				</div>
-			</div>
+			<div class="min-w-0 flex-1" />
 
 			<div v-if="hasLeft" class="hidden items-center gap-2 xl:flex">
 				<slot name="left" />
@@ -69,7 +50,7 @@ defineEmits<{
 				<slot name="center" />
 			</div>
 
-			<div v-if="hasRight" class="ml-auto flex items-center gap-2">
+			<div v-if="hasRight" class="ml-auto flex items-center gap-1.5">
 				<slot name="right" />
 			</div>
 		</div>

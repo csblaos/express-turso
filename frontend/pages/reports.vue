@@ -6,7 +6,7 @@ type MetricCard = {
 	label: string;
 	value: string;
 	change: string;
-	tone: "green" | "orange" | "blue" | "gray";
+	tone: "success" | "warning" | "info" | "neutral";
 };
 
 type PaymentMix = {
@@ -54,27 +54,27 @@ const activeReportView = ref<"sales" | "products" | "operations">("sales");
 const metricCards = computed<MetricCard[]>(() => {
 	if (activeRange.value === "today") {
 		return [
-			{ id: "sales", label: "ยอดขายวันนี้", value: "฿48,920", change: "+12.4%", tone: "green" },
-			{ id: "orders", label: "จำนวนบิล", value: "186", change: "+8 บิล", tone: "blue" },
-			{ id: "avg", label: "บิลเฉลี่ย", value: "฿263", change: "+฿14", tone: "orange" },
-			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "3 รายการ", change: "คงที่", tone: "gray" },
+			{ id: "sales", label: "ยอดขายวันนี้", value: "฿48,920", change: "+12.4%", tone: "success" },
+			{ id: "orders", label: "จำนวนบิล", value: "186", change: "+8 บิล", tone: "info" },
+			{ id: "avg", label: "บิลเฉลี่ย", value: "฿263", change: "+฿14", tone: "warning" },
+			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "3 รายการ", change: "คงที่", tone: "neutral" },
 		];
 	}
 
 	if (activeRange.value === "week") {
 		return [
-			{ id: "sales", label: "ยอดขาย 7 วัน", value: "฿312,440", change: "+9.2%", tone: "green" },
-			{ id: "orders", label: "จำนวนบิล", value: "1,084", change: "+72 บิล", tone: "blue" },
-			{ id: "avg", label: "บิลเฉลี่ย", value: "฿288", change: "+฿11", tone: "orange" },
-			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "12 รายการ", change: "-1 รายการ", tone: "gray" },
+			{ id: "sales", label: "ยอดขาย 7 วัน", value: "฿312,440", change: "+9.2%", tone: "success" },
+			{ id: "orders", label: "จำนวนบิล", value: "1,084", change: "+72 บิล", tone: "info" },
+			{ id: "avg", label: "บิลเฉลี่ย", value: "฿288", change: "+฿11", tone: "warning" },
+			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "12 รายการ", change: "-1 รายการ", tone: "neutral" },
 		];
 	}
 
 	return [
-		{ id: "sales", label: "ยอดขาย 30 วัน", value: "฿1,284,600", change: "+15.8%", tone: "green" },
-		{ id: "orders", label: "จำนวนบิล", value: "4,012", change: "+264 บิล", tone: "blue" },
-		{ id: "avg", label: "บิลเฉลี่ย", value: "฿320", change: "+฿26", tone: "orange" },
-		{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "41 รายการ", change: "+4 รายการ", tone: "gray" },
+		{ id: "sales", label: "ยอดขาย 30 วัน", value: "฿1,284,600", change: "+15.8%", tone: "success" },
+		{ id: "orders", label: "จำนวนบิล", value: "4,012", change: "+264 บิล", tone: "info" },
+		{ id: "avg", label: "บิลเฉลี่ย", value: "฿320", change: "+฿26", tone: "warning" },
+		{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "41 รายการ", change: "+4 รายการ", tone: "neutral" },
 	];
 });
 
@@ -121,9 +121,9 @@ const staffRanks: StaffRank[] = [
 ];
 
 function metricToneClass(tone: MetricCard["tone"]) {
-	if (tone === "green") return "text-emerald-700 bg-emerald-50 ring-emerald-100";
-	if (tone === "orange") return "text-orange-700 bg-orange-50 ring-orange-100";
-	if (tone === "blue") return "text-blue-700 bg-blue-50 ring-blue-100";
+	if (tone === "success") return "text-emerald-700 bg-emerald-50 ring-emerald-100";
+	if (tone === "warning") return "text-orange-700 bg-orange-50 ring-orange-100";
+	if (tone === "info") return "text-blue-700 bg-blue-50 ring-blue-100";
 	return "text-stone-600 bg-stone-50 ring-stone-200";
 }
 
@@ -149,21 +149,21 @@ function barHeight(value: number) {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="orange" variant="soft" label="รายงาน" />
-						<UBadge color="gray" variant="soft" label="UI mock" />
+						<UBadge color="primary" variant="soft" label="รายงาน" />
+						<UBadge color="neutral" variant="soft" label="UI mock" />
 					</template>
 
 					<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeRange === 'today' ? 'orange' : 'gray'" :variant="activeRange === 'today' ? 'solid' : 'soft'" label="วันนี้" @click="activeRange = 'today'" />
-								<UButton :color="activeRange === 'week' ? 'orange' : 'gray'" :variant="activeRange === 'week' ? 'solid' : 'soft'" label="7 วัน" @click="activeRange = 'week'" />
-								<UButton :color="activeRange === 'month' ? 'orange' : 'gray'" :variant="activeRange === 'month' ? 'solid' : 'soft'" label="30 วัน" @click="activeRange = 'month'" />
+								<UButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" label="วันนี้" @click="activeRange = 'today'" />
+								<UButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" label="7 วัน" @click="activeRange = 'week'" />
+								<UButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" label="30 วัน" @click="activeRange = 'month'" />
 							</div>
 
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeReportView === 'sales' ? 'orange' : 'gray'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" label="ยอดขาย" @click="activeReportView = 'sales'" />
-								<UButton :color="activeReportView === 'products' ? 'orange' : 'gray'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" label="สินค้า" @click="activeReportView = 'products'" />
-								<UButton :color="activeReportView === 'operations' ? 'orange' : 'gray'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
+								<UButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" label="ยอดขาย" @click="activeReportView = 'sales'" />
+								<UButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" label="สินค้า" @click="activeReportView = 'products'" />
+								<UButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
 							</div>
 
 							<div class="grid gap-3 sm:grid-cols-2">
@@ -178,8 +178,8 @@ function barHeight(value: number) {
 							</div>
 
 							<div class="flex flex-wrap gap-2 xl:justify-end">
-								<UButton color="gray" variant="soft" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
-								<UButton color="gray" variant="soft" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
+								<UButton color="neutral" variant="soft" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
+								<UButton color="neutral" variant="soft" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
 							</div>
 						</div>
 				</AppPageHeader>
@@ -211,7 +211,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Sales trend</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">ยอดขายตามช่วงเวลา</h2>
 									</div>
-									<UBadge color="gray" variant="soft" label="Mock chart" />
+									<UBadge color="neutral" variant="soft" label="Mock chart" />
 								</div>
 
 								<div class="grid h-[280px] grid-cols-10 items-end gap-3 rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
@@ -232,7 +232,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Payment mix</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">สัดส่วนวิธีชำระเงิน</h2>
 									</div>
-									<UBadge color="gray" variant="soft" label="4 ช่องทาง" />
+									<UBadge color="neutral" variant="soft" label="4 ช่องทาง" />
 								</div>
 
 								<div class="space-y-3">
@@ -270,7 +270,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Top products</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">สินค้าขายดี</h2>
 									</div>
-									<UBadge color="orange" variant="soft" label="Top 5" />
+									<UBadge color="primary" variant="soft" label="Top 5" />
 								</div>
 
 								<div class="space-y-3">
@@ -301,7 +301,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Staff rank</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">ผลงานพนักงานขาย</h2>
 									</div>
-									<UBadge color="gray" variant="soft" label="ตามจำนวนบิล" />
+									<UBadge color="neutral" variant="soft" label="ตามจำนวนบิล" />
 								</div>
 
 								<div class="space-y-3">
@@ -329,7 +329,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operational signals</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">สัญญาณหน้างานที่ควรติดตาม</h2>
 									</div>
-									<UBadge color="orange" variant="soft" label="Mock insight" />
+									<UBadge color="primary" variant="soft" label="Mock insight" />
 								</div>
 
 								<div class="grid gap-3 md:grid-cols-3">
@@ -359,7 +359,7 @@ function barHeight(value: number) {
 										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Low stock</p>
 										<h2 class="mt-2 text-lg font-semibold text-stone-950">รายการใกล้หมด</h2>
 									</div>
-									<UBadge color="red" variant="soft" :label="`${lowStockItems.length} รายการ`" />
+									<UBadge color="error" variant="soft" :label="`${lowStockItems.length} รายการ`" />
 								</div>
 
 								<div class="space-y-3">

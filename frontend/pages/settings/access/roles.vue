@@ -228,8 +228,8 @@ onMounted(async () => {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="gray" variant="soft" label="Settings" />
-						<UBadge color="orange" variant="soft" label="Roles + permissions" />
+						<UBadge color="neutral" variant="soft" label="Settings" />
+						<UBadge color="primary" variant="soft" label="Roles + permissions" />
 					</template>
 
 					<SettingsAccessTabs />
@@ -243,7 +243,7 @@ onMounted(async () => {
 						</select>
 
 						<UButton
-							color="orange"
+							color="primary"
 							size="lg"
 							class="justify-center rounded-2xl"
 							icon="i-heroicons-plus-20-solid"
@@ -261,7 +261,7 @@ onMounted(async () => {
 								<h2 class="text-lg font-semibold text-stone-950">รายการบทบาท</h2>
 								<p class="mt-1 text-sm text-stone-500">เลือก role เพื่อแก้ชื่อและสิทธิ์ที่อนุญาต</p>
 							</div>
-							<UBadge color="gray" variant="soft" :label="`${roles.length} roles`" />
+							<UBadge color="neutral" variant="soft" :label="`${roles.length} roles`" />
 						</div>
 
 						<div v-if="loading" class="mt-4 grid gap-3">
@@ -294,7 +294,7 @@ onMounted(async () => {
 										<p class="mt-1 text-sm text-stone-500">{{ role.permissions_count }} permissions</p>
 									</div>
 									<div class="flex items-center gap-2">
-										<UBadge :color="role.is_system ? 'gray' : 'orange'" variant="soft" :label="role.is_system ? 'system' : 'custom'" />
+										<UBadge :color="role.is_system ? 'neutral' : 'primary'" variant="soft" :label="role.is_system ? 'system' : 'custom'" />
 										<UIcon name="i-heroicons-chevron-right-20-solid" class="h-5 w-5 text-stone-300" />
 									</div>
 								</div>
@@ -315,7 +315,7 @@ onMounted(async () => {
 							</div>
 							<div class="flex items-center gap-2">
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="sm"
 									class="justify-center rounded-xl"
@@ -324,7 +324,7 @@ onMounted(async () => {
 									:disabled="!canManageRoles || saving"
 									@click="duplicateOpen = true"
 								/>
-								<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+								<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 							</div>
 						</div>
 
@@ -333,7 +333,7 @@ onMounted(async () => {
 							<UInput
 								v-model="editorForm.name"
 								size="lg"
-								color="gray"
+								color="neutral"
 								class="mt-3 w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3"
 							/>
 						</div>
@@ -349,7 +349,7 @@ onMounted(async () => {
 									<p class="mt-1 text-xs text-stone-500">เลือก action ที่ role นี้สามารถใช้งานได้</p>
 								</div>
 								<UBadge
-									color="gray"
+									color="neutral"
 									variant="soft"
 									:label="`${group.items.filter((item) => editorForm.permissionKeys.includes(item.key)).length}/${group.items.length}`"
 								/>
@@ -377,12 +377,11 @@ onMounted(async () => {
 						</div>
 
 						<div class="flex gap-3 pt-2">
-							<UButton color="gray" variant="soft" size="lg" block class="justify-center rounded-2xl" label="ปิด" @click="close" />
+							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ปิด" @click="close" />
 							<UButton
-								color="orange"
+								color="primary"
 								size="lg"
-								block
-								class="justify-center rounded-2xl"
+								class="w-full justify-center rounded-2xl"
 								icon="i-heroicons-check-20-solid"
 								label="บันทึก"
 								:disabled="!canManageRoles || saving"
@@ -403,7 +402,7 @@ onMounted(async () => {
 								<h2 class="mt-2 text-xl font-semibold text-stone-950">สร้างบทบาทใหม่</h2>
 								<p class="mt-1 text-sm text-stone-500">เริ่มจากชื่อ role แล้วเลือกสิทธิ์ที่เหมาะกับทีมงานของร้านนี้</p>
 							</div>
-							<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 						</div>
 
 						<div class="space-y-4">
@@ -412,7 +411,7 @@ onMounted(async () => {
 								<UInput
 									v-model="createForm.name"
 									size="lg"
-									color="gray"
+									color="neutral"
 									class="mt-3 w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3"
 								/>
 							</div>
@@ -447,8 +446,8 @@ onMounted(async () => {
 						</div>
 
 						<div class="flex gap-3 pt-2">
-							<UButton color="gray" variant="soft" size="lg" block class="justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="orange" size="lg" block class="justify-center rounded-2xl" label="สร้างบทบาท" :disabled="!canManageRoles || saving" :loading="saving" @click="createRole" />
+							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
+							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="สร้างบทบาท" :disabled="!canManageRoles || saving" :loading="saving" @click="createRole" />
 						</div>
 					</div>
 				</template>
@@ -463,7 +462,7 @@ onMounted(async () => {
 								<h2 class="mt-2 text-xl font-semibold text-stone-950">ทำสำเนาบทบาท</h2>
 								<p class="mt-1 text-sm text-stone-500">ระบบจะคัดลอก permission จาก role ปัจจุบันไปยัง role ใหม่</p>
 							</div>
-							<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 						</div>
 
 						<div class="rounded-2xl border border-[#ece8df] bg-[#faf8f4] p-4">
@@ -471,14 +470,14 @@ onMounted(async () => {
 							<UInput
 								v-model="duplicateForm.name"
 								size="lg"
-								color="gray"
+								color="neutral"
 								class="mt-3 w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3"
 							/>
 						</div>
 
 						<div class="flex gap-3 pt-2">
-							<UButton color="gray" variant="soft" size="lg" block class="justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="orange" size="lg" block class="justify-center rounded-2xl" label="ทำสำเนา" :disabled="!canManageRoles || saving" :loading="saving" @click="duplicateRole" />
+							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
+							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="ทำสำเนา" :disabled="!canManageRoles || saving" :loading="saving" @click="duplicateRole" />
 						</div>
 					</div>
 				</template>

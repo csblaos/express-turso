@@ -185,7 +185,7 @@ onMounted(async () => {
 		sidebar-description="แก้ไขชื่อผู้ใช้ เปลี่ยนรหัสผ่าน และดูข้อมูลบัญชีปัจจุบัน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-4 lg:space-y-0">
+			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-5 lg:space-y-0">
 				<div class="space-y-4 lg:min-h-0 lg:overflow-hidden lg:col-span-2">
 					<AppPageHeader
 						title="ตั้งค่าโปรไฟล์"
@@ -193,21 +193,21 @@ onMounted(async () => {
 						@menu="openSidebar"
 					>
 						<template #badges>
-							<UBadge color="gray" variant="soft" label="Profile" />
-							<UBadge color="orange" variant="soft" :label="currentUser?.systemRole || 'บัญชีผู้ใช้'" />
+							<UBadge color="neutral" variant="soft" label="Profile" />
+							<UBadge color="primary" variant="soft" :label="currentUser?.systemRole || 'บัญชีผู้ใช้'" />
 						</template>
 
 						<template #actions>
-							<UBadge color="gray" variant="soft" :label="primaryMembership?.role_name || 'ไม่มี role ร้าน'" />
+							<UBadge color="neutral" variant="soft" :label="primaryMembership?.role_name || 'ไม่มี role ร้าน'" />
 						</template>
 					</AppPageHeader>
 				</div>
 
 				<div class="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-					<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-						<div class="space-y-4">
+					<UCard class="border-0 rounded-md bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)]">
+						<div class="space-y-5">
 							<div class="flex items-start gap-3">
-								<div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fbf1ea] text-lg font-semibold text-[#97532c] ring-1 ring-[#efd7c6]">
+								<div class="flex h-14 w-14 items-center justify-center rounded-md bg-primary-50 text-lg font-semibold text-primary-700">
 									{{ (currentUser?.name || "U").slice(0, 1).toUpperCase() }}
 								</div>
 								<div class="min-w-0 flex-1">
@@ -217,39 +217,39 @@ onMounted(async () => {
 								</div>
 							</div>
 
-							<div class="grid grid-cols-2 gap-2 text-xs text-stone-500">
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="grid grid-cols-2 gap-3 text-xs text-stone-500">
+								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
 									<p>System role</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ currentUser?.systemRole || "-" }}</p>
 								</div>
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
 									<p>UI locale</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ currentUser?.uiLocale || "-" }}</p>
 								</div>
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
 									<p>สิทธิ์ทั้งหมด</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ permissionCount }}</p>
 								</div>
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
 									<p>Memberships</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ membershipCount }}</p>
 								</div>
 							</div>
 
 							<dl class="space-y-3 text-sm">
-								<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Role ร้านหลัก</dt>
 									<dd class="text-right font-medium text-stone-900">{{ primaryMembership?.role_name || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Store ล่าสุด</dt>
 									<dd class="text-right font-medium text-stone-900">{{ primaryMembership?.store_id || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Session ID</dt>
 									<dd class="max-w-[190px] text-right font-medium break-all text-stone-900">{{ currentSession?.id || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Remember me</dt>
 									<dd class="text-right font-medium text-stone-900">{{ currentSession?.rememberMe ? "เปิด" : "ปิด" }}</dd>
 								</div>
@@ -263,55 +263,65 @@ onMounted(async () => {
 				</div>
 
 				<div class="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-					<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-						<div class="space-y-4">
+					<UCard class="border-0 rounded-md bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)]">
+						<div class="space-y-5">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Actions</p>
 								<h2 class="mt-2 text-xl font-semibold text-stone-950">จัดการบัญชี</h2>
 								<p class="mt-2 text-sm leading-6 text-stone-500">แก้ไขชื่อผู้ใช้หรือเปลี่ยนรหัสผ่านผ่าน modal เดียวกับ pattern ของระบบ เพื่อให้หน้าหลักอ่านข้อมูลง่ายขึ้น</p>
 							</div>
 
-							<div v-if="profileSuccess" class="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+							<div v-if="profileSuccess" class="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
 								{{ profileSuccess }}
 							</div>
 
-							<div class="rounded-[28px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
-								<div class="flex items-start justify-between gap-4">
-									<div class="min-w-0">
-										<p class="text-sm font-semibold text-stone-900">ข้อมูลบัญชี</p>
-										<p class="mt-1 text-sm leading-6 text-stone-500">แก้ไขชื่อที่ใช้แสดงผลของบัญชีนี้ โดยอีเมลจะยังเป็นข้อมูลอ้างอิงเดิม</p>
-									</div>
-									<UButton color="orange" variant="soft" size="sm" @click="openProfileModal">
+							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4 sm:p-5">
+								<div class="min-w-0">
+									<p class="text-sm font-semibold text-stone-900">ข้อมูลบัญชี</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">แก้ไขชื่อที่ใช้แสดงผลของบัญชีนี้ โดยอีเมลจะยังเป็นข้อมูลอ้างอิงเดิม</p>
+									<AppButton
+										color="primary"
+										variant="soft"
+										size="sm"
+										trailing-icon="i-heroicons-arrow-right-20-solid"
+										class="mt-3"
+										@click="openProfileModal"
+									>
 										แก้ข้อมูลบัญชี
-									</UButton>
+									</AppButton>
 								</div>
-								<dl class="mt-4 space-y-2 text-sm">
-									<div class="flex items-center justify-between gap-4">
+								<dl class="mt-4 space-y-3 text-sm">
+									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3">
 										<dt class="text-stone-500">ชื่อปัจจุบัน</dt>
 										<dd class="font-medium text-stone-900">{{ currentUser?.name || "-" }}</dd>
 									</div>
-									<div class="flex items-center justify-between gap-4">
+									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3">
 										<dt class="text-stone-500">อีเมล</dt>
 										<dd class="max-w-[220px] truncate font-medium text-stone-900">{{ currentUser?.email || "-" }}</dd>
 									</div>
 								</dl>
 							</div>
 
-							<div v-if="passwordSuccess" class="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+							<div v-if="passwordSuccess" class="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
 								{{ passwordSuccess }}
 							</div>
 
-							<div class="rounded-[28px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
-								<div class="flex items-start justify-between gap-4">
-									<div class="min-w-0">
-										<p class="text-sm font-semibold text-stone-900">เปลี่ยนรหัสผ่าน</p>
-										<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อเปลี่ยนรหัสผ่าน ระบบจะยกเลิก session อื่นของบัญชีนี้เพื่อความปลอดภัย</p>
-									</div>
-									<UButton color="gray" variant="soft" size="sm" @click="openPasswordModal">
+							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4 sm:p-5">
+								<div class="min-w-0">
+									<p class="text-sm font-semibold text-stone-900">เปลี่ยนรหัสผ่าน</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อเปลี่ยนรหัสผ่าน ระบบจะยกเลิก session อื่นของบัญชีนี้เพื่อความปลอดภัย</p>
+									<AppButton
+										color="primary"
+										variant="soft"
+										size="sm"
+										trailing-icon="i-heroicons-arrow-right-20-solid"
+										class="mt-3"
+										@click="openPasswordModal"
+									>
 										เปลี่ยนรหัสผ่าน
-									</UButton>
+									</AppButton>
 								</div>
-								<div class="mt-4 rounded-2xl border border-dashed border-[#ddd4c8] bg-white px-4 py-3 text-sm text-stone-500">
+								<div class="mt-4 rounded-md bg-white px-4 py-3 text-sm text-stone-500">
 									ระบบจะให้กรอกรหัสผ่านปัจจุบัน รหัสผ่านใหม่ และยืนยันรหัสผ่านใหม่ใน modal ก่อนบันทึก
 								</div>
 							</div>
@@ -325,28 +335,37 @@ onMounted(async () => {
 				title="แก้ข้อมูลบัญชี"
 				description="อัปเดตชื่อผู้ใช้ของบัญชีปัจจุบัน"
 				desktop-width="440px"
+				panel-class="lg:rounded-md"
+				content-class="pb-6"
 				@update:model-value="profileModalOpen = $event"
 			>
-				<div class="space-y-4">
-					<div v-if="profileError" class="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600 ring-1 ring-rose-100">
+				<div class="space-y-5">
+					<div v-if="profileError" class="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-600">
 						{{ profileError }}
 					</div>
 
-					<div class="grid gap-4">
-						<div>
-							<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
-							<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="gray" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
-						</div>
-						<div>
-							<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อผู้ใช้</label>
-							<UInput v-model="profileForm.name" size="lg" color="gray" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
+					<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
+						<p class="text-sm font-semibold text-stone-900">ข้อมูลบัญชีปัจจุบัน</p>
+						<p class="mt-1 text-sm leading-6 text-stone-500">ระบบจะอัปเดตเฉพาะชื่อที่ใช้แสดงผล ส่วนอีเมลยังคงเป็นข้อมูลอ้างอิงเดิมของบัญชีนี้</p>
+						<div class="mt-4 grid gap-4">
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
+								<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
+							</div>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อผู้ใช้</label>
+								<UInput v-model="profileForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
+							</div>
 						</div>
 					</div>
 
-					<div class="flex justify-end">
-						<UButton color="orange" variant="solid" size="lg" :loading="profilePending" @click="submitProfile">
+					<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AppButton color="neutral" variant="soft" size="lg" @click="profileModalOpen = false">
+							ยกเลิก
+						</AppButton>
+						<AppButton color="primary" variant="solid" size="lg" :loading="profilePending" @click="submitProfile">
 							บันทึกชื่อผู้ใช้
-						</UButton>
+						</AppButton>
 					</div>
 				</div>
 			</AppResponsivePanel>
@@ -356,86 +375,95 @@ onMounted(async () => {
 				title="เปลี่ยนรหัสผ่าน"
 				description="ยืนยันรหัสผ่านเดิมก่อนตั้งรหัสผ่านใหม่"
 				desktop-width="440px"
+				panel-class="lg:rounded-md"
+				content-class="pb-6"
 				@update:model-value="passwordModalOpen = $event"
 			>
-				<div class="space-y-4">
-					<div v-if="passwordError" class="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600 ring-1 ring-rose-100">
+				<div class="space-y-5">
+					<div v-if="passwordError" class="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-600">
 						{{ passwordError }}
 					</div>
 
-					<div class="grid gap-4">
-						<div>
-							<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
-							<div class="relative">
-								<UInput
-									v-model="passwordForm.currentPassword"
-									:type="passwordVisibility.current ? 'text' : 'password'"
-									size="lg"
-									color="gray"
-									class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-11"
-								/>
-								<UButton
-									color="gray"
-									variant="ghost"
-									size="xs"
-									class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-xl text-stone-500 hover:bg-white hover:text-stone-900"
-									:icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-									:aria-label="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									:title="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									@click="passwordVisibility.current = !passwordVisibility.current"
-								/>
+					<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
+						<p class="text-sm font-semibold text-stone-900">ตั้งรหัสผ่านใหม่</p>
+						<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อบันทึกแล้ว ระบบจะยกเลิก session อื่นของบัญชีนี้โดยอัตโนมัติเพื่อความปลอดภัย</p>
+						<div class="mt-4 grid gap-4">
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
+								<div class="relative">
+									<UInput
+										v-model="passwordForm.currentPassword"
+										:type="passwordVisibility.current ? 'text' : 'password'"
+										size="lg"
+										color="neutral"
+										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+									/>
+									<AppButton
+										color="neutral"
+										variant="ghost"
+										size="xs"
+										class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+										:icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
+										:aria-label="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="passwordVisibility.current = !passwordVisibility.current"
+									/>
+								</div>
 							</div>
-						</div>
-						<div>
-							<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
-							<div class="relative">
-								<UInput
-									v-model="passwordForm.newPassword"
-									:type="passwordVisibility.next ? 'text' : 'password'"
-									size="lg"
-									color="gray"
-									class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-11"
-								/>
-								<UButton
-									color="gray"
-									variant="ghost"
-									size="xs"
-									class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-xl text-stone-500 hover:bg-white hover:text-stone-900"
-									:icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-									:aria-label="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									:title="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									@click="passwordVisibility.next = !passwordVisibility.next"
-								/>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
+								<div class="relative">
+									<UInput
+										v-model="passwordForm.newPassword"
+										:type="passwordVisibility.next ? 'text' : 'password'"
+										size="lg"
+										color="neutral"
+										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+									/>
+									<AppButton
+										color="neutral"
+										variant="ghost"
+										size="xs"
+										class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+										:icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
+										:aria-label="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="passwordVisibility.next = !passwordVisibility.next"
+									/>
+								</div>
 							</div>
-						</div>
-						<div>
-							<label class="mb-2 block text-xs font-medium text-stone-500">ยืนยันรหัสผ่านใหม่</label>
-							<div class="relative">
-								<UInput
-									v-model="passwordForm.confirmPassword"
-									:type="passwordVisibility.confirm ? 'text' : 'password'"
-									size="lg"
-									color="gray"
-									class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-11"
-								/>
-								<UButton
-									color="gray"
-									variant="ghost"
-									size="xs"
-									class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-xl text-stone-500 hover:bg-white hover:text-stone-900"
-									:icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-									:aria-label="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									:title="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-									@click="passwordVisibility.confirm = !passwordVisibility.confirm"
-								/>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">ยืนยันรหัสผ่านใหม่</label>
+								<div class="relative">
+									<UInput
+										v-model="passwordForm.confirmPassword"
+										:type="passwordVisibility.confirm ? 'text' : 'password'"
+										size="lg"
+										color="neutral"
+										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+									/>
+									<AppButton
+										color="neutral"
+										variant="ghost"
+										size="xs"
+										class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+										:icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
+										:aria-label="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="passwordVisibility.confirm = !passwordVisibility.confirm"
+									/>
+								</div>
 							</div>
 						</div>
 					</div>
 
-					<div class="flex justify-end">
-						<UButton color="orange" variant="solid" size="lg" :loading="passwordPending" @click="submitPassword">
+					<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AppButton color="neutral" variant="soft" size="lg" @click="passwordModalOpen = false">
+							ยกเลิก
+						</AppButton>
+						<AppButton color="primary" variant="solid" size="lg" :loading="passwordPending" @click="submitPassword">
 							เปลี่ยนรหัสผ่าน
-						</UButton>
+						</AppButton>
 					</div>
 				</div>
 			</AppResponsivePanel>

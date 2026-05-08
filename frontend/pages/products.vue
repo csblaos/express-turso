@@ -204,9 +204,9 @@ function getCategoryLabel(categoryId: string) {
 }
 
 function getStockTone(state: StockState) {
-	if (state === "ready") return "green";
-	if (state === "low") return "orange";
-	return "gray";
+	if (state === "ready") return "success";
+	if (state === "low") return "warning";
+	return "neutral";
 }
 
 function getStockLabel(product: ProductRecord) {
@@ -574,12 +574,12 @@ onBeforeUnmount(() => {
 		<template #default="{ openSidebar }">
 			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
 						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-							<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
+							<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 										<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 											<div class="grid grid-cols-4 gap-2 lg:hidden">
 												<UButton
-													color="gray"
+													color="neutral"
 													variant="soft"
 													size="lg"
 													class="justify-center"
@@ -590,7 +590,7 @@ onBeforeUnmount(() => {
 												/>
 
 												<UButton
-													color="gray"
+													color="neutral"
 													variant="soft"
 													size="lg"
 													class="justify-center"
@@ -601,7 +601,7 @@ onBeforeUnmount(() => {
 												/>
 
 												<UButton
-													color="orange"
+													color="primary"
 													variant="soft"
 													size="lg"
 													icon="i-heroicons-qr-code-20-solid"
@@ -612,7 +612,7 @@ onBeforeUnmount(() => {
 												/>
 
 											<UButton
-												color="orange"
+												color="primary"
 												variant="solid"
 												size="lg"
 													icon="i-heroicons-plus-20-solid"
@@ -630,13 +630,13 @@ onBeforeUnmount(() => {
 													size="lg"
 													icon="i-heroicons-magnifying-glass-20-solid"
 													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-													color="gray"
-													class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													color="neutral"
+													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
 												<UButton
 													v-if="searchQuery"
-													color="gray"
+													color="neutral"
 													variant="ghost"
 													size="xs"
 													icon="i-heroicons-x-mark-20-solid"
@@ -654,13 +654,13 @@ onBeforeUnmount(() => {
 													size="lg"
 													icon="i-heroicons-magnifying-glass-20-solid"
 													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-													color="gray"
-													class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													color="neutral"
+													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
 												<UButton
 													v-if="searchQuery"
-													color="gray"
+													color="neutral"
 													variant="ghost"
 													size="xs"
 													icon="i-heroicons-x-mark-20-solid"
@@ -673,7 +673,7 @@ onBeforeUnmount(() => {
 										</div>
 
 										<UButton
-											color="orange"
+											color="primary"
 											variant="soft"
 											size="lg"
 											icon="i-heroicons-qr-code-20-solid"
@@ -686,7 +686,7 @@ onBeforeUnmount(() => {
 										</UButton>
 
 										<UButton
-											color="orange"
+											color="primary"
 											variant="solid"
 											size="lg"
 											icon="i-heroicons-plus-20-solid"
@@ -701,13 +701,13 @@ onBeforeUnmount(() => {
 							</UCard>
 
 							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-								<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+								<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
 									<div class="space-y-3">
 										<div class="flex flex-wrap items-center gap-2">
-											<UBadge color="gray" variant="soft" :label="`${totalProducts} SKU`" />
-											<UBadge color="green" variant="soft" :label="`พร้อมขาย ${activeProductsCount}`" />
-											<UBadge color="orange" variant="soft" :label="`สต็อกต่ำ ${lowStockCount}`" />
-											<UBadge color="gray" variant="soft" :label="`ปิดขาย ${inactiveCount}`" />
+											<UBadge color="neutral" variant="soft" :label="`${totalProducts} SKU`" />
+											<UBadge color="success" variant="soft" :label="`พร้อมขาย ${activeProductsCount}`" />
+											<UBadge color="warning" variant="soft" :label="`สต็อกต่ำ ${lowStockCount}`" />
+											<UBadge color="neutral" variant="soft" :label="`ปิดขาย ${inactiveCount}`" />
 										</div>
 
 										<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
@@ -720,7 +720,7 @@ onBeforeUnmount(() => {
 														<select
 															id="product-category-select"
 															v-model="activeCategory"
-															class="w-full appearance-none rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+															class="w-full appearance-none rounded-md border border-[#e7e4dd] bg-[#fffefd] px-4 py-3 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
 														>
 															<option
 																v-for="category in categoryOptions"
@@ -741,7 +741,7 @@ onBeforeUnmount(() => {
 													<UButton
 														v-for="category in categoryOptions"
 														:key="category.id"
-														:color="activeCategory === category.id ? 'orange' : 'gray'"
+														:color="activeCategory === category.id ? 'primary' : 'neutral'"
 														:variant="activeCategory === category.id ? 'soft' : 'ghost'"
 														size="sm"
 														class="shrink-0 whitespace-nowrap snap-start"
@@ -758,7 +758,7 @@ onBeforeUnmount(() => {
 													<UButton
 														v-for="status in statusOptions"
 														:key="status.id"
-														:color="activeStatus === status.id ? 'gray' : 'gray'"
+														:color="activeStatus === status.id ? 'neutral' : 'neutral'"
 														:variant="activeStatus === status.id ? 'solid' : 'soft'"
 														size="sm"
 														:label="status.label"
@@ -769,11 +769,11 @@ onBeforeUnmount(() => {
 											</div>
 
 											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-												<UButton color="gray" variant="soft" size="sm" label="นำเข้า" :disabled="!canCreateProduct" />
+												<UButton color="neutral" variant="soft" size="sm" label="นำเข้า" :disabled="!canCreateProduct" />
 												<UButton
 													v-for="sort in sortOptions"
 													:key="sort.id"
-													color="gray"
+													color="neutral"
 													:variant="activeSort === sort.id ? 'solid' : 'soft'"
 													size="sm"
 													:label="sort.label"
@@ -784,7 +784,7 @@ onBeforeUnmount(() => {
 									</div>
 								</UCard>
 
-								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
 									<div class="space-y-4 p-4">
 										<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 											<div>
@@ -821,7 +821,7 @@ onBeforeUnmount(() => {
 														{{ productsError }}
 													</p>
 													<div class="mt-4">
-														<UButton color="orange" variant="soft" size="sm" label="ลองใหม่" @click="loadProducts" />
+														<UButton color="primary" variant="soft" size="sm" label="ลองใหม่" @click="loadProducts" />
 													</div>
 												</div>
 											</UCard>
@@ -831,12 +831,12 @@ onBeforeUnmount(() => {
 													v-for="product in filteredProducts"
 													:key="product.id"
 													type="button"
-													class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-3 text-left transition hover:border-[#d9d5cd] hover:shadow-sm"
+													class="w-full rounded-md border border-[#e7e4dd] bg-[#fffefd] p-3 text-left transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6]"
 													:class="selectedProductId === product.id ? 'ring-2 ring-[#f3c7a7]' : ''"
 													@click="openProductDetail(product.id)"
 												>
 													<div class="flex items-start gap-3">
-														<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-semibold text-white" :style="{ background: product.accent }">
+														<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
 															<img
 																v-if="product.imageUrl"
 																:src="product.imageUrl"
@@ -851,7 +851,7 @@ onBeforeUnmount(() => {
 																<div class="min-w-0">
 																	<div class="flex flex-wrap items-center gap-2">
 																		<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
-																		<UBadge v-if="product.tag" color="gray" variant="soft" :label="product.tag" />
+																		<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
 																	</div>
 																	<p class="mt-1 truncate text-[11px] text-stone-500">
 																		{{ product.sku }} · {{ product.barcode }}
@@ -866,9 +866,9 @@ onBeforeUnmount(() => {
 
 															<div class="mt-3 flex flex-wrap items-center gap-2">
 																<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
-																<UBadge color="gray" variant="soft" :label="getCategoryLabel(product.categoryId)" />
-																<UBadge color="gray" variant="soft" :label="product.unitLabel" />
-																<UBadge color="gray" variant="soft" :label="`${product.variantCount} variants`" />
+																<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
+																<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
+																<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
 															</div>
 
 															<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -876,9 +876,9 @@ onBeforeUnmount(() => {
 																	อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
 																</p>
 																<div class="flex flex-wrap gap-2">
-																	<UButton color="gray" variant="soft" size="xs" label="ดู" @click.stop="openProductDetail(product.id)" />
-																	<UButton color="gray" variant="soft" size="xs" label="แก้ไข" />
-																	<UButton color="gray" variant="soft" size="xs" label="คัดลอก" />
+																	<UButton color="neutral" variant="soft" size="xs" label="ดู" @click.stop="openProductDetail(product.id)" />
+																	<UButton color="neutral" variant="soft" size="xs" label="แก้ไข" />
+																	<UButton color="neutral" variant="soft" size="xs" label="คัดลอก" />
 																</div>
 															</div>
 														</div>
@@ -921,9 +921,9 @@ onBeforeUnmount(() => {
 									</h2>
 								</div>
 								<div class="flex items-center gap-2">
-									<UButton color="gray" variant="soft" size="xs" label="แก้ไข" />
+									<UButton color="neutral" variant="soft" size="xs" label="แก้ไข" />
 									<UButton
-										color="gray"
+										color="neutral"
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-x-mark-20-solid"
@@ -934,9 +934,9 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 
-							<div class="mt-4 rounded-[24px] bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
+							<div class="mt-4 rounded-md bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
 								<div class="flex items-start gap-3">
-									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
+									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
 										<img
 											v-if="selectedProduct.imageUrl"
 											:src="selectedProduct.imageUrl"
@@ -959,9 +959,9 @@ onBeforeUnmount(() => {
 										</div>
 
 										<div class="mt-3 flex flex-wrap gap-2">
-											<UBadge color="gray" variant="soft" :label="getCategoryLabel(selectedProduct.categoryId)" />
-											<UBadge color="gray" variant="soft" :label="selectedProduct.unitLabel" />
-											<UBadge color="gray" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
+											<UBadge color="neutral" variant="soft" :label="getCategoryLabel(selectedProduct.categoryId)" />
+											<UBadge color="neutral" variant="soft" :label="selectedProduct.unitLabel" />
+											<UBadge color="neutral" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
 										</div>
 									</div>
 								</div>
@@ -969,25 +969,25 @@ onBeforeUnmount(() => {
 						</div>
 
 						<div class="grid grid-cols-3 gap-2 border-b border-[#e7e4dd] py-4">
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
 							</div>
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 							</div>
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
 							</div>
 						</div>
 
 						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto py-4 pr-1">
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
 								<div class="flex items-center justify-between gap-2">
 									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
-									<UBadge color="gray" variant="soft" :label="selectedProduct.updatedBy" />
+									<UBadge color="neutral" variant="soft" :label="selectedProduct.updatedBy" />
 								</div>
 
 								<dl class="mt-4 space-y-3 text-sm">
@@ -1010,27 +1010,27 @@ onBeforeUnmount(() => {
 								</dl>
 							</div>
 
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
 								<div class="flex items-center justify-between gap-2">
 									<div>
 										<h3 class="text-sm font-semibold text-stone-950">หน่วยขายและตัวเลือก</h3>
 										<p class="mt-1 text-xs text-stone-500">หน่วยที่พร้อมใช้ใน POS และตัวเลือกสินค้านี้</p>
 									</div>
-									<UBadge color="gray" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
+									<UBadge color="neutral" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
 								</div>
 
 								<div class="mt-4 flex flex-wrap gap-2">
 									<UBadge
 										v-for="unit in selectedProduct.saleUnits"
 										:key="unit"
-										color="gray"
+										color="neutral"
 										variant="soft"
 										:label="unit"
 									/>
 								</div>
 							</div>
 
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
 								<div class="flex items-start justify-between gap-3">
 									<div>
 										<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
@@ -1038,17 +1038,17 @@ onBeforeUnmount(() => {
 											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
 										</p>
 									</div>
-									<UButton color="orange" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
+									<UButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
 								</div>
 
-								<div class="mt-4 rounded-2xl bg-white px-3 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-[#e7e4dd]">
 									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
 									<div class="mt-2 flex items-start justify-between gap-3">
 										<div>
 											<p class="text-sm font-semibold text-stone-900">{{ selectedProduct.updatedAt }}</p>
 											<p class="mt-1 text-sm text-stone-500">เหตุผลล่าสุด: ปรับต้นทุนวัตถุดิบตามรอบรับของเข้า</p>
 										</div>
-										<UBadge color="gray" variant="soft" :label="selectedProduct.updatedBy" />
+										<UBadge color="neutral" variant="soft" :label="selectedProduct.updatedBy" />
 									</div>
 								</div>
 							</div>
@@ -1056,9 +1056,9 @@ onBeforeUnmount(() => {
 
 						<div class="border-t border-[#e7e4dd] pt-4">
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="gray" variant="soft" size="lg" label="คัดลอกสินค้า" :disabled="!canCreateProduct" />
+								<UButton color="neutral" variant="soft" size="lg" label="คัดลอกสินค้า" :disabled="!canCreateProduct" />
 								<UButton
-									color="gray"
+									color="neutral"
 									:variant="selectedProduct.status === 'active' ? 'outline' : 'solid'"
 									size="lg"
 									:label="selectedProduct.status === 'active' ? 'ปิดขาย' : 'เปิดขาย'"
@@ -1083,7 +1083,7 @@ onBeforeUnmount(() => {
 					v-if="cameraScannerOpen"
 					class="fixed inset-0 z-[70] flex items-end justify-center bg-[rgba(28,25,23,0.58)] p-3 backdrop-blur-sm sm:items-center sm:p-6"
 				>
-					<div class="w-full max-w-2xl rounded-[28px] bg-[#fffefd] p-4 shadow-2xl ring-1 ring-[#e7e4dd] sm:p-5">
+					<div class="w-full max-w-2xl rounded-md bg-[#fffefd] p-4 shadow-[0_18px_44px_rgba(31,28,24,0.18)] ring-1 ring-[#e7e4dd] sm:p-5">
 						<div class="flex items-start justify-between gap-3">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
@@ -1098,7 +1098,7 @@ onBeforeUnmount(() => {
 							</div>
 
 							<UButton
-								color="gray"
+								color="neutral"
 								variant="soft"
 								size="sm"
 								icon="i-heroicons-x-mark-20-solid"
@@ -1108,7 +1108,7 @@ onBeforeUnmount(() => {
 							/>
 						</div>
 
-						<div class="mt-4 overflow-hidden rounded-[24px] bg-stone-950 ring-1 ring-stone-900/10">
+						<div class="mt-4 overflow-hidden rounded-md bg-stone-950 ring-1 ring-stone-900/10">
 							<div class="relative aspect-[4/3] w-full bg-stone-950">
 								<video
 									ref="scannerVideoRef"
@@ -1117,7 +1117,7 @@ onBeforeUnmount(() => {
 									playsinline
 								/>
 								<div class="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-									<div class="h-32 w-full max-w-sm rounded-[28px] border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.18)]" />
+									<div class="h-32 w-full max-w-sm rounded-md border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.18)]" />
 								</div>
 							</div>
 						</div>
@@ -1138,14 +1138,14 @@ onBeforeUnmount(() => {
 							<div class="flex shrink-0 gap-2">
 								<UButton
 									v-if="cameraScannerError"
-									color="orange"
+									color="primary"
 									variant="soft"
 									size="sm"
 									label="ลองเปิดใหม่"
 									@click="openCameraScanner"
 								/>
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="sm"
 									label="ปิด"
@@ -1167,7 +1167,7 @@ onBeforeUnmount(() => {
 			>
 				<div
 					v-if="scanToast"
-					class="fixed bottom-6 left-1/2 z-50 w-[min(560px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-[rgba(28,25,23,0.92)] px-4 py-3 text-sm text-white shadow-2xl ring-1 ring-white/10 backdrop-blur"
+					class="fixed bottom-6 left-1/2 z-50 w-[min(560px,calc(100%-2rem))] -translate-x-1/2 rounded-md bg-[rgba(28,25,23,0.92)] px-4 py-3 text-sm text-white shadow-[0_18px_40px_rgba(15,23,42,0.22)] ring-1 ring-white/10 backdrop-blur"
 				>
 					{{ scanToast }}
 				</div>

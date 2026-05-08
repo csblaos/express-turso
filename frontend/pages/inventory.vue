@@ -283,10 +283,10 @@ function mapBalance(item: ApiInventoryBalance): InventoryRecord {
 }
 
 function getStockTone(state: StockState) {
-	if (state === "ready") return "green";
-	if (state === "low") return "orange";
-	if (state === "out" || state === "negative") return "red";
-	return "gray";
+	if (state === "ready") return "success";
+	if (state === "low") return "warning";
+	if (state === "out" || state === "negative") return "error";
+	return "neutral";
 }
 
 function getStockLabel(item: InventoryRecord) {
@@ -298,10 +298,10 @@ function getStockLabel(item: InventoryRecord) {
 }
 
 function getMovementTone(type: string) {
-	if (type.includes("_IN")) return "green";
-	if (type.includes("_OUT")) return "orange";
-	if (type.includes("_SET")) return "gray";
-	return "gray";
+	if (type.includes("_IN")) return "success";
+	if (type.includes("_OUT")) return "warning";
+	if (type.includes("_SET")) return "neutral";
+	return "neutral";
 }
 
 function getMovementLabel(type: string) {
@@ -612,7 +612,7 @@ onBeforeUnmount(() => {
 									<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 										<div class="grid grid-cols-4 gap-2 lg:hidden">
 											<UButton
-												color="gray"
+												color="neutral"
 												variant="soft"
 												size="lg"
 												class="justify-center"
@@ -622,7 +622,7 @@ onBeforeUnmount(() => {
 												@click="openSidebar"
 											/>
 											<UButton
-												color="gray"
+												color="neutral"
 												variant="soft"
 												size="lg"
 												class="justify-center"
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
 												@click="toggleMobileSearch"
 											/>
 											<UButton
-												color="orange"
+												color="primary"
 												variant="soft"
 												size="lg"
 												icon="i-heroicons-qr-code-20-solid"
@@ -642,7 +642,7 @@ onBeforeUnmount(() => {
 												@click="openCameraScanner"
 											/>
 											<UButton
-												color="orange"
+												color="primary"
 												variant="solid"
 												size="lg"
 												icon="i-heroicons-arrow-path-rounded-square-20-solid"
@@ -660,13 +660,13 @@ onBeforeUnmount(() => {
 												size="lg"
 												icon="i-heroicons-magnifying-glass-20-solid"
 												placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-												color="gray"
+												color="neutral"
 												class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
 											<UButton
 												v-if="searchQuery"
-												color="gray"
+												color="neutral"
 												variant="ghost"
 												size="xs"
 												icon="i-heroicons-x-mark-20-solid"
@@ -684,13 +684,13 @@ onBeforeUnmount(() => {
 												size="lg"
 												icon="i-heroicons-magnifying-glass-20-solid"
 												placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-												color="gray"
+												color="neutral"
 												class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
 											<UButton
 												v-if="searchQuery"
-												color="gray"
+												color="neutral"
 												variant="ghost"
 												size="xs"
 												icon="i-heroicons-x-mark-20-solid"
@@ -704,7 +704,7 @@ onBeforeUnmount(() => {
 
 									<div class="hidden gap-2 lg:flex">
 										<UButton
-											color="orange"
+											color="primary"
 											variant="soft"
 											size="lg"
 											icon="i-heroicons-qr-code-20-solid"
@@ -716,7 +716,7 @@ onBeforeUnmount(() => {
 											<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
 										</UButton>
 										<UButton
-											color="gray"
+											color="neutral"
 											variant="soft"
 											size="lg"
 											icon="i-heroicons-arrow-path-20-solid"
@@ -735,11 +735,11 @@ onBeforeUnmount(() => {
 								<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
 									<div class="space-y-3">
 										<div class="flex flex-wrap items-center gap-2">
-											<UBadge color="gray" variant="soft" :label="`${totalSkuCount} SKU`" />
-											<UBadge color="green" variant="soft" :label="`พร้อมขาย ${readyCount}`" />
-											<UBadge color="orange" variant="soft" :label="`ต่ำ ${lowCount}`" />
-											<UBadge color="red" variant="soft" :label="`หมด ${outCount}`" />
-											<UBadge color="red" variant="soft" :label="`ติดลบ ${negativeCount}`" />
+											<UBadge color="neutral" variant="soft" :label="`${totalSkuCount} SKU`" />
+											<UBadge color="success" variant="soft" :label="`พร้อมขาย ${readyCount}`" />
+											<UBadge color="warning" variant="soft" :label="`ต่ำ ${lowCount}`" />
+											<UBadge color="error" variant="soft" :label="`หมด ${outCount}`" />
+											<UBadge color="error" variant="soft" :label="`ติดลบ ${negativeCount}`" />
 										</div>
 
 										<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
@@ -769,7 +769,7 @@ onBeforeUnmount(() => {
 													<UButton
 														v-for="category in categoryOptions"
 														:key="category.id"
-														:color="activeCategory === category.id ? 'orange' : 'gray'"
+														:color="activeCategory === category.id ? 'primary' : 'neutral'"
 														:variant="activeCategory === category.id ? 'soft' : 'ghost'"
 														size="sm"
 														class="shrink-0 whitespace-nowrap snap-start"
@@ -786,7 +786,7 @@ onBeforeUnmount(() => {
 													<UButton
 														v-for="status in statusOptions"
 														:key="status.id"
-														color="gray"
+														color="neutral"
 														:variant="activeStatus === status.id ? 'solid' : 'soft'"
 														size="sm"
 														:label="status.label"
@@ -800,7 +800,7 @@ onBeforeUnmount(() => {
 												<UButton
 													v-for="sort in sortOptions"
 													:key="sort.id"
-													color="gray"
+													color="neutral"
 													:variant="activeSort === sort.id ? 'solid' : 'soft'"
 													size="sm"
 													:label="sort.label"
@@ -841,7 +841,7 @@ onBeforeUnmount(() => {
 													<p class="text-lg font-semibold text-stone-900">โหลดสต็อกไม่สำเร็จ</p>
 													<p class="mt-2 text-sm text-stone-500">{{ balancesError }}</p>
 													<div class="mt-4">
-														<UButton color="orange" variant="soft" size="sm" label="ลองใหม่" @click="loadBalances" />
+														<UButton color="primary" variant="soft" size="sm" label="ลองใหม่" @click="loadBalances" />
 													</div>
 												</div>
 											</UCard>
@@ -883,14 +883,14 @@ onBeforeUnmount(() => {
 															</div>
 
 															<div class="mt-3 flex flex-wrap items-center gap-2">
-																<UBadge color="gray" variant="soft" :label="item.categoryLabel" />
-																<UBadge color="gray" variant="soft" :label="item.unitLabel" />
-																<UBadge color="gray" variant="soft" :label="item.status === 'active' ? 'พร้อมใช้' : 'ปิดใช้งาน'" />
+																<UBadge color="neutral" variant="soft" :label="item.categoryLabel" />
+																<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
+																<UBadge color="neutral" variant="soft" :label="item.status === 'active' ? 'พร้อมใช้' : 'ปิดใช้งาน'" />
 															</div>
 
 															<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
 																<p class="text-[11px] text-stone-500">อัปเดต {{ item.updatedAt }}</p>
-																<UButton color="gray" variant="soft" size="xs" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
+																<UButton color="neutral" variant="soft" size="xs" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
 															</div>
 														</div>
 													</div>
@@ -928,7 +928,7 @@ onBeforeUnmount(() => {
 									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">ข้อมูลสต็อก</h2>
 								</div>
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="xs"
 									icon="i-heroicons-x-mark-20-solid"
@@ -958,8 +958,8 @@ onBeforeUnmount(() => {
 											<UBadge :color="getStockTone(selectedBalance.stockState)" variant="soft" :label="getStockLabel(selectedBalance)" />
 										</div>
 										<div class="mt-3 flex flex-wrap gap-2">
-											<UBadge color="gray" variant="soft" :label="selectedBalance.categoryLabel" />
-											<UBadge color="gray" variant="soft" :label="selectedBalance.unitLabel" />
+											<UBadge color="neutral" variant="soft" :label="selectedBalance.categoryLabel" />
+											<UBadge color="neutral" variant="soft" :label="selectedBalance.unitLabel" />
 										</div>
 									</div>
 								</div>
@@ -988,14 +988,14 @@ onBeforeUnmount(() => {
 										<h3 class="text-sm font-semibold text-stone-900">ปรับสต็อก</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">แยก flow ปรับสต็อกออกจากข้อมูลสินค้า เพื่อให้ตรวจสอบย้อนหลังได้ง่าย</p>
 									</div>
-									<UBadge color="gray" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
+									<UBadge color="neutral" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
 								</div>
 
 								<div class="mt-4 grid gap-2 sm:grid-cols-3">
 									<UButton
 										v-for="mode in adjustmentModeOptions"
 										:key="mode.id"
-										:color="adjustmentMode === mode.id ? 'orange' : 'gray'"
+										:color="adjustmentMode === mode.id ? 'primary' : 'neutral'"
 										:variant="adjustmentMode === mode.id ? 'soft' : 'ghost'"
 										size="sm"
 										class="justify-center"
@@ -1028,7 +1028,7 @@ onBeforeUnmount(() => {
 										/>
 									</div>
 									<UButton
-										color="orange"
+										color="primary"
 										variant="solid"
 										size="lg"
 										class="justify-center"
@@ -1044,7 +1044,7 @@ onBeforeUnmount(() => {
 							<section class="space-y-3">
 								<div class="flex items-center justify-between gap-3">
 									<h3 class="text-sm font-semibold text-stone-900">ประวัติการเคลื่อนไหว</h3>
-									<UBadge color="gray" variant="soft" :label="`${movements.length} รายการ`" />
+									<UBadge color="neutral" variant="soft" :label="`${movements.length} รายการ`" />
 								</div>
 
 								<UCard
@@ -1125,7 +1125,7 @@ onBeforeUnmount(() => {
 								<p class="mt-1 text-sm text-stone-500">เหมาะกับ mobile, tablet และ desktop ที่ไม่ต่อ scanner gun</p>
 							</div>
 							<UButton
-								color="gray"
+								color="neutral"
 								variant="soft"
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"

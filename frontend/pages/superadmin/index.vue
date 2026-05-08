@@ -30,8 +30,8 @@ const entries: Entry[] = [
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
 				<AppPageHeader title="Superadmin Settings" description="พื้นที่ผู้ดูแลระดับสูงฝั่งธุรกิจ/องค์กร แยกจาก System Admin กลางของแพลตฟอร์ม" @menu="openSidebar">
 					<template #badges>
-						<NuxtLink to="/settings"><UBadge color="gray" variant="soft" label="กลับ Settings" /></NuxtLink>
-						<UBadge color="orange" variant="soft" label="Superadmin" />
+						<NuxtLink to="/settings"><UBadge color="neutral" variant="soft" label="กลับ Settings" /></NuxtLink>
+						<UBadge color="primary" variant="soft" label="Superadmin" />
 					</template>
 				</AppPageHeader>
 
@@ -49,7 +49,7 @@ const entries: Entry[] = [
 								<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
 									<UIcon :name="entry.icon" class="h-5 w-5" />
 								</div>
-								<UBadge v-if="entry.badge" :color="entry.badge === 'พร้อมใช้งาน' ? 'green' : 'gray'" variant="soft" :label="entry.badge" />
+								<UBadge v-if="entry.badge" :color="entry.badge === 'พร้อมใช้งาน' ? 'success' : 'neutral'" variant="soft" :label="entry.badge" />
 							</div>
 							<div class="mt-4">
 								<h2 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h2>

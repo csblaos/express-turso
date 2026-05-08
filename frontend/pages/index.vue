@@ -378,14 +378,14 @@ function clearCart() {
 
 function getStockTone(state: StockState) {
 	if (state === "ready") {
-		return "green";
+		return "success";
 	}
 
 	if (state === "low") {
-		return "orange";
+		return "warning";
 	}
 
-	return "gray";
+	return "neutral";
 }
 
 function getStockLabel(product: Product) {
@@ -439,15 +439,15 @@ function simulateScan() {
 										<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-10">
 											<div class="space-y-4">
 												<div class="flex flex-wrap items-center gap-2">
-													<UBadge color="orange" variant="soft" label="POS" />
-													<UBadge color="gray" variant="soft" :label="`บิล ${currentTicket}`" />
-													<UBadge color="green" variant="soft" :label="`พร้อมขาย ${filteredProducts.length} รายการ`" />
+													<UBadge color="primary" variant="soft" label="POS" />
+													<UBadge color="neutral" variant="soft" :label="`บิล ${currentTicket}`" />
+													<UBadge color="success" variant="soft" :label="`พร้อมขาย ${filteredProducts.length} รายการ`" />
 												</div>
 
 												<div class="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
 													<div class="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
 														<UButton
-															color="gray"
+															color="neutral"
 															variant="soft"
 															size="lg"
 															class="justify-center lg:hidden"
@@ -461,12 +461,12 @@ function simulateScan() {
 																size="lg"
 																icon="i-heroicons-magnifying-glass-20-solid"
 																placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-																color="gray"
+																color="neutral"
 																class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
 															/>
 															<UButton
 																v-if="searchQuery"
-																color="gray"
+																color="neutral"
 																variant="ghost"
 																size="xs"
 																icon="i-heroicons-x-mark-20-solid"
@@ -479,7 +479,7 @@ function simulateScan() {
 													</div>
 
 													<UButton
-														color="orange"
+														color="primary"
 														variant="solid"
 														size="lg"
 														icon="i-heroicons-qr-code-20-solid"
@@ -490,8 +490,8 @@ function simulateScan() {
 													/>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="gray" variant="soft" size="lg" label="พักบิล" />
-														<UButton color="gray" variant="outline" size="lg" label="บิลที่พัก 4" />
+														<UButton color="neutral" variant="soft" size="lg" label="พักบิล" />
+														<UButton color="neutral" variant="outline" size="lg" label="บิลที่พัก 4" />
 													</div>
 												</div>
 
@@ -501,7 +501,7 @@ function simulateScan() {
 															<UButton
 																v-for="mode in serviceModes"
 																:key="mode"
-																:color="activeMode === mode ? 'gray' : 'gray'"
+																:color="activeMode === mode ? 'neutral' : 'neutral'"
 																:variant="activeMode === mode ? 'solid' : 'soft'"
 																size="sm"
 																:label="mode"
@@ -514,7 +514,7 @@ function simulateScan() {
 															<UButton
 																v-for="category in categories"
 																:key="category.id"
-																:color="activeCategory === category.id ? 'orange' : 'gray'"
+																:color="activeCategory === category.id ? 'primary' : 'neutral'"
 																:variant="activeCategory === category.id ? 'soft' : 'ghost'"
 																size="sm"
 																class="whitespace-nowrap"
@@ -531,7 +531,7 @@ function simulateScan() {
 															<UButton
 																v-for="view in quickViews"
 																:key="view.id"
-																:color="activeQuickView === view.id ? 'gray' : 'gray'"
+																:color="activeQuickView === view.id ? 'neutral' : 'neutral'"
 																:variant="activeQuickView === view.id ? 'solid' : 'soft'"
 																size="sm"
 																:label="view.label"
@@ -542,10 +542,10 @@ function simulateScan() {
 													</div>
 
 													<div class="flex flex-wrap items-start justify-start gap-2 xl:max-w-[280px] xl:justify-end">
-														<UBadge color="gray" variant="soft" :label="`พนักงาน Lina`" />
-														<UBadge color="gray" variant="soft" :label="`ลูกค้า ${selectedCustomer}`" />
-														<UButton color="gray" variant="soft" size="sm" label="เรียงตามขายดี" />
-														<UButton color="gray" variant="soft" size="sm" label="ฟิลเตอร์สาขา" />
+														<UBadge color="neutral" variant="soft" :label="`พนักงาน Lina`" />
+														<UBadge color="neutral" variant="soft" :label="`ลูกค้า ${selectedCustomer}`" />
+														<UButton color="neutral" variant="soft" size="sm" label="เรียงตามขายดี" />
+														<UButton color="neutral" variant="soft" size="sm" label="ฟิลเตอร์สาขา" />
 													</div>
 												</div>
 											</div>
@@ -593,7 +593,7 @@ function simulateScan() {
 															</div>
 																<UBadge
 																	v-if="product.tag"
-																		color="gray"
+																		color="neutral"
 																	variant="soft"
 																	:label="product.tag"
 																	class="max-w-full bg-white/15 text-[10px] text-white ring-0"
@@ -617,10 +617,10 @@ function simulateScan() {
 																	variant="soft"
 																	:label="getStockLabel(product)"
 																/>
-																<UBadge color="gray" variant="soft" :label="product.unitLabel" />
+																<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
 																<UBadge
 																	v-if="product.hasVariants"
-																	color="gray"
+																	color="neutral"
 																variant="soft"
 																label="มีตัวเลือก"
 															/>
@@ -641,7 +641,7 @@ function simulateScan() {
 															</p>
 														</div>
 															<UButton
-																	:color="product.stockState === 'inactive' ? 'gray' : 'orange'"
+																	:color="product.stockState === 'inactive' ? 'neutral' : 'primary'"
 																:variant="product.stockState === 'inactive' ? 'soft' : 'solid'"
 																size="xs"
 																:icon="product.stockState === 'inactive' ? 'i-heroicons-lock-closed-16-solid' : 'i-heroicons-plus-16-solid'"
@@ -684,7 +684,7 @@ function simulateScan() {
 												</div>
 											</div>
 											<UButton
-												color="gray"
+												color="neutral"
 												variant="soft"
 												size="xs"
 												icon="i-heroicons-trash"
@@ -696,9 +696,9 @@ function simulateScan() {
 
 											<div class="mt-4 grid min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3">
 												<div class="flex flex-wrap gap-2">
-													<UButton color="gray" variant="soft" size="sm" label="แนบลูกค้า" />
-													<UButton color="gray" variant="soft" size="sm" label="ส่วนลด" />
-													<UButton color="gray" variant="soft" size="sm" label="พักบิล" />
+													<UButton color="neutral" variant="soft" size="sm" label="แนบลูกค้า" />
+													<UButton color="neutral" variant="soft" size="sm" label="ส่วนลด" />
+													<UButton color="neutral" variant="soft" size="sm" label="พักบิล" />
 												</div>
 
 												<div class="scrollbar-soft h-full min-h-0 overflow-y-auto pr-1">
@@ -722,15 +722,15 @@ function simulateScan() {
 												<div class="flex items-center justify-between gap-3">
 													<div class="flex min-w-0 flex-wrap gap-1.5">
 														<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
-														<UBadge color="gray" variant="soft" :label="item.unitLabel" />
-														<UBadge v-if="item.hasVariants" color="gray" variant="soft" label="ตัวเลือก" />
+														<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
+														<UBadge v-if="item.hasVariants" color="neutral" variant="soft" label="ตัวเลือก" />
 													</div>
 													<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
-														<UButton color="gray" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+														<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 														<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 															{{ item.qty }}
 														</span>
-														<UButton color="gray" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
+														<UButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
 													</div>
 												</div>
 											</div>
@@ -782,11 +782,11 @@ function simulateScan() {
 													</div>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="gray" variant="soft" size="lg" label="เงินสด" />
-														<UButton color="gray" variant="soft" size="lg" label="QR / โอน" />
+														<UButton color="neutral" variant="soft" size="lg" label="เงินสด" />
+														<UButton color="neutral" variant="soft" size="lg" label="QR / โอน" />
 													</div>
 
-													<UButton color="orange" variant="solid" size="xl" block label="รับชำระเงิน" />
+													<UButton color="primary" variant="solid" size="xl" class="w-full" label="รับชำระเงิน" />
 												</div>
 											</div>
 								</div>
@@ -803,7 +803,7 @@ function simulateScan() {
 				</div>
 				<div class="flex items-center gap-3">
 					<p class="text-right text-lg font-semibold text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
-						<UButton color="orange" variant="solid" size="lg" label="ดูบิล" @click="mobileTicketOpen = true" />
+						<UButton color="primary" variant="solid" size="lg" label="ดูบิล" @click="mobileTicketOpen = true" />
 				</div>
 			</div>
 		</div>
@@ -822,7 +822,7 @@ function simulateScan() {
 								{{ currentTicket }}
 							</h2>
 						</div>
-							<UButton color="gray" variant="soft" size="sm" label="ปิด" @click="mobileTicketOpen = false" />
+							<UButton color="neutral" variant="soft" size="sm" label="ปิด" @click="mobileTicketOpen = false" />
 					</div>
 				</template>
 
@@ -846,14 +846,14 @@ function simulateScan() {
 								<div class="flex items-center justify-between gap-3">
 									<div class="flex min-w-0 flex-wrap gap-1.5">
 										<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
-										<UBadge color="gray" variant="soft" :label="item.unitLabel" />
+										<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
 									</div>
 									<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
-										<UButton color="gray" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+										<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 										<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 											{{ item.qty }}
 										</span>
-										<UButton color="gray" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
+										<UButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
 									</div>
 								</div>
 							</div>
@@ -891,13 +891,13 @@ function simulateScan() {
 							</div>
 
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="gray" variant="soft" size="lg" label="เงินสด" />
-								<UButton color="gray" variant="soft" size="lg" label="QR / โอน" />
+								<UButton color="neutral" variant="soft" size="lg" label="เงินสด" />
+								<UButton color="neutral" variant="soft" size="lg" label="QR / โอน" />
 							</div>
 
 							<div class="grid gap-2">
-								<UButton color="orange" variant="solid" size="xl" label="รับชำระเงิน" />
-								<UButton color="gray" variant="soft" size="lg" label="พักบิล" />
+								<UButton color="primary" variant="solid" size="xl" label="รับชำระเงิน" />
+								<UButton color="neutral" variant="soft" size="lg" label="พักบิล" />
 							</div>
 						</div>
 					</template>

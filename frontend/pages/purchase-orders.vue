@@ -212,16 +212,16 @@ function formatDate(value?: string | null) {
 }
 
 function statusColor(status: string) {
-	if (status === "received") return "green";
-	if (status === "ordered" || status === "shipped") return "blue";
-	if (status === "cancelled") return "red";
-	return "orange";
+	if (status === "received") return "success";
+	if (status === "ordered" || status === "shipped") return "info";
+	if (status === "cancelled") return "error";
+	return "warning";
 }
 
 function paymentStatusColor(status: string) {
-	if (status === "paid") return "green";
-	if (status === "partial") return "orange";
-	return "gray";
+	if (status === "paid") return "success";
+	if (status === "partial") return "warning";
+	return "neutral";
 }
 
 function productLabel(productId: string) {
@@ -397,8 +397,8 @@ async function submitCreate() {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="orange" variant="soft" label="Purchase Orders" />
-						<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(orders.length)} รายการ`" />
+						<UBadge color="primary" variant="soft" label="Purchase Orders" />
+						<UBadge color="neutral" variant="soft" :label="`${numberFormatter.format(orders.length)} รายการ`" />
 					</template>
 
 					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
@@ -436,7 +436,7 @@ async function submitCreate() {
 								<option value="paid">Paid</option>
 							</select>
 
-							<UButton color="orange" variant="solid" size="lg" icon="i-heroicons-plus-20-solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
+							<UButton color="primary" variant="solid" size="lg" icon="i-heroicons-plus-20-solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
 						</div>
 
 						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -467,7 +467,7 @@ async function submitCreate() {
 					<UCard v-else-if="ordersError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 						<div class="space-y-3 py-10 text-center">
 							<p class="text-sm text-stone-600">{{ ordersError }}</p>
-							<UButton color="orange" variant="soft" @click="loadOrders">ลองใหม่</UButton>
+							<UButton color="primary" variant="soft" @click="loadOrders">ลองใหม่</UButton>
 						</div>
 					</UCard>
 
@@ -523,7 +523,7 @@ async function submitCreate() {
 								<p class="mt-1 text-sm text-stone-500">เริ่มสร้าง PO แรกเพื่อวางแผนรับของและติดตามต้นทุนก่อนเข้าสินค้าคงคลัง</p>
 							</div>
 							<div class="pt-1">
-								<UButton color="orange" variant="solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
+								<UButton color="primary" variant="solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
 							</div>
 						</div>
 					</UCard>
@@ -564,7 +564,7 @@ async function submitCreate() {
 									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Purchase order</p>
 									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">รายละเอียด PO</h2>
 								</div>
-								<UButton color="gray" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดรายละเอียด PO" title="ปิดรายละเอียด PO" @click="closeDetail" />
+								<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดรายละเอียด PO" title="ปิดรายละเอียด PO" @click="closeDetail" />
 							</div>
 
 							<div v-if="selectedOrder" class="mt-4 rounded-[24px] bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
@@ -583,8 +583,8 @@ async function submitCreate() {
 
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentStatusColor(selectedOrder.payment_status)" variant="soft" :label="selectedOrder.payment_status" />
-											<UBadge color="gray" variant="soft" :label="selectedOrder.purchase_currency" />
-											<UBadge color="gray" variant="soft" :label="`${selectedOrder.item_count} รายการ`" />
+											<UBadge color="neutral" variant="soft" :label="selectedOrder.purchase_currency" />
+											<UBadge color="neutral" variant="soft" :label="`${selectedOrder.item_count} รายการ`" />
 										</div>
 									</div>
 								</div>
@@ -598,7 +598,7 @@ async function submitCreate() {
 							<UCard v-else-if="detailError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 								<div class="space-y-3 py-10 text-center">
 									<p class="text-sm text-stone-600">{{ detailError }}</p>
-									<UButton color="orange" variant="soft" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</UButton>
+									<UButton color="primary" variant="soft" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</UButton>
 								</div>
 							</UCard>
 							<template v-else-if="selectedOrderDetail">
@@ -627,7 +627,7 @@ async function submitCreate() {
 								<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
 									<div class="flex items-center justify-between gap-2">
 										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
-										<UBadge color="gray" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
+										<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="item in selectedOrderDetail.items" :key="item.id" class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
@@ -639,8 +639,8 @@ async function submitCreate() {
 												<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base, "THB") }}</p>
 											</div>
 											<div class="mt-3 flex flex-wrap gap-2">
-												<UBadge color="gray" variant="soft" :label="`สั่ง ${numberFormatter.format(item.qty_ordered)}`" />
-												<UBadge color="gray" variant="soft" :label="`รับแล้ว ${numberFormatter.format(item.qty_received)}`" />
+												<UBadge color="neutral" variant="soft" :label="`สั่ง ${numberFormatter.format(item.qty_ordered)}`" />
+												<UBadge color="neutral" variant="soft" :label="`รับแล้ว ${numberFormatter.format(item.qty_received)}`" />
 											</div>
 										</div>
 									</div>
@@ -691,7 +691,7 @@ async function submitCreate() {
 									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Create purchase order</p>
 									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">สร้าง PO ใหม่</h2>
 								</div>
-								<UButton color="gray" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดฟอร์มสร้าง PO" title="ปิดฟอร์มสร้าง PO" @click="closeCreateDrawer" />
+								<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดฟอร์มสร้าง PO" title="ปิดฟอร์มสร้าง PO" @click="closeCreateDrawer" />
 							</div>
 						</div>
 
@@ -725,7 +725,7 @@ async function submitCreate() {
 							<div>
 								<div class="mb-2 flex items-center justify-between gap-3">
 									<label class="block text-xs font-medium text-stone-500">รายการสินค้า</label>
-									<UButton color="gray" variant="soft" size="xs" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
+									<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
 								</div>
 
 								<div class="space-y-3">
@@ -747,7 +747,7 @@ async function submitCreate() {
 												<input v-model="line.unitCost" type="number" min="0" :placeholder="unitCostPlaceholder(line.productId)" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
 											</div>
 											<div class="flex items-end">
-												<UButton color="gray" variant="soft" size="lg" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
+												<UButton color="neutral" variant="soft" size="lg" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
 											</div>
 										</div>
 									</div>
@@ -762,8 +762,8 @@ async function submitCreate() {
 
 						<div class="border-t border-[#e7e4dd] pt-4">
 							<div class="grid gap-2 sm:grid-cols-2">
-								<UButton color="gray" variant="soft" size="lg" label="ยกเลิก" @click="closeCreateDrawer" />
-								<UButton color="orange" variant="solid" size="lg" :loading="submitting" :disabled="!canCreatePurchaseOrder" label="บันทึก PO" @click="submitCreate" />
+								<UButton color="neutral" variant="soft" size="lg" label="ยกเลิก" @click="closeCreateDrawer" />
+								<UButton color="primary" variant="solid" size="lg" :loading="submitting" :disabled="!canCreatePurchaseOrder" label="บันทึก PO" @click="submitCreate" />
 							</div>
 						</div>
 					</div>

@@ -90,8 +90,9 @@ watch(events, (value) => {
 		return;
 	}
 
+	const firstEvent = value[0];
 	if (!value.some((event) => event.id === selectedEventId.value)) {
-		selectedEventId.value = value[0].id;
+		selectedEventId.value = firstEvent ? firstEvent.id : "";
 	}
 }, { immediate: true });
 
@@ -154,17 +155,17 @@ function formatDate(value: string) {
 }
 
 function getResultColor(result: string) {
-	if (result === "success") return "green";
-	if (result === "failed") return "red";
-	if (result === "warning") return "orange";
-	return "gray";
+	if (result === "success") return "success";
+	if (result === "failed") return "error";
+	if (result === "warning") return "warning";
+	return "neutral";
 }
 
 function getScopeColor(scope: string) {
-	if (scope === "system") return "orange";
-	if (scope === "store") return "green";
-	if (scope === "inventory") return "blue";
-	return "gray";
+	if (scope === "system") return "warning";
+	if (scope === "store") return "success";
+	if (scope === "inventory") return "info";
+	return "neutral";
 }
 
 function stringifyBlock(value: unknown) {
@@ -196,8 +197,8 @@ function stringifyBlock(value: unknown) {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="orange" variant="soft" label="กิจกรรม" />
-						<UBadge color="gray" variant="soft" :label="`${numberFormatter.format(events.length)} events`" />
+						<UBadge color="primary" variant="soft" label="กิจกรรม" />
+						<UBadge color="neutral" variant="soft" :label="`${numberFormatter.format(events.length)} events`" />
 					</template>
 
 					<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -252,7 +253,7 @@ function stringifyBlock(value: unknown) {
 						<UCard v-else-if="error" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 							<div class="space-y-3 py-10 text-center">
 								<p class="text-sm text-stone-600">{{ error }}</p>
-								<UButton color="orange" variant="soft" @click="loadEvents">ลองใหม่</UButton>
+								<UButton color="primary" variant="soft" @click="loadEvents">ลองใหม่</UButton>
 							</div>
 						</UCard>
 
@@ -329,7 +330,7 @@ function stringifyBlock(value: unknown) {
 									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">รายละเอียดกิจกรรม</h2>
 								</div>
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="xs"
 									icon="i-heroicons-x-mark-20-solid"
@@ -355,8 +356,8 @@ function stringifyBlock(value: unknown) {
 
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="getScopeColor(selectedEvent.scope)" variant="soft" :label="selectedEvent.scope" />
-											<UBadge color="gray" variant="soft" :label="selectedEvent.actor_role || 'ไม่ระบุ role'" />
-											<UBadge color="gray" variant="soft" :label="formatDate(selectedEvent.occurred_at)" />
+											<UBadge color="neutral" variant="soft" :label="selectedEvent.actor_role || 'ไม่ระบุ role'" />
+											<UBadge color="neutral" variant="soft" :label="formatDate(selectedEvent.occurred_at)" />
 										</div>
 									</div>
 								</div>

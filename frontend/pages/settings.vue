@@ -98,44 +98,45 @@ const settingsSections: SettingsSection[] = [
 		sidebar-description="รวมการตั้งค่าของผู้ใช้และร้านที่กำลังใช้งานไว้ในพื้นที่เดียว"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
 				<AppPageHeader title="ศูนย์รวมการตั้งค่า" description="หน้าหลักนี้ใช้เป็น hub สำหรับการตั้งค่าของผู้ใช้และร้านปัจจุบันเท่านั้น" @menu="openSidebar">
 					<template #badges>
-						<UBadge color="gray" variant="soft" label="Settings" />
-						<UBadge color="orange" variant="soft" label="User + Store settings" />
+						<UBadge color="neutral" variant="soft" label="Settings" />
+						<UBadge color="primary" variant="soft" label="User + Store settings" />
 					</template>
 
 					<template #actions>
-						<UBadge color="gray" variant="soft" label="User + Store settings hub" />
+						<UBadge color="neutral" variant="soft" label="User + Store settings hub" class="hidden sm:inline-flex" />
 					</template>
 				</AppPageHeader>
 
-				<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-					<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-						<div class="space-y-4">
+				<div class="scrollbar-soft min-h-0 min-w-0 space-y-3 overflow-x-hidden overflow-y-auto lg:pr-1">
+					<UCard class="min-w-0 max-w-full rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
+						<div class="space-y-3 sm:space-y-4">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Access control</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">สิทธิ์การใช้งาน</h2>
+								<h2 class="mt-2 text-lg font-semibold text-stone-950 sm:text-xl">สิทธิ์การใช้งาน</h2>
 								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">เข้า 2 หน้านี้ได้ตรง ๆ จาก settings เพื่อจัดการผู้ใช้งานและบทบาทของร้าน</p>
 							</div>
 
-							<div class="grid gap-3 md:grid-cols-2">
+							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2">
 								<NuxtLink
 									v-for="entry in accessQuickLinks"
 									:key="entry.id"
 									:to="entry.to"
-									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
+									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
 								>
-									<div class="flex items-start justify-between gap-3">
-										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
-											<UIcon :name="entry.icon" class="h-5 w-5" />
+									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
-										<UBadge color="green" variant="soft" :label="entry.badge" />
-									</div>
-
-									<div class="mt-4">
-										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
-										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
+										<div class="min-w-0 flex-1">
+											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+												<h3 class="truncate text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
+												<UBadge color="success" variant="soft" :label="entry.badge" class="shrink-0" />
+											</div>
+											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
+										</div>
 									</div>
 								</NuxtLink>
 							</div>
@@ -145,60 +146,64 @@ const settingsSections: SettingsSection[] = [
 					<UCard
 						v-for="section in settingsSections"
 						:key="section.id"
-						class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]"
+						class="min-w-0 max-w-full rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]"
 					>
-						<div class="space-y-4">
+						<div class="space-y-3 sm:space-y-4">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ section.eyebrow }}</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">{{ section.title }}</h2>
+								<h2 class="mt-2 text-lg font-semibold text-stone-950 sm:text-xl">{{ section.title }}</h2>
 								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">{{ section.description }}</p>
 							</div>
 
-							<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
 								<NuxtLink
 									v-for="entry in linkedEntries(section)"
 									:key="entry.id"
 									:to="entry.to"
-									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
+									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
 								>
-									<div class="flex items-start justify-between gap-3">
-										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
-											<UIcon :name="entry.icon" class="h-5 w-5" />
+									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
-										<UBadge
-											v-if="entry.badge"
-											:color="entry.badge === 'พร้อมใช้งาน' ? 'green' : 'gray'"
-											variant="soft"
-											:label="entry.badge"
-										/>
-									</div>
-
-									<div class="mt-4">
-										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
-										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
+										<div class="min-w-0 flex-1">
+											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+												<h3 class="truncate text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
+												<UBadge
+													v-if="entry.badge"
+													:color="entry.badge === 'พร้อมใช้งาน' ? 'success' : 'neutral'"
+													variant="soft"
+													:label="entry.badge"
+													class="shrink-0"
+												/>
+											</div>
+											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
+										</div>
 									</div>
 								</NuxtLink>
 
 								<div
 									v-for="entry in staticEntries(section)"
 									:key="entry.id"
-									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 transition hover:border-[#d9d5cd] hover:shadow-sm"
+									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
 								>
-									<div class="flex items-start justify-between gap-3">
-										<div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
-											<UIcon :name="entry.icon" class="h-5 w-5" />
+									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
-										<UBadge
-											v-if="entry.badge"
-											:color="entry.badge === 'พร้อมใช้งาน' ? 'green' : 'gray'"
-											variant="soft"
-											:label="entry.badge"
-										/>
-									</div>
-
-									<div class="mt-4">
-										<h3 class="text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
-										<p class="mt-2 text-sm leading-6 text-stone-500">{{ entry.description }}</p>
+										<div class="min-w-0 flex-1">
+											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+												<h3 class="truncate text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
+												<UBadge
+													v-if="entry.badge"
+													:color="entry.badge === 'พร้อมใช้งาน' ? 'success' : 'neutral'"
+													variant="soft"
+													:label="entry.badge"
+													class="shrink-0"
+												/>
+											</div>
+											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
+										</div>
 									</div>
 								</div>
 							</div>
