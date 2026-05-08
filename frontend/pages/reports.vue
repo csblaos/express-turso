@@ -151,15 +151,15 @@ function barHeight(value: number) {
 					>
 						<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" label="วันนี้" @click="activeRange = 'today'" />
-								<UButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" label="7 วัน" @click="activeRange = 'week'" />
-								<UButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" label="30 วัน" @click="activeRange = 'month'" />
+								<AppButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" label="วันนี้" @click="activeRange = 'today'" />
+								<AppButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" label="7 วัน" @click="activeRange = 'week'" />
+								<AppButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" label="30 วัน" @click="activeRange = 'month'" />
 							</div>
 
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ยอดขาย" @click="activeReportView = 'sales'" />
-								<UButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" label="สินค้า" @click="activeReportView = 'products'" />
-								<UButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
+								<AppButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ยอดขาย" @click="activeReportView = 'sales'" />
+								<AppButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" label="สินค้า" @click="activeReportView = 'products'" />
+								<AppButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
 							</div>
 
 							<div class="grid gap-3 sm:grid-cols-2">
@@ -174,8 +174,8 @@ function barHeight(value: number) {
 							</div>
 
 							<div class="flex flex-wrap gap-2 xl:justify-end">
-								<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
-								<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
 							</div>
 						</div>
 					</AppPageHeader>

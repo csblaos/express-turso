@@ -37,6 +37,10 @@ const attrs = useAttrs();
 const slots = useSlots();
 const hasDefaultSlot = computed(() => Boolean(slots.default));
 
+const resolvedSize = computed(() => {
+	return props.size === "md" ? "lg" : props.size;
+});
+
 const shouldUseSharedLoadingIcon = computed(() => (
 	props.spinIconOnLoading && Boolean(props.icon)
 ));
@@ -50,7 +54,7 @@ const resolvedLoading = computed(() => (
 ));
 
 const iconSizeClass = computed(() => {
-	switch (props.size) {
+	switch (resolvedSize.value) {
 		case "xs":
 			return "h-3.5 w-3.5";
 		case "sm":
@@ -83,10 +87,10 @@ const buttonClass = computed(() => {
 <template>
 	<UButton
 		v-bind="attrs"
-		:type="type"
-		:color="color"
-		:variant="inline ? 'ghost' : variant"
-		:size="size"
+			:type="type"
+			:color="color"
+			:variant="inline ? 'ghost' : variant"
+			:size="resolvedSize"
 		:icon="resolvedIcon"
 		:trailing-icon="trailingIcon"
 		:loading="resolvedLoading"

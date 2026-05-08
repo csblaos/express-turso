@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 										<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 											<div class="grid grid-cols-4 gap-2 lg:hidden">
-												<UButton
+												<AppButton
 													color="neutral"
 													variant="soft"
 													size="md"
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
 													@click="openSidebar"
 												/>
 
-												<UButton
+												<AppButton
 													color="neutral"
 													variant="soft"
 													size="md"
@@ -600,7 +600,7 @@ onBeforeUnmount(() => {
 													@click="toggleMobileSearch"
 												/>
 
-												<UButton
+												<AppButton
 													color="primary"
 													variant="soft"
 													size="md"
@@ -611,7 +611,7 @@ onBeforeUnmount(() => {
 													@click="openCameraScanner"
 												/>
 
-											<UButton
+											<AppButton
 												color="primary"
 												variant="solid"
 												size="md"
@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
 													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
-												<UButton
+												<AppButton
 													v-if="searchQuery"
 													color="neutral"
 													variant="ghost"
@@ -658,7 +658,7 @@ onBeforeUnmount(() => {
 													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
-												<UButton
+												<AppButton
 													v-if="searchQuery"
 													color="neutral"
 													variant="ghost"
@@ -672,7 +672,7 @@ onBeforeUnmount(() => {
 											</div>
 										</div>
 
-										<UButton
+										<AppButton
 											color="primary"
 											variant="soft"
 											size="md"
@@ -683,9 +683,9 @@ onBeforeUnmount(() => {
 											@click="openCameraScanner"
 										>
 											<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
-										</UButton>
+										</AppButton>
 
-										<UButton
+										<AppButton
 											color="primary"
 											variant="solid"
 											size="md"
@@ -696,7 +696,7 @@ onBeforeUnmount(() => {
 											:disabled="!canCreateProduct"
 										>
 											<span class="hidden sm:inline">เพิ่มสินค้า</span>
-										</UButton>
+										</AppButton>
 									</div>
 							</UCard>
 
@@ -738,7 +738,7 @@ onBeforeUnmount(() => {
 												</div>
 
 												<div class="category-rail scrollbar-soft hidden gap-2 overflow-x-auto pb-1 md:flex">
-													<UButton
+													<AppButton
 														v-for="category in categoryOptions"
 														:key="category.id"
 														:color="activeCategory === category.id ? 'primary' : 'neutral'"
@@ -751,11 +751,11 @@ onBeforeUnmount(() => {
 														<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
 															{{ categoryCounts[category.id] }}
 														</span>
-													</UButton>
+													</AppButton>
 												</div>
 
 												<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-													<UButton
+													<AppButton
 														v-for="status in statusOptions"
 														:key="status.id"
 														:color="activeStatus === status.id ? 'neutral' : 'neutral'"
@@ -769,8 +769,8 @@ onBeforeUnmount(() => {
 											</div>
 
 											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="นำเข้า" :disabled="!canCreateProduct" />
-												<UButton
+													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="นำเข้า" :disabled="!canCreateProduct" />
+												<AppButton
 													v-for="sort in sortOptions"
 													:key="sort.id"
 													color="neutral"
@@ -806,7 +806,7 @@ onBeforeUnmount(() => {
 									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 										<div class="space-y-3">
 											<p class="text-sm text-stone-600">{{ productsError }}</p>
-											<UButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
+											<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
 										</div>
 									</div>
 									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
@@ -865,9 +865,9 @@ onBeforeUnmount(() => {
 															อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
 														</p>
 														<div class="flex flex-wrap gap-2">
-															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
-															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
-															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
+															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
+															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
+															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
 														</div>
 													</div>
 												</div>
@@ -1005,7 +1005,7 @@ onBeforeUnmount(() => {
 											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
 										</p>
 									</div>
-									<UButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
+									<AppButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
 								</div>
 
 								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
@@ -1065,7 +1065,7 @@ onBeforeUnmount(() => {
 								</p>
 							</div>
 
-							<UButton
+							<AppButton
 								color="neutral"
 								variant="soft"
 								size="md"
@@ -1105,7 +1105,7 @@ onBeforeUnmount(() => {
 							</div>
 
 							<div class="flex shrink-0 gap-2">
-								<UButton
+								<AppButton
 									v-if="cameraScannerError"
 									color="primary"
 									variant="soft"
@@ -1114,7 +1114,7 @@ onBeforeUnmount(() => {
 									label="ลองเปิดใหม่"
 									@click="openCameraScanner"
 								/>
-								<UButton
+								<AppButton
 									color="neutral"
 									variant="soft"
 									size="md"

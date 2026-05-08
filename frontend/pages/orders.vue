@@ -321,9 +321,9 @@ function closeDetail() {
 						</div>
 
 						<div class="flex flex-wrap gap-2 pt-1 xl:justify-end">
-								<UButton size="md" class="rounded-md" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
-								<UButton size="md" class="rounded-md" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
-								<UButton size="md" class="rounded-md" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
+								<AppButton size="md" class="rounded-md" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
+								<AppButton size="md" class="rounded-md" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
+								<AppButton size="md" class="rounded-md" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
 							</div>
 
 						<div class="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-4">

@@ -343,7 +343,7 @@ onMounted(loadClients);
 					<template #actions>
 						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
 								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadClients">รีโหลด</AppButton>
-								<UButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</UButton>
+								<AppButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</AppButton>
 						</div>
 					</template>
 					<template #default>
@@ -368,7 +368,7 @@ onMounted(loadClients);
 							</div>
 
 							<div class="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto">
-								<UButton
+								<AppButton
 									v-for="option in [
 										{ id: 'all', label: 'ทั้งหมด' },
 										{ id: 'active', label: 'ใช้งาน' },
@@ -382,7 +382,7 @@ onMounted(loadClients);
 									@click="activeStatus = option.id as 'all' | 'active' | 'suspended'; applyFilters()"
 								>
 									{{ option.label }}
-								</UButton>
+								</AppButton>
 							</div>
 						</div>
 					</template>
@@ -446,9 +446,9 @@ onMounted(loadClients);
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.ui_locale.toUpperCase() }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-500">{{ formatDate(client.created_at) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
-													<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
+													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
 													จัดการ
-												</UButton>
+												</AppButton>
 											</td>
 										</tr>
 									</tbody>
@@ -482,7 +482,7 @@ onMounted(loadClients);
 										</div>
 
 										<div class="flex items-center gap-2">
-											<UButton
+											<AppButton
 												color="neutral"
 												variant="soft"
 													size="md"
@@ -494,8 +494,8 @@ onMounted(loadClients);
 												@click="goToPage(currentPage - 1)"
 											>
 												<span class="hidden sm:inline">ก่อนหน้า</span>
-											</UButton>
-											<UButton
+											</AppButton>
+											<AppButton
 												color="neutral"
 												variant="soft"
 													size="md"
@@ -507,7 +507,7 @@ onMounted(loadClients);
 												@click="goToPage(currentPage + 1)"
 											>
 												<span class="hidden sm:inline">ถัดไป</span>
-											</UButton>
+											</AppButton>
 										</div>
 									</div>
 								</div>

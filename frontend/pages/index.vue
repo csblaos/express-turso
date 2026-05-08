@@ -446,7 +446,7 @@ function simulateScan() {
 
 												<div class="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
 													<div class="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
-														<UButton
+														<AppButton
 															color="neutral"
 															variant="soft"
 															size="md"
@@ -464,7 +464,7 @@ function simulateScan() {
 																color="neutral"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 															/>
-															<UButton
+															<AppButton
 																v-if="searchQuery"
 																color="neutral"
 																variant="ghost"
@@ -478,7 +478,7 @@ function simulateScan() {
 														</div>
 													</div>
 
-													<UButton
+													<AppButton
 														color="primary"
 														variant="solid"
 														size="md"
@@ -490,15 +490,15 @@ function simulateScan() {
 													/>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
-														<UButton color="neutral" variant="outline" size="md" class="rounded-md" label="บิลที่พัก 4" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
+														<AppButton color="neutral" variant="outline" size="md" class="rounded-md" label="บิลที่พัก 4" />
 													</div>
 												</div>
 
 												<div class="grid gap-3 border-t border-[#e7e4dd] pt-3 xl:grid-cols-[minmax(0,1fr)_auto]">
 													<div class="space-y-2">
 														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-															<UButton
+															<AppButton
 																v-for="mode in serviceModes"
 																:key="mode"
 																:color="activeMode === mode ? 'neutral' : 'neutral'"
@@ -511,7 +511,7 @@ function simulateScan() {
 														</div>
 
 														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-															<UButton
+															<AppButton
 																v-for="category in categories"
 																:key="category.id"
 																:color="activeCategory === category.id ? 'primary' : 'neutral'"
@@ -524,11 +524,11 @@ function simulateScan() {
 																<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
 																	{{ categoryCounts[category.id] }}
 																</span>
-															</UButton>
+															</AppButton>
 														</div>
 
 														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-															<UButton
+															<AppButton
 																v-for="view in quickViews"
 																:key="view.id"
 																:color="activeQuickView === view.id ? 'neutral' : 'neutral'"
@@ -544,8 +544,8 @@ function simulateScan() {
 													<div class="flex flex-wrap items-start justify-start gap-2 xl:max-w-[280px] xl:justify-end">
 														<UBadge color="neutral" variant="soft" :label="`พนักงาน Lina`" />
 														<UBadge color="neutral" variant="soft" :label="`ลูกค้า ${selectedCustomer}`" />
-														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เรียงตามขายดี" />
-														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ฟิลเตอร์สาขา" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="เรียงตามขายดี" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ฟิลเตอร์สาขา" />
 													</div>
 												</div>
 											</div>
@@ -640,7 +640,7 @@ function simulateScan() {
 																{{ formatMoney(product.price) }}
 															</p>
 														</div>
-															<UButton
+															<AppButton
 																	:color="product.stockState === 'inactive' ? 'neutral' : 'primary'"
 																:variant="product.stockState === 'inactive' ? 'soft' : 'solid'"
 																size="md"
@@ -683,7 +683,7 @@ function simulateScan() {
 													<p class="truncate pb-0.5 text-xs text-stone-500">{{ activeMode }} · {{ itemCount }} รายการ</p>
 												</div>
 											</div>
-											<UButton
+											<AppButton
 												color="neutral"
 												variant="soft"
 												size="md"
@@ -697,9 +697,9 @@ function simulateScan() {
 
 											<div class="mt-4 grid min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3">
 												<div class="flex flex-wrap gap-2">
-													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="แนบลูกค้า" />
-													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ส่วนลด" />
-													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
+													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="แนบลูกค้า" />
+													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ส่วนลด" />
+													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
 												</div>
 
 												<div class="scrollbar-soft h-full min-h-0 overflow-y-auto pr-1">
@@ -727,11 +727,11 @@ function simulateScan() {
 														<UBadge v-if="item.hasVariants" color="neutral" variant="soft" label="ตัวเลือก" />
 													</div>
 													<div class="inline-flex shrink-0 items-center rounded-md bg-[#f3f2ee] p-0.5">
-														<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+														<AppButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 														<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 															{{ item.qty }}
 														</span>
-														<UButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
+														<AppButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
 													</div>
 												</div>
 											</div>
@@ -783,11 +783,11 @@ function simulateScan() {
 													</div>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
-														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
 													</div>
 
-													<UButton color="primary" variant="solid" size="md" class="w-full rounded-md" label="รับชำระเงิน" />
+													<AppButton color="primary" variant="solid" size="md" class="w-full rounded-md" label="รับชำระเงิน" />
 												</div>
 											</div>
 								</div>
@@ -804,7 +804,7 @@ function simulateScan() {
 				</div>
 				<div class="flex items-center gap-3">
 					<p class="text-right text-lg font-semibold text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
-						<UButton color="primary" variant="solid" size="md" class="rounded-md" label="ดูบิล" @click="mobileTicketOpen = true" />
+						<AppButton color="primary" variant="solid" size="md" class="rounded-md" label="ดูบิล" @click="mobileTicketOpen = true" />
 				</div>
 			</div>
 		</div>
@@ -823,7 +823,7 @@ function simulateScan() {
 								{{ currentTicket }}
 							</h2>
 						</div>
-							<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ปิด" @click="mobileTicketOpen = false" />
+							<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ปิด" @click="mobileTicketOpen = false" />
 					</div>
 				</template>
 
@@ -850,11 +850,11 @@ function simulateScan() {
 										<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
 									</div>
 									<div class="inline-flex shrink-0 items-center rounded-md bg-[#f3f2ee] p-0.5">
-										<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
+										<AppButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 										<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 											{{ item.qty }}
 										</span>
-										<UButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
+										<AppButton color="neutral" variant="ghost" size="xs" label="+" @click="increaseQty(item.id)" />
 									</div>
 								</div>
 							</div>
@@ -892,13 +892,13 @@ function simulateScan() {
 							</div>
 
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
-								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
 							</div>
 
 							<div class="grid gap-2">
-								<UButton color="primary" variant="solid" size="md" class="rounded-md" label="รับชำระเงิน" />
-								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
+								<AppButton color="primary" variant="solid" size="md" class="rounded-md" label="รับชำระเงิน" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
 							</div>
 						</div>
 					</template>
