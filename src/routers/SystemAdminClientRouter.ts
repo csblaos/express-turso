@@ -1,6 +1,8 @@
 import { Router } from "express";
 
 import { SystemAdminClientController } from "@controllers/SystemAdminClientController";
+import { SystemAdminMonitoringController } from "@controllers/SystemAdminMonitoringController";
+import { SystemAdminSecurityController } from "@controllers/SystemAdminSecurityController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
 import SystemAdminClientValidator from "@validators/SystemAdminClientValidator";
@@ -10,6 +12,8 @@ export class SystemAdminClientRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.get("/monitoring", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminMonitoringController.snapshot);
+		this.router.get("/security", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminSecurityController.snapshot);
 		this.router.get("/clients", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.list, SystemAdminClientController.list);
 		this.router.post("/clients", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.create, SystemAdminClientController.create);
 		this.router.patch("/clients/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.update, SystemAdminClientController.update);

@@ -64,6 +64,14 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "System Admin", to: "/system-admin" },
 		{ label: "System Policy" },
 	],
+	"/system-admin/monitoring": [
+		{ label: "System Admin", to: "/system-admin" },
+		{ label: "Monitoring" },
+	],
+	"/system-admin/security": [
+		{ label: "System Admin", to: "/system-admin" },
+		{ label: "Security" },
+	],
 	"/system-admin/config": [
 		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Config" },
@@ -96,6 +104,8 @@ const segmentLabelMap: Record<string, string> = {
 	"global-config": "Global Config",
 	clients: "Clients",
 	system: "System Policy",
+	monitoring: "Monitoring",
+	security: "Security",
 	config: "Config",
 	roles: "Roles",
 	users: "Users",
