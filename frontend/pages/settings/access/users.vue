@@ -132,7 +132,7 @@ watch(resetPasswordOpen, (isOpen) => {
 });
 
 function statusTone(status: string) {
-	return status === "active" ? "green" : "gray";
+	return status === "active" ? "success" : "neutral";
 }
 
 function formatDate(value: string) {
@@ -296,8 +296,8 @@ onMounted(async () => {
 					@menu="openSidebar"
 				>
 					<template #badges>
-						<UBadge color="gray" variant="soft" label="Settings" />
-						<UBadge color="orange" variant="soft" label="Access control" />
+						<UBadge color="neutral" variant="soft" label="Settings" />
+						<UBadge color="primary" variant="soft" label="Access control" />
 					</template>
 
 					<SettingsAccessTabs />
@@ -307,13 +307,13 @@ onMounted(async () => {
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
 							size="lg"
-							color="gray"
+							color="neutral"
 							placeholder="ค้นหาชื่อผู้ใช้หรืออีเมล"
 							class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:shadow-sm"
 							@keyup.enter="fetchMembers"
 						/>
 						<UButton
-							color="gray"
+							color="neutral"
 							variant="soft"
 							size="lg"
 							class="justify-center rounded-2xl"
@@ -322,7 +322,7 @@ onMounted(async () => {
 							@click="fetchMembers"
 						/>
 						<UButton
-							color="orange"
+							color="primary"
 							size="lg"
 							class="justify-center rounded-2xl"
 							icon="i-heroicons-user-plus-20-solid"
@@ -378,7 +378,7 @@ onMounted(async () => {
 									<h2 class="text-lg font-semibold text-stone-950">สมาชิกในร้าน</h2>
 									<p class="mt-1 text-sm text-stone-500">คลิกผู้ใช้เพื่อดู role และ permission summary แบบละเอียด</p>
 								</div>
-								<UBadge color="gray" variant="soft" :label="`${members.length} รายการ`" />
+								<UBadge color="neutral" variant="soft" :label="`${members.length} รายการ`" />
 							</div>
 
 							<div v-if="membersError" class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -408,7 +408,7 @@ onMounted(async () => {
 											<div class="flex flex-wrap items-center gap-2">
 												<p class="text-base font-semibold text-stone-950">{{ member.name }}</p>
 												<UBadge :color="statusTone(member.status)" variant="soft" :label="member.status === 'active' ? 'ใช้งาน' : 'ปิดใช้งาน'" />
-												<UBadge color="gray" variant="soft" :label="member.role_name" />
+												<UBadge color="neutral" variant="soft" :label="member.role_name" />
 											</div>
 											<p class="mt-1 text-sm text-stone-500">{{ member.email }}</p>
 											<div class="mt-3 flex flex-wrap gap-2 text-xs text-stone-500">
@@ -438,7 +438,7 @@ onMounted(async () => {
 							</div>
 							<div class="flex items-center gap-2">
 								<UButton
-									color="gray"
+									color="neutral"
 									variant="soft"
 									size="sm"
 									class="justify-center rounded-xl"
@@ -447,7 +447,7 @@ onMounted(async () => {
 									:disabled="!canManageUsers"
 									@click="resetPasswordOpen = true"
 								/>
-								<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+								<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 							</div>
 						</div>
 
@@ -500,21 +500,21 @@ onMounted(async () => {
 								<h2 class="mt-2 text-xl font-semibold text-stone-950">เพิ่มสมาชิกในร้าน</h2>
 								<p class="mt-1 text-sm text-stone-500">สร้างผู้ใช้ใหม่หรือผูกผู้ใช้เดิมเข้ากับร้านพร้อมบทบาทเริ่มต้น</p>
 							</div>
-							<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 						</div>
 
 						<div class="space-y-4">
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">ชื่อผู้ใช้</label>
-								<UInput v-model="createForm.name" size="lg" color="gray" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
+								<UInput v-model="createForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
 							</div>
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">อีเมล</label>
-								<UInput v-model="createForm.email" type="email" size="lg" color="gray" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
+								<UInput v-model="createForm.email" type="email" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
 							</div>
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">รหัสผ่านเริ่มต้น</label>
-								<UInput v-model="createForm.password" size="lg" color="gray" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
+								<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
 							</div>
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">บทบาท</label>
@@ -531,8 +531,8 @@ onMounted(async () => {
 						</div>
 
 						<div class="flex gap-3 pt-2">
-							<UButton color="gray" variant="soft" size="lg" block class="justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="orange" size="lg" block class="justify-center rounded-2xl" label="บันทึกผู้ใช้" :loading="saving" :disabled="saving || !canManageUsers" @click="createMember" />
+							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
+							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="บันทึกผู้ใช้" :loading="saving" :disabled="saving || !canManageUsers" @click="createMember" />
 						</div>
 					</div>
 				</template>
@@ -547,7 +547,7 @@ onMounted(async () => {
 								<h2 class="mt-2 text-xl font-semibold text-stone-950">รีเซ็ตรหัสผ่าน</h2>
 								<p class="mt-1 text-sm text-stone-500">ตั้งรหัสผ่านใหม่ให้ {{ selectedMember.name }} และบังคับเปลี่ยนรหัสผ่านเมื่อเข้าใช้งานครั้งถัดไปได้</p>
 							</div>
-							<UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
 						</div>
 
 						<div class="space-y-4">
@@ -556,7 +556,7 @@ onMounted(async () => {
 								<UInput
 									v-model="resetPasswordForm.password"
 									size="lg"
-									color="gray"
+									color="neutral"
 									class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3"
 								/>
 							</div>
@@ -572,8 +572,8 @@ onMounted(async () => {
 						</div>
 
 						<div class="flex gap-3 pt-2">
-							<UButton color="gray" variant="soft" size="lg" block class="justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="orange" size="lg" block class="justify-center rounded-2xl" label="บันทึกรหัสผ่านใหม่" :disabled="!canManageUsers || saving" :loading="saving" @click="resetMemberPassword" />
+							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
+							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="บันทึกรหัสผ่านใหม่" :disabled="!canManageUsers || saving" :loading="saving" @click="resetMemberPassword" />
 						</div>
 					</div>
 				</template>

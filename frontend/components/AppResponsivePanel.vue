@@ -74,7 +74,7 @@ function handleBackdrop() {
 			v-if="modelValue"
 			:style="panelVars"
 			:class="[
-				'fixed inset-x-0 bottom-0 max-h-[var(--app-panel-mobile-max-height)] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[var(--app-panel-desktop-width)] lg:rounded-none',
+				'fixed inset-x-0 bottom-0 max-h-[var(--app-panel-mobile-max-height)] rounded-t-md bg-[#fffefd] shadow-[0_16px_48px_rgba(31,28,24,0.12)] ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[var(--app-panel-desktop-width)] lg:rounded-none',
 				panelZClass,
 				panelClass,
 			]"
@@ -88,7 +88,7 @@ function handleBackdrop() {
 			>
 				<div
 					v-if="title || description || showCloseButton"
-					class="mb-4 flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-4"
+					class="mb-5 flex items-start justify-between gap-4 border-b border-[#f1ede6] pb-4"
 				>
 					<div v-if="title || description" class="min-w-0">
 						<h2 v-if="title" class="text-lg font-semibold text-stone-950">
@@ -99,13 +99,13 @@ function handleBackdrop() {
 						</p>
 					</div>
 
-					<UButton
+					<AppButton
 						v-if="showCloseButton"
-						color="gray"
+						color="neutral"
 						variant="soft"
 						size="xs"
 						icon="i-heroicons-x-mark-20-solid"
-						class="shrink-0 rounded-xl"
+						class="shrink-0"
 						aria-label="ปิด"
 						title="ปิด"
 						@click="close"

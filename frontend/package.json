@@ -13,8 +13,8 @@
 		"node": ">=20.19.0"
 	},
 	"dependencies": {
-		"@nuxt/icon": "^1.15.0",
-		"@nuxt/ui": "^3.3.4",
+		"@nuxt/icon": "^2.1.0",
+		"@nuxt/ui": "^4.7.1",
 		"@zxing/browser": "^0.2.0",
 		"@zxing/library": "^0.22.0",
 		"nuxt": "^4.4.4",

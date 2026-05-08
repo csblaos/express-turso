@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AppNavItem } from "~/utils/app-nav";
+import { resolveBreadcrumbs } from "~/utils/breadcrumbs";
 
 const props = defineProps<{
 	navItems: AppNavItem[];
@@ -13,13 +14,26 @@ const props = defineProps<{
 const mobileSidebarOpen = ref(false);
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
 const logoutConfirmOpen = ref(false);
+const profileMenuOpen = ref(false);
 const shellError = ref<string | null>(null);
 const isDesktopViewport = ref(false);
-const { logout, currentUser } = useAuthSession();
+const { logout, currentUser, currentAccess } = useAuthSession();
 const route = useRoute();
 const currentNavItem = computed(() => props.navItems.find((item) => props.activeIds.includes(item.id)));
 let mediaQueryList: MediaQueryList | null = null;
 let syncViewportListener: (() => void) | null = null;
+
+const sidebarWidthClass = computed(() => {
+	if (!isDesktopViewport.value) {
+		return "w-[88vw] max-w-[320px]";
+	}
+
+	return sidebarCollapsed.value ? "w-[84px]" : "w-[280px]";
+});
+
+const isSidebarCompact = computed(() => (
+	isDesktopViewport.value && sidebarCollapsed.value
+));
 
 function openSidebar() {
 	mobileSidebarOpen.value = true;
@@ -40,26 +54,69 @@ const topbarMenuTitle = computed(() => (
 		: "เปิดเมนู"
 ));
 
-const profileMenuItems = computed(() => [[
-	{
-		label: "ตั้งค่าโปรไฟล์",
-		icon: "i-heroicons-cog-6-tooth",
-		onSelect: () => navigateTo("/profile"),
-	},
-], [
-	{
-		label: "ออกจากระบบ",
-		icon: "i-heroicons-arrow-left-on-rectangle",
-		onSelect: () => openLogoutConfirm(),
-	},
-]]);
+const topbarMenuIcon = computed(() => {
+	if (!isDesktopViewport.value) return "i-heroicons-bars-3-20-solid";
+	return sidebarCollapsed.value
+		? "i-heroicons-chevron-double-right-20-solid"
+		: "i-heroicons-chevron-double-left-20-solid";
+});
 
-function isNavActive(id: string) {
-	return props.activeIds.includes(id);
+const roleLabelMap: Record<string, string> = {
+	system_admin: "System admin",
+	superadmin: "Superadmin",
+	store_admin: "Store admin",
+	manager: "Manager",
+};
+
+const profileDisplayName = computed(() => currentUser.value?.name || "ทีมงานร้าน");
+const profileDisplayEmail = computed(() => currentUser.value?.email || "ไม่ได้ระบุอีเมล");
+const profileDisplayRole = computed(() => {
+	const systemRole = currentUser.value?.systemRole || "";
+	if (!systemRole) return "Staff";
+	return roleLabelMap[systemRole] || systemRole.replace(/_/g, " ");
+});
+const profileStoreSummary = computed(() => {
+	const membershipCount = currentAccess.value?.memberships?.length || 0;
+	if (!membershipCount) return "ยังไม่ได้ผูกกับร้าน";
+	return membershipCount === 1 ? "ดูแล 1 store" : `ดูแล ${membershipCount} stores`;
+});
+const profileInitials = computed(() => (
+	profileDisplayName.value
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((part) => part[0]?.toUpperCase() ?? "")
+		.join("") || "ST"
+));
+const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.navItems));
+
+function isNavItemActive(item: AppNavItem) {
+	if (props.activeIds.includes(item.id)) return true;
+
+	if (item.id === "settings") {
+		return route.path === "/profile" || route.path.startsWith("/settings");
+	}
+
+	if (item.to === "/") {
+		return route.path === "/";
+	}
+
+	return route.path === item.to || route.path.startsWith(`${item.to}/`);
 }
 
 function openLogoutConfirm() {
 	logoutConfirmOpen.value = true;
+}
+
+async function openLogoutConfirmFromProfile() {
+	profileMenuOpen.value = false;
+	await nextTick();
+	logoutConfirmOpen.value = true;
+}
+
+async function navigateToProfile() {
+	profileMenuOpen.value = false;
+	await navigateTo("/profile");
 }
 
 async function confirmLogout() {
@@ -108,35 +165,56 @@ onErrorCaptured((error) => {
 </script>
 
 <template>
-	<main class="min-h-screen w-full bg-transparent lg:h-screen lg:overflow-hidden">
-		<div class="flex min-h-screen w-full lg:h-screen lg:overflow-hidden">
-			<div
-				v-if="mobileSidebarOpen"
-				class="fixed inset-0 z-40 bg-black/45 lg:hidden"
-				@click="mobileSidebarOpen = false"
-			/>
+	<main class="h-dvh min-h-screen w-full overflow-hidden bg-transparent">
+		<div class="flex h-full w-full overflow-hidden">
+			<Transition
+				enter-active-class="transition-opacity duration-250 ease-out"
+				enter-from-class="opacity-0"
+				enter-to-class="opacity-100"
+				leave-active-class="transition-opacity duration-200 ease-in"
+				leave-from-class="opacity-100"
+				leave-to-class="opacity-0"
+			>
+				<div
+					v-if="mobileSidebarOpen"
+					class="fixed inset-0 z-40 bg-black/40 lg:hidden"
+					@click="mobileSidebarOpen = false"
+				/>
+			</Transition>
 
 			<aside
-				class="fixed inset-y-0 left-0 z-50 flex bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-[width,transform] duration-200 ease-out lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none"
+				class="fixed inset-y-0 left-0 z-50 flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
 				:class="[
-					sidebarCollapsed ? 'w-[84px]' : 'w-[280px]',
+					sidebarWidthClass,
 					mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 				]"
 			>
 				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
-					<div class="flex items-center justify-between">
-						<div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f8e9de] text-lg font-semibold text-[#97532c]">
-							P
+					<div class="flex items-center justify-between gap-3">
+						<div class="flex min-w-0 items-center gap-3">
+							<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f8e9de] text-lg font-semibold text-[#97532c]">
+								P
+							</div>
+							<div
+								v-if="!isSidebarCompact"
+								class="min-w-0 lg:hidden"
+							>
+								<p class="truncate text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Navigation</p>
+								<p class="truncate text-sm font-semibold text-stone-950">เมนูหลักของระบบ</p>
+							</div>
 						</div>
 
 						<UButton
-							color="gray"
-							variant="ghost"
+							color="neutral"
+							variant="soft"
 							size="sm"
-							class="lg:hidden"
-							label="ปิด"
+							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 lg:hidden"
+							aria-label="ปิดเมนู"
+							title="ปิดเมนู"
 							@click="mobileSidebarOpen = false"
-						/>
+						>
+							<UIcon name="i-heroicons-x-mark-20-solid" class="h-5.5 w-5.5" />
+						</UButton>
 					</div>
 
 					<nav class="flex flex-1 flex-col gap-2">
@@ -144,53 +222,63 @@ onErrorCaptured((error) => {
 							v-for="item in navItems"
 							:key="item.id"
 							:to="item.to"
-							class="group flex items-center rounded-2xl px-3 py-3 text-left transition-colors"
+							class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
 							:title="item.label"
 							:aria-label="item.label"
 							:class="[
-								sidebarCollapsed ? 'gap-0' : 'gap-3',
-								isNavActive(item.id)
-									? (sidebarCollapsed
-										? 'text-[#97532c]'
-										: 'bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]')
-									: (sidebarCollapsed
-										? 'text-stone-500 hover:text-[#97532c]'
-										: 'text-stone-500 hover:bg-[#fbf1ea] hover:text-[#97532c] hover:ring-1 hover:ring-[#efd7c6]')
+								isSidebarCompact ? 'gap-0' : 'gap-3',
+								isNavItemActive(item)
+									? (isSidebarCompact
+										? 'text-primary-700'
+										: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200')
+									: (isSidebarCompact
+										? 'text-stone-500 hover:text-primary-700'
+										: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200')
 							]"
 						>
 							<div
 								class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold transition-colors"
-								:class="isNavActive(item.id)
-									? 'bg-white text-[#97532c] ring-1 ring-[#efd7c6]'
-									: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-[#97532c] group-hover:ring-[#efd7c6]'"
+								:class="isNavItemActive(item)
+									? (isSidebarCompact
+										? 'bg-primary-100 text-primary-700'
+										: 'bg-primary-100 text-primary-700 ring-1 ring-primary-200')
+									: (isSidebarCompact
+										? 'bg-[#f7f5f1] text-stone-600 group-hover:bg-primary-50 group-hover:text-primary-700'
+										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-primary-700 group-hover:ring-primary-200')"
 							>
 								<UIcon :name="item.icon" class="h-5 w-5" />
 							</div>
 							<div
 								class="min-w-0 overflow-hidden transition-[width,opacity] duration-150 ease-out"
-								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
+								:class="isSidebarCompact ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
 								aria-hidden="true"
 							>
 								<p class="truncate text-sm font-medium whitespace-nowrap">{{ item.label }}</p>
+								<p
+									v-if="!isDesktopViewport"
+									class="mt-0.5 truncate text-xs text-stone-400"
+								>
+									{{ item.to === '/' ? 'หน้าเริ่มต้น' : 'เปิดหน้าจัดการ' }}
+								</p>
 							</div>
 						</NuxtLink>
 					</nav>
 
 					<div class="px-3 pt-1">
 						<UButton
-							color="gray"
+							color="neutral"
 							variant="ghost"
 							size="sm"
 							icon="i-heroicons-arrow-left-on-rectangle"
 							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
-							:class="sidebarCollapsed ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
-							:title="sidebarCollapsed ? 'ออกจากระบบ' : undefined"
+							:class="isSidebarCompact ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
+							:title="isSidebarCompact ? 'ออกจากระบบ' : undefined"
 							:aria-label="'ออกจากระบบ'"
 							@click="openLogoutConfirm"
 						>
 							<span
 								class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
-								:class="sidebarCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'"
+								:class="isSidebarCompact ? 'w-0 opacity-0' : 'w-auto opacity-100'"
 								aria-hidden="true"
 							>
 								ออกจากระบบ
@@ -200,48 +288,116 @@ onErrorCaptured((error) => {
 				</div>
 			</aside>
 
-			<div class="min-w-0 flex-1 lg:min-h-0 lg:overflow-hidden">
-				<div class="flex min-h-screen w-full lg:h-screen lg:min-h-0 lg:overflow-hidden">
-					<section class="min-w-0 flex-1 pb-2 sm:pb-3 lg:min-h-0 lg:overflow-hidden">
-						<div class="flex h-full min-h-0 flex-col gap-3">
-							<div class="sticky top-0 z-30">
-								<AppTopNavbar
-									:title="currentNavItem?.label || sidebarTitle"
-									:eyebrow="sidebarEyebrow"
-									:icon="currentNavItem?.icon"
-									:menu-title="topbarMenuTitle"
-									@menu="toggleSidebar"
-								>
-									<template #left>
-										<slot name="navbar-left" />
-									</template>
+			<div class="min-w-0 flex-1 min-h-0">
+				<div class="flex h-full w-full min-h-0">
+					<section class="min-w-0 flex-1 overflow-hidden pb-2 sm:pb-3">
+						<div class="flex h-full min-h-0 flex-col gap-2">
+							<div class="sticky top-0 z-40 shrink-0 overflow-hidden border-b border-[#e7e4dd] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+								<div>
+									<AppTopNavbar
+										:title="currentNavItem?.label || sidebarTitle"
+										:eyebrow="sidebarEyebrow"
+										:icon="currentNavItem?.icon"
+										:menu-title="topbarMenuTitle"
+										:menu-icon="topbarMenuIcon"
+										@menu="toggleSidebar"
+									>
+										<template #left>
+											<slot name="navbar-left" />
+										</template>
 
-									<template #center>
-										<slot name="navbar-center" />
-									</template>
+										<template #center>
+											<slot name="navbar-center" />
+										</template>
 
-									<template #right>
-										<slot name="navbar-right" />
+										<template #right>
+											<slot name="navbar-right" />
 
-										<UDropdownMenu
-											:items="profileMenuItems"
-											:content="{ side: 'bottom', align: 'end', sideOffset: 8 }"
-										>
-											<UButton
-												color="gray"
-												variant="ghost"
-												size="md"
-												class="h-9 w-9 justify-center rounded-xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 hover:bg-white hover:text-stone-900"
-												icon="i-heroicons-user-circle"
-												:title="currentUser?.name || 'โปรไฟล์'"
-												:aria-label="currentUser?.name || 'โปรไฟล์'"
-											/>
-										</UDropdownMenu>
-									</template>
-								</AppTopNavbar>
+											<UPopover
+												v-model:open="profileMenuOpen"
+												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
+											>
+												<UButton
+													color="neutral"
+													variant="ghost"
+													size="sm"
+													class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 sm:h-10 sm:px-2"
+													:title="profileDisplayName"
+													:aria-label="profileDisplayName"
+												>
+													<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700 sm:h-8 sm:w-8 sm:text-xs">
+														{{ profileInitials }}
+													</span>
+													<span class="hidden min-w-0 text-left md:block">
+														<span class="block truncate text-xs font-semibold text-stone-900">{{ profileDisplayName }}</span>
+														<span class="block truncate text-[10px] text-stone-500">{{ profileStoreSummary }}</span>
+													</span>
+													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700" />
+												</UButton>
+
+												<template #content>
+													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd]">
+														<div class="border-b border-[#efece4] px-4 py-4">
+															<div class="flex items-start gap-3">
+																<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700">
+																	{{ profileInitials }}
+																</div>
+																<div class="min-w-0 flex-1">
+																	<p class="truncate text-sm font-semibold text-stone-950">{{ profileDisplayName }}</p>
+																	<p class="mt-1 truncate text-xs text-stone-500">{{ profileDisplayEmail }}</p>
+																	<div class="mt-2 flex flex-wrap gap-1.5">
+																		<UBadge color="primary" variant="soft" :label="profileDisplayRole" />
+																		<UBadge color="neutral" variant="soft" :label="profileStoreSummary" />
+																	</div>
+																</div>
+															</div>
+														</div>
+
+														<div class="p-2">
+															<button
+																type="button"
+																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700"
+																@click="navigateToProfile"
+															>
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
+																	<UIcon name="i-heroicons-user-circle-20-solid" class="h-5 w-5" />
+																</span>
+																<span class="min-w-0 flex-1">
+																	<span class="block font-medium">ตั้งค่าโปรไฟล์</span>
+																	<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">จัดการข้อมูลผู้ใช้และ session ของคุณ</span>
+																</span>
+															</button>
+
+															<button
+																type="button"
+																class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+																@click="openLogoutConfirmFromProfile"
+															>
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition group-hover:bg-rose-100 group-hover:text-rose-700">
+																	<UIcon name="i-heroicons-arrow-left-on-rectangle-20-solid" class="h-5 w-5" />
+																</span>
+																<span class="min-w-0 flex-1">
+																	<span class="block font-medium">ออกจากระบบ</span>
+																	<span class="block truncate text-xs text-rose-400 transition group-hover:text-rose-500">จบ session ปัจจุบันและกลับไปหน้า login</span>
+																</span>
+															</button>
+														</div>
+													</div>
+												</template>
+											</UPopover>
+										</template>
+									</AppTopNavbar>
+
+									<div
+										v-if="currentBreadcrumbs.length"
+										class="border-t border-[#f0ece4] px-3 py-2 sm:px-4 lg:px-5"
+									>
+										<AppBreadcrumbs :items="currentBreadcrumbs" />
+									</div>
+								</div>
 							</div>
 
-							<div class="min-h-0 flex-1 px-0 sm:px-2 lg:px-3">
+							<div class="scrollbar-soft min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-0 sm:px-2 lg:px-3">
 								<div
 									v-if="shellError"
 									class="flex h-full min-h-[260px] items-center justify-center"
@@ -251,7 +407,7 @@ onErrorCaptured((error) => {
 										<p class="mt-2 text-sm text-stone-500">{{ shellError }}</p>
 										<div class="mt-4 flex justify-center gap-2">
 											<UButton
-												color="gray"
+												color="neutral"
 												variant="soft"
 												size="sm"
 												class="rounded-md"
@@ -275,5 +431,6 @@ onErrorCaptured((error) => {
 			@close="logoutConfirmOpen = false"
 			@confirm="confirmLogout"
 		/>
+		<AppFloatingGoTop :hidden="mobileSidebarOpen" />
 	</main>
 </template>

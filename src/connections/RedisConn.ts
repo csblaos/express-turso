@@ -154,7 +154,13 @@ export class RedisConn {
 			throw new Error("[redis] UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required when REDIS_DRIVER=upstash");
 		}
 
-		RedisConn.upstashClient = new UpstashRedis({ url, token });
+		RedisConn.upstashClient = new UpstashRedis({
+			url,
+			token,
+			// Keep Upstash responses aligned with the local redis client.
+			// The app already deserializes JSON manually after RedisConn.get().
+			automaticDeserialization: false,
+		});
 
 		console.log("[redis] connecting (upstash)");
 		await RedisConn.upstashClient.ping();

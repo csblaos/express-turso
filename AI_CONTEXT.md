@@ -6,7 +6,7 @@
 
 - โปรเจกต์นี้เป็น full-stack แบบแยกส่วน
 - Backend อยู่ที่ `src/` ใช้ Express + TypeScript + Turso + Redis
-- Frontend อยู่ที่ `frontend/` ใช้ Nuxt 3 แบบ SSR
+- Frontend อยู่ที่ `frontend/` ใช้ Nuxt 4 แบบ SSR
 - API ของ backend ถูก mount ใต้ path `/api`
 - หน้าเว็บ Nuxt เรียก backend ผ่าน `NUXT_PUBLIC_API_BASE`
 
@@ -65,9 +65,9 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 ## 6) ข้อจำกัดสำคัญ
 
 - Backend ตอนนี้ build เป็น CommonJS ผ่าน TypeScript
-- Frontend ตอนนี้ pin เวอร์ชันไว้ที่ `nuxt@3.8.0` และ `nuxi@3.8.0`
-- สาเหตุคือเครื่องพัฒนาปัจจุบันใช้ Node `18.20.8`
-- ถ้าจะอัปเกรด Nuxt เป็นเวอร์ชันใหม่ ควรอัปเกรด Node เป็น 20+ ก่อน
+- Frontend ตอนนี้ใช้ `Nuxt 4`
+- ต้องใช้ Node `>= 20.19.0`
+- แนะนำใช้ Node `22` หรือ `24`
 
 ## 7) แนวทางแก้ไขที่ควรรักษาไว้
 
@@ -90,8 +90,11 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 - ใช้ `frontend/components/AppSidebarShell.vue` สำหรับทุกหน้าในระบบหลัง login
 - ใช้ `frontend/components/AppTopNavbar.vue` เป็น top navbar กลางที่อยู่ใน shell เดียวกัน
+- ใช้ `frontend/components/AppPageHeader.vue` สำหรับ header ของแต่ละหน้า
 - หน้าใหม่ของ backoffice เช่น products, orders, inventory, reports, settings, superadmin, system-admin ควรใช้ shell นี้ก่อนเสมอ
 - อย่าสร้าง sidebar ใหม่ในหน้า ถ้าไม่ได้มีเหตุผลเฉพาะจริง ๆ
+- อย่าสร้าง top navbar ใหม่ซ้ำ
+- อย่าสร้าง page header pattern ใหม่ ถ้ายังเป็นโครง title + description + badges + actions แบบเดิม
 
 ใช้ร่วมกับ:
 
@@ -127,14 +130,25 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 - ใช้ `frontend/components/LogoutConfirmModal.vue`
 - อย่าเขียน modal logout ซ้ำในแต่ละหน้า
 
-### 9.4 Access tabs
+### 9.4 Shared loading icon
+
+- ใช้ `frontend/components/AppLoadingIcon.vue` เมื่อต้องการ icon ที่สลับระหว่างสถานะปกติและสถานะ loading
+- component นี้รองรับ:
+	- `loading`
+	- `idleIcon`
+	- `loadingIcon`
+	- `sizeClass`
+- ใช้กับปุ่มที่ต้องการ spinner แบบ icon หมุน เช่น login, save, refresh
+- อย่าเขียน `UIcon + animate-spin + ternary icon` ซ้ำในแต่ละหน้า ถ้าเป็น pattern เดียวกัน
+
+### 9.5 Access tabs
 
 - หน้าในกลุ่ม settings access ให้ใช้ `frontend/components/SettingsAccessTabs.vue`
 - ตอนนี้ใช้กับ:
 	- `frontend/pages/settings/access/users.vue`
 	- `frontend/pages/settings/access/roles.vue`
 
-### 9.5 Auth + API composables
+### 9.6 Auth + API composables
 
 - ใช้ `frontend/composables/useApiClient.ts` สำหรับ API ที่ต้องแนบ bearer token
 - ใช้ `frontend/composables/useAuthSession.ts` สำหรับ:
@@ -145,7 +159,7 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 ห้ามใช้ `$fetch` ตรง ๆ กับ protected API ถ้ายังไม่ได้พิจารณา auth flow
 
-### 9.6 Route protection
+### 9.7 Route protection
 
 - หน้าในระบบหลัง login ถูกคุมด้วย `frontend/middleware/auth.global.ts`
 - หน้า login เป็น standalone ที่ `frontend/pages/login.vue`
@@ -158,10 +172,34 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 ถ้าหน้าใหม่เป็นหน้าในระบบหลัก ให้ใช้ชุดนี้ก่อน:
 
 - shell: `AppSidebarShell.vue`
+- top navbar: `AppTopNavbar.vue` ผ่าน shell
+- page header: `AppPageHeader.vue`
 - nav: `app-nav.ts`
 - overlay: `AppResponsivePanel.vue`
+- loading icon: `AppLoadingIcon.vue`
 - auth state: `useAuthSession.ts`
 - auth-aware fetch: `useApiClient.ts`
+
+### Reuse rules แบบบังคับ
+
+ถ้าพฤติกรรมหรือโครงหน้าตาเหมือนของเดิม ให้ reuse ก่อนเสมอ
+
+- หน้าในระบบหลัง login:
+	- ต้องเริ่มจาก `AppSidebarShell.vue`
+- หน้าใหม่ที่มี title/description/actions:
+	- ต้องเช็ก `AppPageHeader.vue` ก่อน
+- modal / drawer / bottom sheet:
+	- ต้องเช็ก `AppResponsivePanel.vue` ก่อน
+- loading icon บนปุ่ม:
+	- ต้องเช็ก `AppLoadingIcon.vue` ก่อน
+- logout confirm:
+	- ต้องใช้ `LogoutConfirmModal.vue`
+- protected API:
+	- ต้องใช้ `useApiClient.ts`
+- permission visibility:
+	- ต้องใช้ `useAuthSession.ts` และ `can(...)`
+- sidebar menu:
+	- ต้องแก้ผ่าน `frontend/utils/app-nav.ts`
 
 ### ควรสร้าง component ใหม่เมื่อไร
 
@@ -179,7 +217,10 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 	- `ReportMetricCard.vue`
 - ไม่ควรสร้างใหม่:
 	- sidebar ใหม่
+	- top navbar ใหม่
+	- page header ใหม่
 	- drawer shell ใหม่
+	- loading icon spinner logic ใหม่
 	- logout modal ใหม่
 	- API fetch wrapper ใหม่
 
@@ -189,10 +230,12 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 1. หน้านี้เป็นหน้า login หรือหน้าในระบบหลัก
 2. ถ้าเป็นหน้าในระบบหลัก ใช้ `AppSidebarShell.vue`
-3. ถ้ามี detail drawer/modal ใช้ `AppResponsivePanel.vue`
-4. ถ้าต้องเรียก protected API ใช้ `useApiClient.ts`
-5. ถ้าต้องซ่อน/disable ปุ่มตามสิทธิ์ ใช้ `useAuthSession.ts` และ `can(...)`
-6. ถ้าต้องเพิ่มเมนูใหม่ แก้ `frontend/utils/app-nav.ts`
+3. ถ้าหน้านี้มี header มาตรฐาน ใช้ `AppPageHeader.vue`
+4. ถ้ามี detail drawer/modal ใช้ `AppResponsivePanel.vue`
+5. ถ้ามี loading icon บนปุ่ม ใช้ `AppLoadingIcon.vue`
+6. ถ้าต้องเรียก protected API ใช้ `useApiClient.ts`
+7. ถ้าต้องซ่อน/disable ปุ่มตามสิทธิ์ ใช้ `useAuthSession.ts` และ `can(...)`
+8. ถ้าต้องเพิ่มเมนูใหม่ แก้ `frontend/utils/app-nav.ts`
 
 ## 12) หมายเหตุสำคัญ
 

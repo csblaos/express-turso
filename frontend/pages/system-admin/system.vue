@@ -25,6 +25,7 @@ const error = ref<string | null>(null);
 const saving = ref(false);
 const toast = ref("");
 const canManageSystem = computed(() => can("system_admin.manage"));
+const initialState = ref("");
 const form = reactive({
 	defaultCanCreateBranches: true,
 	defaultMaxBranchesPerStore: "5",
@@ -36,6 +37,7 @@ const form = reactive({
 	appMinRequiredBuild: 1,
 	appUpdateMessage: "",
 });
+const sectionCount = 3;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function setToast(message: string) {
 	toast.value = message;
@@ -52,7 +54,20 @@ function apply(data: ApiSystemConfig) {
 	form.appLatestBuild = data.app_latest_build;
 	form.appMinRequiredBuild = data.app_min_required_build;
 	form.appUpdateMessage = data.app_update_message || "";
+	initialState.value = currentState.value;
 }
+const currentState = computed(() => JSON.stringify({
+	defaultCanCreateBranches: form.defaultCanCreateBranches,
+	defaultMaxBranchesPerStore: form.defaultMaxBranchesPerStore,
+	defaultSessionLimit: form.defaultSessionLimit,
+	storeLogoMaxSizeMb: form.storeLogoMaxSizeMb,
+	storeLogoAutoResize: form.storeLogoAutoResize,
+	storeLogoResizeMaxWidth: form.storeLogoResizeMaxWidth,
+	appLatestBuild: form.appLatestBuild,
+	appMinRequiredBuild: form.appMinRequiredBuild,
+	appUpdateMessage: form.appUpdateMessage,
+}));
+const hasChanges = computed(() => initialState.value !== "" && currentState.value !== initialState.value);
 async function loadConfig() {
 	pending.value = true;
 	error.value = null;
@@ -82,6 +97,7 @@ async function saveConfig() {
 				app_update_message: form.appUpdateMessage.trim() || null,
 			},
 		});
+		initialState.value = currentState.value;
 		setToast("บันทึก System policy แล้ว");
 	} catch (err) {
 		setToast(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
@@ -103,89 +119,160 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 		sidebar-description="branch policy, session policy และ store logo policy ของแพลตฟอร์ม"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<AppPageHeader title="System Policy" description="หน้าตั้งค่านโยบายระบบกลาง เช่น branch policy, session policy และ logo policy" @menu="openSidebar">
+			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
+				<AppPageHeader
+					title="System Policy"
+					description="หน้าตั้งค่านโยบายระบบกลาง เช่น branch policy, session policy และ logo policy"
+					:tablet-layout="true"
+					@menu="openSidebar"
+				>
 					<template #badges>
-						<NuxtLink to="/system-admin"><UBadge color="gray" variant="soft" label="System Admin" /></NuxtLink>
-						<UBadge color="orange" variant="soft" label="System policy" />
+						<NuxtLink to="/system-admin"><UBadge color="neutral" variant="soft" label="System Admin" /></NuxtLink>
+						<UBadge color="primary" variant="soft" label="System policy" />
 					</template>
 
 					<template #actions>
-						<UButton color="gray" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" @click="loadConfig">รีโหลด</UButton>
-						<UButton color="orange" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem" @click="saveConfig">บันทึก</UButton>
+						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+							<AppButton color="neutral" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">รีโหลด</AppButton>
+							<AppButton color="primary" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" @click="saveConfig">บันทึก</AppButton>
+						</div>
 					</template>
 				</AppPageHeader>
-				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
-					<UCard v-if="pending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"><div class="py-10 text-center text-stone-500">กำลังโหลด policy…</div></UCard>
-					<UCard v-else-if="error" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"><div class="py-10 text-center text-stone-500">{{ error }}</div></UCard>
-					<div v-else class="grid gap-4 xl:grid-cols-2">
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<h2 class="text-lg font-semibold text-stone-950">Branch policy</h2>
-								<label class="flex items-start gap-3 rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-									<input v-model="form.defaultCanCreateBranches" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
-									<div>
-										<p class="text-sm font-medium text-stone-900">อนุญาตให้ร้านใหม่สร้างสาขาได้</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น policy กลางของ platform</p>
-									</div>
-								</label>
+				<div class="grid min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+					<div class="min-h-0 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)]">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">จำนวนสาขาสูงสุดต่อร้าน</label>
-									<input v-model="form.defaultMaxBranchesPerStore" type="number" min="1" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<p class="text-sm font-semibold text-stone-950">System policy</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ตั้งค่า branch policy, session policy, logo policy และ build requirement ของแพลตฟอร์มจากมุมมองเดียว</p>
+								</div>
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+									{{ sectionCount }} sections
 								</div>
 							</div>
-						</UCard>
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<h2 class="text-lg font-semibold text-stone-950">Session & logo policy</h2>
-								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน session เริ่มต้น</label>
-									<input v-model.number="form.defaultSessionLimit" type="number" min="1" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+
+							<div class="min-h-0 flex-1 overflow-auto">
+								<div v-if="pending" class="min-h-[320px]">
+									<div class="overflow-hidden bg-neutral-100">
+										<div class="system-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
+									</div>
 								</div>
-								<label class="flex items-start gap-3 rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-									<input v-model="form.storeLogoAutoResize" type="checkbox" class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#f3c7a7]">
-									<div>
-										<p class="text-sm font-medium text-stone-900">ปรับขนาดโลโก้อัตโนมัติ</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น store logo policy กลาง</p>
+								<div v-else-if="error" class="flex h-full min-h-[320px] items-center justify-center px-4 text-center text-stone-500">
+									{{ error }}
+								</div>
+								<div v-else class="grid gap-4 p-4 xl:grid-cols-2">
+									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+										<div class="space-y-4">
+											<div>
+												<h2 class="text-lg font-semibold text-stone-950">Branch policy</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">กำหนด default permission และ branch quota สำหรับร้านที่ถูกสร้างใหม่บนแพลตฟอร์ม</p>
+											</div>
+											<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+												<input v-model="form.defaultCanCreateBranches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+												<div>
+													<p class="text-sm font-medium text-stone-900">อนุญาตให้ร้านใหม่สร้างสาขาได้</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น policy กลางของ platform</p>
+												</div>
+											</label>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวนสาขาสูงสุดต่อร้าน</label>
+												<input v-model="form.defaultMaxBranchesPerStore" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+											</div>
+										</div>
+									</UCard>
+
+									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+										<div class="space-y-4">
+											<div>
+												<h2 class="text-lg font-semibold text-stone-950">Session & logo policy</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ควบคุม session เริ่มต้นและข้อกำหนดของ store logo เพื่อให้ onboarding ร้านใหม่คงมาตรฐาน</p>
+											</div>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน session เริ่มต้น</label>
+												<input v-model.number="form.defaultSessionLimit" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+											</div>
+											<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+												<input v-model="form.storeLogoAutoResize" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+												<div>
+													<p class="text-sm font-medium text-stone-900">ปรับขนาดโลโก้อัตโนมัติ</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น store logo policy กลาง</p>
+												</div>
+											</label>
+											<div class="grid gap-4 sm:grid-cols-2">
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ขนาดไฟล์สูงสุด (MB)</label>
+													<input v-model.number="form.storeLogoMaxSizeMb" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												</div>
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ความกว้างสูงสุดหลัง resize</label>
+													<input v-model.number="form.storeLogoResizeMaxWidth" type="number" min="320" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												</div>
+											</div>
+										</div>
+									</UCard>
+
+									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
+										<div class="space-y-4">
+											<div>
+												<h2 class="text-lg font-semibold text-stone-950">Build policy</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ตั้ง latest build, minimum build ที่ต้องใช้ และข้อความแจ้งเตือนเมื่อบังคับให้อัปเดตแอป</p>
+											</div>
+											<div class="grid gap-4 sm:grid-cols-2">
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">Latest build</label>
+													<input v-model.number="form.appLatestBuild" type="number" min="0" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												</div>
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">Min required build</label>
+													<input v-model.number="form.appMinRequiredBuild" type="number" min="0" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												</div>
+											</div>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">ข้อความแจ้งเตือนการอัปเดต</label>
+												<textarea v-model="form.appUpdateMessage" rows="4" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
+											</div>
+										</div>
+									</UCard>
+								</div>
+							</div>
+
+							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-2.5 shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
+									<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
+										<span v-if="pending">กำลังโหลด System policy…</span>
+										<span v-else-if="hasChanges">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
+										<span v-else>นโยบายระบบเป็นเวอร์ชันล่าสุดแล้ว</span>
 									</div>
-								</label>
-								<div class="grid gap-4 sm:grid-cols-2">
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">ขนาดไฟล์สูงสุด (MB)</label>
-										<input v-model.number="form.storeLogoMaxSizeMb" type="number" min="1" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-									</div>
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">ความกว้างสูงสุดหลัง resize</label>
-										<input v-model.number="form.storeLogoResizeMaxWidth" type="number" min="320" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+
+									<div class="flex items-center justify-end gap-2">
+										<AppButton color="neutral" variant="soft" size="sm" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">
+											รีโหลด
+										</AppButton>
+										<AppButton color="primary" variant="solid" size="sm" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" @click="saveConfig">
+											บันทึก
+										</AppButton>
 									</div>
 								</div>
 							</div>
-						</UCard>
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] xl:col-span-2">
-							<div class="space-y-4">
-								<h2 class="text-lg font-semibold text-stone-950">Build policy</h2>
-								<div class="grid gap-4 sm:grid-cols-2">
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">Latest build</label>
-										<input v-model.number="form.appLatestBuild" type="number" min="0" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-									</div>
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">Min required build</label>
-										<input v-model.number="form.appMinRequiredBuild" type="number" min="0" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-									</div>
-								</div>
-								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">ข้อความแจ้งเตือนการอัปเดต</label>
-									<textarea v-model="form.appUpdateMessage" rows="4" class="w-full resize-none rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]" />
-								</div>
-							</div>
-						</UCard>
+						</div>
 					</div>
 				</div>
 				<Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-3 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-3 opacity-0">
-					<div v-if="toast" class="fixed bottom-4 left-1/2 z-[80] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-[#1f1c18] px-4 py-3 text-sm font-medium text-white shadow-xl">{{ toast }}</div>
+					<div v-if="toast" class="fixed bottom-4 left-1/2 z-[80] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-md bg-[#1f1c18] px-4 py-3 text-sm font-medium text-white shadow-[0_12px_30px_rgba(31,28,24,0.18)]">{{ toast }}</div>
 				</Transition>
 			</div>
 		</template>
 	</AppSidebarShell>
 </template>
+
+<style scoped>
+@keyframes system-loading-slide {
+	0% { transform: translateX(-120%); }
+	100% { transform: translateX(420%); }
+}
+
+.system-loading-line {
+	animation: system-loading-slide 1.2s linear infinite;
+	will-change: transform;
+}
+</style>
