@@ -340,15 +340,10 @@ onMounted(loadClients);
 					:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<NuxtLink to="/system-admin"><UBadge color="neutral" variant="soft" label="System Admin" /></NuxtLink>
-						<UBadge color="primary" variant="soft" label="Clients" />
-					</template>
-
 					<template #actions>
 						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadClients">รีโหลด</AppButton>
-							<UButton color="primary" variant="solid" size="lg" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</UButton>
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadClients">รีโหลด</AppButton>
+								<UButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</UButton>
 						</div>
 					</template>
 					<template #default>
@@ -372,7 +367,7 @@ onMounted(loadClients);
 								</button>
 							</div>
 
-							<div class="flex flex-wrap items-center gap-2">
+							<div class="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto">
 								<UButton
 									v-for="option in [
 										{ id: 'all', label: 'ทั้งหมด' },
@@ -382,7 +377,7 @@ onMounted(loadClients);
 									:key="option.id"
 									:color="activeStatus === option.id ? 'primary' : 'neutral'"
 									:variant="activeStatus === option.id ? 'solid' : 'soft'"
-									size="sm"
+										size="md"
 									class="rounded-md"
 									@click="activeStatus = option.id as 'all' | 'active' | 'suspended'; applyFilters()"
 								>
@@ -394,7 +389,7 @@ onMounted(loadClients);
 				</AppPageHeader>
 
 				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="h-full min-h-0 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)]">
+					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
@@ -451,7 +446,7 @@ onMounted(loadClients);
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.ui_locale.toUpperCase() }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-500">{{ formatDate(client.created_at) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
-												<UButton color="neutral" variant="soft" size="sm" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
+													<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click.stop="openDetail(client.id)">
 													จัดการ
 												</UButton>
 											</td>
@@ -490,7 +485,7 @@ onMounted(loadClients);
 											<UButton
 												color="neutral"
 												variant="soft"
-												size="sm"
+													size="md"
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || pending"
@@ -503,7 +498,7 @@ onMounted(loadClients);
 											<UButton
 												color="neutral"
 												variant="soft"
-												size="sm"
+													size="md"
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || pending"
@@ -522,13 +517,15 @@ onMounted(loadClients);
 				</div>
 			</div>
 
-			<AppResponsivePanel
-				v-model="createOpen"
-				title="สร้าง Superadmin"
-				description="บัญชีนี้จะใช้เป็นเจ้าของฝั่งธุรกิจเพื่อเข้าไปสร้างและดูแลร้านของตัวเองต่อ"
-				desktop-width="520px"
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
+				<AppResponsivePanel
+					v-model="createOpen"
+					title="สร้าง Superadmin"
+					description="บัญชีนี้จะใช้เป็นเจ้าของฝั่งธุรกิจเพื่อเข้าไปสร้างและดูแลร้านของตัวเองต่อ"
+					desktop-width="520px"
+					close-button-size="md"
+					compact-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				>
 				<div class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div class="space-y-4 pb-6">
@@ -583,22 +580,24 @@ onMounted(loadClients);
 						</div>
 					</div>
 
-					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-5 pb-5 pt-4 backdrop-blur-sm">
-						<div class="flex justify-end gap-2">
-							<UButton color="neutral" variant="soft" size="lg" class="rounded-md" @click="createOpen = false">ยกเลิก</UButton>
-							<UButton color="primary" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="createClient">สร้างบัญชี</UButton>
+						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :loading="saving" :disabled="!canManageSystem" :spin-icon-on-loading="true" :block="true" @click="createClient">สร้างบัญชี</AppButton>
+							</div>
 						</div>
 					</div>
-				</div>
-			</AppResponsivePanel>
+				</AppResponsivePanel>
 
-			<AppResponsivePanel
-				v-model="detailOpen"
-				title="Client detail"
-				description="ปรับ quota, สิทธิ์สร้างร้าน และสถานะของ Superadmin บัญชีนี้"
-				desktop-width="560px"
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
+				<AppResponsivePanel
+					v-model="detailOpen"
+					title="Client detail"
+					description="ปรับ quota, สิทธิ์สร้างร้าน และสถานะของ Superadmin บัญชีนี้"
+					desktop-width="560px"
+					close-button-size="md"
+					compact-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				>
 				<div v-if="selectedClient" class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div class="space-y-5 pb-6">
@@ -664,23 +663,23 @@ onMounted(loadClients);
 										placeholder="เหตุผลที่พักบัญชี"
 										class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									/>
-									<UButton color="warning" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('suspended')">พักบัญชี</UButton>
+										<AppButton color="warning" variant="soft" size="md" icon="i-heroicons-pause-circle-20-solid" :loading="saving" :disabled="!canManageSystem" :spin-icon-on-loading="true" @click="updateClientStatus('suspended')">พักบัญชี</AppButton>
 								</div>
 								<div v-else class="mt-4 space-y-3">
 									<p class="text-xs text-stone-500">เหตุผลล่าสุด: {{ selectedClient.client_suspended_reason || "ไม่ได้ระบุ" }}</p>
-									<UButton color="success" variant="soft" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem" @click="updateClientStatus('active')">เปิดใช้งานกลับ</UButton>
+										<AppButton color="success" variant="soft" size="md" icon="i-heroicons-check-circle-20-solid" :loading="saving" :disabled="!canManageSystem" :spin-icon-on-loading="true" @click="updateClientStatus('active')">เปิดใช้งานกลับ</AppButton>
 								</div>
 							</div>
 						</div>
 					</div>
 
-					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-5 pb-5 pt-4 backdrop-blur-sm">
-						<div class="flex justify-end gap-2">
-							<UButton color="neutral" variant="soft" size="lg" class="rounded-md" @click="detailOpen = false">ปิด</UButton>
-							<UButton color="primary" variant="solid" size="lg" class="rounded-md" :loading="saving" :disabled="!canManageSystem || !detailHasChanges" @click="saveClient">บันทึก</UButton>
+						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !detailHasChanges" :spin-icon-on-loading="true" :block="true" @click="saveClient">บันทึก</AppButton>
+							</div>
 						</div>
 					</div>
-				</div>
 			</AppResponsivePanel>
 		</template>
 	</AppSidebarShell>

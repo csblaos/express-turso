@@ -573,16 +573,16 @@ onBeforeUnmount(() => {
 	>
 		<template #default="{ openSidebar }">
 			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
-						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-							<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
+				<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md lg:sticky lg:top-0 lg:z-20">
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 										<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 											<div class="grid grid-cols-4 gap-2 lg:hidden">
 												<UButton
 													color="neutral"
 													variant="soft"
-													size="lg"
-													class="justify-center"
+													size="md"
+													class="justify-center rounded-md"
 													icon="i-heroicons-bars-3-20-solid"
 													aria-label="เปิดเมนู"
 													title="เปิดเมนู"
@@ -592,8 +592,8 @@ onBeforeUnmount(() => {
 												<UButton
 													color="neutral"
 													variant="soft"
-													size="lg"
-													class="justify-center"
+													size="md"
+													class="justify-center rounded-md"
 													icon="i-heroicons-magnifying-glass-20-solid"
 													:aria-label="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
 													:title="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
@@ -603,9 +603,9 @@ onBeforeUnmount(() => {
 												<UButton
 													color="primary"
 													variant="soft"
-													size="lg"
+													size="md"
 													icon="i-heroicons-qr-code-20-solid"
-													class="justify-center"
+													class="justify-center rounded-md"
 													aria-label="สแกนบาร์โค้ด"
 													title="สแกนบาร์โค้ด"
 													@click="openCameraScanner"
@@ -614,9 +614,9 @@ onBeforeUnmount(() => {
 											<UButton
 												color="primary"
 												variant="solid"
-												size="lg"
+												size="md"
 													icon="i-heroicons-plus-20-solid"
-													class="justify-center"
+													class="justify-center rounded-md"
 													aria-label="เพิ่มสินค้า"
 													title="เพิ่มสินค้า"
 													:disabled="!canCreateProduct"
@@ -631,7 +631,7 @@ onBeforeUnmount(() => {
 													icon="i-heroicons-magnifying-glass-20-solid"
 													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
 													color="neutral"
-													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
 												<UButton
@@ -640,7 +640,7 @@ onBeforeUnmount(() => {
 													variant="ghost"
 													size="xs"
 													icon="i-heroicons-x-mark-20-solid"
-													class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
 													aria-label="ล้างคำค้น"
 													title="ล้างคำค้น"
 													@click="searchQuery = ''"
@@ -655,7 +655,7 @@ onBeforeUnmount(() => {
 													icon="i-heroicons-magnifying-glass-20-solid"
 													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
 													color="neutral"
-													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 													@keydown.enter.prevent="submitSearchInput"
 												/>
 												<UButton
@@ -664,7 +664,7 @@ onBeforeUnmount(() => {
 													variant="ghost"
 													size="xs"
 													icon="i-heroicons-x-mark-20-solid"
-													class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
 													aria-label="ล้างคำค้น"
 													title="ล้างคำค้น"
 													@click="searchQuery = ''"
@@ -675,9 +675,9 @@ onBeforeUnmount(() => {
 										<UButton
 											color="primary"
 											variant="soft"
-											size="lg"
+											size="md"
 											icon="i-heroicons-qr-code-20-solid"
-											class="hidden justify-center px-4 lg:inline-flex"
+											class="hidden justify-center rounded-md px-4 lg:inline-flex"
 											aria-label="สแกนบาร์โค้ด"
 											title="สแกนบาร์โค้ด"
 											@click="openCameraScanner"
@@ -688,9 +688,9 @@ onBeforeUnmount(() => {
 										<UButton
 											color="primary"
 											variant="solid"
-											size="lg"
+											size="md"
 											icon="i-heroicons-plus-20-solid"
-											class="hidden justify-center px-4 lg:inline-flex"
+											class="hidden justify-center rounded-md px-4 lg:inline-flex"
 											aria-label="เพิ่มสินค้า"
 											title="เพิ่มสินค้า"
 											:disabled="!canCreateProduct"
@@ -700,8 +700,8 @@ onBeforeUnmount(() => {
 									</div>
 							</UCard>
 
-							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-								<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
+					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 									<div class="space-y-3">
 										<div class="flex flex-wrap items-center gap-2">
 											<UBadge color="neutral" variant="soft" :label="`${totalProducts} SKU`" />
@@ -720,7 +720,7 @@ onBeforeUnmount(() => {
 														<select
 															id="product-category-select"
 															v-model="activeCategory"
-															class="w-full appearance-none rounded-md border border-[#e7e4dd] bg-[#fffefd] px-4 py-3 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+																class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 														>
 															<option
 																v-for="category in categoryOptions"
@@ -743,7 +743,7 @@ onBeforeUnmount(() => {
 														:key="category.id"
 														:color="activeCategory === category.id ? 'primary' : 'neutral'"
 														:variant="activeCategory === category.id ? 'soft' : 'ghost'"
-														size="sm"
+															size="md"
 														class="shrink-0 whitespace-nowrap snap-start"
 														@click="activeCategory = category.id"
 													>
@@ -760,7 +760,7 @@ onBeforeUnmount(() => {
 														:key="status.id"
 														:color="activeStatus === status.id ? 'neutral' : 'neutral'"
 														:variant="activeStatus === status.id ? 'solid' : 'soft'"
-														size="sm"
+															size="md"
 														:label="status.label"
 														class="whitespace-nowrap"
 														@click="activeStatus = status.id"
@@ -769,13 +769,14 @@ onBeforeUnmount(() => {
 											</div>
 
 											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-												<UButton color="neutral" variant="soft" size="sm" label="นำเข้า" :disabled="!canCreateProduct" />
+													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="นำเข้า" :disabled="!canCreateProduct" />
 												<UButton
 													v-for="sort in sortOptions"
 													:key="sort.id"
 													color="neutral"
 													:variant="activeSort === sort.id ? 'solid' : 'soft'"
-													size="sm"
+														size="md"
+														class="rounded-md"
 													:label="sort.label"
 													@click="activeSort = sort.id"
 												/>
@@ -784,157 +785,123 @@ onBeforeUnmount(() => {
 									</div>
 								</UCard>
 
-								<div class="rounded-md bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
-									<div class="space-y-4 p-4">
-										<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-											<div>
-												<h1 class="text-xl font-semibold tracking-[-0.03em] text-stone-900">
-													รายการสินค้า
-												</h1>
-											</div>
-
-										<p class="hidden max-w-xl text-sm leading-6 text-stone-500 sm:block">
-											คลิกสินค้าเพื่อเปิดรายละเอียดแบบ slide-over โดยไม่บังพื้นที่หลักของรายการ
-										</p>
+						<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+							<div class="flex h-full min-h-0 flex-col">
+								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+									<div>
+										<p class="text-sm font-semibold text-stone-950">Products list</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูราคา ต้นทุน และสถานะขาย</p>
 									</div>
-
-										<div class="space-y-3">
-											<UCard
-												v-if="productsPending"
-												class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
-											>
-												<div class="py-10 text-center">
-													<p class="text-lg font-semibold text-stone-900">กำลังโหลดรายการสินค้า</p>
-													<p class="mt-2 text-sm text-stone-500">
-														กำลังดึงข้อมูลจาก Express API
-													</p>
-												</div>
-											</UCard>
-
-											<UCard
-												v-else-if="productsError"
-												class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"
-											>
-												<div class="py-8 text-center">
-													<p class="text-lg font-semibold text-stone-900">โหลดสินค้าไม่สำเร็จ</p>
-													<p class="mt-2 text-sm text-stone-500">
-														{{ productsError }}
-													</p>
-													<div class="mt-4">
-														<UButton color="primary" variant="soft" size="sm" label="ลองใหม่" @click="loadProducts" />
-													</div>
-												</div>
-											</UCard>
-
-											<template v-else>
-												<button
-													v-for="product in filteredProducts"
-													:key="product.id"
-													type="button"
-													class="w-full rounded-md border border-[#e7e4dd] bg-[#fffefd] p-3 text-left transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6]"
-													:class="selectedProductId === product.id ? 'ring-2 ring-[#f3c7a7]' : ''"
-													@click="openProductDetail(product.id)"
-												>
-													<div class="flex items-start gap-3">
-														<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
-															<img
-																v-if="product.imageUrl"
-																:src="product.imageUrl"
-																:alt="product.name"
-																class="h-full w-full object-cover"
-															>
-															<UIcon v-else name="i-heroicons-cube" class="h-6 w-6 text-white/95" />
-														</div>
-
-														<div class="min-w-0 flex-1">
-															<div class="flex flex-wrap items-start justify-between gap-2">
-																<div class="min-w-0">
-																	<div class="flex flex-wrap items-center gap-2">
-																		<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
-																		<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
-																	</div>
-																	<p class="mt-1 truncate text-[11px] text-stone-500">
-																		{{ product.sku }} · {{ product.barcode }}
-																	</p>
-																</div>
-
-																<div class="text-right">
-																	<p class="text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(product.price) }}</p>
-																	<p class="mt-1 text-[11px] text-stone-500">ทุน {{ formatMoney(product.cost) }}</p>
-																</div>
-															</div>
-
-															<div class="mt-3 flex flex-wrap items-center gap-2">
-																<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
-																<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
-																<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
-																<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
-															</div>
-
-															<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-																<p class="text-[11px] text-stone-500">
-																	อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
-																</p>
-																<div class="flex flex-wrap gap-2">
-																	<UButton color="neutral" variant="soft" size="xs" label="ดู" @click.stop="openProductDetail(product.id)" />
-																	<UButton color="neutral" variant="soft" size="xs" label="แก้ไข" />
-																	<UButton color="neutral" variant="soft" size="xs" label="คัดลอก" />
-																</div>
-															</div>
-														</div>
-													</div>
-												</button>
-											</template>
-
-											<UCard
-												v-if="!productsPending && !productsError && filteredProducts.length === 0"
-												class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
-											>
-												<div class="py-8 text-center">
-													<p class="text-lg font-semibold text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-													<p class="mt-2 text-sm text-stone-500">
-														ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน
-													</p>
-												</div>
-											</UCard>
-										</div>
+									<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+										{{ filteredProducts.length }} รายการ
 									</div>
 								</div>
+
+								<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+									<div v-if="productsPending" class="min-h-[280px]">
+										<div class="overflow-hidden bg-neutral-100">
+											<div class="products-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
+										</div>
+									</div>
+									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+										<div class="space-y-3">
+											<p class="text-sm text-stone-600">{{ productsError }}</p>
+											<UButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
+										</div>
+									</div>
+									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+										<div class="space-y-3">
+											<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
+											<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
+										</div>
+									</div>
+									<div v-else>
+										<button
+											v-for="product in filteredProducts"
+											:key="product.id"
+											type="button"
+											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
+											:class="selectedProductId === product.id ? 'bg-primary-50' : 'bg-white'"
+											@click="openProductDetail(product.id)"
+										>
+											<div class="flex items-start gap-3">
+												<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
+													<img
+														v-if="product.imageUrl"
+														:src="product.imageUrl"
+														:alt="product.name"
+														class="h-full w-full object-cover"
+													>
+													<UIcon v-else name="i-heroicons-cube" class="h-6 w-6 text-white/95" />
+												</div>
+
+												<div class="min-w-0 flex-1">
+													<div class="flex flex-wrap items-start justify-between gap-2">
+														<div class="min-w-0">
+															<div class="flex flex-wrap items-center gap-2">
+																<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
+																<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
+															</div>
+															<p class="mt-1 truncate text-[11px] text-stone-500">
+																{{ product.sku }} · {{ product.barcode }}
+															</p>
+														</div>
+
+														<div class="text-right">
+															<p class="text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(product.price) }}</p>
+															<p class="mt-1 text-[11px] text-stone-500">ทุน {{ formatMoney(product.cost) }}</p>
+														</div>
+													</div>
+
+													<div class="mt-3 flex flex-wrap items-center gap-2">
+														<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
+														<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
+														<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
+														<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
+													</div>
+
+													<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+														<p class="text-[11px] text-stone-500">
+															อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
+														</p>
+														<div class="flex flex-wrap gap-2">
+															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
+															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
+															<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
+														</div>
+													</div>
+												</div>
+											</div>
+										</button>
+									</div>
+								</div>
+
+								<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+									<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
+										<div>{{ activeProductsCount }} พร้อมขาย • {{ inactiveCount }} ปิดขาย</div>
+										<div>{{ lowStockCount }} สต็อกต่ำ • {{ namedCategoryCount }} หมวด</div>
+									</div>
+								</div>
+							</div>
+						</div>
 							</div>
 						</div>
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productDetailOpen"
+				title="ข้อมูลสินค้า"
+				description="ดูราคา ต้นทุน หมวดสินค้า และจัดการสถานะการขาย"
 				desktop-width="440px"
 				:show-handle="false"
-				content-class="!px-4 !py-4 lg:!px-4 lg:!py-4"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 				@close="closeProductDetail"
 			>
 				<template #default>
-					<div class="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] text-stone-900">
-						<div class="border-b border-[#e7e4dd] pb-4">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Product detail</p>
-									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">
-										ข้อมูลสินค้า
-									</h2>
-								</div>
-								<div class="flex items-center gap-2">
-									<UButton color="neutral" variant="soft" size="xs" label="แก้ไข" />
-									<UButton
-										color="neutral"
-										variant="soft"
-										size="xs"
-										icon="i-heroicons-x-mark-20-solid"
-										aria-label="ปิดรายละเอียดสินค้า"
-										title="ปิดรายละเอียดสินค้า"
-										@click="closeProductDetail"
-									/>
-								</div>
-							</div>
-
-							<div class="mt-4 rounded-md bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
+					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] text-stone-900">
+						<div class="px-5 pt-4">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
 								<div class="flex items-start gap-3">
 									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
 										<img
@@ -968,23 +935,23 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 
-						<div class="grid grid-cols-3 gap-2 border-b border-[#e7e4dd] py-4">
-							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+						<div class="grid grid-cols-3 gap-2 px-5 py-4">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
 							</div>
-							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 							</div>
-							<div class="rounded-md bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
 								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
 							</div>
 						</div>
 
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto py-4 pr-1">
-							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-5 pb-5">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
 									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
 									<UBadge color="neutral" variant="soft" :label="selectedProduct.updatedBy" />
@@ -1010,7 +977,7 @@ onBeforeUnmount(() => {
 								</dl>
 							</div>
 
-							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
 									<div>
 										<h3 class="text-sm font-semibold text-stone-950">หน่วยขายและตัวเลือก</h3>
@@ -1030,7 +997,7 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 
-							<div class="rounded-md bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-start justify-between gap-3">
 									<div>
 										<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
@@ -1041,7 +1008,7 @@ onBeforeUnmount(() => {
 									<UButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" />
 								</div>
 
-								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-[#e7e4dd]">
+								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
 									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
 									<div class="mt-2 flex items-start justify-between gap-3">
 										<div>
@@ -1054,13 +1021,14 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 
-						<div class="border-t border-[#e7e4dd] pt-4">
-							<div class="grid grid-cols-2 gap-2">
-								<UButton color="neutral" variant="soft" size="lg" label="คัดลอกสินค้า" :disabled="!canCreateProduct" />
-								<UButton
+						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" :disabled="!canCreateProduct">คัดลอกสินค้า</AppButton>
+								<AppButton
 									color="neutral"
 									:variant="selectedProduct.status === 'active' ? 'outline' : 'solid'"
-									size="lg"
+									size="md"
+									:block="true"
 									:label="selectedProduct.status === 'active' ? 'ปิดขาย' : 'เปิดขาย'"
 									:disabled="selectedProduct.status === 'active' ? !canDeactivateProduct : !canUpdateProduct"
 									@click="toggleStatus(selectedProduct.id)"
@@ -1083,7 +1051,7 @@ onBeforeUnmount(() => {
 					v-if="cameraScannerOpen"
 					class="fixed inset-0 z-[70] flex items-end justify-center bg-[rgba(28,25,23,0.58)] p-3 backdrop-blur-sm sm:items-center sm:p-6"
 				>
-					<div class="w-full max-w-2xl rounded-md bg-[#fffefd] p-4 shadow-[0_18px_44px_rgba(31,28,24,0.18)] ring-1 ring-[#e7e4dd] sm:p-5">
+					<div class="w-full max-w-2xl rounded-none bg-[#fffefd] p-4 shadow-[0_18px_44px_rgba(31,28,24,0.18)] ring-1 ring-[#e7e4dd] sm:rounded-md sm:p-5">
 						<div class="flex items-start justify-between gap-3">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
@@ -1100,8 +1068,9 @@ onBeforeUnmount(() => {
 							<UButton
 								color="neutral"
 								variant="soft"
-								size="sm"
+								size="md"
 								icon="i-heroicons-x-mark-20-solid"
+								class="rounded-md"
 								aria-label="ปิดตัวสแกน"
 								title="ปิดตัวสแกน"
 								@click="stopCameraScanner"
@@ -1140,14 +1109,16 @@ onBeforeUnmount(() => {
 									v-if="cameraScannerError"
 									color="primary"
 									variant="soft"
-									size="sm"
+									size="md"
+									class="rounded-md"
 									label="ลองเปิดใหม่"
 									@click="openCameraScanner"
 								/>
 								<UButton
 									color="neutral"
 									variant="soft"
-									size="sm"
+									size="md"
+									class="rounded-md"
 									label="ปิด"
 									@click="stopCameraScanner"
 								/>
@@ -1176,3 +1147,15 @@ onBeforeUnmount(() => {
 		</template>
 	</AppSidebarShell>
 </template>
+
+<style scoped>
+@keyframes products-loading-slide {
+	0% { transform: translateX(-120%); }
+	100% { transform: translateX(420%); }
+}
+
+.products-loading-line {
+	animation: products-loading-slide 1.2s linear infinite;
+	will-change: transform;
+}
+</style>

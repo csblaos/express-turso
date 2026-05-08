@@ -126,20 +126,16 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 					:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<NuxtLink to="/system-admin"><UBadge color="neutral" variant="soft" label="System Admin" /></NuxtLink>
-						<UBadge color="primary" variant="soft" label="System policy" />
-					</template>
 
 					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="lg" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">รีโหลด</AppButton>
-							<AppButton color="primary" variant="solid" size="lg" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" @click="saveConfig">บันทึก</AppButton>
+						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 lg:flex lg:w-auto">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">รีโหลด</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" :spin-icon-on-loading="true" @click="saveConfig">บันทึก</AppButton>
 						</div>
 					</template>
 				</AppPageHeader>
-				<div class="grid min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="min-h-0 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)]">
+					<div class="grid min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+						<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
@@ -151,7 +147,7 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 								</div>
 							</div>
 
-							<div class="min-h-0 flex-1 overflow-auto">
+								<div class="min-h-0 flex-1 overflow-auto pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0">
 								<div v-if="pending" class="min-h-[320px]">
 									<div class="overflow-hidden bg-neutral-100">
 										<div class="system-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
@@ -236,23 +232,23 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 								</div>
 							</div>
 
-							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-2.5 shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
-									<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
-										<span v-if="pending">กำลังโหลด System policy…</span>
-										<span v-else-if="hasChanges">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
-										<span v-else>นโยบายระบบเป็นเวอร์ชันล่าสุดแล้ว</span>
-									</div>
+								<div class="fixed inset-x-0 bottom-0 z-[70] shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm lg:hidden">
+									<div class="mx-auto flex w-full max-w-[1100px] flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
+										<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
+											<span v-if="pending">กำลังโหลด System policy…</span>
+											<span v-else-if="hasChanges">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
+											<span v-else>นโยบายระบบเป็นเวอร์ชันล่าสุดแล้ว</span>
+										</div>
 
-									<div class="flex items-center justify-end gap-2">
-										<AppButton color="neutral" variant="soft" size="sm" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">
-											รีโหลด
-										</AppButton>
-										<AppButton color="primary" variant="solid" size="sm" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" @click="saveConfig">
-											บันทึก
-										</AppButton>
+											<div class="grid w-full grid-cols-2 gap-2">
+												<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" :block="true" @click="loadConfig">
+													รีโหลด
+												</AppButton>
+												<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" :spin-icon-on-loading="true" :block="true" @click="saveConfig">
+													บันทึก
+												</AppButton>
+											</div>
 									</div>
-								</div>
 							</div>
 						</div>
 					</div>

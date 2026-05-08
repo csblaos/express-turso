@@ -435,8 +435,8 @@ function simulateScan() {
 		<template #default="{ openSidebar }">
 			<div class="flex min-h-full w-full lg:h-full lg:min-h-0 lg:overflow-hidden">
 				<section class="min-w-0 flex-1 px-0 py-3 pb-24 sm:py-4 lg:min-h-0 lg:pb-0">
-						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-										<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-10">
+						<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+										<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md lg:sticky lg:top-0 lg:z-10">
 											<div class="space-y-4">
 												<div class="flex flex-wrap items-center gap-2">
 													<UBadge color="primary" variant="soft" label="POS" />
@@ -449,8 +449,8 @@ function simulateScan() {
 														<UButton
 															color="neutral"
 															variant="soft"
-															size="lg"
-															class="justify-center lg:hidden"
+															size="md"
+															class="justify-center rounded-md lg:hidden"
 															label="เมนู"
 															@click="openSidebar"
 														/>
@@ -462,7 +462,7 @@ function simulateScan() {
 																icon="i-heroicons-magnifying-glass-20-solid"
 																placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
 																color="neutral"
-																class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 															/>
 															<UButton
 																v-if="searchQuery"
@@ -470,7 +470,7 @@ function simulateScan() {
 																variant="ghost"
 																size="xs"
 																icon="i-heroicons-x-mark-20-solid"
-																class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+																class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
 																aria-label="ล้างคำค้น"
 																title="ล้างคำค้น"
 																@click="searchQuery = ''"
@@ -481,17 +481,17 @@ function simulateScan() {
 													<UButton
 														color="primary"
 														variant="solid"
-														size="lg"
+														size="md"
 														icon="i-heroicons-qr-code-20-solid"
-														class="justify-center px-4"
+														class="justify-center rounded-md px-4"
 														aria-label="สแกนบาร์โค้ด"
 														title="สแกนบาร์โค้ด"
 														@click="simulateScan"
 													/>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="neutral" variant="soft" size="lg" label="พักบิล" />
-														<UButton color="neutral" variant="outline" size="lg" label="บิลที่พัก 4" />
+														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
+														<UButton color="neutral" variant="outline" size="md" class="rounded-md" label="บิลที่พัก 4" />
 													</div>
 												</div>
 
@@ -503,9 +503,9 @@ function simulateScan() {
 																:key="mode"
 																:color="activeMode === mode ? 'neutral' : 'neutral'"
 																:variant="activeMode === mode ? 'solid' : 'soft'"
-																size="sm"
+																size="md"
 																:label="mode"
-																class="whitespace-nowrap"
+																class="whitespace-nowrap rounded-md"
 																@click="activeMode = mode"
 															/>
 														</div>
@@ -516,8 +516,8 @@ function simulateScan() {
 																:key="category.id"
 																:color="activeCategory === category.id ? 'primary' : 'neutral'"
 																:variant="activeCategory === category.id ? 'soft' : 'ghost'"
-																size="sm"
-																class="whitespace-nowrap"
+																size="md"
+																class="whitespace-nowrap rounded-md"
 																@click="activeCategory = category.id"
 															>
 																{{ category.label }}
@@ -533,9 +533,9 @@ function simulateScan() {
 																:key="view.id"
 																:color="activeQuickView === view.id ? 'neutral' : 'neutral'"
 																:variant="activeQuickView === view.id ? 'solid' : 'soft'"
-																size="sm"
+																size="md"
 																:label="view.label"
-																class="whitespace-nowrap"
+																class="whitespace-nowrap rounded-md"
 																@click="activeQuickView = view.id"
 															/>
 														</div>
@@ -544,14 +544,14 @@ function simulateScan() {
 													<div class="flex flex-wrap items-start justify-start gap-2 xl:max-w-[280px] xl:justify-end">
 														<UBadge color="neutral" variant="soft" :label="`พนักงาน Lina`" />
 														<UBadge color="neutral" variant="soft" :label="`ลูกค้า ${selectedCustomer}`" />
-														<UButton color="neutral" variant="soft" size="sm" label="เรียงตามขายดี" />
-														<UButton color="neutral" variant="soft" size="sm" label="ฟิลเตอร์สาขา" />
+														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เรียงตามขายดี" />
+														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ฟิลเตอร์สาขา" />
 													</div>
 												</div>
 											</div>
 										</UCard>
 
-								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:min-h-0 lg:overflow-hidden">
+								<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md lg:min-h-0 lg:overflow-hidden">
 								<div class="space-y-4 p-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
 									<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 										<div>
@@ -575,13 +575,13 @@ function simulateScan() {
 											:key="product.id"
 											class="min-w-0 text-left"
 										>
-											<UCard
-													class="h-full overflow-hidden border-0 bg-white shadow-sm ring-1 ring-[#e7e4dd] transition hover:-translate-y-0.5 hover:shadow-md"
+												<UCard
+														class="h-full overflow-hidden rounded-md border-0 bg-white shadow-sm ring-1 ring-neutral-200 transition hover:-translate-y-0.5 hover:shadow-md"
 												:class="product.stockState === 'inactive' ? 'opacity-60' : 'cursor-pointer'"
 												@click="product.stockState !== 'inactive' && addToCart(product)"
 											>
 													<div class="flex h-full flex-col gap-3">
-													<div class="rounded-2xl px-3 py-2.5 text-white" :style="{ background: product.accent }">
+														<div class="rounded-md px-3 py-2.5 text-white" :style="{ background: product.accent }">
 														<div class="flex min-h-[74px] items-start justify-between gap-3">
 															<div>
 																<p class="text-[11px] uppercase tracking-[0.22em] text-white/80">
@@ -643,11 +643,11 @@ function simulateScan() {
 															<UButton
 																	:color="product.stockState === 'inactive' ? 'neutral' : 'primary'"
 																:variant="product.stockState === 'inactive' ? 'soft' : 'solid'"
-																size="xs"
+																size="md"
 																:icon="product.stockState === 'inactive' ? 'i-heroicons-lock-closed-16-solid' : 'i-heroicons-plus-16-solid'"
 																:label="product.stockState === 'inactive' ? 'ปิดขาย' : 'เพิ่ม'"
 																:disabled="product.stockState === 'inactive'"
-																class="shrink-0"
+																class="shrink-0 rounded-md"
 																@click.stop="product.stockState !== 'inactive' && addToCart(product)"
 															/>
 														</div>
@@ -658,7 +658,7 @@ function simulateScan() {
 
 									<UCard
 										v-if="filteredProducts.length === 0"
-										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
+										class="border border-dashed border-neutral-200 bg-neutral-50 shadow-none"
 									>
 										<div class="py-8 text-center">
 											<p class="text-lg font-semibold text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
@@ -674,8 +674,8 @@ function simulateScan() {
 					</section>
 
 							<aside class="hidden w-[420px] xl:flex xl:min-h-0 xl:flex-col xl:px-4 xl:py-3">
-								<div class="grid h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl bg-[#fbfbf8] p-4 text-stone-900 shadow-xl ring-1 ring-[#e7e4dd]">
-										<div class="flex items-start justify-between gap-3 border-b border-[#e7e4dd] pb-3">
+								<div class="grid h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-md border border-neutral-200 bg-[#fbfbf8] p-4 text-stone-900 shadow-[0_8px_24px_rgba(31,28,24,0.06)]">
+										<div class="flex items-start justify-between gap-3 border-b border-[#ece6dc] pb-3">
 											<div class="min-w-0">
 												<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Active ticket</p>
 												<div class="mt-1 flex items-end gap-2">
@@ -686,8 +686,9 @@ function simulateScan() {
 											<UButton
 												color="neutral"
 												variant="soft"
-												size="xs"
+												size="md"
 												icon="i-heroicons-trash"
+												class="rounded-md"
 												aria-label="ล้างบิล"
 												title="ล้างบิล"
 												@click="clearCart"
@@ -696,9 +697,9 @@ function simulateScan() {
 
 											<div class="mt-4 grid min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3">
 												<div class="flex flex-wrap gap-2">
-													<UButton color="neutral" variant="soft" size="sm" label="แนบลูกค้า" />
-													<UButton color="neutral" variant="soft" size="sm" label="ส่วนลด" />
-													<UButton color="neutral" variant="soft" size="sm" label="พักบิล" />
+													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="แนบลูกค้า" />
+													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ส่วนลด" />
+													<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
 												</div>
 
 												<div class="scrollbar-soft h-full min-h-0 overflow-y-auto pr-1">
@@ -706,7 +707,7 @@ function simulateScan() {
 											<UCard
 												v-for="item in cartItems"
 												:key="item.id"
-													class="border-0 bg-white shadow-sm ring-1 ring-[#e7e4dd]"
+													class="rounded-md border-0 bg-white shadow-sm ring-1 ring-neutral-200"
 										>
 											<div class="space-y-3">
 												<div class="flex items-start justify-between gap-3">
@@ -725,7 +726,7 @@ function simulateScan() {
 														<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
 														<UBadge v-if="item.hasVariants" color="neutral" variant="soft" label="ตัวเลือก" />
 													</div>
-													<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
+													<div class="inline-flex shrink-0 items-center rounded-md bg-[#f3f2ee] p-0.5">
 														<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 														<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 															{{ item.qty }}
@@ -736,10 +737,10 @@ function simulateScan() {
 											</div>
 										</UCard>
 
-										<UCard
-											v-if="cartItems.length === 0"
-												class="border border-dashed border-[#d9d5cd] bg-[#f3f2ee] text-stone-500 shadow-none"
-										>
+											<UCard
+												v-if="cartItems.length === 0"
+													class="border border-dashed border-neutral-200 bg-[#f3f2ee] text-stone-500 shadow-none"
+											>
 													<div class="py-8 text-sm leading-7">
 														ยังไม่มีสินค้าในบิลนี้ ลองสแกนบาร์โค้ดหรือกดเพิ่มจากรายการสินค้าทางซ้าย
 													</div>
@@ -748,28 +749,28 @@ function simulateScan() {
 												</div>
 											</div>
 
-											<div class="sticky bottom-0 z-10 border-t border-[#e7e4dd] bg-[rgba(251,251,248,0.96)] pt-4 backdrop-blur">
+											<div class="sticky bottom-0 z-10 border-t border-[#ece6dc] bg-[rgba(251,251,248,0.96)] px-1 pt-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur">
 												<div class="space-y-3">
 													<div class="grid grid-cols-2 gap-2 text-xs text-stone-500">
-														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+														<div class="rounded-md bg-white px-3 py-2 ring-1 ring-neutral-200">
 															<p>Subtotal</p>
 															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(subtotal) }}</p>
 														</div>
-														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+														<div class="rounded-md bg-white px-3 py-2 ring-1 ring-neutral-200">
 															<p>ส่วนลด</p>
 															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">-{{ formatMoney(discount) }}</p>
 														</div>
-														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+														<div class="rounded-md bg-white px-3 py-2 ring-1 ring-neutral-200">
 															<p>VAT 7%</p>
 															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(tax) }}</p>
 														</div>
-														<div class="rounded-2xl bg-white px-3 py-2 ring-1 ring-[#e7e4dd]">
+														<div class="rounded-md bg-white px-3 py-2 ring-1 ring-neutral-200">
 															<p>Service</p>
 															<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(serviceCharge) }}</p>
 														</div>
 													</div>
 
-													<div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+													<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 														<div class="flex items-center justify-between gap-3">
 															<div>
 																<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">ยอดชำระ</p>
@@ -782,11 +783,11 @@ function simulateScan() {
 													</div>
 
 													<div class="grid grid-cols-2 gap-2">
-														<UButton color="neutral" variant="soft" size="lg" label="เงินสด" />
-														<UButton color="neutral" variant="soft" size="lg" label="QR / โอน" />
+														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
+														<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
 													</div>
 
-													<UButton color="primary" variant="solid" size="xl" class="w-full" label="รับชำระเงิน" />
+													<UButton color="primary" variant="solid" size="md" class="w-full rounded-md" label="รับชำระเงิน" />
 												</div>
 											</div>
 								</div>
@@ -795,7 +796,7 @@ function simulateScan() {
 		</template>
 	</AppSidebarShell>
 
-			<div class="fixed inset-x-0 bottom-0 z-30 border-t border-[#e7e4dd] bg-[rgba(255,255,253,0.96)] px-4 py-3 backdrop-blur xl:hidden">
+			<div class="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6dc] bg-[rgba(255,255,253,0.96)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:hidden">
 			<div class="flex items-center justify-between gap-4">
 				<div>
 					<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">บิลปัจจุบัน</p>
@@ -803,7 +804,7 @@ function simulateScan() {
 				</div>
 				<div class="flex items-center gap-3">
 					<p class="text-right text-lg font-semibold text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
-						<UButton color="primary" variant="solid" size="lg" label="ดูบิล" @click="mobileTicketOpen = true" />
+						<UButton color="primary" variant="solid" size="md" class="rounded-md" label="ดูบิล" @click="mobileTicketOpen = true" />
 				</div>
 			</div>
 		</div>
@@ -813,7 +814,7 @@ function simulateScan() {
 			class="fixed inset-0 z-50 flex items-end bg-black/45 p-3 xl:hidden"
 			@click.self="mobileTicketOpen = false"
 		>
-			<UCard class="max-h-[88vh] w-full overflow-hidden border-0 bg-white shadow-2xl ring-1 ring-black/5">
+			<UCard class="max-h-[88vh] w-full overflow-hidden rounded-none border-0 bg-white shadow-2xl ring-1 ring-black/5 sm:rounded-md">
 				<template #header>
 					<div class="flex items-center justify-between">
 						<div>
@@ -822,7 +823,7 @@ function simulateScan() {
 								{{ currentTicket }}
 							</h2>
 						</div>
-							<UButton color="neutral" variant="soft" size="sm" label="ปิด" @click="mobileTicketOpen = false" />
+							<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ปิด" @click="mobileTicketOpen = false" />
 					</div>
 				</template>
 
@@ -830,7 +831,7 @@ function simulateScan() {
 						<UCard
 							v-for="item in cartItems"
 							:key="item.id"
-							class="border-0 bg-white ring-1 ring-[#e7e4dd]"
+							class="rounded-md border-0 bg-white ring-1 ring-neutral-200"
 						>
 							<div class="space-y-3">
 								<div class="flex items-start justify-between gap-3">
@@ -848,7 +849,7 @@ function simulateScan() {
 										<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
 										<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
 									</div>
-									<div class="inline-flex shrink-0 items-center rounded-full bg-[#f3f2ee] p-0.5">
+									<div class="inline-flex shrink-0 items-center rounded-md bg-[#f3f2ee] p-0.5">
 										<UButton color="neutral" variant="ghost" size="xs" label="-" @click="decreaseQty(item.id)" />
 										<span class="min-w-[2rem] text-center text-sm font-semibold text-stone-900 tabular-nums">
 											{{ item.qty }}
@@ -861,26 +862,26 @@ function simulateScan() {
 
 					<UCard
 						v-if="cartItems.length === 0"
-						class="border border-dashed border-[#d9d5cd] bg-[#f3f2ee] text-center text-stone-500 shadow-none"
+						class="border border-dashed border-neutral-200 bg-[#f3f2ee] text-center text-stone-500 shadow-none"
 					>
 						<div class="py-8 text-sm">ยังไม่มีสินค้าในบิลนี้</div>
 					</UCard>
 				</div>
 
 					<template #footer>
-						<div class="space-y-3 border-t border-[#e7e4dd] bg-[rgba(255,255,255,0.98)] pt-4 backdrop-blur">
+						<div class="space-y-3 border-t border-[#ece6dc] bg-[rgba(255,255,255,0.98)] pt-4 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur">
 							<div class="grid grid-cols-2 gap-2 text-xs text-stone-500">
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-2 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-[#fbfbf8] px-3 py-2 ring-1 ring-neutral-200">
 									<p>Subtotal</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(subtotal) }}</p>
 								</div>
-								<div class="rounded-2xl bg-[#fbfbf8] px-3 py-2 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md bg-[#fbfbf8] px-3 py-2 ring-1 ring-neutral-200">
 									<p>ส่วนลด</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900 tabular-nums">-{{ formatMoney(discount) }}</p>
 								</div>
 							</div>
 
-							<div class="rounded-2xl bg-[#fbfbf8] px-4 py-3 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md bg-[#fbfbf8] px-4 py-3 ring-1 ring-neutral-200">
 								<div class="flex items-center justify-between gap-3">
 									<div>
 										<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">ยอดชำระ</p>
@@ -891,13 +892,13 @@ function simulateScan() {
 							</div>
 
 							<div class="grid grid-cols-2 gap-2">
-								<UButton color="neutral" variant="soft" size="lg" label="เงินสด" />
-								<UButton color="neutral" variant="soft" size="lg" label="QR / โอน" />
+								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="เงินสด" />
+								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="QR / โอน" />
 							</div>
 
 							<div class="grid gap-2">
-								<UButton color="primary" variant="solid" size="xl" label="รับชำระเงิน" />
-								<UButton color="neutral" variant="soft" size="lg" label="พักบิล" />
+								<UButton color="primary" variant="solid" size="md" class="rounded-md" label="รับชำระเงิน" />
+								<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
 							</div>
 						</div>
 					</template>
@@ -908,7 +909,7 @@ function simulateScan() {
 			v-if="scanToast"
 			class="fixed right-3 top-3 z-[60] max-w-sm"
 		>
-			<UCard class="border-0 bg-white shadow-xl ring-1 ring-[#efd7c6]">
+			<UCard class="border-0 bg-white shadow-xl ring-1 ring-neutral-200">
 				<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#97532c]">Barcode scanned</p>
 				<p class="mt-1 text-sm text-stone-700">{{ scanToast }}</p>
 			</UCard>

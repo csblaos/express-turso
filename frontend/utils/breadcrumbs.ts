@@ -34,14 +34,12 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	"/settings": [
 		{ label: "Settings" },
 	],
-	"/settings/access/roles": [
+	"/settings/roles": [
 		{ label: "Settings", to: "/settings" },
-		{ label: "Access" },
 		{ label: "Roles" },
 	],
-	"/settings/access/users": [
+	"/settings/users": [
 		{ label: "Settings", to: "/settings" },
-		{ label: "Access" },
 		{ label: "Users" },
 	],
 	"/superadmin": [

@@ -289,42 +289,38 @@ onMounted(async () => {
 		sidebar-description="จัดการสมาชิกในร้าน, บทบาท และ permission summary"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
 				<AppPageHeader
 					title="ผู้ใช้งานและสิทธิ์การใช้งาน"
 					description="จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และตรวจ permission summary ในพื้นที่เดียว"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="neutral" variant="soft" label="Settings" />
-						<UBadge color="primary" variant="soft" label="Access control" />
-					</template>
 
 					<SettingsAccessTabs />
 
-					<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+					<div class="grid gap-3 pt-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 						<UInput
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
 							size="lg"
 							color="neutral"
 							placeholder="ค้นหาชื่อผู้ใช้หรืออีเมล"
-							class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:shadow-sm"
+							class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 							@keyup.enter="fetchMembers"
 						/>
 						<UButton
 							color="neutral"
 							variant="soft"
-							size="lg"
-							class="justify-center rounded-2xl"
+							size="md"
+							class="justify-center rounded-md"
 							icon="i-heroicons-funnel-20-solid"
 							label="รีเฟรช"
 							@click="fetchMembers"
 						/>
 						<UButton
 							color="primary"
-							size="lg"
-							class="justify-center rounded-2xl"
+							size="md"
+							class="justify-center rounded-md"
 							icon="i-heroicons-user-plus-20-solid"
 							label="เพิ่มผู้ใช้"
 							:disabled="!canManageUsers || !selectedStoreId"
@@ -333,15 +329,15 @@ onMounted(async () => {
 					</div>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 gap-4">
-					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+				<div class="grid min-h-0 gap-3">
+					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 							<div class="grid gap-3 md:grid-cols-3">
 								<div class="space-y-2">
 									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้าน</label>
 									<select
 										v-model="selectedStoreId"
-										class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5] focus:bg-white"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										:disabled="storesPending"
 									>
 										<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
@@ -352,7 +348,7 @@ onMounted(async () => {
 									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">สถานะ</label>
 									<select
 										v-model="activeStatus"
-										class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5] focus:bg-white"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										@change="fetchMembers"
 									>
 										<option v-for="status in statusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
@@ -363,7 +359,7 @@ onMounted(async () => {
 									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาท</label>
 									<select
 										v-model="activeRoleId"
-										class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5] focus:bg-white"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										@change="fetchMembers"
 									>
 										<option v-for="role in roleOptions" :key="role.id" :value="role.id">{{ role.label }}</option>
@@ -372,7 +368,7 @@ onMounted(async () => {
 							</div>
 						</UCard>
 
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 							<div class="flex items-center justify-between gap-3">
 								<div>
 									<h2 class="text-lg font-semibold text-stone-950">สมาชิกในร้าน</h2>
@@ -381,15 +377,17 @@ onMounted(async () => {
 								<UBadge color="neutral" variant="soft" :label="`${members.length} รายการ`" />
 							</div>
 
-							<div v-if="membersError" class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+							<div v-if="membersError" class="mt-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
 								{{ membersError }}
 							</div>
 
-							<div v-else-if="membersPending" class="mt-4 grid gap-3">
-								<div v-for="index in 5" :key="index" class="h-24 animate-pulse rounded-2xl bg-[#f5f5f4]" />
+							<div v-else-if="membersPending" class="mt-4 min-h-[120px]">
+								<div class="overflow-hidden bg-neutral-100">
+									<div class="users-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
+								</div>
 							</div>
 
-							<div v-else-if="!members.length" class="mt-4 rounded-2xl border border-dashed border-[#e7e4dd] bg-[#faf8f4] px-5 py-10 text-center">
+							<div v-else-if="!members.length" class="mt-4 rounded-md border border-dashed border-neutral-200 bg-[#faf8f4] px-5 py-10 text-center">
 								<UIcon name="i-heroicons-users" class="mx-auto h-8 w-8 text-stone-300" />
 								<p class="mt-3 text-sm font-medium text-stone-700">ยังไม่มีสมาชิกในร้านนี้</p>
 								<p class="mt-1 text-sm text-stone-500">เพิ่มผู้ใช้ใหม่หรือเชิญผู้ใช้เดิมเข้ามาในร้านก่อน</p>
@@ -400,7 +398,7 @@ onMounted(async () => {
 									v-for="member in members"
 									:key="`${member.store_id}:${member.user_id}`"
 									type="button"
-									class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4 text-left transition hover:border-[#d9d5cd] hover:shadow-sm"
+									class="rounded-md border border-neutral-200 bg-[#fffefd] p-4 text-left transition hover:border-neutral-300 hover:shadow-sm"
 									@click="openMemberDetail(member.user_id)"
 								>
 									<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -412,9 +410,9 @@ onMounted(async () => {
 											</div>
 											<p class="mt-1 text-sm text-stone-500">{{ member.email }}</p>
 											<div class="mt-3 flex flex-wrap gap-2 text-xs text-stone-500">
-												<span class="rounded-full bg-[#f5f5f4] px-2.5 py-1">System role: {{ member.system_role }}</span>
-												<span class="rounded-full bg-[#f5f5f4] px-2.5 py-1">{{ member.permissions_count }} permissions</span>
-												<span class="rounded-full bg-[#f5f5f4] px-2.5 py-1">เพิ่มเมื่อ {{ formatDate(member.created_at) }}</span>
+												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">System role: {{ member.system_role }}</span>
+												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">{{ member.permissions_count }} permissions</span>
+												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">เพิ่มเมื่อ {{ formatDate(member.created_at) }}</span>
 											</div>
 										</div>
 										<UIcon name="i-heroicons-chevron-right-20-solid" class="hidden h-5 w-5 text-stone-300 lg:block" />
@@ -427,141 +425,146 @@ onMounted(async () => {
 				</div>
 			</div>
 
-			<AppResponsivePanel v-model="detailOpen" desktop-width="420px">
-				<template v-if="selectedMember" #default="{ close }">
-					<div class="space-y-4">
-						<div class="flex items-start justify-between gap-3">
-							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Member detail</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">{{ selectedMember.name }}</h2>
-								<p class="mt-1 text-sm text-stone-500">{{ selectedMember.email }}</p>
+			<AppResponsivePanel
+				v-model="detailOpen"
+				:title="selectedMember ? selectedMember.name : 'รายละเอียดสมาชิก'"
+				description="จัดการบทบาท สถานะ และดู permission summary ของผู้ใช้"
+				desktop-width="420px"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<template v-if="selectedMember">
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ข้อมูลผู้ใช้</p>
+								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedMember.email }}</p>
+								<p class="mt-1 text-xs text-stone-500">System role: {{ selectedMember.system_role }}</p>
 							</div>
-							<div class="flex items-center gap-2">
-								<UButton
-									color="neutral"
-									variant="soft"
-									size="sm"
-									class="justify-center rounded-xl"
-									icon="i-heroicons-key-20-solid"
-									label="รีเซ็ตรหัสผ่าน"
-									:disabled="!canManageUsers"
-									@click="resetPasswordOpen = true"
-								/>
-								<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
-							</div>
-						</div>
 
-						<div class="rounded-2xl border border-[#ece8df] bg-[#faf8f4] p-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาท</p>
-							<select
-								:value="selectedMember.role_id"
-								class="mt-3 w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5]"
-								:disabled="!canManageRoles"
-								@change="saveMemberRole(selectedMember, ($event.target as HTMLSelectElement).value)"
-							>
-								<option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
-							</select>
-						</div>
-
-						<div class="rounded-2xl border border-[#ece8df] bg-[#faf8f4] p-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">สถานะสมาชิก</p>
-							<select
-								:value="selectedMember.status"
-								class="mt-3 w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5]"
-								:disabled="!canManageUsers"
-								@change="saveMemberStatus(selectedMember, ($event.target as HTMLSelectElement).value)"
-							>
-								<option v-for="status in memberStatusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
-							</select>
-						</div>
-
-						<div class="rounded-2xl border border-[#ece8df] bg-[#faf8f4] p-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Permission summary</p>
-							<div class="mt-3 flex flex-wrap gap-2">
-								<span
-									v-for="permission in selectedMember.permissions"
-									:key="permission.id"
-									class="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-stone-600 ring-1 ring-[#e7e4dd]"
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาท</p>
+								<select
+									:value="selectedMember.role_id"
+									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									:disabled="!canManageRoles"
+									@change="saveMemberRole(selectedMember, ($event.target as HTMLSelectElement).value)"
 								>
-									{{ permission.key }}
-								</span>
-							</div>
-						</div>
-					</div>
-				</template>
-			</AppResponsivePanel>
-
-			<AppResponsivePanel v-model="createOpen" desktop-width="440px">
-				<template #default="{ close }">
-					<div class="space-y-4">
-						<div class="flex items-start justify-between gap-3">
-							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Create member</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">เพิ่มสมาชิกในร้าน</h2>
-								<p class="mt-1 text-sm text-stone-500">สร้างผู้ใช้ใหม่หรือผูกผู้ใช้เดิมเข้ากับร้านพร้อมบทบาทเริ่มต้น</p>
-							</div>
-							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
-						</div>
-
-						<div class="space-y-4">
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">ชื่อผู้ใช้</label>
-								<UInput v-model="createForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
-							</div>
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">อีเมล</label>
-								<UInput v-model="createForm.email" type="email" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
-							</div>
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">รหัสผ่านเริ่มต้น</label>
-								<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3" />
-							</div>
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">บทบาท</label>
-								<select v-model="createForm.role_id" class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5] focus:bg-white">
 									<option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
 								</select>
 							</div>
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">สถานะ</label>
-								<select v-model="createForm.status" class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm font-medium text-stone-700 outline-none transition focus:border-[#d4b8a5] focus:bg-white">
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">สถานะสมาชิก</p>
+								<select
+									:value="selectedMember.status"
+									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									:disabled="!canManageUsers"
+									@change="saveMemberStatus(selectedMember, ($event.target as HTMLSelectElement).value)"
+								>
 									<option v-for="status in memberStatusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
 								</select>
 							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Permission summary</p>
+								<div class="mt-3 flex flex-wrap gap-2">
+									<span
+										v-for="permission in selectedMember.permissions"
+										:key="permission.id"
+										class="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-stone-600 ring-1 ring-neutral-200"
+									>
+										{{ permission.key }}
+									</span>
+								</div>
+							</div>
 						</div>
 
-						<div class="flex gap-3 pt-2">
-							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="บันทึกผู้ใช้" :loading="saving" :disabled="saving || !canManageUsers" @click="createMember" />
+						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
+								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-key-20-solid" :block="true" :disabled="!canManageUsers" @click="resetPasswordOpen = true">
+									รีเซ็ตรหัสผ่าน
+								</AppButton>
+							</div>
 						</div>
 					</div>
 				</template>
 			</AppResponsivePanel>
 
-			<AppResponsivePanel v-model="resetPasswordOpen" desktop-width="420px" mobile-max-height="72vh">
-				<template v-if="selectedMember" #default="{ close }">
-					<div class="space-y-4">
-						<div class="flex items-start justify-between gap-3">
-							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Reset password</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">รีเซ็ตรหัสผ่าน</h2>
-								<p class="mt-1 text-sm text-stone-500">ตั้งรหัสผ่านใหม่ให้ {{ selectedMember.name }} และบังคับเปลี่ยนรหัสผ่านเมื่อเข้าใช้งานครั้งถัดไปได้</p>
-							</div>
-							<UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="close" />
+			<AppResponsivePanel
+				v-model="createOpen"
+				title="เพิ่มสมาชิกในร้าน"
+				description="สร้างผู้ใช้ใหม่หรือผูกผู้ใช้เดิมเข้ากับร้านพร้อมบทบาทเริ่มต้น"
+				desktop-width="440px"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">ชื่อผู้ใช้</label>
+							<UInput v-model="createForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 						</div>
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">อีเมล</label>
+							<UInput v-model="createForm.email" type="email" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+						</div>
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">รหัสผ่านเริ่มต้น</label>
+							<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+						</div>
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">บทบาท</label>
+							<select v-model="createForm.role_id" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+							</select>
+						</div>
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">สถานะ</label>
+							<select v-model="createForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option v-for="status in memberStatusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
+							</select>
+						</div>
+					</div>
 
-						<div class="space-y-4">
+					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
+							<AppButton color="primary" variant="solid" size="md" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canManageUsers" @click="createMember">
+								บันทึกผู้ใช้
+							</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="resetPasswordOpen"
+				:title="selectedMember ? `รีเซ็ตรหัสผ่าน: ${selectedMember.name}` : 'รีเซ็ตรหัสผ่าน'"
+				description="ตั้งรหัสผ่านใหม่และกำหนดให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งถัดไป"
+				desktop-width="420px"
+				mobile-max-height="72vh"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<template v-if="selectedMember">
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">รหัสผ่านใหม่</label>
 								<UInput
 									v-model="resetPasswordForm.password"
 									size="lg"
 									color="neutral"
-									class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3"
+									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 								/>
 							</div>
 
-							<label class="flex items-center gap-3 rounded-2xl border border-[#ece8df] bg-[#faf8f4] px-4 py-3 text-sm text-stone-700">
+							<label class="flex items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
 								<input
 									v-model="resetPasswordForm.must_change_password"
 									type="checkbox"
@@ -571,9 +574,13 @@ onMounted(async () => {
 							</label>
 						</div>
 
-						<div class="flex gap-3 pt-2">
-							<UButton color="neutral" variant="soft" size="lg" class="w-full justify-center rounded-2xl" label="ยกเลิก" @click="close" />
-							<UButton color="primary" size="lg" class="w-full justify-center rounded-2xl" label="บันทึกรหัสผ่านใหม่" :disabled="!canManageUsers || saving" :loading="saving" @click="resetMemberPassword" />
+						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="resetPasswordOpen = false">ยกเลิก</AppButton>
+								<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canManageUsers || saving" :loading="saving" :spin-icon-on-loading="true" @click="resetMemberPassword">
+									บันทึกรหัสผ่านใหม่
+								</AppButton>
+							</div>
 						</div>
 					</div>
 				</template>
@@ -581,3 +588,15 @@ onMounted(async () => {
 		</template>
 	</AppSidebarShell>
 </template>
+
+<style scoped>
+@keyframes users-loading-slide {
+	0% { transform: translateX(-120%); }
+	100% { transform: translateX(420%); }
+}
+
+.users-loading-line {
+	animation: users-loading-slide 1.2s linear infinite;
+	will-change: transform;
+}
+</style>

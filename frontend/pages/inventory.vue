@@ -604,49 +604,49 @@ onBeforeUnmount(() => {
 		sidebar-compact-title="STK"
 		sidebar-description="ตรวจยอดคงเหลือและปรับสต็อก"
 	>
-		<template #default="{ openSidebar }">
-			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
-						<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-							<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd] lg:sticky lg:top-0 lg:z-20">
+			<template #default="{ openSidebar }">
+				<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
+					<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md lg:sticky lg:top-0 lg:z-20">
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
 									<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 										<div class="grid grid-cols-4 gap-2 lg:hidden">
-											<UButton
-												color="neutral"
-												variant="soft"
-												size="lg"
-												class="justify-center"
+												<UButton
+													color="neutral"
+													variant="soft"
+													size="md"
+													class="justify-center rounded-md"
 												icon="i-heroicons-bars-3-20-solid"
 												aria-label="เปิดเมนู"
 												title="เปิดเมนู"
 												@click="openSidebar"
 											/>
-											<UButton
-												color="neutral"
-												variant="soft"
-												size="lg"
-												class="justify-center"
+												<UButton
+													color="neutral"
+													variant="soft"
+													size="md"
+													class="justify-center rounded-md"
 												icon="i-heroicons-magnifying-glass-20-solid"
 												:aria-label="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
 												:title="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
 												@click="toggleMobileSearch"
 											/>
-											<UButton
-												color="primary"
-												variant="soft"
-												size="lg"
-												icon="i-heroicons-qr-code-20-solid"
-												class="justify-center"
+												<UButton
+													color="primary"
+													variant="soft"
+													size="md"
+													icon="i-heroicons-qr-code-20-solid"
+													class="justify-center rounded-md"
 												aria-label="สแกนบาร์โค้ด"
 												title="สแกนบาร์โค้ด"
 												@click="openCameraScanner"
 											/>
-											<UButton
-												color="primary"
-												variant="solid"
-												size="lg"
-												icon="i-heroicons-arrow-path-rounded-square-20-solid"
-												class="justify-center"
+												<UButton
+													color="primary"
+													variant="solid"
+													size="md"
+													icon="i-heroicons-arrow-path-rounded-square-20-solid"
+													class="justify-center rounded-md"
 												aria-label="รีโหลดสต็อก"
 												title="รีโหลดสต็อก"
 												@click="loadBalances"
@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
 												icon="i-heroicons-magnifying-glass-20-solid"
 												placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
 												color="neutral"
-												class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
 											<UButton
@@ -670,7 +670,7 @@ onBeforeUnmount(() => {
 												variant="ghost"
 												size="xs"
 												icon="i-heroicons-x-mark-20-solid"
-												class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
 												aria-label="ล้างคำค้น"
 												title="ล้างคำค้น"
 												@click="searchQuery = ''"
@@ -685,7 +685,7 @@ onBeforeUnmount(() => {
 												icon="i-heroicons-magnifying-glass-20-solid"
 												placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
 												color="neutral"
-												class="w-full [&_input]:rounded-2xl [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:pr-12 [&_input]:shadow-sm"
+													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
 											<UButton
@@ -694,7 +694,7 @@ onBeforeUnmount(() => {
 												variant="ghost"
 												size="xs"
 												icon="i-heroicons-x-mark-20-solid"
-												class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full"
+													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
 												aria-label="ล้างคำค้น"
 												title="ล้างคำค้น"
 												@click="searchQuery = ''"
@@ -706,9 +706,9 @@ onBeforeUnmount(() => {
 										<UButton
 											color="primary"
 											variant="soft"
-											size="lg"
+											size="md"
 											icon="i-heroicons-qr-code-20-solid"
-											class="justify-center px-4"
+											class="justify-center rounded-md px-4"
 											aria-label="สแกนบาร์โค้ด"
 											title="สแกนบาร์โค้ด"
 											@click="openCameraScanner"
@@ -718,9 +718,9 @@ onBeforeUnmount(() => {
 										<UButton
 											color="neutral"
 											variant="soft"
-											size="lg"
+											size="md"
 											icon="i-heroicons-arrow-path-20-solid"
-											class="justify-center px-4"
+											class="justify-center rounded-md px-4"
 											aria-label="รีโหลดสต็อก"
 											title="รีโหลดสต็อก"
 											@click="loadBalances"
@@ -731,8 +731,8 @@ onBeforeUnmount(() => {
 								</div>
 							</UCard>
 
-							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-								<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 									<div class="space-y-3">
 										<div class="flex flex-wrap items-center gap-2">
 											<UBadge color="neutral" variant="soft" :label="`${totalSkuCount} SKU`" />
@@ -748,7 +748,7 @@ onBeforeUnmount(() => {
 													<div class="relative">
 														<select
 															v-model="activeCategory"
-															class="w-full appearance-none rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+																class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 														>
 															<option
 																v-for="category in categoryOptions"
@@ -788,7 +788,7 @@ onBeforeUnmount(() => {
 														:key="status.id"
 														color="neutral"
 														:variant="activeStatus === status.id ? 'solid' : 'soft'"
-														size="sm"
+														size="md"
 														:label="status.label"
 														class="whitespace-nowrap"
 														@click="activeStatus = status.id"
@@ -797,21 +797,21 @@ onBeforeUnmount(() => {
 											</div>
 
 											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-												<UButton
-													v-for="sort in sortOptions"
-													:key="sort.id"
-													color="neutral"
-													:variant="activeSort === sort.id ? 'solid' : 'soft'"
-													size="sm"
-													:label="sort.label"
-													@click="activeSort = sort.id"
+													<UButton
+														v-for="sort in sortOptions"
+														:key="sort.id"
+														color="neutral"
+														:variant="activeSort === sort.id ? 'solid' : 'soft'"
+														size="md"
+														:label="sort.label"
+														@click="activeSort = sort.id"
 												/>
 											</div>
 										</div>
 									</div>
 								</UCard>
 
-								<div class="rounded-2xl bg-white shadow-lg ring-1 ring-[#e7e4dd]">
+								<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 									<div class="space-y-4 p-4">
 										<div class="flex items-end justify-between gap-2">
 											<h1 class="text-xl font-semibold tracking-[-0.03em] text-stone-900">
@@ -851,12 +851,12 @@ onBeforeUnmount(() => {
 													v-for="item in filteredBalances"
 													:key="item.id"
 													type="button"
-													class="w-full rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-3 text-left transition hover:border-[#d9d5cd] hover:shadow-sm"
-													:class="selectedProductId === item.id ? 'ring-2 ring-[#f3c7a7]' : ''"
+														class="w-full rounded-md border border-neutral-200 bg-white p-3 text-left transition hover:border-primary-200 hover:bg-primary-50"
+														:class="selectedProductId === item.id ? 'ring-1 ring-primary-200' : ''"
 													@click="openDetail(item.id)"
 												>
 													<div class="flex items-start gap-3">
-														<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-semibold text-white" :style="{ background: item.accent }">
+															<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: item.accent }">
 															<img
 																v-if="item.imageUrl"
 																:src="item.imageUrl"
@@ -890,7 +890,7 @@ onBeforeUnmount(() => {
 
 															<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
 																<p class="text-[11px] text-stone-500">อัปเดต {{ item.updatedAt }}</p>
-																<UButton color="neutral" variant="soft" size="xs" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
+																	<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
 															</div>
 														</div>
 													</div>
@@ -911,197 +911,181 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 						</div>
-			<AppResponsivePanel
-				v-if="selectedBalance"
-				v-model="detailOpen"
-				desktop-width="440px"
-				:show-handle="false"
-				content-class="!px-4 !py-4 lg:!px-4 lg:!py-4"
-				@close="closeDetail"
-			>
-				<template #default>
-					<div class="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] text-stone-900">
-						<div class="border-b border-[#e7e4dd] pb-4">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Stock detail</p>
-									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">ข้อมูลสต็อก</h2>
-								</div>
-								<UButton
-									color="neutral"
-									variant="soft"
-									size="xs"
-									icon="i-heroicons-x-mark-20-solid"
-									aria-label="ปิดรายละเอียดสต็อก"
-									title="ปิดรายละเอียดสต็อก"
-									@click="closeDetail"
-								/>
-							</div>
-
-							<div class="mt-4 rounded-[24px] bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
-								<div class="flex items-start gap-3">
-									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-2xl font-semibold text-white" :style="{ background: selectedBalance.accent }">
-										<img
-											v-if="selectedBalance.imageUrl"
-											:src="selectedBalance.imageUrl"
-											:alt="selectedBalance.name"
-											class="h-full w-full object-cover"
-										>
-										<UIcon v-else name="i-heroicons-cube" class="h-7 w-7 text-white/95" />
+				<AppResponsivePanel
+					v-if="selectedBalance"
+					v-model="detailOpen"
+					title="ข้อมูลสต็อก"
+					description="ดูยอดคงเหลือ ปรับสต็อก และตรวจประวัติการเคลื่อนไหว"
+					desktop-width="440px"
+					:show-handle="false"
+					close-button-size="md"
+					compact-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+					@close="closeDetail"
+				>
+					<template #default>
+						<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] text-stone-900">
+							<div class="px-5 pt-4">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+									<div class="flex items-start justify-between gap-3">
+										<div>
+											<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Stock detail</p>
+											<h2 class="mt-2 text-base font-semibold text-stone-950">{{ selectedBalance.name }}</h2>
+											<p class="mt-1 text-sm text-stone-500">{{ selectedBalance.sku }} · {{ selectedBalance.barcode }}</p>
+										</div>
+										<UBadge :color="getStockTone(selectedBalance.stockState)" variant="soft" :label="getStockLabel(selectedBalance)" />
 									</div>
-									<div class="min-w-0 flex-1">
-										<div class="flex flex-wrap items-start justify-between gap-2">
-											<div class="min-w-0">
-												<h3 class="truncate text-lg font-semibold text-stone-950">{{ selectedBalance.name }}</h3>
-												<p class="mt-1 truncate text-sm text-stone-500">{{ selectedBalance.sku }} · {{ selectedBalance.barcode }}</p>
+
+									<div class="mt-3 rounded-md bg-white p-3 ring-1 ring-neutral-200">
+										<div class="flex items-start gap-3">
+											<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedBalance.accent }">
+												<img
+													v-if="selectedBalance.imageUrl"
+													:src="selectedBalance.imageUrl"
+													:alt="selectedBalance.name"
+													class="h-full w-full object-cover"
+												>
+												<UIcon v-else name="i-heroicons-cube" class="h-7 w-7 text-white/95" />
 											</div>
-											<UBadge :color="getStockTone(selectedBalance.stockState)" variant="soft" :label="getStockLabel(selectedBalance)" />
-										</div>
-										<div class="mt-3 flex flex-wrap gap-2">
-											<UBadge color="neutral" variant="soft" :label="selectedBalance.categoryLabel" />
-											<UBadge color="neutral" variant="soft" :label="selectedBalance.unitLabel" />
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-3 gap-2 border-b border-[#e7e4dd] py-4">
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">คงเหลือ</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.available) }}</p>
-							</div>
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ในคลัง</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.onHand) }}</p>
-							</div>
-							<div class="rounded-2xl bg-[#fbfbf8] px-3 py-3 ring-1 ring-[#e7e4dd]">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">จอง</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.reserved) }}</p>
-							</div>
-						</div>
-
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto py-4 pr-1">
-							<section class="rounded-3xl bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
-								<div class="flex items-start justify-between gap-3">
-									<div>
-										<h3 class="text-sm font-semibold text-stone-900">ปรับสต็อก</h3>
-										<p class="mt-1 text-xs leading-5 text-stone-500">แยก flow ปรับสต็อกออกจากข้อมูลสินค้า เพื่อให้ตรวจสอบย้อนหลังได้ง่าย</p>
-									</div>
-									<UBadge color="neutral" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
-								</div>
-
-								<div class="mt-4 grid gap-2 sm:grid-cols-3">
-									<UButton
-										v-for="mode in adjustmentModeOptions"
-										:key="mode.id"
-										:color="adjustmentMode === mode.id ? 'primary' : 'neutral'"
-										:variant="adjustmentMode === mode.id ? 'soft' : 'ghost'"
-										size="sm"
-										class="justify-center"
-										:icon="mode.icon"
-										@click="adjustmentMode = mode.id"
-									>
-										{{ mode.label }}
-									</UButton>
-								</div>
-
-								<div class="mt-4 grid gap-3">
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน (หน่วยฐาน)</label>
-										<input
-											v-model="adjustmentQty"
-											type="number"
-											min="0"
-											step="1"
-											class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
-											placeholder="ระบุจำนวน"
-										>
-									</div>
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุ</label>
-										<textarea
-											v-model="adjustmentNote"
-											rows="3"
-											class="w-full resize-none rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
-											placeholder="เช่น รับของเข้า, นับใหม่, ของเสีย"
-										/>
-									</div>
-									<UButton
-										color="primary"
-										variant="solid"
-										size="lg"
-										class="justify-center"
-										:loading="adjustmentSubmitting"
-										:disabled="!canAdjustInventory"
-										@click="submitAdjustment"
-									>
-										บันทึกการปรับสต็อก
-									</UButton>
-								</div>
-							</section>
-
-							<section class="space-y-3">
-								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-sm font-semibold text-stone-900">ประวัติการเคลื่อนไหว</h3>
-									<UBadge color="neutral" variant="soft" :label="`${movements.length} รายการ`" />
-								</div>
-
-								<UCard
-									v-if="movementsPending"
-									class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
-								>
-									<div class="py-8 text-center">
-										<p class="text-sm font-semibold text-stone-900">กำลังโหลดประวัติสต็อก</p>
-									</div>
-								</UCard>
-
-								<UCard
-									v-else-if="movementsError"
-									class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"
-								>
-									<div class="py-6 text-center">
-										<p class="text-sm font-semibold text-stone-900">โหลด movement ไม่สำเร็จ</p>
-										<p class="mt-2 text-xs text-stone-500">{{ movementsError }}</p>
-									</div>
-								</UCard>
-
-								<UCard
-									v-else-if="movements.length === 0"
-									class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
-								>
-									<div class="py-6 text-center">
-										<p class="text-sm font-semibold text-stone-900">ยังไม่มีประวัติการปรับสต็อก</p>
-										<p class="mt-2 text-xs text-stone-500">เมื่อบันทึกการปรับสต็อก รายการล่าสุดจะมาแสดงที่นี่</p>
-									</div>
-								</UCard>
-
-								<div v-else class="space-y-2">
-									<div
-										v-for="movement in movements"
-										:key="movement.id"
-										class="rounded-2xl border border-[#e7e4dd] bg-white p-3"
-									>
-										<div class="flex items-start justify-between gap-3">
-											<div>
-												<div class="flex flex-wrap items-center gap-2">
-													<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
-													<p class="text-xs text-stone-500">{{ formatDate(movement.created_at) }}</p>
+											<div class="min-w-0 flex-1">
+												<div class="mt-3 flex flex-wrap gap-2">
+													<UBadge color="neutral" variant="soft" :label="selectedBalance.categoryLabel" />
+													<UBadge color="neutral" variant="soft" :label="selectedBalance.unitLabel" />
 												</div>
-												<p class="mt-2 text-sm font-medium text-stone-900">{{ movement.note || "ไม่มีหมายเหตุ" }}</p>
-												<p class="mt-1 text-xs text-stone-500">
-													โดย {{ movement.created_by || "ระบบ" }} · {{ movement.product_sku }} · {{ movement.unit_name || "หน่วยฐาน" }}
-												</p>
 											</div>
-											<p class="text-sm font-semibold tabular-nums text-stone-900">{{ getMovementQtyLabel(movement.qty_base) }}</p>
 										</div>
 									</div>
 								</div>
-							</section>
+							</div>
+
+							<div class="grid grid-cols-3 gap-2 px-5 py-4">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">คงเหลือ</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.available) }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ในคลัง</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.onHand) }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">จอง</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.reserved) }}</p>
+								</div>
+							</div>
+
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 pb-5">
+								<section class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<div class="flex items-start justify-between gap-3">
+										<div>
+											<h3 class="text-sm font-semibold text-stone-900">ปรับสต็อก</h3>
+											<p class="mt-1 text-xs leading-5 text-stone-500">แยก flow ปรับสต็อกออกจากข้อมูลสินค้า เพื่อให้ตรวจสอบย้อนหลังได้ง่าย</p>
+										</div>
+										<UBadge color="neutral" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
+									</div>
+
+									<div class="mt-4 grid gap-2 sm:grid-cols-3">
+										<UButton
+											v-for="mode in adjustmentModeOptions"
+											:key="mode.id"
+											:color="adjustmentMode === mode.id ? 'primary' : 'neutral'"
+											:variant="adjustmentMode === mode.id ? 'soft' : 'ghost'"
+											size="md"
+											class="justify-center rounded-md"
+											:icon="mode.icon"
+											@click="adjustmentMode = mode.id"
+										>
+											{{ mode.label }}
+										</UButton>
+									</div>
+
+									<div class="mt-4 grid gap-3">
+										<div>
+											<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน (หน่วยฐาน)</label>
+											<input
+												v-model="adjustmentQty"
+												type="number"
+												min="0"
+												step="1"
+												class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												placeholder="ระบุจำนวน"
+											>
+										</div>
+										<div>
+											<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุ</label>
+											<textarea
+												v-model="adjustmentNote"
+												rows="3"
+												class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												placeholder="เช่น รับของเข้า, นับใหม่, ของเสีย"
+											/>
+										</div>
+										<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" class="justify-center rounded-md" :loading="adjustmentSubmitting" :disabled="!canAdjustInventory" :spin-icon-on-loading="true" @click="submitAdjustment">
+											บันทึกการปรับสต็อก
+										</AppButton>
+									</div>
+								</section>
+
+								<section class="space-y-3">
+									<div class="flex items-center justify-between gap-3">
+										<h3 class="text-sm font-semibold text-stone-900">ประวัติการเคลื่อนไหว</h3>
+										<UBadge color="neutral" variant="soft" :label="`${movements.length} รายการ`" />
+									</div>
+
+									<UCard
+										v-if="movementsPending"
+										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
+									>
+										<div class="py-8 text-center">
+											<p class="text-sm font-semibold text-stone-900">กำลังโหลดประวัติสต็อก</p>
+										</div>
+									</UCard>
+
+									<UCard
+										v-else-if="movementsError"
+										class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"
+									>
+										<div class="py-6 text-center">
+											<p class="text-sm font-semibold text-stone-900">โหลด movement ไม่สำเร็จ</p>
+											<p class="mt-2 text-xs text-stone-500">{{ movementsError }}</p>
+										</div>
+									</UCard>
+
+									<UCard
+										v-else-if="movements.length === 0"
+										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
+									>
+										<div class="py-6 text-center">
+											<p class="text-sm font-semibold text-stone-900">ยังไม่มีประวัติการปรับสต็อก</p>
+											<p class="mt-2 text-xs text-stone-500">เมื่อบันทึกการปรับสต็อก รายการล่าสุดจะมาแสดงที่นี่</p>
+										</div>
+									</UCard>
+
+									<div v-else class="space-y-2">
+										<div
+											v-for="movement in movements"
+											:key="movement.id"
+											class="rounded-md border border-neutral-200 bg-white p-3"
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div>
+													<div class="flex flex-wrap items-center gap-2">
+														<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
+														<p class="text-xs text-stone-500">{{ formatDate(movement.created_at) }}</p>
+													</div>
+													<p class="mt-2 text-sm font-medium text-stone-900">{{ movement.note || "ไม่มีหมายเหตุ" }}</p>
+													<p class="mt-1 text-xs text-stone-500">
+														โดย {{ movement.created_by || "ระบบ" }} · {{ movement.product_sku }} · {{ movement.unit_name || "หน่วยฐาน" }}
+													</p>
+												</div>
+												<p class="text-sm font-semibold tabular-nums text-stone-900">{{ getMovementQtyLabel(movement.qty_base) }}</p>
+											</div>
+										</div>
+									</div>
+								</section>
+							</div>
 						</div>
-					</div>
-				</template>
-			</AppResponsivePanel>
+					</template>
+				</AppResponsivePanel>
 
 			<Transition
 				enter-active-class="transition duration-200 ease-out"

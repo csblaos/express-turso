@@ -119,8 +119,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 </script>
 
 <template>
-	<main class="min-h-screen bg-[#f6f6f3]">
-		<div class="grid min-h-screen lg:grid-cols-[minmax(0,1.1fr)_520px]">
+	<main class="min-h-[100dvh] bg-[#f6f6f3]">
+		<div class="grid min-h-[100dvh] lg:grid-cols-[minmax(0,1.1fr)_520px]">
 			<section class="relative hidden overflow-hidden lg:flex">
 				<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(201,119,69,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(151,83,44,0.10),_transparent_24%)]" />
 				<div class="relative flex w-full flex-col justify-between p-8 xl:p-12">
@@ -172,27 +172,27 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 				</div>
 			</section>
 
-			<section class="flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
-				<div class="w-full max-w-[440px]">
-					<UCard class="border-0 bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd]">
-						<div class="space-y-6">
-							<div class="space-y-4 text-center lg:text-left">
-								<div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#f8e9de] text-2xl font-semibold text-[#97532c] shadow-sm ring-1 ring-[#efd7c6] lg:mx-0">
-									P
-								</div>
+			<section class="flex min-h-[100dvh] items-center justify-center px-0 py-4 sm:px-6 sm:py-6 lg:px-8">
+					<div class="w-full max-w-[440px]">
+						<UCard class="border-0 rounded-none bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd] sm:rounded-md">
+							<div class="space-y-6">
+								<div class="space-y-4 px-4 pt-4 text-center sm:px-0 sm:pt-0 lg:text-left">
+									<div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#f8e9de] text-2xl font-semibold text-[#97532c] shadow-sm ring-1 ring-[#efd7c6] lg:mx-0">
+										P
+									</div>
 								<div>
 									<UBadge color="neutral" variant="soft" label="เข้าสู่ระบบ" />
 									<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">เข้าสู่ระบบร้านค้า</h2>
 									<p class="mt-2 text-sm leading-6 text-stone-500">
 										โหมด dev จะ prefill บัญชีทดสอบไว้ให้และสามารถเข้าสู่ระบบผ่าน backend auth API ได้ทันที
 									</p>
+									</div>
 								</div>
-							</div>
 
-							<form class="space-y-4" @submit.prevent="loginToPos">
-								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">อีเมลหรือชื่อผู้ใช้</label>
-									<UInput
+								<form class="space-y-4 px-4 sm:px-0" @submit.prevent="loginToPos">
+									<div class="space-y-2">
+										<label class="text-sm font-medium text-stone-700">อีเมลหรือชื่อผู้ใช้</label>
+										<UInput
 										v-model="form.email"
 										size="lg"
 										color="neutral"
@@ -237,37 +237,42 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 									</label>
 									<button type="button" class="text-sm font-medium text-[#97532c] transition hover:text-[#7d4322]">
 										ลืมรหัสผ่าน
-									</button>
-								</div>
+										</button>
+									</div>
 
-								<div class="space-y-3 pt-2">
-									<UButton
-										type="submit"
-										color="primary"
-										size="lg"
-										class="w-full justify-center rounded-md py-3 font-semibold shadow-sm"
-										:disabled="submitting"
-									>
-										<template #leading>
-											<AppLoadingIcon :loading="submitting" />
-										</template>
-										{{ submitting ? 'กำลังเข้าสู่ระบบ' : 'เข้าสู่ระบบ' }}
-									</UButton>
-									<UButton
-										to="/"
-										color="neutral"
-										variant="soft"
-										size="lg"
-										class="w-full justify-center rounded-md py-3 font-medium"
-										label="ข้ามไปหน้า POS"
-									/>
-								</div>
-							</form>
+									<div class="space-y-3 pt-2">
+										<AppButton
+											type="submit"
+											color="primary"
+											variant="solid"
+											size="md"
+											icon="i-heroicons-arrow-right-20-solid"
+											:loading="submitting"
+											:spin-icon-on-loading="true"
+											:disabled="submitting"
+											:block="true"
+											class="min-h-11 font-semibold shadow-sm"
+										>
+											{{ submitting ? "กำลังเข้าสู่ระบบ" : "เข้าสู่ระบบ" }}
+										</AppButton>
+										<AppButton
+											to="/"
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-home-20-solid"
+											:block="true"
+											class="min-h-11 font-medium"
+										>
+											ข้ามไปหน้า POS
+										</AppButton>
+									</div>
+								</form>
 
-							<div class="space-y-3 rounded-md border border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600">
-								<div class="flex items-start justify-between gap-4">
-									<div>
-										<p class="font-medium text-stone-800">บัญชี dev ตาม role</p>
+								<div class="space-y-3 rounded-none border-y border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600 sm:rounded-md sm:border">
+									<div class="flex items-start justify-between gap-4">
+										<div>
+											<p class="font-medium text-stone-800">บัญชี dev ตาม role</p>
 										<p class="mt-1 leading-6 text-stone-500">ใช้ปุ่ม Fill เพื่อเติมลงฟอร์มทันที หรือ Copy เพื่อคัดลอก credential สำหรับทดสอบ role ต่าง ๆ</p>
 									</div>
 									<UBadge color="primary" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
@@ -285,25 +290,25 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 													<p class="text-sm font-semibold text-stone-900">{{ loginPreset.label }}</p>
 													<UBadge color="neutral" variant="soft" :label="loginPreset.role" />
 												</div>
-												<p class="mt-1 text-xs leading-5 text-stone-500">{{ loginPreset.description }}</p>
-												<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
-											</div>
-											<div class="flex shrink-0 items-center gap-2">
-												<UButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="copyDevLogin(loginPreset)">
-													Copy
-												</UButton>
-												<UButton color="primary" variant="soft" size="xs" class="rounded-md" @click="fillDevLogin(loginPreset)">
-													Fill
-												</UButton>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ loginPreset.description }}</p>
+													<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
+												</div>
+												<div class="flex shrink-0 items-center gap-2">
+													<AppButton color="neutral" variant="soft" size="sm" @click="copyDevLogin(loginPreset)">
+														Copy
+													</AppButton>
+													<AppButton color="primary" variant="soft" size="sm" @click="fillDevLogin(loginPreset)">
+														Fill
+													</AppButton>
+												</div>
 											</div>
 										</div>
 									</div>
 								</div>
 							</div>
-						</div>
-					</UCard>
-				</div>
-			</section>
+						</UCard>
+					</div>
+				</section>
 		</div>
 	</main>
 </template>

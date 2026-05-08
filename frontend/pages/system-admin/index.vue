@@ -39,14 +39,10 @@ const plannedEntries = computed(() => adminEntries.filter((entry) => entry.badge
 					description="หน้าแยกสำหรับผู้ดูแลระบบกลางของแพลตฟอร์ม ไม่ปะปนกับ Superadmin หรือ Store Settings"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="primary" variant="soft" label="System Admin" />
-						<UBadge color="neutral" variant="soft" label="Platform-level only" />
-					</template>
 				</AppPageHeader>
 
-				<div class="scrollbar-soft min-h-0 min-w-0 space-y-3 overflow-x-hidden overflow-y-auto lg:pr-1">
-					<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+					<div class="scrollbar-soft min-h-0 min-w-0 space-y-3 overflow-x-hidden overflow-y-auto lg:pr-1">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="space-y-3 sm:space-y-4">
 							<div>
 								<p class="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 lg:block">Core tools</p>
@@ -110,7 +106,7 @@ const plannedEntries = computed(() => adminEntries.filter((entry) => entry.badge
 						</div>
 					</UCard>
 
-					<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="space-y-3 sm:space-y-4">
 							<div>
 								<p class="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 lg:block">Planned areas</p>

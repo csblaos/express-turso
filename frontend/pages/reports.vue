@@ -142,249 +142,246 @@ function barHeight(value: number) {
 		sidebar-description="ภาพรวมยอดขาย, สินค้าขายดี, วิธีชำระเงิน และสัญญาณเชิงปฏิบัติการสำหรับ owner/manager"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<AppPageHeader
-					title="แดชบอร์ดรายงาน"
-					description="รอบนี้เป็น UI อย่างเดียวก่อน ยังไม่ต่อ API โดยออกแบบให้พร้อมใช้ทั้ง desktop, tablet และ mobile"
-					@menu="openSidebar"
-				>
-					<template #badges>
-						<UBadge color="primary" variant="soft" label="รายงาน" />
-						<UBadge color="neutral" variant="soft" label="UI mock" />
-					</template>
-
-					<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
+			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
+				<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+					<AppPageHeader
+						title="แดชบอร์ดรายงาน"
+						description="สรุปยอดขาย สินค้าขายดี วิธีชำระเงิน และสัญญาณเชิงปฏิบัติการ"
+						@menu="openSidebar"
+					>
+						<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" label="วันนี้" @click="activeRange = 'today'" />
-								<UButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" label="7 วัน" @click="activeRange = 'week'" />
-								<UButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" label="30 วัน" @click="activeRange = 'month'" />
+								<UButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" label="วันนี้" @click="activeRange = 'today'" />
+								<UButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" label="7 วัน" @click="activeRange = 'week'" />
+								<UButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" label="30 วัน" @click="activeRange = 'month'" />
 							</div>
 
 							<div class="flex flex-wrap gap-2">
-								<UButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" label="ยอดขาย" @click="activeReportView = 'sales'" />
-								<UButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" label="สินค้า" @click="activeReportView = 'products'" />
-								<UButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
+								<UButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ยอดขาย" @click="activeReportView = 'sales'" />
+								<UButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" label="สินค้า" @click="activeReportView = 'products'" />
+								<UButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
 							</div>
 
 							<div class="grid gap-3 sm:grid-cols-2">
-								<select v-model="activeBranch" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+								<select v-model="activeBranch" class="rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 									<option value="all">ทุกสาขา</option>
 									<option value="main">สาขาท่าเดื่อ</option>
 									<option value="mall">สาขาศูนย์การค้า</option>
 								</select>
-								<div class="rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 py-3 text-sm text-stone-500">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-stone-500">
 									ช่วงที่เลือก: {{ activeRange === "today" ? "วันนี้" : activeRange === "week" ? "7 วันล่าสุด" : "30 วันล่าสุด" }}
 								</div>
 							</div>
 
 							<div class="flex flex-wrap gap-2 xl:justify-end">
-								<UButton color="neutral" variant="soft" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
-								<UButton color="neutral" variant="soft" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
+								<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
+								<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
 							</div>
 						</div>
-				</AppPageHeader>
+					</AppPageHeader>
 
-				<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto lg:pr-1">
-					<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-						<div
-							v-for="metric in metricCards"
-							:key="metric.id"
-							class="rounded-[24px] border border-[#e7e4dd] bg-white p-4 shadow-lg ring-1 ring-[#e7e4dd]"
-						>
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ metric.label }}</p>
-									<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{{ metric.value }}</p>
-								</div>
-								<div class="rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="metricToneClass(metric.tone)">
-									{{ metric.change }}
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
+					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
+						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							<div
+								v-for="metric in metricCards"
+								:key="metric.id"
+								class="rounded-none border border-neutral-200 bg-white p-4 shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md"
+							>
+								<div class="flex items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Sales trend</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">ยอดขายตามช่วงเวลา</h2>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ metric.label }}</p>
+										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{{ metric.value }}</p>
 									</div>
-									<UBadge color="neutral" variant="soft" label="Mock chart" />
+									<div class="rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="metricToneClass(metric.tone)">
+										{{ metric.change }}
+									</div>
 								</div>
+							</div>
+						</div>
 
-								<div class="grid h-[280px] grid-cols-10 items-end gap-3 rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
-									<div v-for="point in hourlySales" :key="point.hour" class="flex h-full flex-col justify-end gap-2">
-										<div class="relative flex-1 overflow-hidden rounded-2xl bg-white ring-1 ring-[#ece6dc]">
-											<div class="absolute inset-x-1 bottom-1 rounded-xl bg-gradient-to-t from-[#c97745] to-[#f3c7a7]" :style="{ height: barHeight(point.value) }" />
+						<div class="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Sales trend</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">ยอดขายตามช่วงเวลา</h2>
 										</div>
-										<p class="text-center text-[11px] font-medium text-stone-500">{{ point.hour }}</p>
+										<UBadge color="neutral" variant="soft" label="Mock chart" />
+									</div>
+
+									<div class="grid h-[280px] grid-cols-10 items-end gap-3 rounded-md bg-neutral-50 p-4 ring-1 ring-neutral-200">
+										<div v-for="point in hourlySales" :key="point.hour" class="flex h-full flex-col justify-end gap-2">
+											<div class="relative flex-1 overflow-hidden rounded-md bg-white ring-1 ring-[#ece6dc]">
+												<div class="absolute inset-x-1 bottom-1 rounded-md bg-gradient-to-t from-[#c97745] to-[#f3c7a7]" :style="{ height: barHeight(point.value) }" />
+											</div>
+											<p class="text-center text-[11px] font-medium text-stone-500">{{ point.hour }}</p>
+										</div>
 									</div>
 								</div>
-							</div>
-						</UCard>
+							</UCard>
 
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Payment mix</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">สัดส่วนวิธีชำระเงิน</h2>
-									</div>
-									<UBadge color="neutral" variant="soft" label="4 ช่องทาง" />
-								</div>
-
-								<div class="space-y-3">
-									<div class="flex h-4 overflow-hidden rounded-full bg-[#f3f2ee]">
-										<div
-											v-for="item in paymentMix"
-											:key="item.id"
-											:class="item.colorClass"
-											:style="{ width: `${item.percent}%` }"
-										/>
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Payment mix</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">สัดส่วนวิธีชำระเงิน</h2>
+										</div>
+										<UBadge color="neutral" variant="soft" label="4 ช่องทาง" />
 									</div>
 
 									<div class="space-y-3">
-										<div v-for="item in paymentMix" :key="item.id" class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3">
-											<div class="flex items-center justify-between gap-3">
-												<div class="flex items-center gap-3">
-													<div class="h-3 w-3 rounded-full" :class="item.colorClass" />
-													<p class="text-sm font-medium text-stone-900">{{ item.label }}</p>
+										<div class="flex h-4 overflow-hidden rounded-full bg-[#f3f2ee]">
+											<div
+												v-for="item in paymentMix"
+												:key="item.id"
+												:class="item.colorClass"
+												:style="{ width: `${item.percent}%` }"
+											/>
+										</div>
+
+										<div class="space-y-3">
+											<div v-for="item in paymentMix" :key="item.id" class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3">
+												<div class="flex items-center justify-between gap-3">
+													<div class="flex items-center gap-3">
+														<div class="h-3 w-3 rounded-full" :class="item.colorClass" />
+														<p class="text-sm font-medium text-stone-900">{{ item.label }}</p>
+													</div>
+													<p class="text-sm font-semibold text-stone-900">{{ item.amount }}</p>
 												</div>
-												<p class="text-sm font-semibold text-stone-900">{{ item.amount }}</p>
+												<p class="mt-1 text-xs text-stone-500">{{ item.percent }}%</p>
 											</div>
-											<p class="mt-1 text-xs text-stone-500">{{ item.percent }}%</p>
 										</div>
 									</div>
 								</div>
-							</div>
-						</UCard>
-					</div>
+							</UCard>
+						</div>
 
-					<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Top products</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">สินค้าขายดี</h2>
+						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Top products</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">สินค้าขายดี</h2>
+										</div>
+										<UBadge color="primary" variant="soft" label="Top 5" />
 									</div>
-									<UBadge color="primary" variant="soft" label="Top 5" />
-								</div>
 
-								<div class="space-y-3">
-									<div
-										v-for="product in topProducts"
-										:key="product.id"
-										class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3"
-									>
-										<div class="flex items-start justify-between gap-3">
+									<div class="space-y-3">
+										<div
+											v-for="product in topProducts"
+											:key="product.id"
+											class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div class="min-w-0">
+													<p class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</p>
+													<p class="mt-1 text-xs text-stone-500">{{ product.sku }} · ขาย {{ product.qty }} หน่วย</p>
+												</div>
+												<div class="text-right">
+													<p class="text-sm font-semibold text-stone-900">{{ product.revenue }}</p>
+													<p class="mt-1 text-xs" :class="product.trend.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'">{{ product.trend }}</p>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</UCard>
+
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Staff rank</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">ผลงานพนักงานขาย</h2>
+										</div>
+										<UBadge color="neutral" variant="soft" label="ตามจำนวนบิล" />
+									</div>
+
+									<div class="space-y-3">
+										<div
+											v-for="staff in staffRanks"
+											:key="staff.id"
+											class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
+										>
 											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ product.sku }} · ขาย {{ product.qty }} หน่วย</p>
+												<p class="truncate text-sm font-semibold text-stone-900">{{ staff.name }}</p>
+												<p class="mt-1 text-xs text-stone-500">{{ staff.orders }} บิล · บิลเฉลี่ย {{ staff.avgTicket }}</p>
 											</div>
-											<div class="text-right">
-												<p class="text-sm font-semibold text-stone-900">{{ product.revenue }}</p>
-												<p class="mt-1 text-xs" :class="product.trend.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'">{{ product.trend }}</p>
+											<p class="text-sm font-semibold text-stone-900">{{ staff.sales }}</p>
+										</div>
+									</div>
+								</div>
+							</UCard>
+						</div>
+
+						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operational signals</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">สัญญาณหน้างานที่ควรติดตาม</h2>
+										</div>
+										<UBadge color="primary" variant="soft" label="Mock insight" />
+									</div>
+
+									<div class="grid gap-3 md:grid-cols-3">
+										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+											<p class="text-sm font-semibold text-stone-900">ชั่วโมงพีค</p>
+											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">12:00</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">ออเดอร์หนาแน่นสุดในช่วงกลางวัน ควรเตรียมพนักงานประจำจุดชำระ</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+											<p class="text-sm font-semibold text-stone-900">ช่องทางชำระหลัก</p>
+											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">QR / โอน</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">คิดเป็น 41% ของยอดขายช่วงที่เลือก เหมาะกับการเน้น QR counter flow</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+											<p class="text-sm font-semibold text-stone-900">สินค้าต้องเติมสต็อก</p>
+											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">4 SKU</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">ควรสร้าง purchase order หรือ receive plan ก่อนรอบขายถัดไป</p>
+										</div>
+									</div>
+								</div>
+							</UCard>
+
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="space-y-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Low stock</p>
+											<h2 class="mt-2 text-lg font-semibold text-stone-950">รายการใกล้หมด</h2>
+										</div>
+										<UBadge color="error" variant="soft" :label="`${lowStockItems.length} รายการ`" />
+									</div>
+
+									<div class="space-y-3">
+										<div
+											v-for="item in lowStockItems"
+											:key="item.id"
+											class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div class="min-w-0">
+													<p class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</p>
+													<p class="mt-1 text-xs text-stone-500">{{ item.status }}</p>
+												</div>
+												<div class="text-right">
+													<p class="text-sm font-semibold text-stone-900">{{ item.remaining }}</p>
+													<p class="mt-1 text-xs text-stone-500">เตือนที่ {{ item.threshold }}</p>
+												</div>
 											</div>
 										</div>
 									</div>
 								</div>
-							</div>
-						</UCard>
-
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Staff rank</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">ผลงานพนักงานขาย</h2>
-									</div>
-									<UBadge color="neutral" variant="soft" label="ตามจำนวนบิล" />
-								</div>
-
-								<div class="space-y-3">
-									<div
-										v-for="staff in staffRanks"
-										:key="staff.id"
-										class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3"
-									>
-										<div class="min-w-0">
-											<p class="truncate text-sm font-semibold text-stone-900">{{ staff.name }}</p>
-											<p class="mt-1 text-xs text-stone-500">{{ staff.orders }} บิล · บิลเฉลี่ย {{ staff.avgTicket }}</p>
-										</div>
-										<p class="text-sm font-semibold text-stone-900">{{ staff.sales }}</p>
-									</div>
-								</div>
-							</div>
-						</UCard>
-					</div>
-
-					<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operational signals</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">สัญญาณหน้างานที่ควรติดตาม</h2>
-									</div>
-									<UBadge color="primary" variant="soft" label="Mock insight" />
-								</div>
-
-								<div class="grid gap-3 md:grid-cols-3">
-									<div class="rounded-[24px] border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-										<p class="text-sm font-semibold text-stone-900">ชั่วโมงพีค</p>
-										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">12:00</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">ออเดอร์หนาแน่นสุดในช่วงกลางวัน ควรเตรียมพนักงานประจำจุดชำระ</p>
-									</div>
-									<div class="rounded-[24px] border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-										<p class="text-sm font-semibold text-stone-900">ช่องทางชำระหลัก</p>
-										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">QR / โอน</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">คิดเป็น 41% ของยอดขายช่วงที่เลือก เหมาะกับการเน้น QR counter flow</p>
-									</div>
-									<div class="rounded-[24px] border border-[#e7e4dd] bg-[#fbfbf8] p-4">
-										<p class="text-sm font-semibold text-stone-900">สินค้าต้องเติมสต็อก</p>
-										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">4 SKU</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">ควรสร้าง purchase order หรือ receive plan ก่อนรอบขายถัดไป</p>
-									</div>
-								</div>
-							</div>
-						</UCard>
-
-						<UCard class="border-0 bg-white shadow-lg ring-1 ring-[#e7e4dd]">
-							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Low stock</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">รายการใกล้หมด</h2>
-									</div>
-									<UBadge color="error" variant="soft" :label="`${lowStockItems.length} รายการ`" />
-								</div>
-
-								<div class="space-y-3">
-									<div
-										v-for="item in lowStockItems"
-										:key="item.id"
-										class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] px-4 py-3"
-									>
-										<div class="flex items-start justify-between gap-3">
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ item.status }}</p>
-											</div>
-											<div class="text-right">
-												<p class="text-sm font-semibold text-stone-900">{{ item.remaining }}</p>
-												<p class="mt-1 text-xs text-stone-500">เตือนที่ {{ item.threshold }}</p>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
-						</UCard>
+							</UCard>
+						</div>
 					</div>
 				</div>
-			</div>
+			</section>
 		</template>
 	</AppSidebarShell>
 </template>

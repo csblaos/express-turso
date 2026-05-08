@@ -36,6 +36,7 @@ const isSidebarCompact = computed(() => (
 ));
 
 function openSidebar() {
+	profileMenuOpen.value = false;
 	mobileSidebarOpen.value = true;
 }
 
@@ -45,7 +46,12 @@ function toggleSidebar() {
 		return;
 	}
 
+	profileMenuOpen.value = false;
 	mobileSidebarOpen.value = true;
+}
+
+function closeMobileSidebar() {
+	mobileSidebarOpen.value = false;
 }
 
 const topbarMenuTitle = computed(() => (
@@ -141,6 +147,12 @@ watch(() => route.fullPath, () => {
 	shellError.value = null;
 });
 
+watch(mobileSidebarOpen, (isOpen) => {
+	if (isOpen && !isDesktopViewport.value) {
+		profileMenuOpen.value = false;
+	}
+});
+
 onMounted(() => {
 	mediaQueryList = window.matchMedia("(min-width: 1024px)");
 	syncViewportListener = () => {
@@ -174,21 +186,21 @@ onErrorCaptured((error) => {
 				leave-active-class="transition-opacity duration-200 ease-in"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="mobileSidebarOpen"
-					class="fixed inset-0 z-40 bg-black/40 lg:hidden"
-					@click="mobileSidebarOpen = false"
-				/>
-			</Transition>
+				>
+					<div
+						v-if="mobileSidebarOpen"
+						class="fixed inset-0 z-[90] bg-black/45 lg:hidden"
+						@click="closeMobileSidebar"
+					/>
+				</Transition>
 
-			<aside
-				class="fixed inset-y-0 left-0 z-50 flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
-				:class="[
-					sidebarWidthClass,
-					mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-				]"
-			>
+				<aside
+					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
+					:class="[
+						sidebarWidthClass,
+						mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+					]"
+				>
 				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
 					<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
@@ -204,15 +216,15 @@ onErrorCaptured((error) => {
 							</div>
 						</div>
 
-						<UButton
+							<UButton
 							color="neutral"
 							variant="soft"
 							size="sm"
 							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 lg:hidden"
 							aria-label="ปิดเมนู"
 							title="ปิดเมนู"
-							@click="mobileSidebarOpen = false"
-						>
+								@click="closeMobileSidebar"
+							>
 							<UIcon name="i-heroicons-x-mark-20-solid" class="h-5.5 w-5.5" />
 						</UButton>
 					</div>
@@ -288,7 +300,11 @@ onErrorCaptured((error) => {
 				</div>
 			</aside>
 
-			<div class="min-w-0 flex-1 min-h-0">
+				<div
+					class="min-w-0 flex-1 min-h-0"
+					:class="mobileSidebarOpen ? 'pointer-events-none select-none lg:pointer-events-auto lg:select-auto' : ''"
+					:aria-hidden="mobileSidebarOpen && !isDesktopViewport ? 'true' : undefined"
+				>
 				<div class="flex h-full w-full min-h-0">
 					<section class="min-w-0 flex-1 overflow-hidden pb-2 sm:pb-3">
 						<div class="flex h-full min-h-0 flex-col gap-2">
@@ -397,7 +413,7 @@ onErrorCaptured((error) => {
 								</div>
 							</div>
 
-							<div class="scrollbar-soft min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-0 sm:px-2 lg:px-3">
+							<div id="app-shell-scroll-root" class="scrollbar-soft min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-0 sm:px-2 lg:px-3">
 								<div
 									v-if="shellError"
 									class="flex h-full min-h-[260px] items-center justify-center"

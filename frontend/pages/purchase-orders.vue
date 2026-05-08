@@ -87,7 +87,6 @@ type CreateLine = {
 	unitCost: string;
 };
 
-const runtimeConfig = useRuntimeConfig();
 const { apiFetch } = useApiClient();
 const { can } = useAuthSession();
 
@@ -390,37 +389,46 @@ async function submitCreate() {
 		sidebar-description="จัดการ purchase orders, supplier, สถานะรับของ และต้นทุนก่อนเข้าสต็อก"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 				<AppPageHeader
 					title="สั่งซื้อสินค้า"
-					description="หน้าเริ่มต้นสำหรับจัดการ PO, supplier และวางแผนรับของเข้าร้าน"
+					description=""
+					:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="primary" variant="soft" label="Purchase Orders" />
-						<UBadge color="neutral" variant="soft" :label="`${numberFormatter.format(orders.length)} รายการ`" />
+					<template #actions>
+						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="ordersPending" :disabled="ordersPending" :spin-icon-on-loading="true" @click="loadOrders">
+								รีโหลด
+							</AppButton>
+							<UButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer">
+								สร้าง PO
+							</UButton>
+						</div>
 					</template>
 
+					<template #default>
+						<div class="space-y-2">
 					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-							<div class="relative">
-								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
+								<div class="relative min-w-0">
+								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 								<input
 									v-model="searchQuery"
 									type="text"
 									placeholder="ค้นหาเลข PO, supplier หรือ contact"
-									class="w-full rounded-2xl border border-[#e7e4dd] bg-white py-3 pl-11 pr-10 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
 								<button
 									v-if="searchQuery"
 									type="button"
-									class="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-stone-400 transition hover:bg-[#f5f5f4] hover:text-stone-700"
+									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
 									@click="searchQuery = ''"
 								>
 									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
 								</button>
 							</div>
 
-							<select v-model="activeStatus" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+							<select v-model="activeStatus" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<option value="all">ทุกสถานะ</option>
 								<option value="draft">Draft</option>
 								<option value="ordered">Ordered</option>
@@ -429,158 +437,144 @@ async function submitCreate() {
 								<option value="cancelled">Cancelled</option>
 							</select>
 
-							<select v-model="activePaymentStatus" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+							<select v-model="activePaymentStatus" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<option value="all">ทุกการชำระ</option>
 								<option value="unpaid">Unpaid</option>
 								<option value="partial">Partial</option>
 								<option value="paid">Paid</option>
 							</select>
-
-							<UButton color="primary" variant="solid" size="lg" icon="i-heroicons-plus-20-solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
 						</div>
 
 						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-3">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เปิดอยู่</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ numberFormatter.format(totalOpenOrders) }}</p>
+								<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalOpenOrders) }}</p>
 							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-3">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Draft</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ numberFormatter.format(totalDraftOrders) }}</p>
+								<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalDraftOrders) }}</p>
 							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-3">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ค้างชำระ</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ numberFormatter.format(totalPendingPayments) }}</p>
+								<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalPendingPayments) }}</p>
 							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-3">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">มูลค่าประมาณ</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ formatMoney(totalEstimated, "THB") }}</p>
+								<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(totalEstimated, "THB") }}</p>
 							</div>
 						</div>
+						</div>
+					</template>
 				</AppPageHeader>
 
-				<div class="scrollbar-soft min-h-0 overflow-y-auto lg:pr-1">
-					<UCard v-if="ordersPending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">
-						<div class="py-12 text-center text-sm text-stone-500">กำลังโหลด purchase orders…</div>
-					</UCard>
-
-					<UCard v-else-if="ordersError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
-						<div class="space-y-3 py-10 text-center">
-							<p class="text-sm text-stone-600">{{ ordersError }}</p>
-							<UButton color="primary" variant="soft" @click="loadOrders">ลองใหม่</UButton>
-						</div>
-					</UCard>
-
-					<div v-else-if="orders.length" class="space-y-3">
-						<button
-							v-for="order in orders"
-							:key="order.id"
-							type="button"
-							class="w-full rounded-[24px] border border-[#e7e4dd] bg-white p-4 text-left shadow-sm transition hover:shadow-md"
-							:class="selectedOrderId === order.id ? 'ring-2 ring-[#f3c7a7]' : ''"
-							@click="openDetail(order.id)"
-						>
-							<div class="flex flex-wrap items-start justify-between gap-4">
-								<div class="min-w-0">
-									<div class="flex flex-wrap items-center gap-2">
-										<UBadge :color="statusColor(order.status)" variant="soft" :label="order.status" />
-										<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />
-									</div>
-									<p class="mt-3 text-base font-semibold text-stone-950">{{ order.po_number }}</p>
-									<p class="mt-1 text-sm text-stone-500">{{ order.supplier_name || "ไม่ระบุ supplier" }}<span v-if="order.supplier_contact"> · {{ order.supplier_contact }}</span></p>
-									<p class="mt-2 text-xs text-stone-400">สร้างเมื่อ {{ formatDate(order.created_at) }}</p>
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">Purchase orders</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือก PO เพื่อดูรายการสินค้า, payment และต้นทุนรวมแบบละเอียด</p>
 								</div>
-
-								<div class="grid gap-3 text-right sm:grid-cols-4 sm:text-left">
-									<div>
-										<p class="text-xs text-stone-400">รายการ</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ numberFormatter.format(order.item_count) }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">สั่งรวม</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ numberFormatter.format(order.total_qty_ordered) }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">คาดรับ</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.expected_at) }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">มูลค่า</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total_estimated_base, "THB") }}</p>
-									</div>
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+									{{ numberFormatter.format(orders.length) }} รายการ
 								</div>
 							</div>
-						</button>
+
+							<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+								<div v-if="ordersPending" class="min-h-[280px]">
+									<div class="overflow-hidden bg-neutral-100">
+										<div class="po-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
+									</div>
+								</div>
+								<div v-else-if="ordersError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+									<div class="space-y-3">
+										<p class="text-sm text-stone-600">{{ ordersError }}</p>
+										<UButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">ลองใหม่</UButton>
+									</div>
+								</div>
+								<div v-else-if="!orders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
+									ยังไม่มี purchase order
+								</div>
+								<div v-else>
+									<button
+										v-for="order in orders"
+										:key="order.id"
+										type="button"
+										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
+										:class="selectedOrderId === order.id ? 'bg-primary-50' : 'bg-white'"
+										@click="openDetail(order.id)"
+									>
+										<div class="flex flex-wrap items-start justify-between gap-4">
+											<div class="min-w-0">
+												<div class="flex flex-wrap items-center gap-2">
+													<UBadge :color="statusColor(order.status)" variant="soft" :label="order.status" />
+													<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />
+												</div>
+												<p class="mt-2 text-sm font-semibold text-stone-950">{{ order.po_number }}</p>
+												<p class="mt-1 text-sm text-stone-500">{{ order.supplier_name || "ไม่ระบุ supplier" }}<span v-if="order.supplier_contact"> · {{ order.supplier_contact }}</span></p>
+												<p class="mt-1 text-xs text-stone-400">สร้างเมื่อ {{ formatDate(order.created_at) }}</p>
+											</div>
+
+											<div class="grid gap-3 text-right sm:grid-cols-4 sm:text-left">
+												<div>
+													<p class="text-xs text-stone-400">รายการ</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ numberFormatter.format(order.item_count) }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">สั่งรวม</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ numberFormatter.format(order.total_qty_ordered) }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">คาดรับ</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.expected_at) }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">มูลค่า</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total_estimated_base, "THB") }}</p>
+												</div>
+											</div>
+										</div>
+									</button>
+								</div>
+							</div>
+
+							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
+									<div>{{ numberFormatter.format(totalOpenOrders) }} เปิดอยู่ • {{ numberFormatter.format(totalDraftOrders) }} draft</div>
+									<div>{{ numberFormatter.format(totalPendingPayments) }} ค้างชำระ</div>
+								</div>
+							</div>
+						</div>
 					</div>
-
-					<UCard v-else class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">
-						<div class="space-y-3 py-12 text-center">
-							<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-stone-400 ring-1 ring-[#e7e4dd]">
-								<UIcon name="i-heroicons-clipboard-document-list" class="h-6 w-6" />
-							</div>
-							<div>
-								<p class="text-sm font-medium text-stone-900">ยังไม่มี purchase order</p>
-								<p class="mt-1 text-sm text-stone-500">เริ่มสร้าง PO แรกเพื่อวางแผนรับของและติดตามต้นทุนก่อนเข้าสินค้าคงคลัง</p>
-							</div>
-							<div class="pt-1">
-								<UButton color="primary" variant="solid" label="สร้าง PO" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer" />
-							</div>
-						</div>
-					</UCard>
 				</div>
 			</div>
 
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
+			<AppResponsivePanel
+				v-model="detailOpen"
+				title="รายละเอียด PO"
+				description="ดูสรุป, รายการสินค้า และ payment ของ purchase order นี้"
+				desktop-width="460px"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				@close="closeDetail"
 			>
-				<div
-					v-if="detailOpen || createOpen"
-					class="fixed inset-0 z-[58] bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]"
-					@click="detailOpen ? closeDetail() : closeCreateDrawer()"
-				/>
-			</Transition>
-
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-				enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-			>
-				<div
-					v-if="detailOpen"
-					class="fixed inset-x-0 bottom-0 z-[59] max-h-[88vh] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[460px] lg:rounded-none lg:rounded-l-[28px]"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] p-4 text-stone-900">
-						<div class="border-b border-[#e7e4dd] pb-4">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Purchase order</p>
-									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">รายละเอียด PO</h2>
-								</div>
-								<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดรายละเอียด PO" title="ปิดรายละเอียด PO" @click="closeDetail" />
-							</div>
-
-							<div v-if="selectedOrder" class="mt-4 rounded-[24px] bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
+				<template #default>
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="scrollbar-soft min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
+							<div v-if="selectedOrder" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-start gap-3">
-									<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
-										<UIcon name="i-heroicons-clipboard-document-list" class="h-6 w-6" />
+									<div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
+										<UIcon name="i-heroicons-clipboard-document-list" class="h-5 w-5" />
 									</div>
 									<div class="min-w-0 flex-1">
 										<div class="flex flex-wrap items-start justify-between gap-2">
 											<div class="min-w-0">
-												<h3 class="truncate text-lg font-semibold text-stone-950">{{ selectedOrder.po_number }}</h3>
+												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrder.po_number }}</h3>
 												<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.supplier_name || "ไม่ระบุ supplier" }}</p>
 											</div>
 											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="selectedOrder.status" />
 										</div>
-
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentStatusColor(selectedOrder.payment_status)" variant="soft" :label="selectedOrder.payment_status" />
 											<UBadge color="neutral" variant="soft" :label="selectedOrder.purchase_currency" />
@@ -589,20 +583,18 @@ async function submitCreate() {
 									</div>
 								</div>
 							</div>
-						</div>
 
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto py-4 pr-1">
 							<UCard v-if="detailPending" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">
 								<div class="py-10 text-center text-sm text-stone-500">กำลังโหลดรายละเอียด…</div>
 							</UCard>
 							<UCard v-else-if="detailError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 								<div class="space-y-3 py-10 text-center">
 									<p class="text-sm text-stone-600">{{ detailError }}</p>
-									<UButton color="primary" variant="soft" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</UButton>
+									<UButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</UButton>
 								</div>
 							</UCard>
 							<template v-else-if="selectedOrderDetail">
-								<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
@@ -624,13 +616,13 @@ async function submitCreate() {
 									</dl>
 								</div>
 
-								<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
 										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
 										<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
 									</div>
 									<div class="mt-4 space-y-3">
-										<div v-for="item in selectedOrderDetail.items" :key="item.id" class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+										<div v-for="item in selectedOrderDetail.items" :key="item.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 											<div class="flex items-start justify-between gap-3">
 												<div class="min-w-0">
 													<p class="truncate text-sm font-semibold text-stone-900">{{ item.product_name || item.product_id }}</p>
@@ -646,13 +638,13 @@ async function submitCreate() {
 									</div>
 								</div>
 
-								<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
 										<h3 class="text-sm font-semibold text-stone-950">Payments</h3>
 										<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
 									</div>
 									<div v-if="selectedOrderDetail.payments.length" class="mt-4 space-y-3">
-										<div v-for="payment in selectedOrderDetail.payments" :key="payment.id" class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+										<div v-for="payment in selectedOrderDetail.payments" :key="payment.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 											<div class="flex items-start justify-between gap-3">
 												<div>
 													<p class="text-sm font-semibold text-stone-900">{{ payment.entry_type }}</p>
@@ -662,55 +654,44 @@ async function submitCreate() {
 											</div>
 										</div>
 									</div>
-									<div v-else class="mt-4 rounded-2xl bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-[#e7e4dd]">
+									<div v-else class="mt-4 rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
 										ยังไม่มี payment entry
 									</div>
 								</div>
 							</template>
 						</div>
 					</div>
-				</div>
-			</Transition>
+				</template>
+			</AppResponsivePanel>
 
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-				enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-				leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
+			<AppResponsivePanel
+				v-model="createOpen"
+				title="สร้าง PO ใหม่"
+				description="ระบุ supplier, กำหนดรายการสินค้า และต้นทุนต่อหน่วย"
+				desktop-width="520px"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				@close="closeCreateDrawer"
 			>
-				<div
-					v-if="createOpen"
-					class="fixed inset-x-0 bottom-0 z-[59] max-h-[88vh] rounded-t-[28px] bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[520px] lg:rounded-none lg:rounded-l-[28px]"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] p-4 text-stone-900">
-						<div class="border-b border-[#e7e4dd] pb-4">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Create purchase order</p>
-									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">สร้าง PO ใหม่</h2>
-								</div>
-								<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดฟอร์มสร้าง PO" title="ปิดฟอร์มสร้าง PO" @click="closeCreateDrawer" />
-							</div>
-						</div>
-
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto py-4 pr-1">
+				<template #default>
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="scrollbar-soft min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">Supplier</label>
-									<input v-model="createForm.supplierName" type="text" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.supplierName" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">Supplier contact</label>
-									<input v-model="createForm.supplierContact" type="text" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.supplierContact" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 							</div>
 
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">Currency</label>
-									<select v-model="createForm.purchaseCurrency" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<select v-model="createForm.purchaseCurrency" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 										<option value="LAK">LAK</option>
 										<option value="THB">THB</option>
 										<option value="USD">USD</option>
@@ -718,36 +699,36 @@ async function submitCreate() {
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">Expected at</label>
-									<input v-model="createForm.expectedAt" type="datetime-local" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+									<input v-model="createForm.expectedAt" type="datetime-local" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 							</div>
 
 							<div>
 								<div class="mb-2 flex items-center justify-between gap-3">
 									<label class="block text-xs font-medium text-stone-500">รายการสินค้า</label>
-									<UButton color="neutral" variant="soft" size="xs" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
+									<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
 								</div>
 
 								<div class="space-y-3">
-									<div v-for="line in createForm.items" :key="line.id" class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+									<div v-for="line in createForm.items" :key="line.id" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_120px_auto]">
 											<div>
 												<label class="mb-2 block text-xs font-medium text-stone-500">สินค้า</label>
-												<select v-model="line.productId" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]" @change="syncCostFromProduct(line)">
+												<select v-model="line.productId" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @change="syncCostFromProduct(line)">
 													<option value="" disabled>{{ productsPending ? "กำลังโหลดสินค้า..." : "เลือกสินค้า" }}</option>
 													<option v-for="product in products" :key="product.id" :value="product.id">{{ productLabel(product.id) }}</option>
 												</select>
 											</div>
 											<div>
 												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน</label>
-												<input v-model="line.qtyOrdered" type="number" min="1" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+												<input v-model="line.qtyOrdered" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 											</div>
 											<div>
 												<label class="mb-2 block text-xs font-medium text-stone-500">ต้นทุน/หน่วย</label>
-												<input v-model="line.unitCost" type="number" min="0" :placeholder="unitCostPlaceholder(line.productId)" class="w-full rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
+												<input v-model="line.unitCost" type="number" min="0" :placeholder="unitCostPlaceholder(line.productId)" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 											</div>
 											<div class="flex items-end">
-												<UButton color="neutral" variant="soft" size="lg" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
+												<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
 											</div>
 										</div>
 									</div>
@@ -756,19 +737,19 @@ async function submitCreate() {
 
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุ</label>
-								<textarea v-model="createForm.note" rows="4" class="w-full resize-none rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]" />
+								<textarea v-model="createForm.note" rows="4" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
 							</div>
 						</div>
 
-						<div class="border-t border-[#e7e4dd] pt-4">
-							<div class="grid gap-2 sm:grid-cols-2">
-								<UButton color="neutral" variant="soft" size="lg" label="ยกเลิก" @click="closeCreateDrawer" />
-								<UButton color="primary" variant="solid" size="lg" :loading="submitting" :disabled="!canCreatePurchaseOrder" label="บันทึก PO" @click="submitCreate" />
+						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateDrawer">ยกเลิก</AppButton>
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="submitting" :disabled="!canCreatePurchaseOrder" :spin-icon-on-loading="true" :block="true" @click="submitCreate">บันทึก PO</AppButton>
 							</div>
 						</div>
 					</div>
-				</div>
-			</Transition>
+				</template>
+			</AppResponsivePanel>
 
 			<Transition
 				enter-active-class="transition duration-200 ease-out"
@@ -788,3 +769,15 @@ async function submitCreate() {
 		</template>
 	</AppSidebarShell>
 </template>
+
+<style scoped>
+@keyframes po-loading-slide {
+	0% { transform: translateX(-120%); }
+	100% { transform: translateX(420%); }
+}
+
+.po-loading-line {
+	animation: po-loading-slide 1.2s linear infinite;
+	will-change: transform;
+}
+</style>

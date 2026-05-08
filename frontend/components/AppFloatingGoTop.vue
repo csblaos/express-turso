@@ -2,9 +2,11 @@
 const props = withDefaults(defineProps<{
 	hidden?: boolean;
 	scrollThreshold?: number;
+	scrollContainerSelector?: string;
 }>(), {
 	hidden: false,
 	scrollThreshold: 260,
+	scrollContainerSelector: "#app-shell-scroll-root",
 });
 
 type DockSide = "left" | "right" | null;
@@ -42,6 +44,12 @@ const pointerState = reactive({
 	originY: 0,
 	moved: false,
 });
+const scrollContainer = ref<HTMLElement | null>(null);
+
+function getScrollTop() {
+	if (scrollContainer.value) return scrollContainer.value.scrollTop;
+	return window.scrollY;
+}
 
 function getViewportWidth() {
 	return window.innerWidth;
@@ -141,7 +149,7 @@ function syncVisibleState() {
 		isMounted.value &&
 		isMobileViewport.value &&
 		!props.hidden &&
-		window.scrollY > props.scrollThreshold
+		getScrollTop() > props.scrollThreshold
 	);
 }
 
@@ -195,10 +203,15 @@ function snapToNearestEdge() {
 }
 
 function scrollToTop() {
-	window.scrollTo({
-		top: 0,
-		behavior: "smooth",
-	});
+	if (scrollContainer.value) {
+		scrollContainer.value.scrollTo({
+			top: 0,
+			behavior: "smooth",
+		});
+		return;
+	}
+
+	window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function handleButtonTap() {
@@ -283,7 +296,6 @@ const buttonIcon = computed(() => {
 });
 
 const buttonTitle = computed(() => {
-	if (dockedSide.value) return "ดึงปุ่มกลับเข้าหน้าจอ";
 	return "กลับขึ้นด้านบน";
 });
 
@@ -320,16 +332,25 @@ watch(() => position.y, () => {
 
 onMounted(() => {
 	isMounted.value = true;
+	scrollContainer.value = document.querySelector<HTMLElement>(props.scrollContainerSelector) || null;
 	syncViewport();
 	syncVisibleState();
 
 	window.addEventListener("resize", syncViewport);
-	window.addEventListener("scroll", syncVisibleState, { passive: true });
+	if (scrollContainer.value) {
+		scrollContainer.value.addEventListener("scroll", syncVisibleState, { passive: true });
+	} else {
+		window.addEventListener("scroll", syncVisibleState, { passive: true });
+	}
 });
 
 onUnmounted(() => {
 	window.removeEventListener("resize", syncViewport);
-	window.removeEventListener("scroll", syncVisibleState);
+	if (scrollContainer.value) {
+		scrollContainer.value.removeEventListener("scroll", syncVisibleState);
+	} else {
+		window.removeEventListener("scroll", syncVisibleState);
+	}
 });
 </script>
 

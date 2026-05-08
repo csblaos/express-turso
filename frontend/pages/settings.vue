@@ -35,7 +35,7 @@ const accessQuickLinks: SettingsEntry[] = [
 		title: "ผู้ใช้งาน",
 		description: "ดูสมาชิกในร้าน, เปลี่ยนบทบาท และรีเซ็ตรหัสผ่าน",
 		icon: "i-heroicons-users",
-		to: "/settings/access/users",
+		to: "/settings/users",
 		badge: "พร้อมใช้งาน",
 	},
 	{
@@ -43,7 +43,7 @@ const accessQuickLinks: SettingsEntry[] = [
 		title: "บทบาท",
 		description: "จัดการ role และ permission ที่แต่ละบทบาทถืออยู่",
 		icon: "i-heroicons-identification",
-		to: "/settings/access/roles",
+		to: "/settings/roles",
 		badge: "พร้อมใช้งาน",
 	},
 ];
@@ -57,10 +57,10 @@ const settingsSections: SettingsSection[] = [
 		entries: [
 			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", to: "/profile", badge: "พร้อมใช้งาน" },
 			{ id: "language", title: "Language", description: "ตั้งค่าภาษา UI และรูปแบบการแสดงผล", icon: "i-heroicons-language", badge: "เร็ว ๆ นี้" },
-			{ id: "permissions", title: "Permissions", description: "ดูสิทธิ์ที่อนุญาตผ่าน role และ policy ของร้าน", icon: "i-heroicons-lock-closed", to: "/settings/access/roles", badge: "พร้อมใช้งาน" },
+			{ id: "permissions", title: "Permissions", description: "ดูสิทธิ์ที่อนุญาตผ่าน role และ policy ของร้าน", icon: "i-heroicons-lock-closed", to: "/settings/roles", badge: "พร้อมใช้งาน" },
 			{ id: "security", title: "Security", description: "ดูข้อมูลความปลอดภัยของบัญชีและ session", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
-			{ id: "roles", title: "Roles", description: "จัดการบทบาทของผู้ใช้งานในร้าน และสิทธิ์ที่ role นั้นถืออยู่", icon: "i-heroicons-identification", to: "/settings/access/roles", badge: "พร้อมใช้งาน" },
-			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/access/users", badge: "พร้อมใช้งาน" },
+			{ id: "roles", title: "Roles", description: "จัดการบทบาทของผู้ใช้งานในร้าน และสิทธิ์ที่ role นั้นถืออยู่", icon: "i-heroicons-identification", to: "/settings/roles", badge: "พร้อมใช้งาน" },
+			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/users", badge: "พร้อมใช้งาน" },
 			{ id: "categories", title: "Categories", description: "จัดการหมวดหมู่สินค้า", icon: "i-heroicons-tag", to: "/products" },
 			{ id: "units", title: "Units", description: "จัดการหน่วยสินค้าและหน่วยขาย", icon: "i-heroicons-scale", to: "/products" },
 			{ id: "stock-alert", title: "Stock", description: "ตั้งค่า stock alert และ threshold", icon: "i-heroicons-bell-alert", to: "/inventory" },
@@ -100,18 +100,10 @@ const settingsSections: SettingsSection[] = [
 		<template #default="{ openSidebar }">
 			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
 				<AppPageHeader title="ศูนย์รวมการตั้งค่า" description="หน้าหลักนี้ใช้เป็น hub สำหรับการตั้งค่าของผู้ใช้และร้านปัจจุบันเท่านั้น" @menu="openSidebar">
-					<template #badges>
-						<UBadge color="neutral" variant="soft" label="Settings" />
-						<UBadge color="primary" variant="soft" label="User + Store settings" />
-					</template>
-
-					<template #actions>
-						<UBadge color="neutral" variant="soft" label="User + Store settings hub" class="hidden sm:inline-flex" />
-					</template>
 				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 min-w-0 space-y-3 overflow-x-hidden overflow-y-auto lg:pr-1">
-					<UCard class="min-w-0 max-w-full rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]">
+					<UCard class="min-w-0 max-w-full rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="space-y-3 sm:space-y-4">
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Access control</p>
@@ -124,10 +116,10 @@ const settingsSections: SettingsSection[] = [
 									v-for="entry in accessQuickLinks"
 									:key="entry.id"
 									:to="entry.to"
-									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
+									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 transition hover:border-primary-200 hover:bg-primary-50 sm:p-4"
 								>
 									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
-										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200 sm:h-11 sm:w-11">
 											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
 										<div class="min-w-0 flex-1">
@@ -146,7 +138,7 @@ const settingsSections: SettingsSection[] = [
 					<UCard
 						v-for="section in settingsSections"
 						:key="section.id"
-						class="min-w-0 max-w-full rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-[#e7e4dd]"
+						class="min-w-0 max-w-full rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md"
 					>
 						<div class="space-y-3 sm:space-y-4">
 							<div>
@@ -160,10 +152,10 @@ const settingsSections: SettingsSection[] = [
 									v-for="entry in linkedEntries(section)"
 									:key="entry.id"
 									:to="entry.to"
-									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
+									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 transition hover:border-primary-200 hover:bg-primary-50 sm:p-4"
 								>
 									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
-										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200 sm:h-11 sm:w-11">
 											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
 										<div class="min-w-0 flex-1">
@@ -185,10 +177,10 @@ const settingsSections: SettingsSection[] = [
 								<div
 									v-for="entry in staticEntries(section)"
 									:key="entry.id"
-									class="min-w-0 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-3 py-3 transition hover:border-[#d9d5cd] hover:bg-[#fcfaf6] sm:p-4"
+									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 transition hover:border-primary-200 hover:bg-primary-50 sm:p-4"
 								>
 									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
-										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6] sm:h-11 sm:w-11">
+										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200 sm:h-11 sm:w-11">
 											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 										</div>
 										<div class="min-w-0 flex-1">

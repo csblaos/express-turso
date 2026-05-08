@@ -264,184 +264,198 @@ function closeDetail() {
 		sidebar-description="ภาพรวมออเดอร์, สถานะการขาย, ช่องทางรับสินค้า และคิวที่ต้องติดตาม"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 				<AppPageHeader
 					title="จัดการออเดอร์"
-					description="รอบนี้เป็น UI อย่างเดียวก่อน โฟกัสที่งานค้นหา, ติดตามสถานะ, และเปิดรายละเอียดออเดอร์อย่างรวดเร็ว"
+					description=""
+					:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="primary" variant="soft" label="ออเดอร์" />
-						<UBadge color="neutral" variant="soft" label="UI mock" />
-					</template>
 
-					<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-							<div class="relative">
-								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
+					<div class="space-y-3">
+						<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+							<div class="relative min-w-0">
+								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 								<input
 									v-model="searchQuery"
 									type="text"
 									placeholder="ค้นหาเลขออเดอร์, ลูกค้า, เบอร์โทร หรือแคชเชียร์"
-									class="w-full rounded-2xl border border-[#e7e4dd] bg-white py-3 pl-11 pr-10 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]"
+									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
 								<button
 									v-if="searchQuery"
 									type="button"
-									class="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-stone-400 transition hover:bg-[#f5f5f4] hover:text-stone-700"
+									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
 									@click="searchQuery = ''"
 								>
 									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
 								</button>
 							</div>
 
-							<select v-model="activeStatus" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-								<option value="all">ทุกสถานะ</option>
-								<option value="pending">รอรับออเดอร์</option>
-								<option value="confirmed">ยืนยันแล้ว</option>
-								<option value="preparing">กำลังเตรียม</option>
-								<option value="ready">พร้อมส่งมอบ</option>
-								<option value="completed">เสร็จสิ้น</option>
-								<option value="cancelled">ยกเลิก</option>
-							</select>
+							<div class="grid gap-2 sm:grid-cols-3 xl:grid-cols-3 xl:justify-end xl:pl-4">
+								<select v-model="activeStatus" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<option value="all">ทุกสถานะ</option>
+									<option value="pending">รอรับออเดอร์</option>
+									<option value="confirmed">ยืนยันแล้ว</option>
+									<option value="preparing">กำลังเตรียม</option>
+									<option value="ready">พร้อมส่งมอบ</option>
+									<option value="completed">เสร็จสิ้น</option>
+									<option value="cancelled">ยกเลิก</option>
+								</select>
 
-							<select v-model="activeChannel" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-								<option value="all">ทุกช่องทาง</option>
-								<option value="walk-in">หน้าร้าน</option>
-								<option value="pickup">รับกลับ</option>
-								<option value="delivery">เดลิเวอรี</option>
-							</select>
+								<select v-model="activeChannel" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<option value="all">ทุกช่องทาง</option>
+									<option value="walk-in">หน้าร้าน</option>
+									<option value="pickup">รับกลับ</option>
+									<option value="delivery">เดลิเวอรี</option>
+								</select>
 
-							<select v-model="activePaymentStatus" class="rounded-2xl border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-[#d9d5cd] focus:ring-2 focus:ring-[#f3c7a7]">
-								<option value="all">ทุกการชำระ</option>
-								<option value="unpaid">ยังไม่ชำระ</option>
-								<option value="partial">ชำระบางส่วน</option>
-								<option value="paid">ชำระแล้ว</option>
-								<option value="refunded">คืนเงินแล้ว</option>
-							</select>
+								<select v-model="activePaymentStatus" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<option value="all">ทุกการชำระ</option>
+									<option value="unpaid">ยังไม่ชำระ</option>
+									<option value="partial">ชำระบางส่วน</option>
+									<option value="paid">ชำระแล้ว</option>
+									<option value="refunded">คืนเงินแล้ว</option>
+								</select>
+							</div>
 						</div>
 
-						<div class="flex flex-wrap gap-2">
-							<UButton :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
-							<UButton :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
-							<UButton :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
-						</div>
+						<div class="flex flex-wrap gap-2 pt-1 xl:justify-end">
+								<UButton size="md" class="rounded-md" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
+								<UButton size="md" class="rounded-md" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
+								<UButton size="md" class="rounded-md" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
+							</div>
 
-						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ออเดอร์ทั้งหมด</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ totalOrders }}</p>
-							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">คิวเปิดอยู่</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ openOrders }}</p>
-							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เดลิเวอรี</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
-							</div>
-							<div class="rounded-2xl border border-[#e7e4dd] bg-[#fffefd] p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">บิลเฉลี่ย</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
+						<div class="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+								<div class="rounded-md border border-neutral-200 bg-white p-3">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ออเดอร์ทั้งหมด</p>
+									<p class="mt-1 text-xl font-semibold text-stone-950">{{ totalOrders }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-white p-3">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">คิวเปิดอยู่</p>
+									<p class="mt-1 text-xl font-semibold text-stone-950">{{ openOrders }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-white p-3">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เดลิเวอรี</p>
+									<p class="mt-1 text-xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-white p-3">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">บิลเฉลี่ย</p>
+									<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
+								</div>
 							</div>
 						</div>
 				</AppPageHeader>
 
-				<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
-					<div
-						v-for="order in filteredOrders"
-						:key="order.id"
-						class="rounded-[24px] border border-[#e7e4dd] bg-white p-4 shadow-sm transition hover:shadow-md"
-						:class="selectedOrderId === order.id ? 'ring-2 ring-[#f3c7a7]' : ''"
-					>
-						<button type="button" class="w-full text-left" @click="openDetail(order.id)">
-							<div class="flex flex-wrap items-start justify-between gap-4">
-								<div class="min-w-0">
-									<div class="flex flex-wrap items-center gap-2">
-										<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
-										<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
-										<UBadge color="neutral" variant="soft" :label="channelLabel(order.channel)" />
-									</div>
-									<p class="mt-3 text-base font-semibold text-stone-950">{{ order.orderNumber }} · {{ order.customerName }}</p>
-									<p class="mt-1 text-sm text-stone-500">
-										{{ order.cashier }}
-										<span v-if="order.phone">· {{ order.phone }}</span>
-										<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
-									</p>
-									<p v-if="order.note" class="mt-2 text-xs text-stone-400">{{ order.note }}</p>
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">Orders list</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกออเดอร์เพื่อเปิดรายละเอียดและดูรายการสินค้าในบิล</p>
 								</div>
-
-								<div class="grid gap-3 text-right sm:grid-cols-4 sm:text-left">
-									<div>
-										<p class="text-xs text-stone-400">จำนวนสินค้า</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ order.itemCount }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">ยอดรวม</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">สร้างเมื่อ</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.createdAt) }}</p>
-									</div>
-									<div>
-										<p class="text-xs text-stone-400">อัปเดตล่าสุด</p>
-										<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.updatedAt) }}</p>
-									</div>
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+									{{ filteredOrders.length }} รายการ
 								</div>
 							</div>
-						</button>
-					</div>
 
-					<UCard v-if="!filteredOrders.length" class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none">
-						<div class="space-y-3 py-12 text-center">
-							<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-stone-400 ring-1 ring-[#e7e4dd]">
-								<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
+							<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+								<div v-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+									<div class="space-y-3">
+										<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
+											<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
+										</div>
+										<div>
+											<p class="text-sm font-medium text-stone-900">ไม่พบออเดอร์ที่ตรงกับเงื่อนไข</p>
+											<p class="mt-1 text-sm text-stone-500">ลองล้างคำค้นหรือเปลี่ยน filter ด้านบน</p>
+										</div>
+									</div>
+								</div>
+
+								<div v-else>
+									<button
+										v-for="order in filteredOrders"
+										:key="order.id"
+										type="button"
+										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
+										:class="selectedOrderId === order.id ? 'bg-primary-50' : 'bg-white'"
+										@click="openDetail(order.id)"
+									>
+										<div class="flex flex-wrap items-start justify-between gap-4">
+											<div class="min-w-0">
+												<div class="flex flex-wrap items-center gap-2">
+													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
+													<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
+													<UBadge color="neutral" variant="soft" :label="channelLabel(order.channel)" />
+												</div>
+												<p class="mt-2 text-sm font-semibold text-stone-950">{{ order.orderNumber }} · {{ order.customerName }}</p>
+												<p class="mt-1 text-sm text-stone-500">
+													{{ order.cashier }}
+													<span v-if="order.phone">· {{ order.phone }}</span>
+													<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
+												</p>
+												<p v-if="order.note" class="mt-1 text-xs text-stone-400">{{ order.note }}</p>
+											</div>
+
+											<div class="grid gap-3 text-right sm:grid-cols-4 sm:text-left">
+												<div>
+													<p class="text-xs text-stone-400">จำนวนสินค้า</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ order.itemCount }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">ยอดรวม</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">สร้างเมื่อ</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.createdAt) }}</p>
+												</div>
+												<div>
+													<p class="text-xs text-stone-400">อัปเดตล่าสุด</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.updatedAt) }}</p>
+												</div>
+											</div>
+										</div>
+									</button>
+								</div>
 							</div>
-							<div>
-								<p class="text-sm font-medium text-stone-900">ไม่พบออเดอร์ที่ตรงกับเงื่อนไข</p>
-								<p class="mt-1 text-sm text-stone-500">ลองล้างคำค้นหรือเปลี่ยน filter ด้านบน</p>
+
+							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
+									<div>{{ openOrders }} คิวเปิดอยู่</div>
+									<div>{{ deliveryOrders }} เดลิเวอรี • บิลเฉลี่ย {{ formatMoney(avgTicket) }}</div>
+								</div>
 							</div>
 						</div>
-					</UCard>
+					</div>
 				</div>
 			</div>
 
 			<AppResponsivePanel
 				v-if="selectedOrder"
 				v-model="detailOpen"
+				title="รายละเอียดออเดอร์"
+				description="ดูข้อมูลบิล รายการสินค้า และช่องทางชำระเงินของออเดอร์นี้"
 				desktop-width="460px"
 				:show-handle="false"
-				content-class="!px-4 !py-4 lg:!px-4 lg:!py-4"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 				@close="closeDetail"
 			>
 				<template #default>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] text-stone-900">
-						<div class="border-b border-[#e7e4dd] pb-4">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">Order detail</p>
-									<h2 class="mt-2 text-lg font-semibold tracking-[-0.04em] text-stone-950">รายละเอียดออเดอร์</h2>
-								</div>
-								<UButton
-									color="neutral"
-									variant="soft"
-									size="xs"
-									icon="i-heroicons-x-mark-20-solid"
-									aria-label="ปิดรายละเอียดออเดอร์"
-									title="ปิดรายละเอียดออเดอร์"
-									@click="closeDetail"
-								/>
-							</div>
-
-							<div class="mt-4 rounded-[24px] bg-[#fbfbf8] p-3 ring-1 ring-[#e7e4dd]">
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-5 py-5">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
 								<div class="flex items-start gap-3">
-									<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#fbf1ea] text-[#97532c] ring-1 ring-[#efd7c6]">
+									<div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
 										<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
 									</div>
 									<div class="min-w-0 flex-1">
 										<div class="flex flex-wrap items-start justify-between gap-2">
 											<div class="min-w-0">
-												<h3 class="truncate text-lg font-semibold text-stone-950">{{ selectedOrder.orderNumber }}</h3>
+												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrder.orderNumber }}</h3>
 												<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.customerName }}</p>
 											</div>
 											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="statusLabel(selectedOrder.status)" />
@@ -455,10 +469,8 @@ function closeDetail() {
 									</div>
 								</div>
 							</div>
-						</div>
 
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto py-4 pr-1">
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
 								<dl class="mt-4 space-y-3 text-sm">
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
@@ -480,7 +492,7 @@ function closeDetail() {
 								</dl>
 							</div>
 
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
 									<h3 class="text-sm font-semibold text-stone-950">รายการสินค้าในบิล</h3>
 									<UBadge color="neutral" variant="soft" :label="`${selectedOrder.lines.length} รายการ`" />
@@ -490,7 +502,7 @@ function closeDetail() {
 									<div
 										v-for="line in selectedOrder.lines"
 										:key="line.id"
-										class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]"
+										class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200"
 									>
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
@@ -504,18 +516,18 @@ function closeDetail() {
 								</div>
 							</div>
 
-							<div class="rounded-[24px] bg-[#fbfbf8] p-4 ring-1 ring-[#e7e4dd]">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<h3 class="text-sm font-semibold text-stone-950">หมายเหตุและข้อมูลติดต่อ</h3>
 								<div class="mt-4 space-y-3 text-sm text-stone-600">
-									<div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 										<p class="text-xs text-stone-400">ลูกค้า</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.customerName }}</p>
 									</div>
-									<div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 										<p class="text-xs text-stone-400">เบอร์โทร</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.phone || "-" }}</p>
 									</div>
-									<div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-[#e7e4dd]">
+									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 										<p class="text-xs text-stone-400">หมายเหตุ</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.note || "-" }}</p>
 									</div>
@@ -523,10 +535,10 @@ function closeDetail() {
 							</div>
 						</div>
 
-						<div class="border-t border-[#e7e4dd] pt-4">
-							<div class="grid grid-cols-2 gap-2">
-								<UButton color="neutral" variant="soft" size="lg" label="พิมพ์บิล" />
-								<UButton color="primary" variant="solid" size="lg" label="อัปเดตสถานะ" />
+						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true">พิมพ์บิล</AppButton>
+								<AppButton color="primary" variant="solid" size="md" :block="true">อัปเดตสถานะ</AppButton>
 							</div>
 						</div>
 					</div>
