@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const frontendDir = path.resolve(__dirname, "..");
 const nuxtEntry = path.join(frontendDir, "node_modules", "nuxt", "bin", "nuxt.mjs");
 
-const MIN_NODE = [20, 19, 0];
+const MIN_NODE = [ 20, 19, 0 ];
 
 function parseVersion(raw) {
 	const match = raw.trim().match(/^v?(\d+)\.(\d+)\.(\d+)/);
@@ -56,15 +56,15 @@ function resolveCandidateBinaries() {
 		candidates.add(candidate);
 	}
 
-	return [...candidates].filter(Boolean);
+	return [ ...candidates ].filter(Boolean);
 }
 
 function inspectBinary(binary) {
 	if (!existsSync(binary)) return null;
 
-	const result = spawnSync(binary, ["-v"], {
+	const result = spawnSync(binary, [ "-v" ], {
 		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
+		stdio: [ "ignore", "pipe", "ignore" ],
 	});
 
 	if (result.status !== 0 || !result.stdout) return null;
@@ -97,7 +97,7 @@ if (!selectedNode) {
 	process.exit(1);
 }
 
-const commandArgs = [nuxtEntry, ...process.argv.slice(2)];
+const commandArgs = [ nuxtEntry, ...process.argv.slice(2) ];
 const result = spawnSync(selectedNode.binary, commandArgs, {
 	cwd: frontendDir,
 	stdio: "inherit",
