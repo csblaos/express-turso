@@ -165,7 +165,7 @@ onErrorCaptured((error) => {
 </script>
 
 <template>
-	<main class="h-dvh min-h-screen w-full overflow-hidden bg-transparent">
+	<main class="h-dvh min-h-svh w-full overflow-hidden bg-transparent">
 		<div class="flex h-full w-full overflow-hidden">
 			<Transition
 				enter-active-class="transition-opacity duration-250 ease-out"
