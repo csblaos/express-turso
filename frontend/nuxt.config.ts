@@ -2,8 +2,8 @@ export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
 	telemetry: false,
-	modules: ["@nuxt/ui"],
-	css: ["~/assets/css/main.css"],
+	modules: [ "@nuxt/ui" ],
+	css: [ "~/assets/css/main.css" ],
 	nitro: {
 		compatibilityDate: "2026-05-04",
 	},

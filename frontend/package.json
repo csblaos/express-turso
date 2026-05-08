@@ -3,11 +3,11 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "node ./scripts/run-nuxt.mjs build",
-		"dev": "node ./scripts/run-nuxt.mjs dev --port 3001",
-		"generate": "node ./scripts/run-nuxt.mjs generate",
-		"preview": "node ./scripts/run-nuxt.mjs preview --port 3001",
-		"postinstall": "node ./scripts/run-nuxt.mjs prepare"
+		"build": "nuxt build",
+		"dev": "nuxt dev --port 3001",
+		"generate": "nuxt generate",
+		"preview": "nuxt preview --port 3001",
+		"postinstall": "nuxt prepare"
 	},
 	"engines": {
 		"node": ">=20.19.0"
@@ -18,10 +18,10 @@
 		"@zxing/browser": "^0.2.0",
 		"@zxing/library": "^0.22.0",
 		"nuxt": "^4.4.4",
+		"tailwindcss": "^4.1.16",
 		"vue-sonner": "^2.0.9"
 	},
 	"devDependencies": {
-		"tailwindcss": "^4.1.16",
 		"vite": "^7.3.3"
 	}
 }
