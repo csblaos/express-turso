@@ -3,7 +3,7 @@
 เอกสารนี้อธิบายวิธี deploy โปรเจกต์นี้ในรูปแบบที่ตรงกับโครงสร้างปัจจุบัน:
 
 - Backend: Express + TypeScript
-- Frontend: Nuxt 3 SSR
+- Frontend: Nuxt 4 SSR
 - Database: Turso
 - Cache/Queue-ish store: Redis local ใน dev หรือ Upstash ใน production
 
@@ -152,17 +152,48 @@ PORT=3001
 - start command: `node .output/server/index.mjs`
 - มี `NUXT_PUBLIC_API_BASE` ถูกต้อง
 
+### Vercel settings ที่ควรใช้
+
+ถ้า deploy frontend นี้บน Vercel ให้ตั้งค่า project แบบนี้:
+
+- Root Directory: `frontend`
+- Framework Preset: `Nuxt.js`
+- Install Command: `npm install`
+- Build Command: `npm run build`
+- Node.js Version: `22.x`
+
+และต้องมี environment variable อย่างน้อย:
+
+```dotenv
+NUXT_PUBLIC_API_BASE=https://api.example.com/api
+```
+
+ข้อสำคัญ:
+
+- ถ้าไม่ตั้ง `NUXT_PUBLIC_API_BASE` ใน production ตอนนี้ frontend จะ fallback เป็น `/api`
+- fallback นี้ช่วยไม่ให้ SSR ชี้ไป `localhost`
+- แต่ถ้า frontend กับ backend ไม่ได้อยู่ domain เดียวกันหรือไม่มี proxy `/api` -> backend ก็ยังต้องตั้ง env นี้ให้ถูกอยู่ดี
+
+อาการที่พบบ่อยบน Vercel:
+
+- deploy จาก repo root แทน `frontend`
+- ใช้ Node ต่ำกว่า `20.19`
+- ลืมตั้ง `NUXT_PUBLIC_API_BASE`
+
+ทั้ง 3 อย่างนี้ทำให้ runtime พังหรือขึ้น 500 ได้
+
 ## 7) เรื่องเวอร์ชัน Node
 
 สถานะปัจจุบันของ repo นี้:
 
-- เครื่องพัฒนาปัจจุบันใช้ Node `18.20.8`
-- จึง pin frontend ไว้ที่ `nuxt@3.8.0` และ `nuxi@3.8.0`
+- Frontend ปัจจุบันใช้ `Nuxt 4`
+- ต้องใช้ Node `>= 20.19.0`
+- แนะนำ Node `22`
 
-ถ้า deploy บนเครื่องหรือ platform ที่ใช้ Node 20+:
+ไฟล์ที่ช่วยบอกเวอร์ชัน:
 
-- โปรเจกต์นี้ยัง deploy ได้
-- แต่ถ้าจะอัปเกรด Nuxt เป็นรุ่นใหม่ ควรทดสอบ dependency ใหม่ทั้งหมดอีกครั้ง
+- repo root: `.nvmrc`
+- frontend: `frontend/.nvmrc`
 
 ## 8) ทางเลือก deployment ที่ไม่แนะนำตอนนี้
 

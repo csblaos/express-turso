@@ -1,21 +1,11 @@
 export default defineNuxtConfig({
-	devtools: { enabled: true },
+	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
 	telemetry: false,
 	modules: ["@nuxt/ui"],
+	css: ["~/assets/css/main.css"],
 	nitro: {
 		compatibilityDate: "2026-05-04",
-	},
-	tailwindcss: {
-		cssPath: "~/assets/css/main.css",
-		configPath: "tailwind.config.ts",
-		viewer: false,
-	},
-	postcss: {
-		plugins: {
-			tailwindcss: {},
-			autoprefixer: {},
-		},
 	},
 	colorMode: {
 		preference: "light",
@@ -23,7 +13,7 @@ export default defineNuxtConfig({
 	},
 	runtimeConfig: {
 		public: {
-			apiBase: process.env.NUXT_PUBLIC_API_BASE || "http://localhost:3005/api",
+			apiBase: process.env.NUXT_PUBLIC_API_BASE || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:3005/api"),
 			r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || "https://cdn.codesabai.com",
 		},
 	},

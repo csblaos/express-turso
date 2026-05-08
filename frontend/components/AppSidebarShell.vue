@@ -14,16 +14,19 @@ const mobileSidebarOpen = ref(false);
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
 const logoutConfirmOpen = ref(false);
 const shellError = ref<string | null>(null);
+const isDesktopViewport = ref(false);
 const { logout, currentUser } = useAuthSession();
 const route = useRoute();
 const currentNavItem = computed(() => props.navItems.find((item) => props.activeIds.includes(item.id)));
+let mediaQueryList: MediaQueryList | null = null;
+let syncViewportListener: (() => void) | null = null;
 
 function openSidebar() {
 	mobileSidebarOpen.value = true;
 }
 
 function toggleSidebar() {
-	if (import.meta.client && window.matchMedia("(min-width: 1024px)").matches) {
+	if (isDesktopViewport.value) {
 		sidebarCollapsed.value = !sidebarCollapsed.value;
 		return;
 	}
@@ -32,7 +35,7 @@ function toggleSidebar() {
 }
 
 const topbarMenuTitle = computed(() => (
-	import.meta.client && window.matchMedia("(min-width: 1024px)").matches
+	isDesktopViewport.value
 		? (sidebarCollapsed.value ? "ขยายเมนู" : "ย่อเมนู")
 		: "เปิดเมนู"
 ));
@@ -41,13 +44,13 @@ const profileMenuItems = computed(() => [[
 	{
 		label: "ตั้งค่าโปรไฟล์",
 		icon: "i-heroicons-cog-6-tooth",
-		click: () => navigateTo("/profile"),
+		onSelect: () => navigateTo("/profile"),
 	},
 ], [
 	{
 		label: "ออกจากระบบ",
 		icon: "i-heroicons-arrow-left-on-rectangle",
-		click: () => openLogoutConfirm(),
+		onSelect: () => openLogoutConfirm(),
 	},
 ]]);
 
@@ -79,6 +82,22 @@ function reloadCurrentView() {
 
 watch(() => route.fullPath, () => {
 	shellError.value = null;
+});
+
+onMounted(() => {
+	mediaQueryList = window.matchMedia("(min-width: 1024px)");
+	syncViewportListener = () => {
+		isDesktopViewport.value = mediaQueryList?.matches ?? false;
+	};
+
+	syncViewportListener();
+	mediaQueryList.addEventListener("change", syncViewportListener);
+});
+
+onUnmounted(() => {
+	if (mediaQueryList && syncViewportListener) {
+		mediaQueryList.removeEventListener("change", syncViewportListener);
+	}
 });
 
 onErrorCaptured((error) => {
@@ -204,9 +223,9 @@ onErrorCaptured((error) => {
 									<template #right>
 										<slot name="navbar-right" />
 
-										<UDropdown
+										<UDropdownMenu
 											:items="profileMenuItems"
-											:popper="{ placement: 'bottom-end' }"
+											:content="{ side: 'bottom', align: 'end', sideOffset: 8 }"
 										>
 											<UButton
 												color="gray"
@@ -217,7 +236,7 @@ onErrorCaptured((error) => {
 												:title="currentUser?.name || 'โปรไฟล์'"
 												:aria-label="currentUser?.name || 'โปรไฟล์'"
 											/>
-										</UDropdown>
+										</UDropdownMenu>
 									</template>
 								</AppTopNavbar>
 							</div>

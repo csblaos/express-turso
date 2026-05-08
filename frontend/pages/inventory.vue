@@ -128,6 +128,7 @@ const adjustmentMode = ref<AdjustmentMode>("increment");
 const adjustmentQty = ref("");
 const adjustmentNote = ref("");
 const adjustmentSubmitting = ref(false);
+const adjustmentBadgeIso = useState("inventory-adjustment-badge-iso", () => new Date().toISOString());
 
 let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 let cameraScannerControls: { stop?: () => void } | null = null;
@@ -987,7 +988,7 @@ onBeforeUnmount(() => {
 										<h3 class="text-sm font-semibold text-stone-900">ปรับสต็อก</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">แยก flow ปรับสต็อกออกจากข้อมูลสินค้า เพื่อให้ตรวจสอบย้อนหลังได้ง่าย</p>
 									</div>
-									<UBadge color="gray" variant="soft" :label="formatDate(new Date().toISOString())" />
+									<UBadge color="gray" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
 								</div>
 
 								<div class="mt-4 grid gap-2 sm:grid-cols-3">
