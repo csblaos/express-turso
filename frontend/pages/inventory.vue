@@ -611,7 +611,7 @@ onBeforeUnmount(() => {
 								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
 									<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
 										<div class="grid grid-cols-4 gap-2 lg:hidden">
-												<UButton
+												<AppButton
 													color="neutral"
 													variant="soft"
 													size="md"
@@ -621,7 +621,7 @@ onBeforeUnmount(() => {
 												title="เปิดเมนู"
 												@click="openSidebar"
 											/>
-												<UButton
+												<AppButton
 													color="neutral"
 													variant="soft"
 													size="md"
@@ -631,7 +631,7 @@ onBeforeUnmount(() => {
 												:title="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
 												@click="toggleMobileSearch"
 											/>
-												<UButton
+												<AppButton
 													color="primary"
 													variant="soft"
 													size="md"
@@ -641,7 +641,7 @@ onBeforeUnmount(() => {
 												title="สแกนบาร์โค้ด"
 												@click="openCameraScanner"
 											/>
-												<UButton
+												<AppButton
 													color="primary"
 													variant="solid"
 													size="md"
@@ -664,7 +664,7 @@ onBeforeUnmount(() => {
 													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
-											<UButton
+											<AppButton
 												v-if="searchQuery"
 												color="neutral"
 												variant="ghost"
@@ -688,7 +688,7 @@ onBeforeUnmount(() => {
 													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 												@keydown.enter.prevent="submitSearchInput"
 											/>
-											<UButton
+											<AppButton
 												v-if="searchQuery"
 												color="neutral"
 												variant="ghost"
@@ -703,7 +703,7 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div class="hidden gap-2 lg:flex">
-										<UButton
+										<AppButton
 											color="primary"
 											variant="soft"
 											size="md"
@@ -714,8 +714,8 @@ onBeforeUnmount(() => {
 											@click="openCameraScanner"
 										>
 											<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
-										</UButton>
-										<UButton
+										</AppButton>
+										<AppButton
 											color="neutral"
 											variant="soft"
 											size="md"
@@ -726,7 +726,7 @@ onBeforeUnmount(() => {
 											@click="loadBalances"
 										>
 											<span class="hidden sm:inline">รีโหลด</span>
-										</UButton>
+										</AppButton>
 									</div>
 								</div>
 							</UCard>
@@ -766,7 +766,7 @@ onBeforeUnmount(() => {
 												</div>
 
 												<div class="category-rail scrollbar-soft hidden gap-2 overflow-x-auto pb-1 md:flex">
-													<UButton
+													<AppButton
 														v-for="category in categoryOptions"
 														:key="category.id"
 														:color="activeCategory === category.id ? 'primary' : 'neutral'"
@@ -779,11 +779,11 @@ onBeforeUnmount(() => {
 														<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
 															{{ categoryCounts[category.id] }}
 														</span>
-													</UButton>
+													</AppButton>
 												</div>
 
 												<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-													<UButton
+													<AppButton
 														v-for="status in statusOptions"
 														:key="status.id"
 														color="neutral"
@@ -797,7 +797,7 @@ onBeforeUnmount(() => {
 											</div>
 
 											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-													<UButton
+													<AppButton
 														v-for="sort in sortOptions"
 														:key="sort.id"
 														color="neutral"
@@ -841,7 +841,7 @@ onBeforeUnmount(() => {
 													<p class="text-lg font-semibold text-stone-900">โหลดสต็อกไม่สำเร็จ</p>
 													<p class="mt-2 text-sm text-stone-500">{{ balancesError }}</p>
 													<div class="mt-4">
-														<UButton color="primary" variant="soft" size="sm" label="ลองใหม่" @click="loadBalances" />
+														<AppButton color="primary" variant="soft" size="sm" label="ลองใหม่" @click="loadBalances" />
 													</div>
 												</div>
 											</UCard>
@@ -890,7 +890,7 @@ onBeforeUnmount(() => {
 
 															<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
 																<p class="text-[11px] text-stone-500">อัปเดต {{ item.updatedAt }}</p>
-																	<UButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
+																	<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดูสต็อก" @click.stop="openDetail(item.id)" />
 															</div>
 														</div>
 													</div>
@@ -984,7 +984,7 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div class="mt-4 grid gap-2 sm:grid-cols-3">
-										<UButton
+										<AppButton
 											v-for="mode in adjustmentModeOptions"
 											:key="mode.id"
 											:color="adjustmentMode === mode.id ? 'primary' : 'neutral'"
@@ -995,7 +995,7 @@ onBeforeUnmount(() => {
 											@click="adjustmentMode = mode.id"
 										>
 											{{ mode.label }}
-										</UButton>
+										</AppButton>
 									</div>
 
 									<div class="mt-4 grid gap-3">
@@ -1108,7 +1108,7 @@ onBeforeUnmount(() => {
 								</h3>
 								<p class="mt-1 text-sm text-stone-500">เหมาะกับ mobile, tablet และ desktop ที่ไม่ต่อ scanner gun</p>
 							</div>
-							<UButton
+							<AppButton
 								color="neutral"
 								variant="soft"
 								size="xs"

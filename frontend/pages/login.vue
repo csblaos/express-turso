@@ -214,7 +214,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											placeholder="••••••••"
 											class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:ps-11 [&_input]:pr-12 [&_input]:shadow-sm [&_span]:left-3 [&_span]:text-stone-400"
 										/>
-										<UButton
+										<AppButton
 											color="neutral"
 											variant="ghost"
 											size="xs"

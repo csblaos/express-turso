@@ -238,7 +238,7 @@ onMounted(async () => {
 							<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
 						</select>
 
-						<UButton
+						<AppButton
 							color="primary"
 							size="md"
 							class="justify-center rounded-md"

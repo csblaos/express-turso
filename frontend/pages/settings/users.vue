@@ -308,7 +308,7 @@ onMounted(async () => {
 							class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 							@keyup.enter="fetchMembers"
 						/>
-						<UButton
+						<AppButton
 							color="neutral"
 							variant="soft"
 							size="md"
@@ -317,7 +317,7 @@ onMounted(async () => {
 							label="รีเฟรช"
 							@click="fetchMembers"
 						/>
-						<UButton
+						<AppButton
 							color="primary"
 							size="md"
 							class="justify-center rounded-md"

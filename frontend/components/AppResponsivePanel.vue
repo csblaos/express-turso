@@ -19,11 +19,11 @@ const props = withDefaults(defineProps<{
 	mobileMaxHeight: "88vh",
 	showHandle: true,
 	showCloseButton: true,
-	closeButtonSize: "xs",
+	closeButtonSize: "md",
 	closeOnBackdrop: true,
 	compactHeader: false,
-	backdropZClass: "z-[58]",
-	panelZClass: "z-[59]",
+	backdropZClass: "z-[160]",
+	panelZClass: "z-[170]",
 	panelClass: "",
 	contentClass: "",
 });
@@ -33,11 +33,29 @@ const emit = defineEmits<{
 	(event: "close"): void;
 }>();
 
+type BodyLockSnapshot = {
+	scrollY: number;
+	bodyOverflow: string;
+	bodyPosition: string;
+	bodyTop: string;
+	bodyLeft: string;
+	bodyRight: string;
+	bodyWidth: string;
+	bodyOverscrollBehavior: string;
+	htmlOverflow: string;
+	htmlOverscrollBehavior: string;
+};
+
+const openPanelCount = useState<number>("app-responsive-panel-open-count", () => 0);
+const bodyLockSnapshot = useState<BodyLockSnapshot | null>("app-responsive-panel-body-lock-snapshot", () => null);
+
 const DRAG_CLOSE_DISTANCE = 96;
 const panelRef = ref<HTMLElement | null>(null);
 const dragState = reactive({
 	active: false,
+	inputMode: "none" as "none" | "pointer" | "touch",
 	pointerId: -1,
+	touchId: -1,
 	startY: 0,
 	offsetY: 0,
 });
@@ -64,41 +82,94 @@ function isDesktopViewport() {
 
 function resetDragState() {
 	dragState.active = false;
+	dragState.inputMode = "none";
 	dragState.pointerId = -1;
+	dragState.touchId = -1;
 	dragState.startY = 0;
 	dragState.offsetY = 0;
 }
 
+function resolveTargetElement(target: EventTarget | null) {
+	if (target instanceof HTMLElement) return target;
+	if (target instanceof Text) return target.parentElement;
+	return null;
+}
+
 function canStartDragFromTarget(target: EventTarget | null) {
-	if (!(target instanceof HTMLElement)) return false;
-	if (target.closest("button, input, textarea, select, a, [role='button']")) return false;
+	const targetElement = resolveTargetElement(target);
+	if (!targetElement) return false;
+	if (!targetElement.closest("[data-panel-drag-handle]")) return false;
+	if (targetElement.closest("button, input, textarea, select, a, [role='button']")) return false;
 	return true;
+}
+
+function startDrag(startY: number) {
+	dragState.active = true;
+	dragState.startY = startY;
+	dragState.offsetY = 0;
+}
+
+function updateDrag(currentY: number) {
+	if (!dragState.active) return;
+	const deltaY = currentY - dragState.startY;
+	dragState.offsetY = Math.max(0, deltaY);
+}
+
+function endDrag() {
+	if (!dragState.active) return;
+	const shouldClose = dragState.offsetY >= DRAG_CLOSE_DISTANCE;
+	resetDragState();
+	if (shouldClose) close();
 }
 
 function handleDragStart(event: PointerEvent) {
 	if (isDesktopViewport()) return;
 	if (!canStartDragFromTarget(event.target)) return;
+	if (event.pointerType === "mouse" && event.button !== 0) return;
 
-	dragState.active = true;
+	dragState.inputMode = "pointer";
 	dragState.pointerId = event.pointerId;
-	dragState.startY = event.clientY;
-	dragState.offsetY = 0;
+	startDrag(event.clientY);
 	panelRef.value?.setPointerCapture?.(event.pointerId);
 }
 
 function handleDragMove(event: PointerEvent) {
-	if (!dragState.active || event.pointerId !== dragState.pointerId) return;
-	const deltaY = event.clientY - dragState.startY;
-	dragState.offsetY = Math.max(0, deltaY);
+	if (!dragState.active || dragState.inputMode !== "pointer") return;
+	if (event.pointerId !== dragState.pointerId) return;
+	updateDrag(event.clientY);
 }
 
 function handleDragEnd(event: PointerEvent) {
-	if (!dragState.active || event.pointerId !== dragState.pointerId) return;
+	if (!dragState.active || dragState.inputMode !== "pointer") return;
+	if (event.pointerId !== dragState.pointerId) return;
 	panelRef.value?.releasePointerCapture?.(event.pointerId);
+	endDrag();
+}
 
-	const shouldClose = dragState.offsetY >= DRAG_CLOSE_DISTANCE;
-	resetDragState();
-	if (shouldClose) close();
+function handleTouchStart(event: TouchEvent) {
+	if (isDesktopViewport()) return;
+	if (!canStartDragFromTarget(event.target)) return;
+	const touch = event.touches[0];
+	if (!touch) return;
+
+	dragState.inputMode = "touch";
+	dragState.touchId = touch.identifier;
+	startDrag(touch.clientY);
+}
+
+function handleTouchMove(event: TouchEvent) {
+	if (!dragState.active || dragState.inputMode !== "touch") return;
+	const touch = Array.from(event.touches).find((item) => item.identifier === dragState.touchId);
+	if (!touch) return;
+	updateDrag(touch.clientY);
+	event.preventDefault();
+}
+
+function handleTouchEnd(event: TouchEvent) {
+	if (!dragState.active || dragState.inputMode !== "touch") return;
+	const touchStillActive = Array.from(event.touches).some((item) => item.identifier === dragState.touchId);
+	if (touchStillActive) return;
+	endDrag();
 }
 
 function close() {
@@ -112,8 +183,79 @@ function handleBackdrop() {
 	}
 }
 
-watch(() => props.modelValue, (isOpen) => {
-	if (!isOpen) resetDragState();
+function lockBodyScroll() {
+	if (!import.meta.client) return;
+	const body = document.body;
+	const html = document.documentElement;
+
+	if (openPanelCount.value === 0) {
+		const scrollY = window.scrollY || window.pageYOffset || 0;
+			bodyLockSnapshot.value = {
+				scrollY,
+				bodyOverflow: body.style.overflow,
+				bodyPosition: body.style.position,
+				bodyTop: body.style.top,
+				bodyLeft: body.style.left,
+				bodyRight: body.style.right,
+				bodyWidth: body.style.width,
+				bodyOverscrollBehavior: body.style.overscrollBehavior,
+				htmlOverflow: html.style.overflow,
+				htmlOverscrollBehavior: html.style.overscrollBehavior,
+			};
+
+		body.style.overflow = "hidden";
+		body.style.position = "fixed";
+		body.style.top = `-${scrollY}px`;
+		body.style.left = "0";
+		body.style.right = "0";
+		body.style.width = "100%";
+			body.style.overscrollBehavior = "none";
+		html.style.overflow = "hidden";
+		html.style.overscrollBehavior = "none";
+	}
+
+	openPanelCount.value += 1;
+}
+
+function unlockBodyScroll() {
+	if (!import.meta.client) return;
+	if (openPanelCount.value > 0) {
+		openPanelCount.value -= 1;
+	}
+	if (openPanelCount.value > 0) return;
+
+	const snapshot = bodyLockSnapshot.value;
+	const body = document.body;
+	const html = document.documentElement;
+	if (snapshot) {
+		body.style.overflow = snapshot.bodyOverflow;
+		body.style.position = snapshot.bodyPosition;
+		body.style.top = snapshot.bodyTop;
+		body.style.left = snapshot.bodyLeft;
+		body.style.right = snapshot.bodyRight;
+		body.style.width = snapshot.bodyWidth;
+			body.style.overscrollBehavior = snapshot.bodyOverscrollBehavior;
+		html.style.overflow = snapshot.htmlOverflow;
+		html.style.overscrollBehavior = snapshot.htmlOverscrollBehavior;
+		window.scrollTo(0, snapshot.scrollY);
+	}
+	bodyLockSnapshot.value = null;
+}
+
+watch(() => props.modelValue, (isOpen, wasOpen) => {
+	if (isOpen === wasOpen) return;
+	if (isOpen) {
+		lockBodyScroll();
+		return;
+	}
+	resetDragState();
+	unlockBodyScroll();
+});
+
+onUnmounted(() => {
+	if (props.modelValue) {
+		unlockBodyScroll();
+	}
 });
 </script>
 
@@ -126,11 +268,13 @@ watch(() => props.modelValue, (isOpen) => {
 		leave-from-class="opacity-100"
 		leave-to-class="opacity-0"
 	>
-		<div
-			v-if="modelValue"
-			:class="['fixed inset-0 bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]', backdropZClass]"
-			@click="handleBackdrop"
-		/>
+			<div
+				v-if="modelValue"
+				:class="['fixed inset-0 bg-[rgba(28,25,23,0.42)] backdrop-blur-[2px]', backdropZClass]"
+				@click="handleBackdrop"
+				@touchmove.prevent
+				@wheel.prevent
+			/>
 	</Transition>
 
 	<Transition
@@ -151,29 +295,36 @@ watch(() => props.modelValue, (isOpen) => {
 				panelZClass,
 				panelClass,
 			]"
-			@pointermove="handleDragMove"
-			@pointerup="handleDragEnd"
-			@pointercancel="handleDragEnd"
-		>
-			<div
-				v-if="showHandle"
-				class="mx-auto mt-3 h-1.5 w-16 rounded-full bg-stone-200 lg:hidden touch-none"
-				@pointerdown="handleDragStart"
-			/>
+				@pointermove="handleDragMove"
+				@pointerup="handleDragEnd"
+				@pointercancel="handleDragEnd"
+				@touchmove="handleTouchMove"
+				@touchend="handleTouchEnd"
+				@touchcancel="handleTouchEnd"
+			>
+					<div
+						v-if="showHandle"
+						class="mx-auto mt-3 h-1.5 w-16 rounded-full bg-stone-200 lg:hidden touch-none"
+						data-panel-drag-handle
+						@pointerdown="handleDragStart"
+						@touchstart="handleTouchStart"
+					/>
 			<div
 				:class="[
 					'scrollbar-soft max-h-[calc(var(--app-panel-mobile-max-height)-24px)] overflow-y-auto px-5 py-5 lg:h-full lg:max-h-none',
 					contentClass,
 				]"
 			>
-				<div
-					v-if="title || description || showCloseButton"
-					:class="[
-						'flex items-start justify-between border-b border-[#f1ede6]',
-						compactHeader ? 'mb-3 gap-3 pb-3' : 'mb-5 gap-4 pb-4',
-					]"
-					@pointerdown="handleDragStart"
-				>
+					<div
+						v-if="title || description || showCloseButton"
+						:class="[
+							'flex items-start justify-between border-b border-[#f1ede6]',
+							compactHeader ? 'mb-3 gap-3 pb-3' : 'mb-5 gap-4 pb-4',
+							]"
+							data-panel-drag-handle
+							@pointerdown="handleDragStart"
+							@touchstart="handleTouchStart"
+						>
 					<div v-if="title || description" class="min-w-0">
 						<h2 v-if="title" :class="compactHeader ? 'text-base font-semibold text-stone-950 sm:text-lg' : 'text-lg font-semibold text-stone-950'">
 							{{ title }}

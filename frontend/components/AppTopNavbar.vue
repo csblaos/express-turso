@@ -29,7 +29,7 @@ defineEmits<{
 		:ui="{ body: 'p-0 sm:p-0' }"
 	>
 		<div class="flex h-[44px] min-w-0 items-center gap-1.5 overflow-x-hidden px-2.5 py-0 sm:h-[48px] sm:px-3 sm:py-0">
-			<UButton
+			<AppButton
 				color="neutral"
 				variant="soft"
 				size="lg"

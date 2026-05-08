@@ -235,7 +235,7 @@ function stringifyBlock(value: unknown) {
 							</div>
 
 							<div class="flex w-full flex-wrap items-center justify-end gap-2">
-								<UButton
+								<AppButton
 									v-for="option in resultOptions"
 									:key="option.id"
 									:color="activeResult === option.id ? 'primary' : 'neutral'"
@@ -245,7 +245,7 @@ function stringifyBlock(value: unknown) {
 									@click="activeResult = option.id"
 								>
 									{{ option.label }}
-								</UButton>
+								</AppButton>
 							</div>
 
 							<div class="grid gap-2 sm:grid-cols-3">
@@ -288,7 +288,7 @@ function stringifyBlock(value: unknown) {
 								<div v-else-if="error" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ error }}</p>
-										<UButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadEvents">ลองใหม่</UButton>
+										<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadEvents">ลองใหม่</AppButton>
 									</div>
 								</div>
 								<div v-else-if="!events.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">

@@ -17,11 +17,16 @@ const logoutConfirmOpen = ref(false);
 const profileMenuOpen = ref(false);
 const shellError = ref<string | null>(null);
 const isDesktopViewport = ref(false);
+const isReducedMotion = ref(false);
+const pendingMobileNavigation = ref(false);
 const { logout, currentUser, currentAccess } = useAuthSession();
 const route = useRoute();
 const currentNavItem = computed(() => props.navItems.find((item) => props.activeIds.includes(item.id)));
 let mediaQueryList: MediaQueryList | null = null;
 let syncViewportListener: (() => void) | null = null;
+let reducedMotionQueryList: MediaQueryList | null = null;
+let syncReducedMotionListener: (() => void) | null = null;
+const MOBILE_SIDEBAR_CLOSE_DELAY_MS = 180;
 
 const sidebarWidthClass = computed(() => {
 	if (!isDesktopViewport.value) {
@@ -52,6 +57,40 @@ function toggleSidebar() {
 
 function closeMobileSidebar() {
 	mobileSidebarOpen.value = false;
+}
+
+function isModifiedClick(event: MouseEvent) {
+	return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.button !== 0;
+}
+
+function wait(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function handleNavItemClick(event: MouseEvent, item: AppNavItem) {
+	if (isDesktopViewport.value || !mobileSidebarOpen.value) return;
+	if (event.defaultPrevented || isModifiedClick(event)) return;
+
+	event.preventDefault();
+
+	if (pendingMobileNavigation.value) return;
+
+	const destination = item.to;
+	if (route.path === destination) {
+		closeMobileSidebar();
+		return;
+	}
+
+	pendingMobileNavigation.value = true;
+	try {
+		closeMobileSidebar();
+		if (!isReducedMotion.value) {
+			await wait(MOBILE_SIDEBAR_CLOSE_DELAY_MS);
+		}
+		await navigateTo(destination);
+	} finally {
+		pendingMobileNavigation.value = false;
+	}
 }
 
 const topbarMenuTitle = computed(() => (
@@ -145,6 +184,9 @@ function reloadCurrentView() {
 
 watch(() => route.fullPath, () => {
 	shellError.value = null;
+	if (!isDesktopViewport.value && mobileSidebarOpen.value) {
+		mobileSidebarOpen.value = false;
+	}
 });
 
 watch(mobileSidebarOpen, (isOpen) => {
@@ -158,14 +200,23 @@ onMounted(() => {
 	syncViewportListener = () => {
 		isDesktopViewport.value = mediaQueryList?.matches ?? false;
 	};
+	reducedMotionQueryList = window.matchMedia("(prefers-reduced-motion: reduce)");
+	syncReducedMotionListener = () => {
+		isReducedMotion.value = reducedMotionQueryList?.matches ?? false;
+	};
 
 	syncViewportListener();
+	syncReducedMotionListener();
 	mediaQueryList.addEventListener("change", syncViewportListener);
+	reducedMotionQueryList.addEventListener("change", syncReducedMotionListener);
 });
 
 onUnmounted(() => {
 	if (mediaQueryList && syncViewportListener) {
 		mediaQueryList.removeEventListener("change", syncViewportListener);
+	}
+	if (reducedMotionQueryList && syncReducedMotionListener) {
+		reducedMotionQueryList.removeEventListener("change", syncReducedMotionListener);
 	}
 });
 
@@ -195,7 +246,7 @@ onErrorCaptured((error) => {
 				</Transition>
 
 				<aside
-					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
+					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
 					:class="[
 						sidebarWidthClass,
 						mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -216,7 +267,7 @@ onErrorCaptured((error) => {
 							</div>
 						</div>
 
-							<UButton
+							<AppButton
 							color="neutral"
 							variant="soft"
 							size="sm"
@@ -226,28 +277,29 @@ onErrorCaptured((error) => {
 								@click="closeMobileSidebar"
 							>
 							<UIcon name="i-heroicons-x-mark-20-solid" class="h-5.5 w-5.5" />
-						</UButton>
+						</AppButton>
 					</div>
 
 					<nav class="flex flex-1 flex-col gap-2">
-						<NuxtLink
-							v-for="item in navItems"
-							:key="item.id"
-							:to="item.to"
-							class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
+							<NuxtLink
+								v-for="item in navItems"
+								:key="item.id"
+								:to="item.to"
+								class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
 							:title="item.label"
 							:aria-label="item.label"
 							:class="[
 								isSidebarCompact ? 'gap-0' : 'gap-3',
-								isNavItemActive(item)
-									? (isSidebarCompact
-										? 'text-primary-700'
-										: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200')
-									: (isSidebarCompact
-										? 'text-stone-500 hover:text-primary-700'
-										: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200')
-							]"
-						>
+									isNavItemActive(item)
+										? (isSidebarCompact
+											? 'text-primary-700'
+											: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200')
+										: (isSidebarCompact
+											? 'text-stone-500 hover:text-primary-700'
+											: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200')
+								]"
+								@click="handleNavItemClick($event, item)"
+							>
 							<div
 								class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold transition-colors"
 								:class="isNavItemActive(item)
@@ -277,7 +329,7 @@ onErrorCaptured((error) => {
 					</nav>
 
 					<div class="px-3 pt-1">
-						<UButton
+						<AppButton
 							color="neutral"
 							variant="ghost"
 							size="sm"
@@ -295,7 +347,7 @@ onErrorCaptured((error) => {
 							>
 								ออกจากระบบ
 							</span>
-						</UButton>
+						</AppButton>
 					</div>
 				</div>
 			</aside>
@@ -333,7 +385,7 @@ onErrorCaptured((error) => {
 												v-model:open="profileMenuOpen"
 												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
 											>
-												<UButton
+												<AppButton
 													color="neutral"
 													variant="ghost"
 													size="sm"
@@ -349,7 +401,7 @@ onErrorCaptured((error) => {
 														<span class="block truncate text-[10px] text-stone-500">{{ profileStoreSummary }}</span>
 													</span>
 													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700" />
-												</UButton>
+												</AppButton>
 
 												<template #content>
 													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd]">
@@ -422,7 +474,7 @@ onErrorCaptured((error) => {
 										<p class="text-sm font-semibold text-stone-900">โหลดหน้านี้ไม่สำเร็จ</p>
 										<p class="mt-2 text-sm text-stone-500">{{ shellError }}</p>
 										<div class="mt-4 flex justify-center gap-2">
-											<UButton
+											<AppButton
 												color="neutral"
 												variant="soft"
 												size="sm"
@@ -430,7 +482,7 @@ onErrorCaptured((error) => {
 												@click="reloadCurrentView"
 											>
 												รีโหลดหน้า
-											</UButton>
+											</AppButton>
 										</div>
 									</div>
 								</div>

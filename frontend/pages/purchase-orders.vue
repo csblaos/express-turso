@@ -401,9 +401,9 @@ async function submitCreate() {
 							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="ordersPending" :disabled="ordersPending" :spin-icon-on-loading="true" @click="loadOrders">
 								รีโหลด
 							</AppButton>
-							<UButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer">
+							<AppButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" :disabled="!canCreatePurchaseOrder" @click="openCreateDrawer">
 								สร้าง PO
-							</UButton>
+							</AppButton>
 						</div>
 					</template>
 
@@ -489,7 +489,7 @@ async function submitCreate() {
 								<div v-else-if="ordersError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ ordersError }}</p>
-										<UButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">ลองใหม่</UButton>
+										<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">ลองใหม่</AppButton>
 									</div>
 								</div>
 								<div v-else-if="!orders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
@@ -590,7 +590,7 @@ async function submitCreate() {
 							<UCard v-else-if="detailError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 								<div class="space-y-3 py-10 text-center">
 									<p class="text-sm text-stone-600">{{ detailError }}</p>
-									<UButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</UButton>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</AppButton>
 								</div>
 							</UCard>
 							<template v-else-if="selectedOrderDetail">
@@ -706,7 +706,7 @@ async function submitCreate() {
 							<div>
 								<div class="mb-2 flex items-center justify-between gap-3">
 									<label class="block text-xs font-medium text-stone-500">รายการสินค้า</label>
-									<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
+									<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" label="เพิ่มรายการ" @click="addLine" />
 								</div>
 
 								<div class="space-y-3">
@@ -728,7 +728,7 @@ async function submitCreate() {
 												<input v-model="line.unitCost" type="number" min="0" :placeholder="unitCostPlaceholder(line.productId)" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 											</div>
 											<div class="flex items-end">
-												<UButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
+												<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
 											</div>
 										</div>
 									</div>
