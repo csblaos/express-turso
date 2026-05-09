@@ -81,6 +81,24 @@ export type SystemAdminClientStatusInput = {
 	actor_user_id?: string | null;
 };
 
+export type SystemAdminClientDeleteCheck = {
+	client_id: string;
+	can_delete: boolean;
+	counts: {
+		stores: number;
+		branches: number;
+		store_memberships: number;
+		orders: number;
+		purchase_orders: number;
+		inventory_balances: number;
+		inventory_movements: number;
+		store_integrations: number;
+		fb_connections: number;
+		wa_connections: number;
+	};
+	reasons: string[];
+};
+
 const CLIENT_ADMIN_COLUMNS = [
 	{
 		name: "can_create_stores",
@@ -397,5 +415,102 @@ export class SystemAdminClientInterface {
 		});
 
 		return SystemAdminClientInterface.findById(id);
+	}
+
+	private static async safeCount(sql: string, args: InValue[] = []): Promise<number> {
+		const db = DbConn.getClient();
+
+		try {
+			const result = await db.execute({
+				sql,
+				args,
+			});
+
+			return Number(result.rows[0]?.total || 0);
+		} catch {
+			return 0;
+		}
+	}
+
+	static async getDeleteCheck(id: string): Promise<SystemAdminClientDeleteCheck | null> {
+		await SystemAdminClientInterface.ensureColumns();
+		const client = await SystemAdminClientInterface.findById(id);
+		if (!client) return null;
+
+		const counts = {
+			stores: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
+				[ id ],
+			),
+			branches: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM store_branches WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			store_memberships: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM store_members WHERE user_id = ? OR store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id, id ],
+			),
+			orders: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM orders WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			purchase_orders: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM purchase_orders WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			inventory_balances: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM inventory_balances WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			inventory_movements: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM inventory_movements WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			store_integrations: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM store_integrations WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			fb_connections: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM fb_connections WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+			wa_connections: await SystemAdminClientInterface.safeCount(
+				"SELECT COUNT(*) AS total FROM wa_connections WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
+				[ id ],
+			),
+		};
+
+		const reasons: string[] = [];
+		if (counts.stores > 0) reasons.push(`ยังมีร้านที่ผูกกับ client นี้ ${counts.stores} รายการ`);
+		if (counts.branches > 0) reasons.push(`ยังมีสาขาที่อยู่ใต้ร้านของ client นี้ ${counts.branches} รายการ`);
+		if (counts.store_memberships > 0) reasons.push(`ยังมี membership หรือบทบาทที่ผูกกับ client นี้ ${counts.store_memberships} รายการ`);
+		if (counts.orders > 0) reasons.push(`ยังมีออเดอร์ของร้านใน client นี้ ${counts.orders} รายการ`);
+		if (counts.purchase_orders > 0) reasons.push(`ยังมีใบสั่งซื้อของร้านใน client นี้ ${counts.purchase_orders} รายการ`);
+		if (counts.inventory_balances > 0) reasons.push(`ยังมีสต็อกคงเหลือของร้านใน client นี้ ${counts.inventory_balances} รายการ`);
+		if (counts.inventory_movements > 0) reasons.push(`ยังมีประวัติการเคลื่อนไหวสต็อก ${counts.inventory_movements} รายการ`);
+		if (counts.store_integrations > 0) reasons.push(`ยังมี integration ของร้านใน client นี้ ${counts.store_integrations} รายการ`);
+		if (counts.fb_connections > 0) reasons.push(`ยังมี Facebook connection ${counts.fb_connections} รายการ`);
+		if (counts.wa_connections > 0) reasons.push(`ยังมี WhatsApp connection ${counts.wa_connections} รายการ`);
+
+		return {
+			client_id: id,
+			can_delete: reasons.length === 0,
+			counts,
+			reasons,
+		};
+	}
+
+	static async delete(id: string): Promise<boolean> {
+		await SystemAdminClientInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const existing = await SystemAdminClientInterface.findById(id);
+		if (!existing) return false;
+
+		await db.execute({
+			sql: "DELETE FROM users WHERE id = ? AND system_role = ?",
+			args: [ id, "superadmin" ],
+		});
+
+		return true;
 	}
 }

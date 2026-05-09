@@ -29,4 +29,14 @@ export class SystemAdminClientController {
 		const data = await SystemAdminClientComponent.updateClientStatus(req.requestId, req.params.id as string, req.body || {});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
+
+	static deleteCheck = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await SystemAdminClientComponent.getClientDeleteCheck(req.requestId, req.params.id as string);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static remove = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await SystemAdminClientComponent.deleteClient(req.requestId, req.params.id as string, req.body || {});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
 }

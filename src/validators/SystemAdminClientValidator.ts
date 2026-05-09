@@ -41,6 +41,10 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 		actor_user_id: optionalString,
 	});
 
+	private static readonly deleteBodySchema = z.object({
+		actor_user_id: optionalString,
+	});
+
 	public static readonly list = SystemAdminClientValidator.init({
 		query: SystemAdminClientValidator.listQuerySchema,
 	});
@@ -61,5 +65,18 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: SystemAdminClientValidator.updateStatusBodySchema,
+	});
+
+	public static readonly deleteCheck = SystemAdminClientValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+	});
+
+	public static readonly remove = SystemAdminClientValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: SystemAdminClientValidator.deleteBodySchema,
 	});
 }

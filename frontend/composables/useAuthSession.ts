@@ -27,6 +27,11 @@ type AuthUser = {
 	systemRole: string;
 	mustChangePassword: boolean;
 	uiLocale: string;
+	canCreateStores: boolean;
+	maxStores: number | null;
+	canCreateBranches: boolean;
+	maxBranchesPerStore: number | null;
+	ownedStoresCount: number;
 };
 
 type AuthSession = {
@@ -209,7 +214,11 @@ export function useAuthSession() {
 
 		redirectingToLogin.value = true;
 		try {
-			await navigateTo("/login");
+			const redirectTarget = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+			await navigateTo({
+				path: "/login",
+				query: redirectTarget.startsWith("/") ? { redirect: redirectTarget } : undefined,
+			});
 		} finally {
 			redirectingToLogin.value = false;
 		}

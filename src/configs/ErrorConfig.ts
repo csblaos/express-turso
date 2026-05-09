@@ -165,5 +165,15 @@ export const ErrorConfig = {
 			message: "Client account with this email already exists",
 			httpStatusCode: 409,
 		},
+		CLIENT_ACCOUNT_DELETE_BLOCKED: {
+			code: 409_002,
+			message: "Client account cannot be deleted while linked data still exists",
+			httpStatusCode: 409,
+		},
+		CLIENT_ACCOUNT_DELETE_SELF_FORBIDDEN: {
+			code: 403_003,
+			message: "You cannot delete the client account currently in use",
+			httpStatusCode: 403,
+		},
 	},
 };

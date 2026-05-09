@@ -17,6 +17,28 @@ export default defineNuxtConfig({
 			r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || "https://cdn.codesabai.com",
 		},
 	},
+	icon: {
+		serverBundle: {
+			collections: [ "heroicons" ],
+		},
+		clientBundle: {
+			// Bundle the icons we actually use so sidebar/nav icons do not depend on
+			// runtime cache state during local development.
+			scan: true,
+			icons: [
+				"heroicons:building-storefront-20-solid",
+				"heroicons:squares-2x2-20-solid",
+				"heroicons:shopping-cart-20-solid",
+				"heroicons:cube-20-solid",
+				"heroicons:clipboard-document-list-20-solid",
+				"heroicons:chart-bar-square-20-solid",
+				"heroicons:clock-20-solid",
+				"heroicons:cog-6-tooth-20-solid",
+				"heroicons:building-office-2-20-solid",
+				"heroicons:shield-check-20-solid",
+			],
+		},
+	},
 	app: {
 		head: {
 			title: "O KhaiDee+",

@@ -3,6 +3,7 @@ import { ErrorConfig } from "@configs/ErrorConfig";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import {
 	SystemAdminClientCreateInput,
+	SystemAdminClientDeleteCheck,
 	SystemAdminClientInterface,
 	SystemAdminClientListParams,
 	SystemAdminClientListResult,
@@ -139,5 +140,62 @@ export class SystemAdminClientComponent {
 		});
 
 		return updated;
+	}
+
+	static async getClientDeleteCheck(requestId: string, id: string): Promise<SystemAdminClientDeleteCheck> {
+		void requestId;
+		const check = await SystemAdminClientInterface.getDeleteCheck(id);
+		if (!check) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		return check;
+	}
+
+	static async deleteClient(
+		requestId: string,
+		id: string,
+		payload: { actor_user_id?: string | null },
+	): Promise<{ id: string; deleted: true }> {
+		if (payload.actor_user_id && payload.actor_user_id === id) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_DELETE_SELF_FORBIDDEN);
+		}
+
+		const before = await SystemAdminClientInterface.findById(id);
+		if (!before) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		const deleteCheck = await SystemAdminClientInterface.getDeleteCheck(id);
+		if (!deleteCheck) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		if (!deleteCheck.can_delete) {
+			throw ApiError.CustomError({
+				...ErrorConfig.DOMAIN.CLIENT_ACCOUNT_DELETE_BLOCKED,
+				message: deleteCheck.reasons[0] || ErrorConfig.DOMAIN.CLIENT_ACCOUNT_DELETE_BLOCKED.message,
+			});
+		}
+
+		const deleted = await SystemAdminClientInterface.delete(id);
+		if (!deleted) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		await SystemAdminClientComponent.logAudit(requestId, {
+			actor_user_id: payload.actor_user_id,
+			action: "delete_client_account",
+			entity_id: id,
+			before,
+			metadata: {
+				delete_check: deleteCheck,
+			},
+		});
+
+		return {
+			id,
+			deleted: true,
+		};
 	}
 }
