@@ -145,6 +145,16 @@ export const ErrorConfig = {
 			message: "Role requires store_id and name",
 			httpStatusCode: 400,
 		},
+		ROLE_DELETE_BLOCKED: {
+			code: 409_003,
+			message: "Role cannot be deleted while it is assigned to store members",
+			httpStatusCode: 409,
+		},
+		ROLE_DELETE_SYSTEM_FORBIDDEN: {
+			code: 403_004,
+			message: "System role cannot be deleted",
+			httpStatusCode: 403,
+		},
 		STORE_MEMBER_NOT_FOUND: {
 			code: 404_008,
 			message: "Store member not found",

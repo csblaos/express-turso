@@ -12,6 +12,9 @@ export class RbacController {
 			search: typeof req.query.search === "string" ? req.query.search : undefined,
 			status: typeof req.query.status === "string" ? req.query.status : undefined,
 			role_id: typeof req.query.role_id === "string" ? req.query.role_id : undefined,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -23,12 +26,27 @@ export class RbacController {
 
 	static listRoles = SyncFunction.handler(async (req: Request, res: Response) => {
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
-		const data = await RbacComponent.listRoles(req.requestId, storeId);
+		const data = await RbacComponent.listRoles(req.requestId, storeId, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static listRoleSummaries = SyncFunction.handler(async (req: Request, res: Response) => {
+		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
+		const data = await RbacComponent.listRoleSummaries(req.requestId, storeId, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getRoleById = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await RbacComponent.getRoleById(req.requestId, req.params.id as string);
+		const data = await RbacComponent.getRoleById(req.requestId, req.params.id as string, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
@@ -36,6 +54,10 @@ export class RbacController {
 		const data = await RbacComponent.createRole(
 			req.requestId,
 			req.body as CreateRoleInput & { permission_keys?: string[] },
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.created(res, req.requestId, { data });
 	});
@@ -45,6 +67,10 @@ export class RbacController {
 			req.requestId,
 			req.params.id as string,
 			req.body as UpdateRoleInput & { permission_keys?: string[] },
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -54,8 +80,24 @@ export class RbacController {
 			req.requestId,
 			req.params.id as string,
 			req.body || {},
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.created(res, req.requestId, { data });
+	});
+
+	static deleteRole = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await RbacComponent.deleteRole(
+			req.requestId,
+			req.params.id as string,
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
+		);
+		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getUserPermissions = SyncFunction.handler(async (req: Request, res: Response) => {
@@ -74,12 +116,19 @@ export class RbacController {
 			req.params.storeId as string,
 			req.params.userId as string,
 			req.body || {},
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static createStoreMember = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await RbacComponent.createStoreMember(req.requestId, req.body || {});
+		const data = await RbacComponent.createStoreMember(req.requestId, req.body || {}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
@@ -89,6 +138,9 @@ export class RbacController {
 			user_id: req.params.userId as string,
 			status: req.body?.status,
 			added_by: req.body?.added_by,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -100,6 +152,9 @@ export class RbacController {
 			password: req.body?.password,
 			must_change_password: req.body?.must_change_password,
 			actor_user_id: req.body?.actor_user_id,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});

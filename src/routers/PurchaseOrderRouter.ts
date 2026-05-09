@@ -10,8 +10,8 @@ export class PurchaseOrderRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.read"), PurchaseOrderValidator.list, PurchaseOrderController.getAll);
-		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.read"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
+		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.list, PurchaseOrderController.getAll);
+		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.create"), PurchaseOrderValidator.create, PurchaseOrderController.create);
 	}
 

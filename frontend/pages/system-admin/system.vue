@@ -24,7 +24,7 @@ const pending = ref(true);
 const error = ref<string | null>(null);
 const saving = ref(false);
 const toast = ref("");
-const canManageSystem = computed(() => can("system_admin.manage"));
+const canManageSystem = computed(() => can("system_admin.config.update"));
 const initialState = ref("");
 const form = reactive({
 	defaultCanCreateBranches: true,

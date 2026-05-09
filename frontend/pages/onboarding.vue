@@ -50,11 +50,23 @@ const passwordVisibility = reactive({
 	next: false,
 	confirm: false,
 });
+const passwordTouched = reactive({
+	current: false,
+	next: false,
+	confirm: false,
+});
+const passwordSubmitted = ref(false);
 
 const passwordForm = reactive({
 	currentPassword: "",
 	newPassword: "",
 	confirmPassword: "",
+});
+const passwordServerFieldErrors = reactive({
+	current: "",
+	next: "",
+	confirm: "",
+	form: "",
 });
 
 const storeForm = reactive({
@@ -141,6 +153,86 @@ function extractErrorMessage(error: unknown, fallback: string) {
 	return fallback;
 }
 
+function normalizePasswordErrorMessage(message: string) {
+	const normalized = message.trim();
+	const lower = normalized.toLowerCase();
+	if (lower.includes("current password is incorrect")) {
+		return "รหัสผ่านปัจจุบันไม่ถูกต้อง";
+	}
+	if (lower.includes("new password must be different")) {
+		return "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน";
+	}
+	if (lower.includes("confirmpassword") && lower.includes("at least 6")) {
+		return "ยืนยันรหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+	}
+	if (lower.includes("newpassword") && lower.includes("at least 6")) {
+		return "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร";
+	}
+	return normalized;
+}
+
+function clearPasswordServerErrors() {
+	passwordServerFieldErrors.current = "";
+	passwordServerFieldErrors.next = "";
+	passwordServerFieldErrors.confirm = "";
+	passwordServerFieldErrors.form = "";
+}
+
+const passwordFieldErrors = computed(() => {
+	const errors = {
+		current: "",
+		next: "",
+		confirm: "",
+	};
+
+	if (!passwordForm.currentPassword.trim()) {
+		errors.current = "กรุณากรอกรหัสผ่านปัจจุบัน";
+	}
+
+	if (!passwordForm.newPassword.trim()) {
+		errors.next = "กรุณากรอกรหัสผ่านใหม่";
+	} else if (passwordForm.newPassword.length < 6) {
+		errors.next = "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร";
+	}
+
+	if (!passwordForm.confirmPassword.trim()) {
+		errors.confirm = "กรุณายืนยันรหัสผ่านใหม่";
+	} else if (passwordForm.confirmPassword.length < 6) {
+		errors.confirm = "ยืนยันรหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+	} else if (passwordForm.confirmPassword !== passwordForm.newPassword) {
+		errors.confirm = "รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน";
+	}
+
+	return errors;
+});
+
+function shouldShowPasswordFieldError(field: "current" | "next" | "confirm") {
+	return Boolean(
+		passwordServerFieldErrors[field]
+		|| ((passwordTouched[field] || passwordSubmitted.value) && passwordFieldErrors.value[field]),
+	);
+}
+
+function passwordFieldErrorMessage(field: "current" | "next" | "confirm") {
+	if (passwordServerFieldErrors[field]) return passwordServerFieldErrors[field];
+	return shouldShowPasswordFieldError(field) ? passwordFieldErrors.value[field] : "";
+}
+
+function passwordInputClass(field: "current" | "next" | "confirm") {
+	const baseClass = "w-full [&_input]:rounded-md [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11";
+	void field;
+	return `${baseClass} [&_input]:border-[#e7e4dd]`;
+}
+
+watch([
+	() => passwordForm.currentPassword,
+	() => passwordForm.newPassword,
+	() => passwordForm.confirmPassword,
+], () => {
+	clearPasswordServerErrors();
+	passwordError.value = null;
+});
+
 async function bootstrap() {
 	pending.value = true;
 	pageError.value = null;
@@ -160,6 +252,20 @@ async function bootstrap() {
 }
 
 async function submitPasswordStep() {
+	passwordSubmitted.value = true;
+	passwordTouched.current = true;
+	passwordTouched.next = true;
+	passwordTouched.confirm = true;
+	clearPasswordServerErrors();
+	passwordError.value = null;
+	if (
+		passwordFieldErrors.value.current
+		|| passwordFieldErrors.value.next
+		|| passwordFieldErrors.value.confirm
+	) {
+		return;
+	}
+
 	passwordPending.value = true;
 	passwordError.value = null;
 
@@ -175,6 +281,11 @@ async function submitPasswordStep() {
 		passwordForm.currentPassword = "";
 		passwordForm.newPassword = "";
 		passwordForm.confirmPassword = "";
+		passwordTouched.current = false;
+		passwordTouched.next = false;
+		passwordTouched.confirm = false;
+		passwordSubmitted.value = false;
+		clearPasswordServerErrors();
 		await fetchMe();
 		currentStep.value = 2;
 		appToast.success({
@@ -182,7 +293,22 @@ async function submitPasswordStep() {
 			description: "ไปตั้งค่าร้านแรกของคุณต่อได้เลย",
 		});
 	} catch (error) {
-		passwordError.value = extractErrorMessage(error, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+		const rawMessage = extractErrorMessage(error, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+		const normalizedMessage = normalizePasswordErrorMessage(rawMessage);
+		const lower = rawMessage.toLowerCase();
+		if (lower.includes("current password")) {
+			passwordServerFieldErrors.current = normalizedMessage;
+			return;
+		}
+		if (lower.includes("newpassword") || lower.includes("new password")) {
+			passwordServerFieldErrors.next = normalizedMessage;
+			return;
+		}
+		if (lower.includes("confirmpassword") || lower.includes("confirm password")) {
+			passwordServerFieldErrors.confirm = normalizedMessage;
+			return;
+		}
+		passwordError.value = normalizedMessage;
 	} finally {
 		passwordPending.value = false;
 	}
@@ -250,8 +376,8 @@ onMounted(async () => {
 				<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.14),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.10),_transparent_26%)]" />
 				<div class="relative flex w-full flex-col justify-between p-10 xl:p-14">
 					<div class="flex items-center gap-4">
-						<div class="flex h-16 w-16 items-center justify-center rounded-3xl bg-[#eefbf2] text-2xl font-semibold text-primary shadow-sm ring-1 ring-[#d5f2df]">
-							S
+						<div class="h-16 w-16 overflow-hidden rounded-3xl">
+							<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
 						</div>
 						<div>
 							<p class="text-xs uppercase tracking-[0.24em] text-stone-400">First Login</p>
@@ -298,10 +424,39 @@ onMounted(async () => {
 
 			<section class="flex min-h-[100dvh] items-center justify-center px-0 py-4 sm:px-6 sm:py-6 lg:px-8">
 				<div class="w-full max-w-[560px]">
-					<UCard class="border-0 rounded-none bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd] sm:rounded-md">
-						<div v-if="pending" class="space-y-4">
-							<AppInlineLoadingBar label="กำลังเตรียมหน้า onboarding..." />
-						</div>
+						<UCard class="border-0 rounded-none bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd] sm:rounded-md">
+							<div v-if="pending" class="space-y-5 px-4 py-4 sm:px-1 sm:py-1">
+								<AppInlineLoadingBar label="กำลังเตรียมหน้า onboarding..." />
+								<div class="space-y-4 rounded-md border border-[#ece8df] bg-[var(--pos-surface-soft)] p-4">
+									<div class="flex items-center gap-3">
+										<div class="h-14 w-14 animate-pulse rounded-2xl bg-[#e8e4db]" />
+										<div class="min-w-0 flex-1 space-y-2">
+											<div class="h-3.5 w-36 animate-pulse rounded bg-[#e8e4db]" />
+											<div class="h-6 w-56 animate-pulse rounded bg-[#e3ded2]" />
+										</div>
+									</div>
+									<div class="grid gap-3 sm:grid-cols-3">
+										<div class="space-y-2 rounded-md border border-[#e9e4da] bg-white p-3">
+											<div class="h-3 w-16 animate-pulse rounded bg-[#ece8df]" />
+											<div class="h-4 w-24 animate-pulse rounded bg-[#e4dfd4]" />
+										</div>
+										<div class="space-y-2 rounded-md border border-[#e9e4da] bg-white p-3">
+											<div class="h-3 w-16 animate-pulse rounded bg-[#ece8df]" />
+											<div class="h-4 w-24 animate-pulse rounded bg-[#e4dfd4]" />
+										</div>
+										<div class="space-y-2 rounded-md border border-[#e9e4da] bg-white p-3">
+											<div class="h-3 w-16 animate-pulse rounded bg-[#ece8df]" />
+											<div class="h-4 w-24 animate-pulse rounded bg-[#e4dfd4]" />
+										</div>
+									</div>
+								</div>
+								<div class="space-y-3 rounded-md border border-[#ece8df] bg-white p-4">
+									<div class="h-4 w-48 animate-pulse rounded bg-[#e7e2d8]" />
+									<div class="h-11 w-full animate-pulse rounded-md bg-[#efebe3]" />
+									<div class="h-11 w-full animate-pulse rounded-md bg-[#efebe3]" />
+									<div class="h-11 w-full animate-pulse rounded-md bg-[#efebe3]" />
+								</div>
+							</div>
 
 						<div v-else-if="pageError" class="space-y-4">
 							<div class="rounded-md bg-error-50 px-4 py-3 text-sm text-error">
@@ -373,23 +528,53 @@ onMounted(async () => {
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
 											<div class="relative">
-												<UInput v-model="passwordForm.currentPassword" :type="passwordVisibility.current ? 'text' : 'password'" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11" />
-												<AppButton color="neutral" variant="ghost" size="xs" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @click="passwordVisibility.current = !passwordVisibility.current" />
+												<UInput
+													v-model="passwordForm.currentPassword"
+													:type="passwordVisibility.current ? 'text' : 'password'"
+													size="lg"
+													color="neutral"
+													:class="passwordInputClass('current')"
+													@blur="passwordTouched.current = true"
+												/>
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนรหัสผ่านปัจจุบัน" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.current = !passwordVisibility.current" />
 											</div>
+											<p v-if="passwordFieldErrorMessage('current')" class="mt-2 text-xs text-rose-600">
+												{{ passwordFieldErrorMessage("current") }}
+											</p>
 										</div>
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
 											<div class="relative">
-												<UInput v-model="passwordForm.newPassword" :type="passwordVisibility.next ? 'text' : 'password'" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11" />
-												<AppButton color="neutral" variant="ghost" size="xs" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @click="passwordVisibility.next = !passwordVisibility.next" />
+												<UInput
+													v-model="passwordForm.newPassword"
+													:type="passwordVisibility.next ? 'text' : 'password'"
+													size="lg"
+													color="neutral"
+													:class="passwordInputClass('next')"
+													@blur="passwordTouched.next = true"
+												/>
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนรหัสผ่านใหม่" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.next = !passwordVisibility.next" />
 											</div>
+											<p v-if="passwordFieldErrorMessage('next')" class="mt-2 text-xs text-rose-600">
+												{{ passwordFieldErrorMessage("next") }}
+											</p>
 										</div>
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">ยืนยันรหัสผ่านใหม่</label>
 											<div class="relative">
-												<UInput v-model="passwordForm.confirmPassword" :type="passwordVisibility.confirm ? 'text' : 'password'" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11" />
-												<AppButton color="neutral" variant="ghost" size="xs" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @click="passwordVisibility.confirm = !passwordVisibility.confirm" />
+												<UInput
+													v-model="passwordForm.confirmPassword"
+													:type="passwordVisibility.confirm ? 'text' : 'password'"
+													size="lg"
+													color="neutral"
+													:class="passwordInputClass('confirm')"
+													@blur="passwordTouched.confirm = true"
+												/>
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนยืนยันรหัสผ่านใหม่" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.confirm = !passwordVisibility.confirm" />
 											</div>
+											<p v-if="passwordFieldErrorMessage('confirm')" class="mt-2 text-xs text-rose-600">
+												{{ passwordFieldErrorMessage("confirm") }}
+											</p>
 										</div>
 									</div>
 								</div>

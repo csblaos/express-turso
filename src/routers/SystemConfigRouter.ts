@@ -10,8 +10,8 @@ export class SystemConfigRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.read"), SystemConfigController.get);
-		this.router.put("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemConfigValidator.update, SystemConfigController.update);
+		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.view"), SystemConfigController.get);
+		this.router.put("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.config.update"), SystemConfigValidator.update, SystemConfigController.update);
 	}
 
 	static getInstance(): SystemConfigRouter {

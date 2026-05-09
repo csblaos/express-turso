@@ -38,14 +38,6 @@ const accessQuickLinks: SettingsEntry[] = [
 		to: "/settings/users",
 		badge: "พร้อมใช้งาน",
 	},
-	{
-		id: "access-roles",
-		title: "บทบาท",
-		description: "จัดการ role และ permission ที่แต่ละบทบาทถืออยู่",
-		icon: "i-heroicons-identification",
-		to: "/settings/roles",
-		badge: "พร้อมใช้งาน",
-	},
 ];
 
 const settingsSections: SettingsSection[] = [
@@ -53,13 +45,11 @@ const settingsSections: SettingsSection[] = [
 		id: "user",
 		eyebrow: "User settings",
 		title: "ตั้งค่าทั่วไปของผู้ใช้",
-		description: "ของผู้ใช้ในร้าน เช่น โปรไฟล์, ความปลอดภัย, สิทธิ์, ผู้ใช้, บทบาท และข้อมูลประกอบการขายบางส่วน",
+		description: "ของผู้ใช้ในร้าน เช่น โปรไฟล์, ความปลอดภัย, ผู้ใช้งาน และข้อมูลประกอบการขายบางส่วน",
 		entries: [
 			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", to: "/profile", badge: "พร้อมใช้งาน" },
 			{ id: "language", title: "Language", description: "ตั้งค่าภาษา UI และรูปแบบการแสดงผล", icon: "i-heroicons-language", badge: "เร็ว ๆ นี้" },
-			{ id: "permissions", title: "Permissions", description: "ดูสิทธิ์ที่อนุญาตผ่าน role และ policy ของร้าน", icon: "i-heroicons-lock-closed", to: "/settings/roles", badge: "พร้อมใช้งาน" },
 			{ id: "security", title: "Security", description: "ดูข้อมูลความปลอดภัยของบัญชีและ session", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
-			{ id: "roles", title: "Roles", description: "จัดการบทบาทของผู้ใช้งานในร้าน และสิทธิ์ที่ role นั้นถืออยู่", icon: "i-heroicons-identification", to: "/settings/roles", badge: "พร้อมใช้งาน" },
 			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/users", badge: "พร้อมใช้งาน" },
 			{ id: "categories", title: "Categories", description: "จัดการหมวดหมู่สินค้า", icon: "i-heroicons-tag", to: "/products" },
 			{ id: "units", title: "Units", description: "จัดการหน่วยสินค้าและหน่วยขาย", icon: "i-heroicons-scale", to: "/products" },
@@ -108,10 +98,10 @@ const settingsSections: SettingsSection[] = [
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Access control</p>
 								<h2 class="mt-2 text-lg font-semibold text-stone-950 sm:text-xl">สิทธิ์การใช้งาน</h2>
-								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">เข้า 2 หน้านี้ได้ตรง ๆ จาก settings เพื่อจัดการผู้ใช้งานและบทบาทของร้าน</p>
+								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">จัดการผู้ใช้งานในร้านจาก Settings และกำหนดบทบาทจากหน้า Superadmin</p>
 							</div>
 
-							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2">
+							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-1">
 								<NuxtLink
 									v-for="entry in accessQuickLinks"
 									:key="entry.id"

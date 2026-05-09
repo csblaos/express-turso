@@ -118,7 +118,7 @@ let lastScannerKeyAt = 0;
 const canCreateProduct = computed(() => can("products.create"));
 const canUpdateProduct = computed(() => can("products.update"));
 const canUpdateProductCost = computed(() => can("products.update_cost"));
-const canDeactivateProduct = computed(() => can("products.deactivate"));
+const canDeactivateProduct = computed(() => can("products.archive"));
 
 const numberFormatter = new Intl.NumberFormat("th-TH", {
 	style: "currency",

@@ -268,15 +268,16 @@ onErrorCaptured((error) => {
 				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
 					<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
-							<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f8e9de] text-lg font-semibold text-[#97532c]">
-								P
+							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd]">
+								<img src="/icons/icon-192.png" alt="App logo" class="h-full w-full object-cover" />
 							</div>
 							<div
 								v-if="!isSidebarCompact"
-								class="min-w-0 lg:hidden"
+								class="min-w-0 flex-1"
 							>
-								<p class="truncate text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Navigation</p>
-								<p class="truncate text-sm font-semibold text-stone-950">เมนูหลักของระบบ</p>
+								<p class="truncate text-base font-bold tracking-[-0.01em] text-stone-950">
+									O KhaiDee<span class="text-primary-600">+</span>
+								</p>
 							</div>
 						</div>
 

@@ -7,9 +7,14 @@ import { AuthInterface } from "@interfaces/AuthInterface";
 import { DbConn } from "@connections/DbConn";
 import { Permission } from "@models/Permission";
 import { Role, RoleCreateInput, RoleUpdateInput } from "@models/Role";
+import { resolveAcceptedPermissionKeys } from "@utils/PermissionCompat";
 
 type RoleWithPermissions = Role & {
 	permissions: Permission[];
+	permissions_count: number;
+};
+
+type RoleSummary = Role & {
 	permissions_count: number;
 };
 
@@ -57,7 +62,7 @@ type StoreMemberCreateInput = {
 	name: string;
 	email: string;
 	password: string;
-	role_id: string;
+	role_id?: string;
 	status?: string;
 	system_role?: string;
 	ui_locale?: string;
@@ -84,25 +89,182 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "pos.apply_discount", resource: "pos", action: "apply_discount" },
 	{ key: "pos.override_price", resource: "pos", action: "override_price" },
 	{ key: "products.read", resource: "products", action: "read" },
+	{ key: "products.view", resource: "products", action: "view" },
 	{ key: "products.create", resource: "products", action: "create" },
 	{ key: "products.update", resource: "products", action: "update" },
 	{ key: "products.update_cost", resource: "products", action: "update_cost" },
 	{ key: "products.deactivate", resource: "products", action: "deactivate" },
+	{ key: "products.archive", resource: "products", action: "archive" },
 	{ key: "inventory.read", resource: "inventory", action: "read" },
+	{ key: "inventory.view", resource: "inventory", action: "view" },
 	{ key: "inventory.adjust", resource: "inventory", action: "adjust" },
 	{ key: "activity.read", resource: "activity", action: "read" },
+	{ key: "activity.view", resource: "activity", action: "view" },
 	{ key: "stores.read", resource: "stores", action: "read" },
+	{ key: "stores.view", resource: "stores", action: "view" },
+	{ key: "stores.create", resource: "stores", action: "create" },
+	{ key: "stores.update", resource: "stores", action: "update" },
+	{ key: "stores.archive", resource: "stores", action: "archive" },
 	{ key: "settings.read", resource: "settings", action: "read" },
 	{ key: "purchase_orders.read", resource: "purchase_orders", action: "read" },
+	{ key: "purchase_orders.view", resource: "purchase_orders", action: "view" },
 	{ key: "purchase_orders.create", resource: "purchase_orders", action: "create" },
+	{ key: "purchase_orders.update", resource: "purchase_orders", action: "update" },
+	{ key: "purchase_orders.cancel", resource: "purchase_orders", action: "cancel" },
 	{ key: "purchase_orders.receive", resource: "purchase_orders", action: "receive" },
 	{ key: "reports.read", resource: "reports", action: "read" },
+	{ key: "reports.view", resource: "reports", action: "view" },
+	{ key: "reports.export", resource: "reports", action: "export" },
 	{ key: "settings.manage_store", resource: "settings", action: "manage_store" },
 	{ key: "settings.manage_users", resource: "settings", action: "manage_users" },
 	{ key: "settings.manage_roles", resource: "settings", action: "manage_roles" },
+	{ key: "settings.view", resource: "settings", action: "view" },
+	{ key: "settings.store.view", resource: "settings.store", action: "view" },
+	{ key: "settings.store.create", resource: "settings.store", action: "create" },
+	{ key: "settings.store.update", resource: "settings.store", action: "update" },
+	{ key: "settings.store.archive", resource: "settings.store", action: "archive" },
+	{ key: "settings.users.view", resource: "settings.users", action: "view" },
+	{ key: "settings.users.create", resource: "settings.users", action: "create" },
+	{ key: "settings.users.update", resource: "settings.users", action: "update" },
+	{ key: "settings.users.suspend", resource: "settings.users", action: "suspend" },
+	{ key: "settings.users.assign_role", resource: "settings.users", action: "assign_role" },
+	{ key: "settings.users.reset_password", resource: "settings.users", action: "reset_password" },
+	{ key: "settings.roles.view", resource: "settings.roles", action: "view" },
+	{ key: "settings.roles.create", resource: "settings.roles", action: "create" },
+	{ key: "settings.roles.update", resource: "settings.roles", action: "update" },
+	{ key: "settings.roles.archive", resource: "settings.roles", action: "archive" },
 	{ key: "superadmin.manage", resource: "superadmin", action: "manage" },
+	{ key: "superadmin.view", resource: "superadmin", action: "view" },
+	{ key: "superadmin.users.view", resource: "superadmin.users", action: "view" },
+	{ key: "superadmin.users.create", resource: "superadmin.users", action: "create" },
+	{ key: "superadmin.users.update", resource: "superadmin.users", action: "update" },
+	{ key: "superadmin.users.archive", resource: "superadmin.users", action: "archive" },
+	{ key: "superadmin.stores.view", resource: "superadmin.stores", action: "view" },
+	{ key: "superadmin.stores.create", resource: "superadmin.stores", action: "create" },
+	{ key: "superadmin.stores.update", resource: "superadmin.stores", action: "update" },
+	{ key: "superadmin.stores.archive", resource: "superadmin.stores", action: "archive" },
+	{ key: "superadmin.roles.view", resource: "superadmin.roles", action: "view" },
+	{ key: "superadmin.roles.create", resource: "superadmin.roles", action: "create" },
+	{ key: "superadmin.roles.update", resource: "superadmin.roles", action: "update" },
+	{ key: "superadmin.roles.archive", resource: "superadmin.roles", action: "archive" },
 	{ key: "system_admin.manage", resource: "system_admin", action: "manage" },
+	{ key: "system_admin.dashboard.view", resource: "system_admin.dashboard", action: "view" },
+	{ key: "system_admin.monitoring.view", resource: "system_admin.monitoring", action: "view" },
+	{ key: "system_admin.security.view", resource: "system_admin.security", action: "view" },
+	{ key: "system_admin.clients.view", resource: "system_admin.clients", action: "view" },
+	{ key: "system_admin.clients.create", resource: "system_admin.clients", action: "create" },
+	{ key: "system_admin.clients.update", resource: "system_admin.clients", action: "update" },
+	{ key: "system_admin.clients.delete", resource: "system_admin.clients", action: "delete" },
+	{ key: "system_admin.config.update", resource: "system_admin.config", action: "update" },
 ] as const;
+
+const DEFAULT_STORE_MEMBER_ROLE_NAME = "Cashier";
+
+const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
+	name: string;
+	permissionKeys: readonly string[];
+}> = [
+	{
+		name: "Owner",
+		permissionKeys: [
+			"pos.create_order",
+			"pos.apply_discount",
+			"pos.override_price",
+			"products.view",
+			"products.create",
+			"products.update",
+			"products.update_cost",
+			"products.archive",
+			"inventory.view",
+			"inventory.adjust",
+			"purchase_orders.view",
+			"purchase_orders.create",
+			"purchase_orders.update",
+			"purchase_orders.cancel",
+			"purchase_orders.receive",
+			"reports.view",
+			"reports.export",
+			"activity.view",
+			"stores.view",
+			"stores.update",
+			"settings.view",
+			"settings.store.view",
+			"settings.store.update",
+			"settings.users.view",
+			"settings.users.create",
+			"settings.users.update",
+			"settings.users.suspend",
+			"settings.users.assign_role",
+			"settings.users.reset_password",
+			"settings.roles.view",
+			"settings.roles.create",
+			"settings.roles.update",
+			"settings.roles.archive",
+		],
+	},
+	{
+		name: "Manager",
+		permissionKeys: [
+			"pos.create_order",
+			"pos.apply_discount",
+			"products.view",
+			"products.create",
+			"products.update",
+			"inventory.view",
+			"inventory.adjust",
+			"purchase_orders.view",
+			"purchase_orders.create",
+			"purchase_orders.update",
+			"purchase_orders.receive",
+			"reports.view",
+			"reports.export",
+			"activity.view",
+			"settings.view",
+			"settings.users.view",
+			"settings.users.create",
+			"settings.users.update",
+			"settings.users.suspend",
+			"settings.users.assign_role",
+		],
+	},
+	{
+		name: "Cashier",
+		permissionKeys: [
+			"pos.create_order",
+			"pos.apply_discount",
+			"products.view",
+			"inventory.view",
+			"purchase_orders.view",
+		],
+	},
+	{
+		name: "Inventory Staff",
+		permissionKeys: [
+			"products.view",
+			"inventory.view",
+			"inventory.adjust",
+			"purchase_orders.view",
+			"purchase_orders.create",
+			"purchase_orders.receive",
+		],
+	},
+	{
+		name: "Viewer",
+		permissionKeys: [
+			"products.view",
+			"inventory.view",
+			"purchase_orders.view",
+			"reports.view",
+			"stores.view",
+			"settings.view",
+			"activity.view",
+		],
+	},
+] as const;
+
+function normalizeRoleName(value: string): string {
+	return value.trim().toLowerCase();
+}
 
 function mapPermissionRow(row: Record<string, unknown>): Permission {
 	return {
@@ -120,6 +282,7 @@ function mapRoleRow(row: Record<string, unknown>): Role {
 		name: String(row.name),
 		is_system: Number(row.is_system || 0),
 		created_at: String(row.created_at),
+		deleted_at: row.deleted_at ? String(row.deleted_at) : null,
 	};
 }
 
@@ -136,6 +299,39 @@ function getUpdatePayload(data: RoleUpdateInput): Record<string, InValue> {
 }
 
 export class RbacInterface {
+	private static roleColumnsEnsured = false;
+	private static ensureRoleColumnsPromise: Promise<void> | null = null;
+	private static defaultRolesReadyByStore = new Set<string>();
+	private static ensureDefaultRolesPromiseByStore = new Map<string, Promise<void>>();
+	private static permissionSeedEnsured = false;
+	private static ensurePermissionSeedPromise: Promise<void> | null = null;
+
+	private static async ensureRoleColumns(): Promise<void> {
+		if (RbacInterface.roleColumnsEnsured) return;
+		if (RbacInterface.ensureRoleColumnsPromise) {
+			return RbacInterface.ensureRoleColumnsPromise;
+		}
+
+		RbacInterface.ensureRoleColumnsPromise = (async () => {
+			const db = DbConn.getClient();
+			const pragmaResult = await db.execute("PRAGMA table_info(roles)");
+			const existingColumns = new Set(
+				pragmaResult.rows.map((row) => String(row.name || "")),
+			);
+
+			if (!existingColumns.has("deleted_at")) {
+				await db.execute("ALTER TABLE roles ADD COLUMN deleted_at TEXT");
+			}
+
+			RbacInterface.roleColumnsEnsured = true;
+		})().catch((error) => {
+			RbacInterface.ensureRoleColumnsPromise = null;
+			throw error;
+		});
+
+		return RbacInterface.ensureRoleColumnsPromise;
+	}
+
 	private static async ensureTables(): Promise<void> {
 		const db = DbConn.getClient();
 
@@ -154,7 +350,8 @@ export class RbacInterface {
 				store_id TEXT NOT NULL,
 				name TEXT NOT NULL,
 				is_system INTEGER NOT NULL DEFAULT 0,
-				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				deleted_at TEXT
 			)
 		`);
 
@@ -165,6 +362,7 @@ export class RbacInterface {
 				PRIMARY KEY (role_id, permission_id)
 			)
 		`);
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_roles_store_deleted ON roles(store_id, deleted_at, is_system, name, created_at)");
 
 		await db.execute(`
 			CREATE TABLE IF NOT EXISTS store_members (
@@ -177,24 +375,49 @@ export class RbacInterface {
 				PRIMARY KEY (store_id, user_id)
 			)
 		`);
+
+		await RbacInterface.ensureRoleColumns();
 	}
 
 	private static async ensurePermissionSeed(): Promise<void> {
-		await RbacInterface.ensureTables();
-		const db = DbConn.getClient();
-		const existingResult = await db.execute("SELECT key FROM permissions");
-		const existingKeys = new Set(existingResult.rows.map((row) => String(row.key || "")));
-
-		for (const permission of DEFAULT_PERMISSION_SEED) {
-			if (existingKeys.has(permission.key)) continue;
-			await db.execute({
-				sql: `
-					INSERT INTO permissions (id, key, resource, action)
-					VALUES (?, ?, ?, ?)
-				`,
-				args: [ randomUUID(), permission.key, permission.resource, permission.action ],
-			});
+		if (RbacInterface.permissionSeedEnsured) return;
+		if (RbacInterface.ensurePermissionSeedPromise) {
+			return RbacInterface.ensurePermissionSeedPromise;
 		}
+
+		RbacInterface.ensurePermissionSeedPromise = (async () => {
+			await RbacInterface.ensureTables();
+			const db = DbConn.getClient();
+			const existingResult = await db.execute("SELECT key, resource, action FROM permissions");
+			const existingKeys = new Set(existingResult.rows.map((row) => String(row.key || "")));
+			const existingResourceActions = new Set(
+				existingResult.rows.map((row) => `${String(row.resource || "")}::${String(row.action || "")}`),
+			);
+
+			for (const permission of DEFAULT_PERMISSION_SEED) {
+				if (existingKeys.has(permission.key)) continue;
+				const resourceActionKey = `${permission.resource}::${permission.action}`;
+				// Backward compatibility:
+				// Some existing deployments still keep UNIQUE(resource, action).
+				// In that schema, legacy/new alias keys for the same action pair cannot coexist.
+				if (existingResourceActions.has(resourceActionKey)) continue;
+				await db.execute({
+					sql: `
+						INSERT INTO permissions (id, key, resource, action)
+						VALUES (?, ?, ?, ?)
+					`,
+					args: [ randomUUID(), permission.key, permission.resource, permission.action ],
+				});
+				existingKeys.add(permission.key);
+				existingResourceActions.add(resourceActionKey);
+			}
+			RbacInterface.permissionSeedEnsured = true;
+		})().catch((error) => {
+			RbacInterface.ensurePermissionSeedPromise = null;
+			throw error;
+		});
+
+		return RbacInterface.ensurePermissionSeedPromise;
 	}
 
 	static async listPermissions(): Promise<Permission[]> {
@@ -208,34 +431,113 @@ export class RbacInterface {
 		await RbacInterface.ensurePermissionSeed();
 		const db = DbConn.getClient();
 		const args: InValue[] = [];
-		let sql = "SELECT * FROM roles";
+		let sql = `
+			SELECT
+				r.id AS role_id,
+				r.store_id AS role_store_id,
+				r.name AS role_name,
+				r.is_system AS role_is_system,
+				r.created_at AS role_created_at,
+				r.deleted_at AS role_deleted_at,
+				p.id AS permission_id,
+				p.key AS permission_key,
+				p.resource AS permission_resource,
+				p.action AS permission_action
+			FROM roles r
+			LEFT JOIN role_permissions rp ON rp.role_id = r.id
+			LEFT JOIN permissions p ON p.id = rp.permission_id
+			WHERE r.deleted_at IS NULL
+		`;
 
 		if (storeId) {
-			sql += " WHERE store_id = ?";
+			sql += " AND r.store_id = ?";
 			args.push(storeId);
 		}
 
-		sql += " ORDER BY is_system DESC, name ASC, created_at DESC";
+		sql += " ORDER BY r.is_system DESC, r.name ASC, r.created_at DESC, p.resource, p.action, p.key";
 		const result = await db.execute({ sql, args });
-		const roles = result.rows.map((row) => mapRoleRow(row));
+		const roleMap = new Map<string, RoleWithPermissions>();
+		for (const row of result.rows) {
+			const roleId = String(row.role_id || "");
+			if (!roleId) continue;
 
-		return Promise.all(
-			roles.map(async (role) => {
-				const permissions = await RbacInterface.getPermissionsByRoleId(role.id);
-				return {
-					...role,
-					permissions,
-					permissions_count: permissions.length,
+			if (!roleMap.has(roleId)) {
+				roleMap.set(roleId, {
+					id: roleId,
+					store_id: String(row.role_store_id || ""),
+					name: String(row.role_name || ""),
+					is_system: Number(row.role_is_system || 0),
+					created_at: String(row.role_created_at || new Date(0).toISOString()),
+					deleted_at: row.role_deleted_at ? String(row.role_deleted_at) : null,
+					permissions: [],
+					permissions_count: 0,
+				});
+			}
+
+			if (row.permission_id) {
+				const role = roleMap.get(roleId);
+				if (!role) continue;
+				const permission: Permission = {
+					id: String(row.permission_id),
+					key: String(row.permission_key),
+					resource: String(row.permission_resource),
+					action: String(row.permission_action),
 				};
-			}),
-		);
+				if (!role.permissions.some((existingPermission) => existingPermission.id === permission.id)) {
+					role.permissions.push(permission);
+					role.permissions_count = role.permissions.length;
+				}
+			}
+		}
+
+		return Array.from(roleMap.values());
+	}
+
+	static async listRoleSummaries(storeId?: string): Promise<RoleSummary[]> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		const args: InValue[] = [];
+		let sql = `
+			SELECT
+				r.id AS role_id,
+				r.store_id AS role_store_id,
+				r.name AS role_name,
+				r.is_system AS role_is_system,
+				r.created_at AS role_created_at,
+				r.deleted_at AS role_deleted_at,
+				COUNT(rp.permission_id) AS permissions_count
+			FROM roles r
+			LEFT JOIN role_permissions rp ON rp.role_id = r.id
+			WHERE r.deleted_at IS NULL
+		`;
+
+		if (storeId) {
+			sql += " AND r.store_id = ?";
+			args.push(storeId);
+		}
+
+		sql += `
+			GROUP BY r.id, r.store_id, r.name, r.is_system, r.created_at, r.deleted_at
+			ORDER BY r.is_system DESC, r.name ASC, r.created_at DESC
+		`;
+
+		const result = await db.execute({ sql, args });
+		return result.rows.map((row) => ({
+			id: String(row.role_id || ""),
+			store_id: String(row.role_store_id || ""),
+			name: String(row.role_name || ""),
+			is_system: Number(row.role_is_system || 0),
+			created_at: String(row.role_created_at || new Date(0).toISOString()),
+			deleted_at: row.role_deleted_at ? String(row.role_deleted_at) : null,
+			permissions_count: Number(row.permissions_count || 0),
+		}));
 	}
 
 	static async getRoleById(id: string): Promise<RoleWithPermissions | null> {
 		await RbacInterface.ensurePermissionSeed();
 		const db = DbConn.getClient();
 		const result = await db.execute({
-			sql: "SELECT * FROM roles WHERE id = ? LIMIT 1",
+			sql: "SELECT * FROM roles WHERE id = ? AND deleted_at IS NULL LIMIT 1",
 			args: [ id ],
 		});
 
@@ -296,6 +598,105 @@ export class RbacInterface {
 		}, role.permissions.map((permission) => permission.key));
 	}
 
+	static async ensureDefaultRolePresetsForStore(storeId: string): Promise<void> {
+		if (RbacInterface.defaultRolesReadyByStore.has(storeId)) {
+			return;
+		}
+		const inFlight = RbacInterface.ensureDefaultRolesPromiseByStore.get(storeId);
+		if (inFlight) return inFlight;
+
+		const runner = (async () => {
+			await RbacInterface.ensurePermissionSeed();
+			const db = DbConn.getClient();
+			const existingResult = await db.execute({
+				sql: `
+					SELECT id, name, is_system
+					FROM roles
+					WHERE store_id = ? AND deleted_at IS NULL
+				`,
+				args: [ storeId ],
+			});
+			const rolesByName = new Map(
+				existingResult.rows.map((row) => [
+					normalizeRoleName(String(row.name || "")),
+					{
+						id: String(row.id || ""),
+						name: String(row.name || ""),
+						is_system: Number(row.is_system || 0),
+					},
+				]),
+			);
+			const missingPresets = DEFAULT_STORE_ROLE_PRESETS.filter((preset) => !rolesByName.has(normalizeRoleName(preset.name)));
+			if (missingPresets.length === 0) {
+				RbacInterface.defaultRolesReadyByStore.add(storeId);
+				return;
+			}
+
+			const availablePermissionMap = await RbacInterface.getAvailablePermissionKeyMap();
+
+			for (const preset of missingPresets) {
+				const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
+					preset.permissionKeys,
+					availablePermissionMap,
+				);
+				if (compatiblePresetKeys.length === 0) continue;
+
+				const created = await RbacInterface.createRole({
+					store_id: storeId,
+					name: preset.name,
+					is_system: 1,
+				}, compatiblePresetKeys);
+				rolesByName.set(normalizeRoleName(created.name), {
+					id: created.id,
+					name: created.name,
+					is_system: Number(created.is_system || 0),
+				});
+			}
+
+			RbacInterface.defaultRolesReadyByStore.add(storeId);
+		})().finally(() => {
+			RbacInterface.ensureDefaultRolesPromiseByStore.delete(storeId);
+		});
+
+		RbacInterface.ensureDefaultRolesPromiseByStore.set(storeId, runner);
+		return runner;
+	}
+
+	static async ensureDefaultRolesForStore(storeId: string): Promise<RoleWithPermissions[]> {
+		await RbacInterface.ensureDefaultRolePresetsForStore(storeId);
+		return RbacInterface.listRoles(storeId);
+	}
+
+	static async resolveStoreMemberRoleId(storeId: string, roleId?: string): Promise<string> {
+		await RbacInterface.ensurePermissionSeed();
+
+		if (roleId?.trim()) {
+			const role = await RbacInterface.getRoleById(roleId.trim());
+			if (!role || role.store_id !== storeId) {
+				throw new Error("ROLE_NOT_FOUND");
+			}
+			return role.id;
+		}
+
+		let roles = await RbacInterface.listRoles(storeId);
+		if (!roles.length) {
+			roles = await RbacInterface.ensureDefaultRolesForStore(storeId);
+		}
+
+		const defaultRole = (
+			roles.find((role) => Number(role.is_system || 0) === 1 && normalizeRoleName(role.name) === normalizeRoleName(DEFAULT_STORE_MEMBER_ROLE_NAME))
+			|| roles.find((role) => normalizeRoleName(role.name) === normalizeRoleName(DEFAULT_STORE_MEMBER_ROLE_NAME))
+			|| roles.find((role) => Number(role.is_system || 0) === 1)
+			|| roles[0]
+		);
+
+		if (!defaultRole) {
+			throw new Error("ROLE_NOT_FOUND");
+		}
+
+		return defaultRole.id;
+	}
+
 	static async updateRole(
 		id: string,
 		data: RoleUpdateInput,
@@ -345,7 +746,7 @@ export class RbacInterface {
 					p.resource AS permission_resource,
 					p.action AS permission_action
 				FROM store_members sm
-				INNER JOIN roles r ON r.id = sm.role_id
+				INNER JOIN roles r ON r.id = sm.role_id AND r.deleted_at IS NULL
 				LEFT JOIN role_permissions rp ON rp.role_id = r.id
 				LEFT JOIN permissions p ON p.id = rp.permission_id
 				WHERE ${where.join(" AND ")}
@@ -470,7 +871,7 @@ export class RbacInterface {
 					p.action AS permission_action
 				FROM store_members sm
 				INNER JOIN users u ON u.id = sm.user_id
-				INNER JOIN roles r ON r.id = sm.role_id
+				INNER JOIN roles r ON r.id = sm.role_id AND r.deleted_at IS NULL
 				LEFT JOIN role_permissions rp ON rp.role_id = r.id
 				LEFT JOIN permissions p ON p.id = rp.permission_id
 				WHERE ${where.join(" AND ")}
@@ -556,10 +957,11 @@ export class RbacInterface {
 			userId = String(insertResult.lastInsertRowid);
 		}
 
+		const resolvedRoleId = await RbacInterface.resolveStoreMemberRoleId(payload.store_id, payload.role_id);
 		await RbacInterface.assignStoreMemberRole({
 			store_id: payload.store_id,
 			user_id: userId,
-			role_id: payload.role_id,
+			role_id: resolvedRoleId,
 			status: payload.status,
 			added_by: payload.added_by,
 		});
@@ -623,6 +1025,29 @@ export class RbacInterface {
 		return RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
 	}
 
+	static async softDeleteRole(id: string): Promise<RoleWithPermissions | null> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		const role = await RbacInterface.getRoleById(id);
+		if (!role) return null;
+
+		const assignedResult = await db.execute({
+			sql: "SELECT COUNT(*) AS total FROM store_members WHERE role_id = ?",
+			args: [ id ],
+		});
+		const assignedTotal = Number(assignedResult.rows[0]?.total || 0);
+		if (assignedTotal > 0) {
+			throw new Error("ROLE_DELETE_BLOCKED");
+		}
+
+		await db.execute({
+			sql: "UPDATE roles SET deleted_at = ? WHERE id = ?",
+			args: [ new Date().toISOString(), id ],
+		});
+
+		return role;
+	}
+
 	private static async getPermissionsByRoleId(roleId: string): Promise<Permission[]> {
 		const db = DbConn.getClient();
 		const result = await db.execute({
@@ -663,19 +1088,44 @@ export class RbacInterface {
 			throw new Error(`Permissions not found: ${missingKeys.join(", ")}`);
 		}
 
+		const valuePlaceholders = permissions.map(() => "(?, ?)").join(", ");
+		const insertArgs: InValue[] = permissions.flatMap((permission) => [ roleId, permission.id ]);
+		await db.execute({
+			sql: `
+				INSERT INTO role_permissions (role_id, permission_id)
+				VALUES ${valuePlaceholders}
+			`,
+			args: insertArgs,
+		});
+	}
+
+	private static async getAvailablePermissionKeyMap(): Promise<Map<string, string>> {
+		const permissions = await RbacInterface.listPermissions();
+		const keyMap = new Map<string, string>();
 		for (const permission of permissions) {
-			await db.execute({
-				sql: `
-					INSERT INTO role_permissions (role_id, permission_id)
-					VALUES (?, ?)
-				`,
-				args: [ roleId, permission.id ],
-			});
+			keyMap.set(permission.key, permission.key);
 		}
+		return keyMap;
+	}
+
+	private static resolveCompatiblePermissionKeys(
+		permissionKeys: readonly string[],
+		availablePermissionMap: Map<string, string>,
+	): string[] {
+		const resolved = new Set<string>();
+		for (const permissionKey of permissionKeys) {
+			const acceptedKeys = resolveAcceptedPermissionKeys(permissionKey);
+			const match = acceptedKeys.find((candidateKey) => availablePermissionMap.has(candidateKey));
+			if (match) {
+				resolved.add(match);
+			}
+		}
+		return [ ...resolved ];
 	}
 }
 
 export type {
+	RoleSummary,
 	RoleWithPermissions,
 	StoreMemberCreateInput,
 	StoreMemberListItem,

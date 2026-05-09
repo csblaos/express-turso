@@ -1,3 +1,5 @@
+import { resolveAcceptedPermissionKeys } from "~/utils/permission-compat";
+
 type AuthPermission = {
 	id: string;
 	key: string;
@@ -345,12 +347,14 @@ export function useAuthSession() {
 
 		if (currentUser.value?.systemRole) {
 			const grantedPermissions = SYSTEM_ROLE_PERMISSION_MAP[currentUser.value.systemRole] || [];
-			if (grantedPermissions.includes(permissionKey)) {
+			const acceptedKeys = new Set(resolveAcceptedPermissionKeys(permissionKey));
+			if (grantedPermissions.some((key) => acceptedKeys.has(key))) {
 				return true;
 			}
 		}
 
-		return Boolean(currentAccess.value?.permissions.some((permission) => permission.key === permissionKey));
+		const acceptedKeys = new Set(resolveAcceptedPermissionKeys(permissionKey));
+		return Boolean(currentAccess.value?.permissions.some((permission) => acceptedKeys.has(permission.key)));
 	}
 
 	hydrateAuthState();
