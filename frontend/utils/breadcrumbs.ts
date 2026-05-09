@@ -61,6 +61,10 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "Superadmin", to: "/superadmin" },
 		{ label: "Stores" },
 	],
+	"/superadmin/roles": [
+		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Role Settings" },
+	],
 	"/system-admin": [
 		{ label: "System Admin" },
 	],

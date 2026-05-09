@@ -9,8 +9,8 @@ export class SuperadminUserRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
-		this.router.get("/users", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.manage"), SuperadminUserController.list);
-		this.router.get("/stores", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.manage"), SuperadminUserController.listStores);
+		this.router.get("/users", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.users.view"), SuperadminUserController.list);
+		this.router.get("/stores", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.stores.view"), SuperadminUserController.listStores);
 	}
 
 	static getInstance(): SuperadminUserRouter {

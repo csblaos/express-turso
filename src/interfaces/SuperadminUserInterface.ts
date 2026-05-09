@@ -67,7 +67,7 @@ export class SuperadminUserInterface {
 	): Promise<SuperadminScopedUserListResult> {
 		await AuthInterface.ensureUserAuthColumns();
 		await StoreInterface.ensureOwnerColumn();
-		await RbacInterface.ensurePermissionSeed();
+		await RbacInterface.listPermissions();
 
 		const db = DbConn.getClient();
 		const page = Math.max(1, Number(params.page) || 1);

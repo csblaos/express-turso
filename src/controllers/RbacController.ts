@@ -26,12 +26,27 @@ export class RbacController {
 
 	static listRoles = SyncFunction.handler(async (req: Request, res: Response) => {
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
-		const data = await RbacComponent.listRoles(req.requestId, storeId);
+		const data = await RbacComponent.listRoles(req.requestId, storeId, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static listRoleSummaries = SyncFunction.handler(async (req: Request, res: Response) => {
+		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
+		const data = await RbacComponent.listRoleSummaries(req.requestId, storeId, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getRoleById = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await RbacComponent.getRoleById(req.requestId, req.params.id as string);
+		const data = await RbacComponent.getRoleById(req.requestId, req.params.id as string, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
@@ -39,6 +54,10 @@ export class RbacController {
 		const data = await RbacComponent.createRole(
 			req.requestId,
 			req.body as CreateRoleInput & { permission_keys?: string[] },
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.created(res, req.requestId, { data });
 	});
@@ -48,6 +67,10 @@ export class RbacController {
 			req.requestId,
 			req.params.id as string,
 			req.body as UpdateRoleInput & { permission_keys?: string[] },
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -57,8 +80,24 @@ export class RbacController {
 			req.requestId,
 			req.params.id as string,
 			req.body || {},
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.created(res, req.requestId, { data });
+	});
+
+	static deleteRole = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await RbacComponent.deleteRole(
+			req.requestId,
+			req.params.id as string,
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
+		);
+		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getUserPermissions = SyncFunction.handler(async (req: Request, res: Response) => {

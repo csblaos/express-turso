@@ -99,7 +99,15 @@ const detailForm = reactive({
 	suspend_reason: "",
 });
 
-const canManageSystem = computed(() => can("superadmin.manage") || can("system_admin.manage"));
+const canManageSystem = computed(() => (
+	can("superadmin.users.create")
+	|| can("superadmin.users.update")
+	|| can("settings.users.create")
+	|| can("settings.users.update")
+	|| can("settings.users.suspend")
+	|| can("settings.users.assign_role")
+	|| can("system_admin.clients.update")
+));
 
 const selectedUser = computed(() => users.value.find((user) => user.id === selectedUserId.value) || null);
 
@@ -135,6 +143,12 @@ const overviewStats = computed(() => ([
 	{ label: "ถูกระงับ", value: summaryData.value.suspended },
 	{ label: "โหลดล่าสุด", value: users.value.length },
 ]));
+
+function resolveDefaultRoleId(roleList: RoleRecord[]): string {
+	if (!roleList.length) return "";
+	const cashier = roleList.find((role) => role.name.trim().toLowerCase() === "cashier");
+	return cashier?.id || roleList[0].id;
+}
 
 function statusTone(status: ClientRecord["status"]) {
 	return status === "active" ? "success" : "warning";
@@ -239,7 +253,10 @@ async function loadCreateRoles(storeId: string) {
 	const response = await apiFetch<ApiEnvelope<RoleRecord[]>>(`/rbac/roles?store_id=${encodeURIComponent(storeId)}`);
 	createRoles.value = response.data;
 	if (createForm.role_id && !createRoles.value.some((role) => role.id === createForm.role_id)) {
-		createForm.role_id = "";
+		createForm.role_id = resolveDefaultRoleId(createRoles.value);
+	}
+	if (!createForm.role_id) {
+		createForm.role_id = resolveDefaultRoleId(createRoles.value);
 	}
 }
 
@@ -450,12 +467,14 @@ onMounted(loadUsers);
 					@menu="openSidebar"
 				>
 					<template #actions>
-						<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadUsers">
-							รีโหลด
-						</AppButton>
-						<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-user-plus-20-solid" @click="openCreateModal">
-							เพิ่มผู้ใช้
-						</AppButton>
+						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadUsers">
+								รีโหลด
+							</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-user-plus-20-solid" @click="openCreateModal">
+								เพิ่มผู้ใช้
+							</AppButton>
+						</div>
 					</template>
 				</AppPageHeader>
 

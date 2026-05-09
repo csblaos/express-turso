@@ -97,17 +97,21 @@ export class StoreComponent {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_LIMIT_REACHED);
 			}
 
-			return StoreInterface.create({
+			const created = await StoreInterface.create({
 				...payload,
 				owner_user_id: actor.userId,
 			});
+			await RbacInterface.ensureDefaultRolesForStore(created.id);
+			return created;
 		}
 
 		if (actor.systemRole === "system_admin") {
 			if (!payload.owner_user_id) {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_OWNER_REQUIRED);
 			}
-			return StoreInterface.create(payload);
+			const created = await StoreInterface.create(payload);
+			await RbacInterface.ensureDefaultRolesForStore(created.id);
+			return created;
 		}
 
 		throw ApiError.ForbiddenError("User cannot create stores");

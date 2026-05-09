@@ -135,7 +135,11 @@ const detailForm = reactive({
 	suspend_reason: "",
 });
 
-const canManageSystem = computed(() => can("system_admin.manage"));
+const canManageSystem = computed(() => (
+	can("system_admin.clients.create")
+	|| can("system_admin.clients.update")
+	|| can("system_admin.clients.delete")
+));
 const isSelectedCurrentUser = computed(() => selectedClient.value?.id === currentUser.value?.id);
 const deleteConfirmTarget = computed(() => selectedClient.value?.email || "");
 const canSubmitDelete = computed(() => (

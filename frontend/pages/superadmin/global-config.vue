@@ -17,7 +17,10 @@ const saving = ref(false);
 const toast = ref("");
 const maxAccountsPerStore = ref(5);
 const baselineMaxAccountsPerStore = ref<number | null>(null);
-const canManageSystem = computed(() => can("system_admin.manage"));
+const canManageSystem = computed(() => (
+	can("system_admin.config.update")
+	|| can("superadmin.view")
+));
 const hasChanges = computed(() => (
 	baselineMaxAccountsPerStore.value !== null && maxAccountsPerStore.value !== baselineMaxAccountsPerStore.value
 ));

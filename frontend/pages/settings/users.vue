@@ -89,8 +89,13 @@ const memberStatusOptions = [
 	{ id: "inactive", label: "ปิดใช้งาน" },
 ];
 
-const canManageUsers = computed(() => can("settings.manage_users"));
-const canManageRoles = computed(() => can("settings.manage_roles"));
+const canManageUsers = computed(() => (
+	can("settings.users.create")
+	|| can("settings.users.update")
+	|| can("settings.users.suspend")
+	|| can("settings.users.reset_password")
+));
+const canManageRoles = computed(() => can("settings.users.assign_role"));
 
 const selectedMember = computed(() =>
 	members.value.find((member) => member.user_id === selectedMemberId.value) ?? members.value[0] ?? null,
@@ -100,6 +105,12 @@ const roleOptions = computed(() => [
 	{ id: "all", label: "ทุกบทบาท" },
 	...roles.value.map((role) => ({ id: role.id, label: role.name })),
 ]);
+
+function resolveDefaultRoleId(roleList: RoleRecord[]): string {
+	if (!roleList.length) return "";
+	const cashier = roleList.find((role) => role.name.trim().toLowerCase() === "cashier");
+	return cashier?.id || roleList[0].id;
+}
 
 watch(selectedStoreId, async (value) => {
 	if (!value) return;
@@ -120,7 +131,7 @@ watch(members, (value) => {
 
 watch(createOpen, (isOpen) => {
 	if (isOpen) {
-		createForm.role_id = roles.value[0]?.id || "";
+		createForm.role_id = resolveDefaultRoleId(roles.value);
 	}
 });
 
@@ -162,10 +173,13 @@ async function fetchStores() {
 
 async function fetchRoles() {
 	if (!selectedStoreId.value) return;
-		const response = await apiFetch<ApiEnvelope<RoleRecord[]>>(`/rbac/roles?store_id=${encodeURIComponent(selectedStoreId.value)}`);
+	const response = await apiFetch<ApiEnvelope<RoleRecord[]>>(`/rbac/roles?store_id=${encodeURIComponent(selectedStoreId.value)}`);
 	roles.value = response.data;
 	if (activeRoleId.value !== "all" && !roles.value.some((role) => role.id === activeRoleId.value)) {
 		activeRoleId.value = "all";
+	}
+	if (createOpen.value) {
+		createForm.role_id = resolveDefaultRoleId(roles.value);
 	}
 }
 
@@ -216,7 +230,7 @@ async function saveMemberStatus(member: StoreMemberRecord, status: string) {
 }
 
 async function createMember() {
-	if (!selectedStoreId.value || !createForm.role_id) return;
+	if (!selectedStoreId.value) return;
 	saving.value = true;
 	try {
 		await apiFetch("/rbac/store-members", {
@@ -226,7 +240,7 @@ async function createMember() {
 				name: createForm.name,
 				email: createForm.email,
 				password: createForm.password,
-				role_id: createForm.role_id,
+				role_id: createForm.role_id || undefined,
 				status: createForm.status,
 				added_by: currentUser.value?.id || null,
 			},
@@ -292,12 +306,9 @@ onMounted(async () => {
 			<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
 				<AppPageHeader
 					title="ผู้ใช้งานและสิทธิ์การใช้งาน"
-					description="จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และตรวจ permission summary ในพื้นที่เดียว"
+					description="จัดการสมาชิกในร้านและกำหนดบทบาทให้ผู้ใช้ โดยรายการบทบาทถูกตั้งค่าจากหน้า Superadmin"
 					@menu="openSidebar"
 				>
-
-					<SettingsAccessTabs />
-
 					<div class="grid gap-3 pt-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
 						<UInput
 							v-model="searchQuery"

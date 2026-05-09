@@ -10,8 +10,8 @@ export class AuditEventRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("activity.read"), AuditEventValidator.list, AuditEventController.list);
-		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("activity.read"), AuditEventValidator.getById, AuditEventController.getById);
+		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("activity.view"), AuditEventValidator.list, AuditEventController.list);
+		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("activity.view"), AuditEventValidator.getById, AuditEventController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), AuditEventValidator.create, AuditEventController.create);
 	}
 

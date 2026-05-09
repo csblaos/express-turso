@@ -53,7 +53,7 @@ export default class RbacValidator extends ValidatorMiddleware {
 		name: nonEmptyString,
 		email: z.string().trim().email(),
 		password: z.string().min(6, "password must be at least 6 characters"),
-		role_id: nonEmptyString,
+		role_id: nonEmptyString.optional(),
 		status: optionalString,
 		system_role: optionalString,
 		ui_locale: optionalString,
@@ -101,6 +101,12 @@ export default class RbacValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: RbacValidator.duplicateRoleBodySchema,
+	});
+
+	public static readonly deleteRole = RbacValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
 	});
 
 	public static readonly getUserPermissions = RbacValidator.init({

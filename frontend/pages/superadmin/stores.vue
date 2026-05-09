@@ -56,7 +56,14 @@ const detailForm = reactive({
 	pdf_header_color: "#22c55e",
 });
 
-const canManageStore = computed(() => can("settings.manage_store"));
+const canManageStore = computed(() => (
+	can("settings.store.create")
+	|| can("settings.store.update")
+	|| can("settings.store.archive")
+	|| can("superadmin.stores.create")
+	|| can("superadmin.stores.update")
+	|| can("superadmin.stores.archive")
+));
 
 const filteredStores = computed(() => stores.value.filter((store) => {
 	const query = searchQuery.value.trim().toLowerCase();
@@ -310,12 +317,14 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 					@menu="openSidebar"
 				>
 					<template #actions>
-						<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadStores">
-							รีโหลด
-						</AppButton>
-						<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-building-storefront-20-solid" @click="openCreateModal">
-							เพิ่มร้าน
-						</AppButton>
+						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadStores">
+								รีโหลด
+							</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-building-storefront-20-solid" @click="openCreateModal">
+								เพิ่มร้าน
+							</AppButton>
+						</div>
 					</template>
 				</AppPageHeader>
 
