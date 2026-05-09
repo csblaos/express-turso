@@ -11,7 +11,7 @@ type AdminEntry = {
 };
 
 const adminEntries: AdminEntry[] = [
-	{ id: "dashboard", title: "Dashboard", description: "ดูภาพรวมระบบ, security signals และสถานะสำคัญ", icon: "i-heroicons-chart-pie", badge: "หน้านี้" },
+	{ id: "dashboard", title: "Dashboard", description: "ดูภาพรวมระบบ, security signals และสถานะสำคัญ", icon: "i-heroicons-chart-pie", to: "/system-admin/dashboard", badge: "พร้อมใช้งาน" },
 	{ id: "clients", title: "Clients", description: "จัดการ client / superadmin accounts, quota และการ suspend/enable", icon: "i-heroicons-briefcase", to: "/system-admin/clients", badge: "พร้อมใช้งาน" },
 	{ id: "system", title: "System Policy", description: "branch policy, session policy และ store logo policy", icon: "i-heroicons-cog-8-tooth", to: "/system-admin/system", badge: "พร้อมใช้งาน" },
 	{ id: "monitoring", title: "Monitoring", description: "ดู database, cache, integration และ FB/WA health summary", icon: "i-heroicons-signal", to: "/system-admin/monitoring", badge: "พร้อมใช้งาน" },

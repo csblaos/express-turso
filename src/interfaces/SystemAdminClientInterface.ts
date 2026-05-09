@@ -46,6 +46,12 @@ export type SystemAdminClientListResult = {
 	};
 };
 
+export type SystemAdminClientSummary = {
+	total: number;
+	active: number;
+	suspended: number;
+};
+
 export type SystemAdminClientCreateInput = {
 	name: string;
 	email: string;
@@ -237,6 +243,28 @@ export class SystemAdminClientInterface {
 		};
 	}
 
+	static async getSummary(): Promise<SystemAdminClientSummary> {
+		await SystemAdminClientInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `
+				SELECT
+					COUNT(*) as total,
+					SUM(CASE WHEN client_suspended = 0 THEN 1 ELSE 0 END) as active,
+					SUM(CASE WHEN client_suspended = 1 THEN 1 ELSE 0 END) as suspended
+				FROM users
+				WHERE system_role = ?
+			`,
+			args: [ "superadmin" ],
+		});
+
+		return {
+			total: Number(result.rows[0]?.total || 0),
+			active: Number(result.rows[0]?.active || 0),
+			suspended: Number(result.rows[0]?.suspended || 0),
+		};
+	}
+
 	static async findById(id: string): Promise<SystemAdminClientRecord | null> {
 		await SystemAdminClientInterface.ensureColumns();
 		const db = DbConn.getClient();
@@ -290,7 +318,7 @@ export class SystemAdminClientInterface {
 				null,
 				"superadmin",
 				input.can_create_stores ?? 1,
-				1,
+				input.max_stores ?? 1,
 				input.can_create_branches ?? 1,
 				input.max_branches_per_store ?? null,
 				input.created_by ?? null,
@@ -318,7 +346,7 @@ export class SystemAdminClientInterface {
 
 		if (input.name !== undefined) updatePayload.name = input.name?.trim() || "";
 		if (input.ui_locale !== undefined) updatePayload.ui_locale = input.ui_locale?.trim() || "th";
-		updatePayload.max_stores = 1;
+		if (input.max_stores !== undefined) updatePayload.max_stores = input.max_stores;
 		if (input.can_create_stores !== undefined) updatePayload.can_create_stores = input.can_create_stores;
 		if (input.max_branches_per_store !== undefined) updatePayload.max_branches_per_store = input.max_branches_per_store;
 		if (input.can_create_branches !== undefined) updatePayload.can_create_branches = input.can_create_branches;

@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { SystemAdminClientController } from "@controllers/SystemAdminClientController";
+import { SystemAdminDashboardController } from "@controllers/SystemAdminDashboardController";
 import { SystemAdminMonitoringController } from "@controllers/SystemAdminMonitoringController";
 import { SystemAdminSecurityController } from "@controllers/SystemAdminSecurityController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
@@ -12,6 +13,7 @@ export class SystemAdminClientRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.get("/dashboard", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminDashboardController.snapshot);
 		this.router.get("/monitoring", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminMonitoringController.snapshot);
 		this.router.get("/security", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminSecurityController.snapshot);
 		this.router.get("/clients", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.list, SystemAdminClientController.list);

@@ -1,17 +1,24 @@
 export default defineNuxtRouteMiddleware((to) => {
-	if (import.meta.server) return;
-
-	const { hydrateAuthState, accessToken } = useAuthSession();
-	hydrateAuthState();
-
 	const isLoginRoute = to.path === "/login";
-	const hasAccessToken = Boolean(accessToken.value);
+	const accessTokenCookie = useCookie<string | null>("pos.auth.accessToken", {
+		sameSite: "lax",
+		path: "/",
+		default: () => null,
+	});
+
+	let hasAccessToken = Boolean(accessTokenCookie.value);
+
+	if (import.meta.client) {
+		const { hydrateAuthState, accessToken } = useAuthSession();
+		hydrateAuthState();
+		hasAccessToken = Boolean(accessToken.value || accessTokenCookie.value);
+	}
 
 	if (!hasAccessToken && !isLoginRoute) {
-		return navigateTo("/login");
+		return navigateTo("/login", { replace: true });
 	}
 
 	if (hasAccessToken && isLoginRoute) {
-		return navigateTo("/");
+		return navigateTo("/", { replace: true });
 	}
 });

@@ -50,6 +50,14 @@ const form = reactive({
 const submitting = ref(false);
 const showPassword = ref(false);
 
+onMounted(() => {
+	if (!import.meta.client) return;
+
+	window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+	document.documentElement.scrollTop = 0;
+	document.body.scrollTop = 0;
+});
+
 function extractLoginErrorMessage(error: unknown) {
 	if (typeof error === "object" && error) {
 		const data = Reflect.get(error, "data") as

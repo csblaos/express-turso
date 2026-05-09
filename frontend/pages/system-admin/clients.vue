@@ -40,6 +40,17 @@ type ClientListResponse = {
 	};
 };
 
+type ApiSystemConfig = {
+	default_can_create_branches: number;
+	default_max_branches_per_store: number | null;
+};
+
+type CreatedClientCredential = {
+	name: string;
+	email: string;
+	password: string;
+};
+
 const { apiFetch } = useApiClient();
 const { currentUser, can } = useAuthSession();
 const appToast = useAppToast();
@@ -62,14 +73,31 @@ const summaryData = ref({
 const selectedClientId = ref("");
 const createOpen = ref(false);
 const detailOpen = ref(false);
+const showCreatePassword = ref(false);
+const createSuccess = ref<CreatedClientCredential | null>(null);
+const systemDefaults = ref<ApiSystemConfig>({
+	default_can_create_branches: 1,
+	default_max_branches_per_store: 5,
+});
+const createBranchDraft = reactive({
+	max_stores: "1",
+	max_branches_per_store: "",
+	can_create_branches: true,
+});
+const detailBranchDraft = reactive({
+	max_stores: "1",
+	max_branches_per_store: "",
+	can_create_branches: true,
+});
 
 const createForm = reactive({
 	name: "",
 	email: "",
-	password: "dev123456",
+	password: "",
 	ui_locale: "th",
 	can_create_stores: true,
-	max_branches_per_store: "5",
+	max_stores: "1",
+	max_branches_per_store: "",
 	can_create_branches: true,
 	must_change_password: true,
 });
@@ -78,6 +106,7 @@ const detailForm = reactive({
 	name: "",
 	ui_locale: "th",
 	can_create_stores: true,
+	max_stores: "1",
 	max_branches_per_store: "",
 	can_create_branches: true,
 	must_change_password: false,
@@ -97,6 +126,7 @@ const detailHasChanges = computed(() => {
 		detailForm.name !== selectedClient.value.name
 		|| detailForm.ui_locale !== (selectedClient.value.ui_locale || "th")
 		|| detailForm.can_create_stores !== Boolean(selectedClient.value.can_create_stores)
+		|| detailForm.max_stores !== (selectedClient.value.max_stores === null ? "" : String(selectedClient.value.max_stores))
 		|| detailForm.max_branches_per_store !== (selectedClient.value.max_branches_per_store === null ? "" : String(selectedClient.value.max_branches_per_store))
 		|| detailForm.can_create_branches !== Boolean(selectedClient.value.can_create_branches)
 		|| detailForm.must_change_password !== Boolean(selectedClient.value.must_change_password)
@@ -116,17 +146,85 @@ const pageSummaryText = computed(() => (
 		? "ยังไม่มีข้อมูล"
 		: `${pageStart.value}-${pageEnd.value} จาก ${totalClients.value} บัญชี`
 ));
+const createStorePermissionHint = computed(() => (
+	createForm.can_create_stores
+		? "บัญชีนี้สามารถสร้างร้านใหม่ของตัวเองได้"
+		: "บัญชีนี้จะเข้าใช้งานได้ แต่ยังสร้างร้านใหม่ไม่ได้"
+));
+const createBranchPermissionHint = computed(() => {
+	if (!createForm.can_create_stores) return "ต้องอนุญาตให้สร้างร้านก่อน จึงจะตั้งค่าสาขาได้";
+	return createForm.can_create_branches
+		? "บัญชีนี้สามารถเพิ่มสาขาได้ตาม quota สาขาต่อร้าน"
+		: "บัญชีนี้จะไม่สามารถสร้างสาขาใหม่ได้ แม้ quota จะยังเหลือ";
+});
+const detailStorePermissionHint = computed(() => (
+	detailForm.can_create_stores
+		? "บัญชีนี้สามารถสร้างร้านใหม่ของตัวเองได้"
+		: "บัญชีนี้จะเข้าใช้งานได้ แต่ยังสร้างร้านใหม่ไม่ได้"
+));
+const detailBranchPermissionHint = computed(() => {
+	if (!detailForm.can_create_stores) return "ต้องอนุญาตให้สร้างร้านก่อน จึงจะตั้งค่าสาขาได้";
+	return detailForm.can_create_branches
+		? "บัญชีนี้สามารถเพิ่มสาขาได้ตาม quota สาขาต่อร้าน"
+		: "บัญชีนี้จะไม่สามารถสร้างสาขาใหม่ได้ แม้ quota จะยังเหลือ";
+});
 
 watch(selectedClient, (client) => {
 	if (!client) return;
 	detailForm.name = client.name;
 	detailForm.ui_locale = client.ui_locale || "th";
 	detailForm.can_create_stores = Boolean(client.can_create_stores);
+	detailForm.max_stores = client.max_stores === null ? "" : String(client.max_stores);
 	detailForm.max_branches_per_store = client.max_branches_per_store === null ? "" : String(client.max_branches_per_store);
 	detailForm.can_create_branches = Boolean(client.can_create_branches);
 	detailForm.must_change_password = Boolean(client.must_change_password);
 	detailForm.suspend_reason = client.client_suspended_reason || "";
+	detailBranchDraft.max_stores = detailForm.max_stores;
+	detailBranchDraft.max_branches_per_store = detailForm.max_branches_per_store;
+	detailBranchDraft.can_create_branches = detailForm.can_create_branches;
 }, { immediate: true });
+
+watch(() => createForm.can_create_stores, (enabled, previous) => {
+	if (enabled) {
+		if (previous === false) {
+			createForm.max_stores = createBranchDraft.max_stores || "1";
+			createForm.max_branches_per_store = createBranchDraft.max_branches_per_store
+				|| (systemDefaults.value.default_max_branches_per_store === null ? "" : String(systemDefaults.value.default_max_branches_per_store));
+			createForm.can_create_branches = createBranchDraft.can_create_branches;
+		}
+		return;
+	}
+
+	createBranchDraft.max_stores = createForm.max_stores;
+	createBranchDraft.max_branches_per_store = createForm.max_branches_per_store;
+	createBranchDraft.can_create_branches = createForm.can_create_branches;
+	createForm.max_stores = "";
+	createForm.max_branches_per_store = "";
+	createForm.can_create_branches = false;
+});
+
+watch(() => detailForm.can_create_stores, (enabled, previous) => {
+	if (enabled) {
+		if (previous === false) {
+			detailForm.max_stores = detailBranchDraft.max_stores || "1";
+			detailForm.max_branches_per_store = detailBranchDraft.max_branches_per_store;
+			detailForm.can_create_branches = detailBranchDraft.can_create_branches;
+		}
+		return;
+	}
+
+	detailBranchDraft.max_stores = detailForm.max_stores;
+	detailBranchDraft.max_branches_per_store = detailForm.max_branches_per_store;
+	detailBranchDraft.can_create_branches = detailForm.can_create_branches;
+	detailForm.max_stores = "";
+	detailForm.max_branches_per_store = "";
+	detailForm.can_create_branches = false;
+});
+
+watch(createOpen, (opened) => {
+	if (opened) return;
+	resetCreateForm();
+});
 
 function formatDate(value: string | null) {
 	if (!value) return "ยังไม่มี";
@@ -138,6 +236,16 @@ function formatDate(value: string | null) {
 
 function statusTone(status: ClientRecord["status"]) {
 	return status === "active" ? "success" : "warning";
+}
+
+function storeQuotaLabel(client: ClientRecord) {
+	if (!client.can_create_stores) return "ปิดสิทธิ์";
+	return client.max_stores ?? "ไม่จำกัด";
+}
+
+function branchQuotaLabel(client: ClientRecord) {
+	if (!client.can_create_stores || !client.can_create_branches) return "ปิดสิทธิ์";
+	return client.max_branches_per_store ?? "ไม่จำกัด";
 }
 
 function openDetail(clientId: string) {
@@ -157,6 +265,11 @@ function openCreateModal() {
 	createOpen.value = true;
 }
 
+function fillQuickPassword() {
+	createForm.password = "123456";
+	showCreatePassword.value = true;
+}
+
 function toOptionalNumber(value: string | number) {
 	if (typeof value === "number") {
 		return Number.isFinite(value) ? value : null;
@@ -166,15 +279,99 @@ function toOptionalNumber(value: string | number) {
 	return trimmed === "" ? null : Number(trimmed);
 }
 
+function resolveApiErrorMessage(error: unknown, fallback = "โปรดลองอีกครั้ง") {
+	if (typeof error === "object" && error) {
+		const response = Reflect.get(error, "response");
+		if (typeof response === "object" && response) {
+			const data = Reflect.get(response, "_data") || Reflect.get(response, "data");
+			if (typeof data === "object" && data) {
+				const message = Reflect.get(data, "message");
+				if (typeof message === "string" && message.trim()) {
+					return message;
+				}
+			}
+		}
+	}
+
+	if (error instanceof Error && error.message.trim()) {
+		return error.message;
+	}
+
+	return fallback;
+}
+
 function resetCreateForm() {
 	createForm.name = "";
 	createForm.email = "";
-	createForm.password = "dev123456";
+	createForm.password = "";
 	createForm.ui_locale = "th";
 	createForm.can_create_stores = true;
-	createForm.max_branches_per_store = "5";
-	createForm.can_create_branches = true;
+	createForm.max_stores = "1";
+	createForm.max_branches_per_store = systemDefaults.value.default_max_branches_per_store === null
+		? ""
+		: String(systemDefaults.value.default_max_branches_per_store);
+	createForm.can_create_branches = Boolean(systemDefaults.value.default_can_create_branches);
 	createForm.must_change_password = true;
+	createBranchDraft.max_stores = createForm.max_stores;
+	createBranchDraft.max_branches_per_store = createForm.max_branches_per_store;
+	createBranchDraft.can_create_branches = createForm.can_create_branches;
+	showCreatePassword.value = false;
+	createSuccess.value = null;
+}
+
+function closeCreateModal() {
+	createOpen.value = false;
+	resetCreateForm();
+}
+
+async function copyCreatedCredential() {
+	if (!createSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${createSuccess.value.email}`,
+		`Password: ${createSuccess.value.password}`,
+	].join("\n");
+
+	try {
+		await navigator.clipboard.writeText(text);
+		appToast.success({
+			title: "คัดลอก credential แล้ว",
+			description: "นำไปส่งต่อให้ client ได้ทันที",
+		});
+	} catch {
+		appToast.error({
+			title: "คัดลอกไม่สำเร็จ",
+			description: "โปรดลองคัดลอกอีกครั้ง",
+		});
+	}
+}
+
+async function shareCreatedCredential() {
+	if (!createSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${createSuccess.value.email}`,
+		`Password: ${createSuccess.value.password}`,
+	].join("\n");
+
+	if (typeof navigator.share === "function") {
+		try {
+			await navigator.share({
+				title: "Client login credential",
+				text,
+			});
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "";
+			if (message.toLowerCase().includes("abort")) return;
+		}
+	}
+
+	await copyCreatedCredential();
+	appToast.success({
+		title: "อุปกรณ์นี้ไม่รองรับ share โดยตรง",
+		description: "ระบบคัดลอก credential ให้แล้ว เพื่อนำไปวางส่งต่อได้ทันที",
+	});
 }
 
 function resetListPage() {
@@ -227,9 +424,20 @@ async function loadClients() {
 	}
 }
 
+async function loadCreateDefaults() {
+	try {
+		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/settings");
+		systemDefaults.value = response.data;
+		resetCreateForm();
+	} catch {
+		resetCreateForm();
+	}
+}
+
 async function createClient() {
 	saving.value = true;
 	try {
+		const plainPassword = createForm.password;
 		await apiFetch<ApiEnvelope<ClientRecord>>("/system-admin/clients", {
 			method: "POST",
 			body: {
@@ -238,14 +446,18 @@ async function createClient() {
 				password: createForm.password,
 				ui_locale: createForm.ui_locale,
 				can_create_stores: createForm.can_create_stores ? 1 : 0,
-				max_branches_per_store: toOptionalNumber(createForm.max_branches_per_store),
-				can_create_branches: createForm.can_create_branches ? 1 : 0,
+				max_stores: createForm.can_create_stores ? toOptionalNumber(createForm.max_stores) : null,
+				max_branches_per_store: createForm.can_create_stores ? toOptionalNumber(createForm.max_branches_per_store) : null,
+				can_create_branches: createForm.can_create_stores && createForm.can_create_branches ? 1 : 0,
 				must_change_password: createForm.must_change_password,
 				created_by: currentUser.value?.id || null,
 			},
 		});
-		createOpen.value = false;
-		resetCreateForm();
+		createSuccess.value = {
+			name: createForm.name,
+			email: createForm.email,
+			password: plainPassword,
+		};
 		resetListPage();
 		appToast.success({
 			title: "สร้าง Superadmin แล้ว",
@@ -255,7 +467,7 @@ async function createClient() {
 	} catch (err) {
 		appToast.error({
 			title: "สร้างบัญชีไม่สำเร็จ",
-			description: err instanceof Error ? err.message : "โปรดลองอีกครั้ง",
+			description: resolveApiErrorMessage(err),
 		});
 	} finally {
 		saving.value = false;
@@ -272,8 +484,9 @@ async function saveClient() {
 				name: detailForm.name,
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
-				max_branches_per_store: toOptionalNumber(detailForm.max_branches_per_store),
-				can_create_branches: detailForm.can_create_branches ? 1 : 0,
+				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
+				max_branches_per_store: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_branches_per_store) : null,
+				can_create_branches: detailForm.can_create_stores && detailForm.can_create_branches ? 1 : 0,
 				must_change_password: detailForm.must_change_password,
 				actor_user_id: currentUser.value?.id || null,
 			},
@@ -286,7 +499,7 @@ async function saveClient() {
 	} catch (err) {
 		appToast.error({
 			title: "บันทึกไม่สำเร็จ",
-			description: err instanceof Error ? err.message : "โปรดลองอีกครั้ง",
+			description: resolveApiErrorMessage(err),
 		});
 	} finally {
 		saving.value = false;
@@ -313,14 +526,19 @@ async function updateClientStatus(nextStatus: "active" | "suspended") {
 	} catch (err) {
 		appToast.error({
 			title: "อัปเดตสถานะไม่สำเร็จ",
-			description: err instanceof Error ? err.message : "โปรดลองอีกครั้ง",
+			description: resolveApiErrorMessage(err),
 		});
 	} finally {
 		saving.value = false;
 	}
 }
 
-onMounted(loadClients);
+onMounted(async () => {
+	await Promise.all([
+		loadClients(),
+		loadCreateDefaults(),
+	]);
+});
 </script>
 
 <template>
@@ -441,8 +659,8 @@ onMounted(loadClients);
 											<td class="border-b border-[#f1ede6] px-4 py-4">
 												<UBadge :color="statusTone(client.status)" variant="soft" :label="client.status === 'active' ? 'พร้อมใช้งาน' : 'พักบัญชี'" />
 											</td>
-											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">1 store</td>
-											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.max_branches_per_store ?? "ไม่จำกัด" }}</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ storeQuotaLabel(client) }}</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ branchQuotaLabel(client) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.ui_locale.toUpperCase() }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-500">{{ formatDate(client.created_at) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
@@ -528,7 +746,7 @@ onMounted(loadClients);
 				>
 				<div class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
-						<div class="space-y-4 pb-6">
+						<div v-if="!createSuccess" class="space-y-4 pb-6">
 							<div class="grid gap-4">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
@@ -539,19 +757,33 @@ onMounted(loadClients);
 									<input v-model="createForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านเริ่มต้น</label>
-									<input v-model="createForm.password" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-								</div>
-							</div>
-
-							<div class="grid gap-4 sm:grid-cols-2">
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
-									<p class="text-xs font-medium text-stone-500">โควต้าร้าน</p>
-									<p class="mt-2 text-sm font-semibold text-stone-900">1 Superadmin = 1 Store</p>
-								</div>
-								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
-									<input v-model="createForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่าน</label>
+									<div class="relative">
+										<input
+											v-model="createForm.password"
+											:type="showCreatePassword ? 'text' : 'password'"
+											placeholder="ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร"
+											class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+										<button
+											type="button"
+											class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+											:aria-label="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+											:title="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+											@click="showCreatePassword = !showCreatePassword"
+										>
+											<UIcon :name="showCreatePassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
+										</button>
+									</div>
+									<p class="mt-2 text-xs leading-5 text-stone-500">กำหนดรหัสผ่านเริ่มต้นเองก่อนสร้างบัญชี ระบบจะไม่เติมค่า default ให้แล้ว</p>
+									<button
+										type="button"
+										class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+										@click="fillQuickPassword"
+									>
+										<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
+										ใช้รหัส 123456
+									</button>
 								</div>
 							</div>
 
@@ -559,17 +791,35 @@ onMounted(loadClients);
 								<input v-model="createForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 								<div>
 									<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างร้าน</p>
-									<p class="mt-1 text-xs leading-5 text-stone-500">ใช้สำหรับเจ้าของธุรกิจที่จะ onboarding ร้านของตัวเอง</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ createStorePermissionHint }}</p>
 								</div>
 							</label>
 
-							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+							<div v-if="createForm.can_create_stores" class="grid gap-4 sm:grid-cols-2">
+								<div>
+									<label class="mb-2 block text-xs font-medium text-stone-500">ร้านที่สร้างได้</label>
+									<input v-model="createForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<p class="mt-2 text-xs leading-5 text-stone-500">กำหนดจำนวนร้านสูงสุดที่บัญชีนี้สร้างได้ ถ้าอยากจำกัดไว้ 1 ร้าน ให้คงค่า 1</p>
+								</div>
+								<div>
+									<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
+									<input v-model="createForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<p class="mt-2 text-xs leading-5 text-stone-500">ค่าเริ่มต้นดึงจาก System Policy ปัจจุบัน และยังแก้ต่อรายบัญชีได้</p>
+								</div>
+							</div>
+
+							<label v-if="createForm.can_create_stores" class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<input v-model="createForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 								<div>
 									<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างสาขา</p>
-									<p class="mt-1 text-xs leading-5 text-stone-500">ใช้คู่กับ quota สาขาต่อร้าน</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ createBranchPermissionHint }}</p>
 								</div>
 							</label>
+
+							<div v-else class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+								<p class="text-sm font-medium text-stone-900">ซ่อนการตั้งค่าสาขาไว้ก่อน</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">เมื่อเปิดสิทธิ์สร้างร้าน ระบบจะแสดงจำนวนร้านที่สร้างได้, สาขาต่อร้าน และสิทธิ์สร้างสาขาให้อัตโนมัติ</p>
+							</div>
 
 							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<input v-model="createForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
@@ -578,12 +828,54 @@ onMounted(loadClients);
 								</div>
 							</label>
 						</div>
+
+						<div v-else class="space-y-4 pb-6">
+							<div class="rounded-md border border-success/20 bg-success/5 p-4">
+								<div class="flex items-start gap-3">
+									<div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-success/10 text-success ring-1 ring-success/15">
+										<UIcon name="i-heroicons-check-circle-20-solid" class="h-5 w-5" />
+									</div>
+									<div>
+										<p class="text-sm font-semibold text-stone-950">สร้าง Superadmin สำเร็จแล้ว</p>
+										<p class="mt-1 text-sm leading-6 text-stone-600">คัดลอก username และ password ชุดนี้ไปส่งต่อให้ client ได้ทันที ก่อนกด done เพื่อปิด modal</p>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Credential</p>
+								<div class="mt-4 space-y-3">
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ createSuccess.email }}
+										</div>
+									</div>
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Password</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ createSuccess.password }}
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+								<p class="text-sm font-medium text-stone-900">{{ createSuccess.name }}</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">credential นี้แสดงชั่วคราวใน modal นี้เท่านั้น หลังปิด modal แล้วจะไม่แสดง password เดิมอีก</p>
+							</div>
+						</div>
 					</div>
 
 						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
+							<div v-if="!createSuccess" class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateModal">ยกเลิก</AppButton>
 								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :loading="saving" :disabled="!canManageSystem" :spin-icon-on-loading="true" :block="true" @click="createClient">สร้างบัญชี</AppButton>
+							</div>
+							<div v-else class="grid w-full gap-2 sm:grid-cols-3">
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clipboard-document-20-solid" :block="true" @click="copyCreatedCredential">Copy</AppButton>
+								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-share-20-solid" :block="true" @click="shareCreatedCredential">Share</AppButton>
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" @click="closeCreateModal">Done</AppButton>
 							</div>
 						</div>
 					</div>
@@ -620,16 +912,6 @@ onMounted(loadClients);
 									<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
 									<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
-								<div class="grid gap-4 sm:grid-cols-2">
-									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
-										<p class="text-xs font-medium text-stone-500">โควต้าร้าน</p>
-										<p class="mt-2 text-sm font-semibold text-stone-900">คงที่ 1 ร้านต่อบัญชี</p>
-									</div>
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
-										<input v-model="detailForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									</div>
-								</div>
 							</div>
 
 							<div class="space-y-3">
@@ -637,14 +919,36 @@ onMounted(loadClients);
 									<input v-model="detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
 										<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างร้าน</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ detailStorePermissionHint }}</p>
 									</div>
 								</label>
-								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+
+								<div v-if="detailForm.can_create_stores" class="grid gap-4 sm:grid-cols-2">
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">ร้านที่สร้างได้</label>
+										<input v-model="detailForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+										<p class="mt-2 text-xs leading-5 text-stone-500">ปรับ quota ร้านของบัญชีนี้ได้ตามสิทธิ์ที่ต้องการให้ธุรกิจสร้างเพิ่ม</p>
+									</div>
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">สาขาต่อร้าน</label>
+										<input v-model="detailForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+										<p class="mt-2 text-xs leading-5 text-stone-500">ปรับจำนวนสาขาที่แต่ละร้านสร้างได้สำหรับบัญชีนี้</p>
+									</div>
+								</div>
+
+								<label v-if="detailForm.can_create_stores" class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<input v-model="detailForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
 										<p class="text-sm font-medium text-stone-900">อนุญาตให้สร้างสาขา</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ detailBranchPermissionHint }}</p>
 									</div>
 								</label>
+
+								<div v-else class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+									<p class="text-sm font-medium text-stone-900">ซ่อนการตั้งค่าสาขาไว้ก่อน</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">เมื่อเปิดสิทธิ์สร้างร้าน ระบบจะแสดงจำนวนร้านที่สร้างได้, สาขาต่อร้าน และสิทธิ์สร้างสาขาให้อีกครั้ง</p>
+								</div>
+
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<input v-model="detailForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div>
