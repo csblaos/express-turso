@@ -8,6 +8,7 @@ import { ErrorConfig } from "@configs/ErrorConfig";
 import { RedisConn } from "@connections/RedisConn";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
+import { StoreInterface } from "@interfaces/StoreInterface";
 import { SystemConfigInterface } from "@interfaces/SystemConfigInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { User } from "@models/User";
@@ -68,6 +69,11 @@ type LoginResponse = {
 		systemRole: string;
 		mustChangePassword: boolean;
 		uiLocale: string;
+		canCreateStores: boolean;
+		maxStores: number | null;
+		canCreateBranches: boolean;
+		maxBranchesPerStore: number | null;
+		ownedStoresCount: number;
 	};
 	session: SessionRecord;
 	tokens: {
@@ -127,6 +133,22 @@ function buildUserSummary(user: User) {
 		systemRole: user.system_role,
 		mustChangePassword: Boolean(user.must_change_password),
 		uiLocale: user.ui_locale || "th",
+		canCreateStores: Boolean(user.can_create_stores),
+		maxStores: user.max_stores === null || user.max_stores === undefined ? null : Number(user.max_stores),
+		canCreateBranches: Boolean(user.can_create_branches),
+		maxBranchesPerStore: user.max_branches_per_store === null || user.max_branches_per_store === undefined ? null : Number(user.max_branches_per_store),
+	};
+}
+
+async function buildUserSummaryWithOnboarding(user: User) {
+	const summary = buildUserSummary(user);
+	const ownedStoresCount = user.system_role === "superadmin"
+		? await StoreInterface.countByOwnerUserId(getUserId(user))
+		: 0;
+
+	return {
+		...summary,
+		ownedStoresCount,
 	};
 }
 
@@ -342,7 +364,7 @@ export class AuthComponent {
 		await AuthComponent.saveSessionIds(userId, [ ...existingSessionIds, sessionId ]);
 
 		return {
-			user: buildUserSummary(user),
+			user: await buildUserSummaryWithOnboarding(user),
 			session: sessionRecord,
 			tokens: {
 				accessToken,
@@ -471,7 +493,7 @@ export class AuthComponent {
 		const access = await RbacInterface.getUserPermissions(getUserId(user), storeId);
 
 		return {
-			user: buildUserSummary(user),
+			user: await buildUserSummaryWithOnboarding(user),
 			session,
 			access,
 		};
@@ -496,7 +518,7 @@ export class AuthComponent {
 		await AuthComponent.updateSessionSnapshot(sessionId, updatedUser);
 
 		return {
-			user: buildUserSummary(updatedUser),
+			user: await buildUserSummaryWithOnboarding(updatedUser),
 		};
 	}
 
@@ -526,7 +548,7 @@ export class AuthComponent {
 		await AuthComponent.revokeOtherSessions(getUserId(user), sessionId);
 
 		return {
-			user: buildUserSummary(updatedUser),
+			user: await buildUserSummaryWithOnboarding(updatedUser),
 			passwordChanged: true,
 		};
 	}

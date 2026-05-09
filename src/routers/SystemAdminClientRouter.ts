@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { SystemAdminClientController } from "@controllers/SystemAdminClientController";
+import { SystemAdminDashboardController } from "@controllers/SystemAdminDashboardController";
 import { SystemAdminMonitoringController } from "@controllers/SystemAdminMonitoringController";
 import { SystemAdminSecurityController } from "@controllers/SystemAdminSecurityController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
@@ -12,12 +13,15 @@ export class SystemAdminClientRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.get("/dashboard", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminDashboardController.snapshot);
 		this.router.get("/monitoring", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminMonitoringController.snapshot);
 		this.router.get("/security", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminSecurityController.snapshot);
 		this.router.get("/clients", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.list, SystemAdminClientController.list);
+		this.router.get("/clients/:id/delete-check", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.deleteCheck, SystemAdminClientController.deleteCheck);
 		this.router.post("/clients", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.create, SystemAdminClientController.create);
 		this.router.patch("/clients/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.update, SystemAdminClientController.update);
 		this.router.patch("/clients/:id/status", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.updateStatus, SystemAdminClientController.updateStatus);
+		this.router.delete("/clients/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("system_admin.manage"), SystemAdminClientValidator.remove, SystemAdminClientController.remove);
 	}
 
 	static getInstance(): SystemAdminClientRouter {

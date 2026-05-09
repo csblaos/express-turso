@@ -27,6 +27,11 @@ type AuthUser = {
 	systemRole: string;
 	mustChangePassword: boolean;
 	uiLocale: string;
+	canCreateStores: boolean;
+	maxStores: number | null;
+	canCreateBranches: boolean;
+	maxBranchesPerStore: number | null;
+	ownedStoresCount: number;
 };
 
 type AuthSession = {
@@ -80,6 +85,11 @@ const STORAGE_KEYS = {
 	access: "pos.auth.access",
 } as const;
 
+const COOKIE_KEYS = {
+	accessToken: "pos.auth.accessToken",
+	refreshToken: "pos.auth.refreshToken",
+} as const;
+
 const SYSTEM_ROLE_PERMISSION_MAP: Record<string, string[]> = {
 	superadmin: [ "superadmin.manage" ],
 };
@@ -121,12 +131,22 @@ export function useAuthSession() {
 	const currentAccess = useState<AuthAccess | null>("auth.current-access", () => null);
 	const hydrated = useState<boolean>("auth.hydrated", () => false);
 	const redirectingToLogin = useState<boolean>("auth.redirecting-to-login", () => false);
+	const accessTokenCookie = useCookie<string | null>(COOKIE_KEYS.accessToken, {
+		sameSite: "lax",
+		path: "/",
+		default: () => null,
+	});
+	const refreshTokenCookie = useCookie<string | null>(COOKIE_KEYS.refreshToken, {
+		sameSite: "lax",
+		path: "/",
+		default: () => null,
+	});
 
 	function hydrateAuthState() {
 		if (!import.meta.client || hydrated.value) return;
 
-		accessToken.value = readStorageValue<string>(STORAGE_KEYS.accessToken);
-		refreshToken.value = readStorageValue<string>(STORAGE_KEYS.refreshToken);
+		accessToken.value = readStorageValue<string>(STORAGE_KEYS.accessToken) || accessTokenCookie.value;
+		refreshToken.value = readStorageValue<string>(STORAGE_KEYS.refreshToken) || refreshTokenCookie.value;
 		currentUser.value = readStorageValue<AuthUser>(STORAGE_KEYS.user);
 		currentSession.value = readStorageValue<AuthSession>(STORAGE_KEYS.session);
 		currentAccess.value = readStorageValue<AuthAccess>(STORAGE_KEYS.access);
@@ -134,19 +154,31 @@ export function useAuthSession() {
 	}
 
 	function persistAuthState() {
-		if (!import.meta.client) return;
-
 		if (accessToken.value) {
-			writeStorageValue(STORAGE_KEYS.accessToken, accessToken.value);
+			accessTokenCookie.value = accessToken.value;
+			if (import.meta.client) {
+				writeStorageValue(STORAGE_KEYS.accessToken, accessToken.value);
+			}
 		} else {
-			removeStorageValue(STORAGE_KEYS.accessToken);
+			accessTokenCookie.value = null;
+			if (import.meta.client) {
+				removeStorageValue(STORAGE_KEYS.accessToken);
+			}
 		}
 
 		if (refreshToken.value) {
-			writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken.value);
+			refreshTokenCookie.value = refreshToken.value;
+			if (import.meta.client) {
+				writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken.value);
+			}
 		} else {
-			removeStorageValue(STORAGE_KEYS.refreshToken);
+			refreshTokenCookie.value = null;
+			if (import.meta.client) {
+				removeStorageValue(STORAGE_KEYS.refreshToken);
+			}
 		}
+
+		if (!import.meta.client) return;
 
 		if (currentUser.value) {
 			writeStorageValue(STORAGE_KEYS.user, currentUser.value);
@@ -182,7 +214,11 @@ export function useAuthSession() {
 
 		redirectingToLogin.value = true;
 		try {
-			await navigateTo("/login");
+			const redirectTarget = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+			await navigateTo({
+				path: "/login",
+				query: redirectTarget.startsWith("/") ? { redirect: redirectTarget } : undefined,
+			});
 		} finally {
 			redirectingToLogin.value = false;
 		}

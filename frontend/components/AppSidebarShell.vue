@@ -12,11 +12,20 @@ const props = defineProps<{
 }>();
 
 const mobileSidebarOpen = ref(false);
-const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => true);
+const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
+	sameSite: "lax",
+	path: "/",
+	default: () => true,
+});
+const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
 const logoutConfirmOpen = ref(false);
 const profileMenuOpen = ref(false);
 const shellError = ref<string | null>(null);
-const isDesktopViewport = ref(false);
+const requestHeaders = import.meta.server ? useRequestHeaders([ "user-agent" ]) : {};
+const initialUserAgent = import.meta.server ? requestHeaders["user-agent"] || "" : "";
+const isDesktopViewport = ref(import.meta.server
+	? !/(android|iphone|ipad|ipod|mobile)/i.test(initialUserAgent)
+	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
 const { logout, currentUser, currentAccess } = useAuthSession();
@@ -193,6 +202,10 @@ watch(mobileSidebarOpen, (isOpen) => {
 	if (isOpen && !isDesktopViewport.value) {
 		profileMenuOpen.value = false;
 	}
+});
+
+watch(sidebarCollapsed, (value) => {
+	sidebarCollapsedCookie.value = value;
 });
 
 onMounted(() => {

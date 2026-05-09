@@ -5,6 +5,7 @@ const props = withDefaults(defineProps<{
 	description?: string;
 	desktopWidth?: string;
 	mobileMaxHeight?: string;
+	fillMobileHeight?: boolean;
 	showHandle?: boolean;
 	showCloseButton?: boolean;
 	closeButtonSize?: "xs" | "sm" | "md" | "lg" | "xl";
@@ -17,6 +18,7 @@ const props = withDefaults(defineProps<{
 }>(), {
 	desktopWidth: "420px",
 	mobileMaxHeight: "88vh",
+	fillMobileHeight: false,
 	showHandle: true,
 	showCloseButton: true,
 	closeButtonSize: "md",
@@ -286,11 +288,12 @@ onUnmounted(() => {
 		leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
 	>
 		<div
-			v-if="modelValue"
-			ref="panelRef"
-			:style="panelStyle"
-			:class="[
+				v-if="modelValue"
+				ref="panelRef"
+				:style="panelStyle"
+				:class="[
 				'fixed inset-x-0 bottom-0 max-h-[var(--app-panel-mobile-max-height)] rounded-none bg-[#fffefd] shadow-[0_16px_48px_rgba(31,28,24,0.12)] ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[var(--app-panel-desktop-width)] lg:rounded-none',
+				fillMobileHeight ? 'h-[var(--app-panel-mobile-max-height)]' : '',
 				panelMotionClass,
 				panelZClass,
 				panelClass,
@@ -312,6 +315,7 @@ onUnmounted(() => {
 			<div
 				:class="[
 					'scrollbar-soft max-h-[calc(var(--app-panel-mobile-max-height)-24px)] overflow-y-auto px-5 py-5 lg:h-full lg:max-h-none',
+					fillMobileHeight ? 'h-[calc(var(--app-panel-mobile-max-height)-24px)]' : '',
 					contentClass,
 				]"
 			>

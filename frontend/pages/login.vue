@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { needsAuthOnboarding } from "~/utils/auth-onboarding";
+
 const { login } = useAuthSession();
 const appToast = useAppToast();
+const route = useRoute();
 
 const DEV_PASSWORD = "dev123456";
 const DEV_LOGINS = [
@@ -50,6 +53,14 @@ const form = reactive({
 const submitting = ref(false);
 const showPassword = ref(false);
 
+onMounted(() => {
+	if (!import.meta.client) return;
+
+	window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+	document.documentElement.scrollTop = 0;
+	document.body.scrollTop = 0;
+});
+
 function extractLoginErrorMessage(error: unknown) {
 	if (typeof error === "object" && error) {
 		const data = Reflect.get(error, "data") as
@@ -67,12 +78,15 @@ function extractLoginErrorMessage(error: unknown) {
 async function loginToPos() {
 	submitting.value = true;
 	try {
-		await login({
+		const response = await login({
 			emailOrUsername: form.email,
 			password: form.password,
 			rememberMe: form.remember,
 		});
-		return navigateTo("/");
+		const redirectPath = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
+			? route.query.redirect
+			: "/";
+		return navigateTo(needsAuthOnboarding(response.user) ? "/onboarding" : redirectPath);
 	} catch (err) {
 		const message = extractLoginErrorMessage(err);
 		appToast.error({
@@ -198,7 +212,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 										color="neutral"
 										icon="i-heroicons-user-20-solid"
 										placeholder="manager@store.com"
-										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:ps-11 [&_input]:shadow-sm [&_span]:left-3 [&_span]:text-stone-400"
+										class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3.5 [&_input]:ps-13 [&_input]:pe-4.5 [&_input]:shadow-sm [&_span]:left-4 [&_span]:text-stone-400 [&_span_svg]:h-[18px] [&_span_svg]:w-[18px]"
 									/>
 								</div>
 
@@ -212,13 +226,13 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											color="neutral"
 											icon="i-heroicons-lock-closed-20-solid"
 											placeholder="••••••••"
-											class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3 [&_input]:ps-11 [&_input]:pr-12 [&_input]:shadow-sm [&_span]:left-3 [&_span]:text-stone-400"
+											class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3.5 [&_input]:ps-13 [&_input]:pe-14 [&_input]:shadow-sm [&_span]:left-4 [&_span]:text-stone-400 [&_span_svg]:h-[18px] [&_span_svg]:w-[18px]"
 										/>
 										<AppButton
 											color="neutral"
 											variant="ghost"
 											size="xs"
-											class="absolute top-1/2 right-2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900 [&_svg]:h-5 [&_svg]:w-5"
+											class="absolute top-1/2 right-2.5 z-10 flex h-8.5 w-8.5 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900 [&_svg]:h-[18px] [&_svg]:w-[18px]"
 											:icon="showPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 											:aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
 											:title="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
