@@ -2,7 +2,7 @@ export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
 	telemetry: false,
-	modules: [ "@nuxt/ui" ],
+	modules: [ "@nuxt/ui", "@vite-pwa/nuxt" ],
 	css: [ "~/assets/css/main.css" ],
 	nitro: {
 		compatibilityDate: "2026-05-04",
@@ -19,17 +19,77 @@ export default defineNuxtConfig({
 	},
 	app: {
 		head: {
-			title: "POS Starter UI",
+			title: "O KhaiDee+",
 			meta: [
 				{
 					name: "description",
-					content: "Responsive POS starter interface built with Nuxt and Tailwind CSS.",
+					content: "O KhaiDee+ web application.",
 				},
 				{
 					name: "color-scheme",
 					content: "light",
 				},
+				{
+					name: "theme-color",
+					content: "#22c55e",
+				},
+			],
+			link: [
+				{
+					rel: "icon",
+					type: "image/svg+xml",
+					href: "/icons/icon-192.svg",
+				},
+				{
+					rel: "apple-touch-icon",
+					href: "/icons/apple-touch-icon.svg",
+				},
 			],
 		},
+	},
+	pwa: {
+		registerType: "autoUpdate",
+		strategies: "injectManifest",
+		srcDir: "public",
+		filename: "sw.js",
+		injectManifest: {
+			injectionPoint: undefined,
+		},
+		devOptions: {
+			enabled: false,
+		},
+		manifest: {
+			name: "CodeSabai POS",
+			short_name: "CodeSabai",
+			description: "CodeSabai POS web application.",
+			theme_color: "#22c55e",
+			background_color: "#ffffff",
+			display: "standalone",
+			lang: "th",
+			start_url: "/",
+			icons: [
+				{
+					src: "/icons/icon-192.svg",
+					sizes: "192x192",
+					type: "image/svg+xml",
+					purpose: "any",
+				},
+				{
+					src: "/icons/icon-512.svg",
+					sizes: "512x512",
+					type: "image/svg+xml",
+					purpose: "any",
+				},
+				{
+					src: "/icons/maskable-icon.svg",
+					sizes: "512x512",
+					type: "image/svg+xml",
+					purpose: "maskable",
+				},
+			],
+		},
+		// Keep the initial PWA setup intentionally minimal.
+		// We are not enabling asset/API caching yet; offline and cache strategies
+		// can be added later when product requirements are clearer.
 	},
 });
