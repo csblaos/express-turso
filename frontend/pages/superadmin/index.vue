@@ -6,8 +6,9 @@ type Entry = { title: string; description: string; icon: string; to?: string; ba
 const entries: Entry[] = [
 	{ title: "Overview", description: "หน้าสรุปภาพรวมแบบ dashboard", icon: "i-heroicons-chart-pie", to: "/superadmin/overview", badge: "พร้อมใช้งาน" },
 	{ title: "Global Config", description: "ตั้งค่ากลางของระบบฝั่ง superadmin เช่น max accounts per store", icon: "i-heroicons-adjustments-horizontal", to: "/superadmin/global-config", badge: "พร้อมใช้งาน" },
-	{ title: "Users", description: "จัดการผู้ใช้ในมุม superadmin", icon: "i-heroicons-users", badge: "เร็ว ๆ นี้" },
-	{ title: "Stores", description: "ดูและจัดการร้านในระดับ superadmin", icon: "i-heroicons-building-storefront", badge: "เร็ว ๆ นี้" },
+	{ title: "Users", description: "จัดการพนักงานและผู้ใช้ภายใต้ร้านที่คุณดูแล", icon: "i-heroicons-users", to: "/superadmin/users", badge: "พร้อมใช้งาน" },
+	{ title: "Role Settings", description: "กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้าน", icon: "i-heroicons-shield-check", to: "/settings/roles", badge: "พร้อมใช้งาน" },
+	{ title: "Stores", description: "ดูและจัดการร้านในระดับ superadmin", icon: "i-heroicons-building-storefront", to: "/superadmin/stores", badge: "พร้อมใช้งาน" },
 	{ title: "กิจกรรม", description: "ดูประวัติการเปลี่ยนแปลงและกิจกรรมสำคัญ", icon: "i-heroicons-clipboard-document-check", to: "/activity", badge: "พร้อมใช้งาน" },
 	{ title: "Security", description: "ดูข้อมูลด้าน security", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
 	{ title: "Quotas", description: "ดู/จัดการ quota หรือข้อจำกัดการใช้งาน", icon: "i-heroicons-swatch", badge: "เร็ว ๆ นี้" },
@@ -48,13 +49,11 @@ const plannedEntries = computed(() => entries.filter((entry) => entry.badge === 
 							</div>
 
 							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
-								<component
-									:is="entry.to ? 'NuxtLink' : 'div'"
+								<NuxtLink
 									v-for="entry in coreEntries"
 									:key="entry.title"
-									:to="entry.to"
-									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 sm:p-4"
-									:class="entry.to ? 'transition hover:border-primary-200 hover:bg-primary-50' : ''"
+									:to="entry.to || '/superadmin'"
+									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 transition hover:border-primary-200 hover:bg-primary-50 sm:p-4"
 								>
 									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
 										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200 sm:h-11 sm:w-11">
@@ -74,7 +73,7 @@ const plannedEntries = computed(() => entries.filter((entry) => entry.badge === 
 											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
 										</div>
 									</div>
-								</component>
+								</NuxtLink>
 							</div>
 						</div>
 					</UCard>

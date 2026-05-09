@@ -139,8 +139,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 				<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(201,119,69,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(151,83,44,0.10),_transparent_24%)]" />
 				<div class="relative flex w-full flex-col justify-between p-8 xl:p-12">
 					<div class="flex items-center gap-4">
-						<div class="flex h-16 w-16 items-center justify-center rounded-3xl bg-[#f8e9de] text-2xl font-semibold text-[#97532c] shadow-sm ring-1 ring-[#efd7c6]">
-							P
+						<div class="h-16 w-16 overflow-hidden rounded-3xl">
+							<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
 						</div>
 						<div>
 							<p class="text-xs uppercase tracking-[0.24em] text-stone-400">Retail POS</p>
@@ -191,8 +191,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 						<UCard class="border-0 rounded-none bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd] sm:rounded-md">
 							<div class="space-y-6">
 								<div class="space-y-4 px-4 pt-4 text-center sm:px-0 sm:pt-0 lg:text-left">
-									<div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#f8e9de] text-2xl font-semibold text-[#97532c] shadow-sm ring-1 ring-[#efd7c6] lg:mx-0">
-										P
+									<div class="mx-auto h-16 w-16 overflow-hidden rounded-3xl lg:mx-0">
+										<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
 									</div>
 								<div>
 									<UBadge color="neutral" variant="soft" label="เข้าสู่ระบบ" />

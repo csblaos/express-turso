@@ -12,6 +12,9 @@ export class RbacController {
 			search: typeof req.query.search === "string" ? req.query.search : undefined,
 			status: typeof req.query.status === "string" ? req.query.status : undefined,
 			role_id: typeof req.query.role_id === "string" ? req.query.role_id : undefined,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -74,12 +77,19 @@ export class RbacController {
 			req.params.storeId as string,
 			req.params.userId as string,
 			req.body || {},
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
 		);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static createStoreMember = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await RbacComponent.createStoreMember(req.requestId, req.body || {});
+		const data = await RbacComponent.createStoreMember(req.requestId, req.body || {}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
@@ -89,6 +99,9 @@ export class RbacController {
 			user_id: req.params.userId as string,
 			status: req.body?.status,
 			added_by: req.body?.added_by,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
@@ -100,6 +113,9 @@ export class RbacController {
 			password: req.body?.password,
 			must_change_password: req.body?.must_change_password,
 			actor_user_id: req.body?.actor_user_id,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
 		});
 		SuccessHandler.send(res, req.requestId, { data });
 	});
