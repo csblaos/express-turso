@@ -19,7 +19,7 @@ const maxAccountsPerStore = ref(5);
 const baselineMaxAccountsPerStore = ref<number | null>(null);
 const canManageSystem = computed(() => (
 	can("system_admin.config.update")
-	|| can("superadmin.view")
+	|| can("superadmin.manage")
 ));
 const hasChanges = computed(() => (
 	baselineMaxAccountsPerStore.value !== null && maxAccountsPerStore.value !== baselineMaxAccountsPerStore.value
@@ -40,7 +40,7 @@ async function loadConfig() {
 	error.value = null;
 
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/settings");
+		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/superadmin/config");
 		maxAccountsPerStore.value = response.data.payment_max_accounts_per_store;
 		baselineMaxAccountsPerStore.value = response.data.payment_max_accounts_per_store;
 	} catch (err) {
@@ -53,7 +53,7 @@ async function loadConfig() {
 async function saveConfig() {
 	saving.value = true;
 	try {
-		await apiFetch("/settings", {
+		await apiFetch("/superadmin/config", {
 			method: "PUT",
 			body: {
 				payment_max_accounts_per_store: Number(maxAccountsPerStore.value),

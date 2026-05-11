@@ -14,6 +14,15 @@ export type AuditEventFilters = {
 	limit?: number;
 };
 
+export type AuditEventCountFilters = {
+	since: string;
+	scope?: string;
+	scopes?: string[];
+	actions?: string[];
+	entityType?: string;
+	result?: string;
+};
+
 export type AuditEventRecord = {
 	id: string;
 	scope: string;
@@ -309,5 +318,51 @@ export class AuditEventInterface {
 		}
 
 		return created;
+	}
+
+	static async countSince(filters: AuditEventCountFilters): Promise<number> {
+		await AuditEventInterface.ensureTable();
+
+		const db = DbConn.getClient();
+		const where: string[] = [ "occurred_at >= ?" ];
+		const args: InValue[] = [ filters.since ];
+
+		if (filters.scope) {
+			where.push("scope = ?");
+			args.push(filters.scope);
+		}
+
+		if (filters.scopes?.length) {
+			const placeholders = filters.scopes.map(() => "?").join(", ");
+			where.push(`scope IN (${placeholders})`);
+			args.push(...filters.scopes);
+		}
+
+		if (filters.actions?.length) {
+			const placeholders = filters.actions.map(() => "?").join(", ");
+			where.push(`action IN (${placeholders})`);
+			args.push(...filters.actions);
+		}
+
+		if (filters.entityType) {
+			where.push("entity_type = ?");
+			args.push(filters.entityType);
+		}
+
+		if (filters.result) {
+			where.push("result = ?");
+			args.push(filters.result);
+		}
+
+		const result = await db.execute({
+			sql: `
+				SELECT COUNT(*) AS total
+				FROM audit_events
+				WHERE ${where.join(" AND ")}
+			`,
+			args,
+		});
+
+		return Number(result.rows[0]?.total || 0);
 	}
 }

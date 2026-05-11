@@ -24,7 +24,6 @@ type StandardPermissionAction = "view" | "create" | "update" | "delete";
 type PermissionMatrixRow = {
 	resource: string;
 	standard: Record<StandardPermissionAction, PermissionRecord | null>;
-	advanced: PermissionRecord[];
 	allKeys: string[];
 };
 
@@ -40,6 +39,18 @@ type RoleDetailRecord = RoleRecord & {
 	permissions: PermissionRecord[];
 };
 
+type ApplyRoleMode = "create" | "update";
+
+const HIDDEN_ROLE_PERMISSION_KEYS = new Set([
+	"connections.approve",
+	"connections.export",
+	"connections.manage",
+]);
+
+function isHiddenRolePermissionKey(permissionKey: string) {
+	return HIDDEN_ROLE_PERMISSION_KEYS.has(permissionKey) || permissionKey.startsWith("system_admin.");
+}
+
 const { apiFetch } = useApiClient();
 const { can, currentUser } = useAuthSession();
 const appToast = useAppToast();
@@ -49,20 +60,25 @@ const selectedRoleId = ref("");
 const detailOpen = ref(false);
 const createOpen = ref(false);
 const duplicateOpen = ref(false);
+const applyOpen = ref(false);
 const deleteConfirmOpen = ref(false);
 const saving = ref(false);
 const deletingRoleId = ref("");
 const loading = ref(true);
 const reloading = ref(false);
 const roleDetailPending = ref(false);
+const createMetaPending = ref(false);
+const applyTargetRolesPending = ref(false);
 const suppressStoreWatch = ref(false);
 const rolesListScrollRef = ref<HTMLElement | null>(null);
 const error = ref<string | null>(null);
 const createError = ref<string | null>(null);
+const applyError = ref<string | null>(null);
 const stores = ref<StoreRecord[]>([]);
 const permissions = ref<PermissionRecord[]>([]);
 const roles = ref<RoleRecord[]>([]);
 const roleDetailsById = ref<Record<string, RoleDetailRecord>>({});
+const applyTargetRolesByStoreId = ref<Record<string, RoleRecord[]>>({});
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [ 10, 20, 50 ];
@@ -74,6 +90,13 @@ const createForm = reactive({
 
 const duplicateForm = reactive({
 	name: "",
+});
+
+const applyForm = reactive({
+	targetStoreId: "",
+	mode: "create" as ApplyRoleMode,
+	name: "",
+	targetRoleId: "",
 });
 
 const canManageRoles = computed(() => (
@@ -88,8 +111,12 @@ const isCreateRoleButtonDisabled = computed(() => (
 	!canManageRoles.value
 	|| saving.value
 ));
+const createPanelPending = computed(() => (
+	createMetaPending.value || (loading.value && (!stores.value.length || !permissions.value.length))
+));
 const createRolePermissionCount = computed(() => createForm.permissionKeys.length);
-const createRolePermissionTotal = computed(() => permissions.value.length);
+const visiblePermissions = computed(() => permissions.value.filter((permission) => !isHiddenRolePermissionKey(permission.key)));
+const createRolePermissionTotal = computed(() => permissionMatrixRows.value.reduce((total, row) => total + row.allKeys.length, 0));
 const canSubmitCreateRole = computed(() => (
 	canManageRoles.value
 	&& !saving.value
@@ -100,6 +127,31 @@ const canSubmitCreateRole = computed(() => (
 const selectedRole = computed(() => roles.value.find((role) => role.id === selectedRoleId.value) ?? roles.value[0] ?? null);
 const selectedRoleDetail = computed(() => (
 	selectedRoleId.value ? roleDetailsById.value[selectedRoleId.value] || null : null
+));
+const applyTargetStoreOptions = computed(() => (
+	stores.value.filter((store) => store.id !== selectedRole.value?.store_id)
+));
+const applyTargetRoles = computed(() => applyTargetRolesByStoreId.value[applyForm.targetStoreId] ?? []);
+const applyModeOptions = [
+	{ value: "create" as ApplyRoleMode, label: "สร้าง role ใหม่" },
+	{ value: "update" as ApplyRoleMode, label: "อัปเดต role เดิม" },
+];
+const canSubmitApplyRole = computed(() => (
+	canManageRoles.value
+	&& !saving.value
+	&& Boolean(selectedRole.value)
+	&& Boolean(applyForm.targetStoreId)
+	&& (
+		applyForm.mode === "create"
+			? applyForm.name.trim().length > 0
+			: applyForm.targetRoleId.trim().length > 0
+	)
+));
+const selectedApplyTargetRole = computed(() => (
+	applyTargetRoles.value.find((role) => role.id === applyForm.targetRoleId) ?? null
+));
+const selectedRolePermissionCount = computed(() => (
+	selectedRoleDetail.value?.permissions.length ?? selectedRole.value?.permissions_count ?? 0
 ));
 const isSelectedSystemRole = computed(() => Number(selectedRole.value?.is_system || 0) === 1);
 const roleDetailHasChanges = computed(() => {
@@ -164,7 +216,15 @@ function getPermissionAction(permission: PermissionRecord): string {
 const permissionMatrixRows = computed<PermissionMatrixRow[]>(() => {
 	const rows = new Map<string, PermissionMatrixRow>();
 
-	for (const permission of permissions.value) {
+	for (const permission of visiblePermissions.value) {
+		const action = getPermissionAction(permission);
+		const standardKey = action === "archive"
+			? "delete"
+			: standardPermissionActionSet.has(action as StandardPermissionAction)
+				? action as StandardPermissionAction
+				: null;
+		if (!standardKey) continue;
+
 		const resource = permission.resource;
 		const existing = rows.get(resource) || {
 			resource,
@@ -174,25 +234,12 @@ const permissionMatrixRows = computed<PermissionMatrixRow[]>(() => {
 				update: null,
 				delete: null,
 			},
-			advanced: [],
 			allKeys: [],
 		};
 
 		existing.allKeys.push(permission.key);
-		const action = getPermissionAction(permission);
-		const standardKey = action === "archive"
-			? "delete"
-			: standardPermissionActionSet.has(action as StandardPermissionAction)
-				? action as StandardPermissionAction
-				: null;
-		if (standardKey) {
-			if (!existing.standard[standardKey]) {
-				existing.standard[standardKey] = permission;
-			} else {
-				existing.advanced.push(permission);
-			}
-		} else {
-			existing.advanced.push(permission);
+		if (!existing.standard[standardKey]) {
+			existing.standard[standardKey] = permission;
 		}
 
 		rows.set(resource, existing);
@@ -202,8 +249,8 @@ const permissionMatrixRows = computed<PermissionMatrixRow[]>(() => {
 		.map((row) => ({
 			...row,
 			allKeys: Array.from(new Set(row.allKeys)),
-			advanced: row.advanced.slice().sort((left, right) => left.key.localeCompare(right.key)),
 		}))
+		.filter((row) => row.allKeys.length > 0)
 		.sort((left, right) => left.resource.localeCompare(right.resource));
 });
 
@@ -223,9 +270,45 @@ watch(duplicateOpen, (isOpen) => {
 	}
 });
 
+watch(applyOpen, async (isOpen) => {
+	if (!isOpen || !selectedRole.value) return;
+	applyForm.mode = "create";
+	applyForm.name = selectedRole.value.name;
+	applyForm.targetRoleId = "";
+	applyForm.targetStoreId = applyTargetStoreOptions.value[0]?.id || "";
+});
+
 watch(createOpen, (isOpen) => {
 	if (isOpen) {
 		createError.value = null;
+		if (!selectedStoreId.value && stores.value.length > 0) {
+			selectedStoreId.value = stores.value[0].id;
+		}
+	}
+});
+
+watch(() => applyForm.targetStoreId, async (value, previousValue) => {
+	if (!applyOpen.value || !value || value === previousValue) return;
+	applyForm.targetRoleId = "";
+	if (applyForm.mode === "update") {
+		await fetchApplyTargetRoles(value);
+		applyForm.targetRoleId = applyTargetRolesByStoreId.value[value]?.[0]?.id || "";
+	}
+});
+
+watch(() => applyForm.mode, async (mode) => {
+	if (!applyOpen.value) return;
+	if (mode === "create") {
+		applyForm.targetRoleId = "";
+		if (!applyForm.name.trim() && selectedRole.value) {
+			applyForm.name = selectedRole.value.name;
+		}
+		return;
+	}
+
+	if (applyForm.targetStoreId) {
+		await fetchApplyTargetRoles(applyForm.targetStoreId);
+		applyForm.targetRoleId = applyTargetRolesByStoreId.value[applyForm.targetStoreId]?.[0]?.id || "";
 	}
 });
 
@@ -348,16 +431,28 @@ async function selectRole(roleId: string) {
 }
 
 function openCreateRolePanel() {
-	if (loading.value) return;
 	if (!canManageRoles.value) return;
-	if (!selectedStoreId.value) {
+	if (!selectedStoreId.value && !loading.value && !stores.value.length) {
 		appToast.error({
-			title: "ยังเลือกร้านไม่ได้",
-			description: "กรุณาเลือกร้านก่อนสร้างบทบาท",
+			title: "ยังไม่พบร้าน",
+			description: "กรุณาสร้างร้านก่อน จึงจะสร้างบทบาทได้",
 		});
 		return;
 	}
 	createOpen.value = true;
+}
+
+function openApplyRolePanel() {
+	if (!canManageRoles.value || !selectedRole.value) return;
+	if (!applyTargetStoreOptions.value.length) {
+		appToast.error({
+			title: "ยังไม่มีร้านปลายทาง",
+			description: "ต้องมีร้านอื่นอย่างน้อย 1 ร้านก่อน จึงจะใช้ role นี้ข้ามร้านได้",
+		});
+		return;
+	}
+	applyError.value = null;
+	applyOpen.value = true;
 }
 
 async function reloadRolePage() {
@@ -416,6 +511,21 @@ async function fetchRoles() {
 	scrollRolesListToTop();
 }
 
+async function fetchApplyTargetRoles(storeId: string, force = false) {
+	if (!storeId) return;
+	if (!force && applyTargetRolesByStoreId.value[storeId]) return;
+	applyTargetRolesPending.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<RoleRecord[]>>(`/rbac/roles-summary?store_id=${encodeURIComponent(storeId)}`);
+		applyTargetRolesByStoreId.value = {
+			...applyTargetRolesByStoreId.value,
+			[storeId]: response.data,
+		};
+	} finally {
+		applyTargetRolesPending.value = false;
+	}
+}
+
 async function loadRoleDetail(roleId: string, force = false) {
 	if (!roleId) return;
 	if (!force && roleDetailsById.value[roleId]) return;
@@ -432,6 +542,7 @@ async function loadRoleDetail(roleId: string, force = false) {
 }
 
 async function createRole() {
+	if (createPanelPending.value) return;
 	if (!selectedStoreId.value) return;
 	if (!createForm.name.trim()) {
 		createError.value = "กรุณาระบุชื่อบทบาท";
@@ -523,6 +634,39 @@ async function duplicateRole() {
 	}
 }
 
+async function applyRoleToAnotherStore() {
+	if (!selectedRole.value || !canSubmitApplyRole.value) return;
+	applyError.value = null;
+	saving.value = true;
+	try {
+		await apiFetch(`/rbac/roles/${encodeURIComponent(selectedRole.value.id)}/apply`, {
+			method: "POST",
+			body: {
+				target_store_id: applyForm.targetStoreId,
+				mode: applyForm.mode,
+				name: applyForm.mode === "create" ? applyForm.name.trim() : undefined,
+				target_role_id: applyForm.mode === "update" ? applyForm.targetRoleId : undefined,
+				actor_user_id: currentUser.value?.id || null,
+			},
+		});
+		applyOpen.value = false;
+		appToast.success({
+			title: "ใช้ role กับอีกร้านแล้ว",
+			description: applyForm.mode === "create"
+				? "คัดลอกบทบาทและสิทธิ์ไปยังร้านปลายทางเรียบร้อย"
+				: "อัปเดต permission ของบทบาทปลายทางเรียบร้อย",
+		});
+	} catch (err) {
+		applyError.value = resolveApiErrorMessage(err, "ใช้ role กับอีกร้านไม่สำเร็จ");
+		appToast.error({
+			title: "ใช้ role กับอีกร้านไม่สำเร็จ",
+			description: applyError.value,
+		});
+	} finally {
+		saving.value = false;
+	}
+}
+
 function openDeleteRoleConfirm() {
 	const role = selectedRole.value;
 	if (!role) return;
@@ -583,7 +727,7 @@ onMounted(async () => {
 		sidebar-description="จัดการบทบาทระดับร้านภายใต้ client ที่คุณดูแล"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 				<AppPageHeader
 					title="Role Settings"
 					description="กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้านจากมุม Superadmin"
@@ -617,7 +761,7 @@ onMounted(async () => {
 					</template>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
 					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
@@ -845,28 +989,6 @@ onMounted(async () => {
 									</div>
 								</div>
 
-								<div v-if="row.advanced.length" class="mt-3 rounded-md border border-dashed border-neutral-200 bg-white p-3">
-									<p class="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Advanced</p>
-									<div class="mt-2 grid gap-2 md:grid-cols-2">
-										<label
-											v-for="permission in row.advanced"
-											:key="permission.id"
-											class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5"
-										>
-												<input
-													:checked="isPermissionChecked(permission.key)"
-													type="checkbox"
-													class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#c97745]"
-													:disabled="!canManageRoles || saving || roleDetailPending || !selectedRoleDetail"
-													@change="togglePermission(permission.key, ($event.target as HTMLInputElement).checked)"
-												/>
-											<div class="min-w-0">
-												<p class="text-sm font-medium text-stone-800">{{ permission.key }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ permission.action }}</p>
-											</div>
-										</label>
-									</div>
-								</div>
 							</div>
 						</div>
 
@@ -902,6 +1024,19 @@ onMounted(async () => {
 							</div>
 							<div class="mt-2">
 								<AppButton
+									color="primary"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-arrow-right-circle-20-solid"
+									:block="true"
+									:disabled="!canManageRoles || saving || roleDetailPending || !selectedRoleDetail"
+									@click="openApplyRolePanel"
+								>
+									ใช้กับอีกร้าน
+								</AppButton>
+							</div>
+							<div class="mt-2">
+								<AppButton
 									color="error"
 									variant="soft"
 									size="md"
@@ -925,125 +1060,115 @@ onMounted(async () => {
 				title="สร้างบทบาทใหม่"
 				description="เริ่มจากชื่อ role แล้วเลือกสิทธิ์ที่เหมาะกับทีมงานของร้านนี้"
 				desktop-width="520px"
+				mobile-max-height="88dvh"
+				:fill-mobile-height="true"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 			>
 				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
-						<div class="rounded-md border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-stone-700">
-							เลือกแล้ว {{ createRolePermissionCount }} / {{ createRolePermissionTotal }} สิทธิ์
+						<div v-if="createPanelPending" class="space-y-4">
+							<AppInlineLoadingBar label="กำลังเตรียมข้อมูลสำหรับสร้างบทบาท..." />
 						</div>
 
-						<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-							<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ชื่อบทบาท</label>
-							<UInput
-								v-model="createForm.name"
-								size="lg"
-								color="neutral"
-								class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
-							/>
-						</div>
-
-						<div
-							v-for="row in permissionMatrixRows"
-							:key="`create-${row.resource}`"
-							class="rounded-md border border-neutral-200 bg-neutral-50 p-4"
-						>
-							<div class="flex flex-wrap items-center justify-between gap-3">
-								<div>
-									<p class="text-sm font-semibold capitalize text-stone-900">{{ row.resource }}</p>
-									<p class="mt-1 text-xs text-stone-500">
-										เลือกแล้ว {{ countSelectedPermissionKeys(createForm.permissionKeys, row.allKeys) }} / {{ row.allKeys.length }}
-									</p>
-								</div>
-								<div class="flex flex-wrap gap-2">
-									<AppButton
-										color="neutral"
-										variant="soft"
-										size="md"
-										label="เลือกทั้งหมด"
-										:disabled="!canManageRoles || saving"
-										@click="toggleCreatePermissionGroup(row.allKeys, true)"
-									/>
-									<AppButton
-										color="neutral"
-										variant="soft"
-										size="md"
-										label="ล้างทั้งหมด"
-										:disabled="!canManageRoles || saving"
-										@click="toggleCreatePermissionGroup(row.allKeys, false)"
-									/>
-								</div>
+						<template v-else>
+							<div v-if="!selectedStoreId" class="rounded-md border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-stone-700">
+								ยังไม่พบร้านสำหรับสร้างบทบาท กรุณาสร้างร้านก่อนหรือรีโหลดข้อมูลอีกครั้ง
 							</div>
 
-							<div class="mt-4 overflow-x-auto">
-								<div class="min-w-[460px] space-y-2">
-									<div class="grid grid-cols-[minmax(120px,1fr)_repeat(4,minmax(0,64px))] items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
-										<p>Actions</p>
-										<p
-											v-for="standardAction in standardPermissionActions"
-											:key="`create-${row.resource}-head-${standardAction.key}`"
-											class="text-center"
-										>
-											{{ standardAction.label }}
+							<div class="rounded-md border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-stone-700">
+								เลือกแล้ว {{ createRolePermissionCount }} / {{ createRolePermissionTotal }} สิทธิ์
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ชื่อบทบาท</label>
+								<UInput
+									v-model="createForm.name"
+									size="lg"
+									color="neutral"
+									class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+								/>
+							</div>
+
+							<div
+								v-for="row in permissionMatrixRows"
+								:key="`create-${row.resource}`"
+								class="rounded-md border border-neutral-200 bg-neutral-50 p-4"
+							>
+								<div class="flex flex-wrap items-center justify-between gap-3">
+									<div>
+										<p class="text-sm font-semibold capitalize text-stone-900">{{ row.resource }}</p>
+										<p class="mt-1 text-xs text-stone-500">
+											เลือกแล้ว {{ countSelectedPermissionKeys(createForm.permissionKeys, row.allKeys) }} / {{ row.allKeys.length }}
 										</p>
 									</div>
+									<div class="flex flex-wrap gap-2">
+										<AppButton
+											color="neutral"
+											variant="soft"
+											size="md"
+											label="เลือกทั้งหมด"
+											:disabled="!canManageRoles || saving"
+											@click="toggleCreatePermissionGroup(row.allKeys, true)"
+										/>
+										<AppButton
+											color="neutral"
+											variant="soft"
+											size="md"
+											label="ล้างทั้งหมด"
+											:disabled="!canManageRoles || saving"
+											@click="toggleCreatePermissionGroup(row.allKeys, false)"
+										/>
+									</div>
+								</div>
 
-									<div class="grid grid-cols-[minmax(120px,1fr)_repeat(4,minmax(0,64px))] items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-3">
-										<p class="text-sm font-medium text-stone-800">Permission</p>
-										<div
-											v-for="standardAction in standardPermissionActions"
-											:key="`create-${row.resource}-body-${standardAction.key}`"
-											class="flex items-center justify-center"
-										>
-											<input
-												v-if="row.standard[standardAction.key]"
-												:checked="isCreatePermissionChecked(row.standard[standardAction.key]!.key)"
-												type="checkbox"
-												class="h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#c97745]"
-												:disabled="!canManageRoles || saving"
-												@change="toggleCreatePermission(row.standard[standardAction.key]!.key, ($event.target as HTMLInputElement).checked)"
-											/>
-											<span v-else class="text-xs text-stone-300">-</span>
+								<div class="mt-4 overflow-x-auto">
+									<div class="min-w-[460px] space-y-2">
+										<div class="grid grid-cols-[minmax(120px,1fr)_repeat(4,minmax(0,64px))] items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
+											<p>Actions</p>
+											<p
+												v-for="standardAction in standardPermissionActions"
+												:key="`create-${row.resource}-head-${standardAction.key}`"
+												class="text-center"
+											>
+												{{ standardAction.label }}
+											</p>
+										</div>
+
+										<div class="grid grid-cols-[minmax(120px,1fr)_repeat(4,minmax(0,64px))] items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-3">
+											<p class="text-sm font-medium text-stone-800">Permission</p>
+											<div
+												v-for="standardAction in standardPermissionActions"
+												:key="`create-${row.resource}-body-${standardAction.key}`"
+												class="flex items-center justify-center"
+											>
+												<input
+													v-if="row.standard[standardAction.key]"
+													:checked="isCreatePermissionChecked(row.standard[standardAction.key]!.key)"
+													type="checkbox"
+													class="h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#c97745]"
+													:disabled="!canManageRoles || saving"
+													@change="toggleCreatePermission(row.standard[standardAction.key]!.key, ($event.target as HTMLInputElement).checked)"
+												/>
+												<span v-else class="text-xs text-stone-300">-</span>
+											</div>
 										</div>
 									</div>
 								</div>
+
 							</div>
 
-							<div v-if="row.advanced.length" class="mt-3 rounded-md border border-dashed border-neutral-200 bg-white p-3">
-								<p class="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Advanced</p>
-								<div class="mt-2 grid gap-2 md:grid-cols-2">
-									<label
-										v-for="permission in row.advanced"
-										:key="permission.id"
-										class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5"
-									>
-										<input
-											:checked="isCreatePermissionChecked(permission.key)"
-											type="checkbox"
-											class="mt-1 h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#c97745]"
-											:disabled="!canManageRoles || saving"
-											@change="toggleCreatePermission(permission.key, ($event.target as HTMLInputElement).checked)"
-										/>
-										<div class="min-w-0">
-											<p class="text-sm font-medium text-stone-800">{{ permission.key }}</p>
-											<p class="mt-1 text-xs text-stone-500">{{ permission.action }}</p>
-										</div>
-									</label>
-								</div>
+							<div v-if="createError" class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+								{{ createError }}
 							</div>
-						</div>
-
-						<div v-if="createError" class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-							{{ createError }}
-						</div>
+						</template>
 					</div>
 
 					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :block="true" :disabled="!canSubmitCreateRole" :loading="saving" :spin-icon-on-loading="true" @click="createRole">
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :block="true" :disabled="createPanelPending || !canSubmitCreateRole" :loading="saving" :spin-icon-on-loading="true" @click="createRole">
 								สร้างบทบาท
 							</AppButton>
 						</div>
@@ -1080,6 +1205,123 @@ onMounted(async () => {
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="duplicateOpen = false">ยกเลิก</AppButton>
 							<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canManageRoles || saving" :loading="saving" :spin-icon-on-loading="true" @click="duplicateRole">
 								ทำสำเนา
+							</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="applyOpen"
+				title="ใช้ role นี้กับอีกร้าน"
+				description="คัดลอก permission ของ role ปัจจุบันไปยังร้านปลายทาง โดยไม่ต้อง preload roles ทุก store ตั้งแต่แรก"
+				desktop-width="620px"
+				mobile-max-height="88dvh"
+				:fill-mobile-height="true"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+						<div class="rounded-md border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-stone-700">
+							<div class="flex flex-wrap items-center justify-between gap-3">
+								<div>
+									<p class="font-semibold text-stone-900">{{ selectedRole?.name || "-" }}</p>
+									<p class="mt-1 text-xs text-stone-500">Source store: {{ stores.find((store) => store.id === selectedRole?.store_id)?.name || "-" }}</p>
+								</div>
+								<UBadge color="primary" variant="soft" :label="`${selectedRolePermissionCount} permissions`" />
+							</div>
+						</div>
+
+						<div v-if="!applyTargetStoreOptions.length" class="rounded-md border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-stone-700">
+							ยังไม่มีร้านอื่นให้ใช้ role นี้ต่อได้
+						</div>
+
+						<template v-else>
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้านปลายทาง</label>
+								<select
+									v-model="applyForm.targetStoreId"
+									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+								>
+									<option v-for="store in applyTargetStoreOptions" :key="store.id" :value="store.id">{{ store.name }}</option>
+								</select>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">โหมด</label>
+								<div class="mt-3 grid gap-2 sm:grid-cols-2">
+									<button
+										v-for="option in applyModeOptions"
+										:key="option.value"
+										type="button"
+										class="rounded-md border px-3 py-3 text-left text-sm transition"
+										:class="applyForm.mode === option.value ? 'border-primary-300 bg-primary-50 text-primary-800' : 'border-neutral-200 bg-white text-stone-700 hover:bg-neutral-50'"
+										@click="applyForm.mode = option.value"
+									>
+										{{ option.label }}
+									</button>
+								</div>
+							</div>
+
+							<div v-if="applyForm.mode === 'create'" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ชื่อบทบาทใหม่</label>
+								<UInput
+									v-model="applyForm.name"
+									size="lg"
+									color="neutral"
+									class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+								/>
+								<p class="mt-2 text-xs text-stone-500">เหมาะกับการสร้าง role ใหม่ในร้านปลายทาง โดยใช้ permission ชุดเดียวกับต้นทาง</p>
+							</div>
+
+							<div v-else class="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<div v-if="applyTargetRolesPending">
+									<AppInlineLoadingBar label="กำลังโหลดบทบาทของร้านปลายทาง..." />
+								</div>
+								<template v-else>
+									<div v-if="!applyTargetRoles.length" class="rounded-md border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-stone-700">
+										ร้านปลายทางยังไม่มี role ให้เลือกอัปเดต
+									</div>
+									<div v-else>
+										<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาทปลายทาง</label>
+										<select
+											v-model="applyForm.targetRoleId"
+											class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option v-for="role in applyTargetRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+										</select>
+										<p class="mt-2 text-xs text-stone-500">
+											ระบบจะอัปเดต permission ของ
+											<span class="font-semibold text-stone-700">{{ selectedApplyTargetRole?.name || "role ปลายทาง" }}</span>
+											ให้ตรงกับ role ต้นทาง โดยยังคงชื่อ role เดิมของร้านปลายทางไว้
+										</p>
+									</div>
+								</template>
+							</div>
+
+							<div v-if="applyError" class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+								{{ applyError }}
+							</div>
+						</template>
+					</div>
+
+					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="applyOpen = false">ยกเลิก</AppButton>
+							<AppButton
+								color="primary"
+								variant="solid"
+								size="md"
+								icon="i-heroicons-arrow-right-circle-20-solid"
+								:block="true"
+								:disabled="applyTargetRolesPending || !canSubmitApplyRole"
+								:loading="saving"
+								:spin-icon-on-loading="true"
+								@click="applyRoleToAnotherStore"
+							>
+								{{ applyForm.mode === 'create' ? 'สร้างในร้านปลายทาง' : 'อัปเดต role ปลายทาง' }}
 							</AppButton>
 						</div>
 					</div>

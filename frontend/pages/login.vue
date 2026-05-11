@@ -85,7 +85,7 @@ async function loginToPos() {
 		});
 		const redirectPath = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
 			? route.query.redirect
-			: "/";
+			: (response.user.systemRole === "system_admin" ? "/system-admin/dashboard" : "/");
 		return navigateTo(needsAuthOnboarding(response.user) ? "/onboarding" : redirectPath);
 	} catch (err) {
 		const message = extractLoginErrorMessage(err);
@@ -232,6 +232,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											color="neutral"
 											variant="ghost"
 											size="xs"
+											tabindex="-1"
 											class="absolute top-1/2 right-2.5 z-10 flex h-8.5 w-8.5 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900 [&_svg]:h-[18px] [&_svg]:w-[18px]"
 											:icon="showPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 											:aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"

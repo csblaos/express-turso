@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -92,8 +93,11 @@ const selectedClientId = ref("");
 const createOpen = ref(false);
 const detailOpen = ref(false);
 const deleteOpen = ref(false);
+const resetPasswordOpen = ref(false);
 const showCreatePassword = ref(false);
+const showResetPassword = ref(false);
 const createSuccess = ref<CreatedClientCredential | null>(null);
+const resetPasswordSuccess = ref<CreatedClientCredential | null>(null);
 const deleteCheckPending = ref(false);
 const deleteCheck = ref<ClientDeleteCheck | null>(null);
 const deleteConfirmText = ref("");
@@ -126,6 +130,7 @@ const createForm = reactive({
 
 const detailForm = reactive({
 	name: "",
+	email: "",
 	ui_locale: "th",
 	can_create_stores: true,
 	max_stores: "1",
@@ -133,6 +138,11 @@ const detailForm = reactive({
 	can_create_branches: true,
 	must_change_password: false,
 	suspend_reason: "",
+});
+
+const resetPasswordForm = reactive({
+	password: "",
+	must_change_password: true,
 });
 
 const canManageSystem = computed(() => (
@@ -158,6 +168,7 @@ const detailHasChanges = computed(() => {
 
 	return (
 		detailForm.name !== selectedClient.value.name
+		|| detailForm.email !== selectedClient.value.email
 		|| detailForm.ui_locale !== (selectedClient.value.ui_locale || "th")
 		|| detailForm.can_create_stores !== Boolean(selectedClient.value.can_create_stores)
 		|| detailForm.max_stores !== (selectedClient.value.max_stores === null ? "" : String(selectedClient.value.max_stores))
@@ -206,6 +217,7 @@ const detailBranchPermissionHint = computed(() => {
 watch(selectedClient, (client) => {
 	if (!client) return;
 	detailForm.name = client.name;
+	detailForm.email = client.email;
 	detailForm.ui_locale = client.ui_locale || "th";
 	detailForm.can_create_stores = Boolean(client.can_create_stores);
 	detailForm.max_stores = client.max_stores === null ? "" : String(client.max_stores);
@@ -263,6 +275,7 @@ watch(createOpen, (opened) => {
 watch(detailOpen, (opened) => {
 	if (opened) return;
 	closeDeleteModal();
+	closeResetPasswordModal();
 });
 
 function formatDate(value: string | null) {
@@ -327,7 +340,10 @@ function openCreateModal() {
 
 function fillQuickPassword() {
 	createForm.password = "123456";
-	showCreatePassword.value = true;
+}
+
+function quickFillResetPassword() {
+	resetPasswordForm.password = "123456";
 }
 
 function toOptionalNumber(value: string | number) {
@@ -337,27 +353,6 @@ function toOptionalNumber(value: string | number) {
 
 	const trimmed = value.trim();
 	return trimmed === "" ? null : Number(trimmed);
-}
-
-function resolveApiErrorMessage(error: unknown, fallback = "โปรดลองอีกครั้ง") {
-	if (typeof error === "object" && error) {
-		const response = Reflect.get(error, "response");
-		if (typeof response === "object" && response) {
-			const data = Reflect.get(response, "_data") || Reflect.get(response, "data");
-			if (typeof data === "object" && data) {
-				const message = Reflect.get(data, "message");
-				if (typeof message === "string" && message.trim()) {
-					return message;
-				}
-			}
-		}
-	}
-
-	if (error instanceof Error && error.message.trim()) {
-		return error.message;
-	}
-
-	return fallback;
 }
 
 function resetCreateForm() {
@@ -389,6 +384,29 @@ function closeDeleteModal() {
 	deleteCheckPending.value = false;
 	deleteCheck.value = null;
 	deleteConfirmText.value = "";
+}
+
+function resetResetPasswordForm() {
+	resetPasswordForm.password = "";
+	resetPasswordForm.must_change_password = true;
+	showResetPassword.value = false;
+	resetPasswordSuccess.value = null;
+}
+
+function openResetPasswordModal() {
+	if (!selectedClient.value) return;
+	resetResetPasswordForm();
+	resetPasswordOpen.value = true;
+}
+
+function closeResetPasswordModal() {
+	resetPasswordOpen.value = false;
+	resetResetPasswordForm();
+}
+
+function completeResetPasswordFlow() {
+	closeResetPasswordModal();
+	detailOpen.value = false;
 }
 
 async function copyCreatedCredential() {
@@ -458,6 +476,56 @@ async function shareCreatedCredential() {
 	});
 }
 
+async function copyResetPasswordCredential() {
+	if (!resetPasswordSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${resetPasswordSuccess.value.email}`,
+		`Password: ${resetPasswordSuccess.value.password}`,
+	].join("\n");
+
+	try {
+		await navigator.clipboard.writeText(text);
+		appToast.success({
+			title: "คัดลอก credential แล้ว",
+			description: "นำไปส่งต่อให้ client ได้ทันที",
+		});
+	} catch {
+		appToast.error({
+			title: "คัดลอกไม่สำเร็จ",
+			description: "โปรดลองคัดลอกอีกครั้ง",
+		});
+	}
+}
+
+async function shareResetPasswordCredential() {
+	if (!resetPasswordSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${resetPasswordSuccess.value.email}`,
+		`Password: ${resetPasswordSuccess.value.password}`,
+	].join("\n");
+
+	if (typeof navigator.share === "function") {
+		try {
+			await navigator.share({
+				title: "Client login credential",
+				text,
+			});
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "";
+			if (message.toLowerCase().includes("abort")) return;
+		}
+	}
+
+	await copyResetPasswordCredential();
+	appToast.success({
+		title: "อุปกรณ์นี้ไม่รองรับ share โดยตรง",
+		description: "ระบบคัดลอก credential ให้แล้ว เพื่อนำไปวางส่งต่อได้ทันที",
+	});
+}
+
 function resetListPage() {
 	currentPage.value = 1;
 }
@@ -502,7 +570,9 @@ async function loadClients() {
 			detailOpen.value = false;
 		}
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : "โหลด client accounts ไม่สำเร็จ";
+		error.value = resolveApiErrorMessage(err, "โหลด client accounts ไม่สำเร็จ", {
+			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู Client Accounts",
+		});
 	} finally {
 		pending.value = false;
 	}
@@ -510,7 +580,7 @@ async function loadClients() {
 
 async function loadCreateDefaults() {
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/settings");
+		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config");
 		systemDefaults.value = response.data;
 		resetCreateForm();
 	} catch {
@@ -566,6 +636,7 @@ async function saveClient() {
 			method: "PATCH",
 			body: {
 				name: detailForm.name,
+				email: detailForm.email,
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
 				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
@@ -583,6 +654,39 @@ async function saveClient() {
 	} catch (err) {
 		appToast.error({
 			title: "บันทึกไม่สำเร็จ",
+			description: resolveApiErrorMessage(err),
+		});
+	} finally {
+		saving.value = false;
+	}
+}
+
+async function resetClientPassword() {
+	if (!selectedClient.value) return;
+	saving.value = true;
+	try {
+		const plainPassword = resetPasswordForm.password;
+		await apiFetch<ApiEnvelope<ClientRecord>>(`/system-admin/clients/${encodeURIComponent(selectedClient.value.id)}/reset-password`, {
+			method: "POST",
+			body: {
+				password: resetPasswordForm.password,
+				must_change_password: resetPasswordForm.must_change_password,
+				actor_user_id: currentUser.value?.id || null,
+			},
+		});
+		resetPasswordSuccess.value = {
+			name: selectedClient.value.name,
+			email: selectedClient.value.email,
+			password: plainPassword,
+		};
+		appToast.success({
+			title: "อัปเดตรหัสผ่านแล้ว",
+			description: "credential ชุดใหม่พร้อมส่งต่อให้ client แล้ว",
+		});
+		await loadClients();
+	} catch (err) {
+		appToast.error({
+			title: "อัปเดตรหัสผ่านไม่สำเร็จ",
 			description: resolveApiErrorMessage(err),
 		});
 	} finally {
@@ -655,11 +759,11 @@ onMounted(async () => {
 </script>
 
 <template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
-		:active-ids="['system-admin']"
-		sidebar-eyebrow="System"
-		sidebar-title="System Admin"
+		<AppSidebarShell
+			:nav-items="appNavItems"
+			:active-ids="['system-clients']"
+			sidebar-eyebrow="System"
+			sidebar-title="System Admin"
 		sidebar-compact-title="SYS"
 		sidebar-description="จัดการ client / superadmin accounts ที่จะ login แล้วเริ่มสร้างร้านของตัวเอง"
 	>
@@ -1032,6 +1136,10 @@ onMounted(async () => {
 									<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
 									<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
+								<div>
+									<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
+									<input v-model="detailForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								</div>
 							</div>
 
 							<div class="space-y-3">
@@ -1075,6 +1183,23 @@ onMounted(async () => {
 										<p class="text-sm font-medium text-stone-900">บังคับเปลี่ยนรหัสผ่านในการ login ครั้งถัดไป</p>
 									</div>
 								</label>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-sm font-medium text-stone-900">Security</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">ตั้งรหัสผ่านใหม่ให้บัญชีนี้ และส่งต่อ credential ชุดใหม่ให้ client ได้ทันที</p>
+								<div class="mt-4">
+									<AppButton
+										color="primary"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-key-20-solid"
+										:disabled="!canManageSystem"
+										@click="openResetPasswordModal"
+									>
+										อัปเดตรหัสผ่าน
+									</AppButton>
+								</div>
 							</div>
 
 							<div class="rounded-md border border-warning-200 bg-warning-50 p-4">
@@ -1122,6 +1247,115 @@ onMounted(async () => {
 							</div>
 						</div>
 					</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="resetPasswordOpen"
+				title="Update password"
+				description="ตั้งรหัสผ่านใหม่ให้บัญชีนี้ และส่งต่อ credential ให้ client ได้ทันที"
+				desktop-width="560px"
+				mobile-max-height="88dvh"
+				:fill-mobile-height="true"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div v-if="selectedClient" class="flex h-full min-h-0 flex-col">
+					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
+						<div v-if="!resetPasswordSuccess" class="space-y-4 pb-6">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-sm font-medium text-stone-900">{{ selectedClient.name }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ selectedClient.email }}</p>
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
+								<div class="relative">
+									<input
+										v-model="resetPasswordForm.password"
+										:type="showResetPassword ? 'text' : 'password'"
+										placeholder="ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร"
+										class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+									<button
+										type="button"
+										class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+										:aria-label="showResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="showResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="showResetPassword = !showResetPassword"
+									>
+										<UIcon :name="showResetPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
+									</button>
+								</div>
+								<p class="mt-2 text-xs leading-5 text-stone-500">ใช้รหัสชั่วคราวสำหรับส่งให้ client ก่อนเปลี่ยนเองครั้งแรก</p>
+								<button
+									type="button"
+									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+									@click="quickFillResetPassword"
+								>
+									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
+									ใช้รหัส 123456
+								</button>
+							</div>
+
+							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<input v-model="resetPasswordForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+								<div>
+									<p class="text-sm font-medium text-stone-900">บังคับให้เปลี่ยนรหัสผ่านในการ login ครั้งถัดไป</p>
+								</div>
+							</label>
+						</div>
+
+						<div v-else class="space-y-4 pb-6">
+							<div class="rounded-md border border-success/20 bg-success/5 p-4">
+								<div class="flex items-start gap-3">
+									<div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-success/10 text-success ring-1 ring-success/15">
+										<UIcon name="i-heroicons-check-circle-20-solid" class="h-5 w-5" />
+									</div>
+									<div>
+										<p class="text-sm font-semibold text-stone-950">อัปเดตรหัสผ่านสำเร็จแล้ว</p>
+										<p class="mt-1 text-sm leading-6 text-stone-600">คัดลอก username และ password ชุดนี้ไปส่งต่อให้ client ได้ทันที ก่อนกด done เพื่อปิด modal</p>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Credential</p>
+								<div class="mt-4 space-y-3">
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ resetPasswordSuccess.email }}
+										</div>
+									</div>
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Password</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ resetPasswordSuccess.password }}
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+								<p class="text-sm font-medium text-stone-900">{{ resetPasswordSuccess.name }}</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">credential นี้แสดงชั่วคราวใน modal นี้เท่านั้น หลังปิด modal แล้วจะไม่แสดง password เดิมอีก</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+						<div v-if="!resetPasswordSuccess" class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeResetPasswordModal">ยกเลิก</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-key-20-solid" :loading="saving" :disabled="!canManageSystem || resetPasswordForm.password.trim().length < 6" :spin-icon-on-loading="true" :block="true" @click="resetClientPassword">อัปเดตรหัสผ่าน</AppButton>
+						</div>
+						<div v-else class="grid w-full gap-2 sm:grid-cols-3">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clipboard-document-20-solid" :block="true" @click="copyResetPasswordCredential">Copy</AppButton>
+							<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-share-20-solid" :block="true" @click="shareResetPasswordCredential">Share</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" @click="completeResetPasswordFlow">Done</AppButton>
+						</div>
+					</div>
+				</div>
 			</AppResponsivePanel>
 
 			<AppResponsivePanel

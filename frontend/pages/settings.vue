@@ -29,28 +29,18 @@ function staticEntries(section: SettingsSection) {
 	return section.entries.filter((entry) => !entry.to);
 }
 
-const accessQuickLinks: SettingsEntry[] = [
-	{
-		id: "access-users",
-		title: "ผู้ใช้งาน",
-		description: "ดูสมาชิกในร้าน, เปลี่ยนบทบาท และรีเซ็ตรหัสผ่าน",
-		icon: "i-heroicons-users",
-		to: "/settings/users",
-		badge: "พร้อมใช้งาน",
-	},
-];
-
 const settingsSections: SettingsSection[] = [
 	{
 		id: "user",
 		eyebrow: "User settings",
 		title: "ตั้งค่าทั่วไปของผู้ใช้",
-		description: "ของผู้ใช้ในร้าน เช่น โปรไฟล์, ความปลอดภัย, ผู้ใช้งาน และข้อมูลประกอบการขายบางส่วน",
+		description: "โปรไฟล์ ความปลอดภัย ผู้ใช้งาน และค่าพื้นฐานที่เกี่ยวกับการใช้งานร้าน",
 		entries: [
 			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", to: "/profile", badge: "พร้อมใช้งาน" },
 			{ id: "language", title: "Language", description: "ตั้งค่าภาษา UI และรูปแบบการแสดงผล", icon: "i-heroicons-language", badge: "เร็ว ๆ นี้" },
 			{ id: "security", title: "Security", description: "ดูข้อมูลความปลอดภัยของบัญชีและ session", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
 			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/users", badge: "พร้อมใช้งาน" },
+			{ id: "roles", title: "Roles", description: "จัดการบทบาทของร้านและสิทธิ์การใช้งาน", icon: "i-heroicons-identification", to: "/settings/roles", badge: "พร้อมใช้งาน" },
 			{ id: "categories", title: "Categories", description: "จัดการหมวดหมู่สินค้า", icon: "i-heroicons-tag", to: "/products" },
 			{ id: "units", title: "Units", description: "จัดการหน่วยสินค้าและหน่วยขาย", icon: "i-heroicons-scale", to: "/products" },
 			{ id: "stock-alert", title: "Stock", description: "ตั้งค่า stock alert และ threshold", icon: "i-heroicons-bell-alert", to: "/inventory" },
@@ -64,7 +54,7 @@ const settingsSections: SettingsSection[] = [
 		id: "store",
 		eyebrow: "Store settings",
 		title: "ตั้งค่าร้านที่กำลังใช้งาน",
-		description: "สิ่งที่กระทบการขายของร้านปัจจุบัน เช่น โปรไฟล์ร้าน, การเงิน, การชำระเงิน, ขนส่ง และการสลับสาขา",
+		description: "โปรไฟล์ร้าน การเงิน การชำระเงิน ขนส่ง และค่าของสาขาที่กำลังใช้งาน",
 		entries: [
 			{ id: "store-profile", title: "Store Profile", description: "ชื่อร้าน โลโก้ ที่อยู่ และช่องทางติดต่อ", icon: "i-heroicons-building-storefront", badge: "เร็ว ๆ นี้" },
 			{ id: "store-finance", title: "Store Finance", description: "base currency, supported currencies และ VAT", icon: "i-heroicons-banknotes", badge: "เร็ว ๆ นี้" },
@@ -89,42 +79,10 @@ const settingsSections: SettingsSection[] = [
 	>
 		<template #default="{ openSidebar }">
 			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<AppPageHeader title="ศูนย์รวมการตั้งค่า" description="หน้าหลักนี้ใช้เป็น hub สำหรับการตั้งค่าของผู้ใช้และร้านปัจจุบันเท่านั้น" @menu="openSidebar">
+				<AppPageHeader title="ศูนย์รวมการตั้งค่า" description="รวมการตั้งค่าของผู้ใช้และร้านที่กำลังใช้งาน" @menu="openSidebar">
 				</AppPageHeader>
 
 				<div class="scrollbar-soft min-h-0 min-w-0 space-y-3 overflow-x-hidden overflow-y-auto lg:pr-1">
-					<UCard class="min-w-0 max-w-full rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="space-y-3 sm:space-y-4">
-							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Access control</p>
-								<h2 class="mt-2 text-lg font-semibold text-stone-950 sm:text-xl">สิทธิ์การใช้งาน</h2>
-								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">จัดการผู้ใช้งานในร้านจาก Settings และกำหนดบทบาทจากหน้า Superadmin</p>
-							</div>
-
-							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-1">
-								<NuxtLink
-									v-for="entry in accessQuickLinks"
-									:key="entry.id"
-									:to="entry.to"
-									class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-3 transition hover:border-primary-200 hover:bg-primary-50 sm:p-4"
-								>
-									<div class="flex items-center gap-3 sm:items-start sm:justify-between">
-										<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200 sm:h-11 sm:w-11">
-											<UIcon :name="entry.icon" class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-										</div>
-										<div class="min-w-0 flex-1">
-											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-												<h3 class="truncate text-sm font-semibold text-stone-900">{{ entry.title }}</h3>
-												<UBadge color="success" variant="soft" :label="entry.badge" class="shrink-0" />
-											</div>
-											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
-										</div>
-									</div>
-								</NuxtLink>
-							</div>
-						</div>
-					</UCard>
-
 					<UCard
 						v-for="section in settingsSections"
 						:key="section.id"
@@ -134,7 +92,7 @@ const settingsSections: SettingsSection[] = [
 							<div>
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ section.eyebrow }}</p>
 								<h2 class="mt-2 text-lg font-semibold text-stone-950 sm:text-xl">{{ section.title }}</h2>
-								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500">{{ section.description }}</p>
+								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500 lg:hidden">{{ section.description }}</p>
 							</div>
 
 							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">

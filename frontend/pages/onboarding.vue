@@ -114,6 +114,11 @@ const canGoToReview = computed(() => (
 
 const onboardingIsBlocked = computed(() => isOnboardingBlocked(currentUser.value));
 const onboardingDone = computed(() => !needsAuthOnboarding(currentUser.value));
+
+function getDefaultAuthedPath() {
+	return currentUser.value?.systemRole === "system_admin" ? "/system-admin/dashboard" : "/";
+}
+
 const onboardingIntro = computed(() => {
 	if (currentUser.value?.mustChangePassword) {
 		return "เปลี่ยนรหัสผ่านชั่วคราวก่อน แล้วค่อยตั้งค่าร้านแรกของคุณ";
@@ -240,7 +245,7 @@ async function bootstrap() {
 	try {
 		await fetchMe();
 		if (onboardingDone.value) {
-			await navigateTo("/");
+			await navigateTo(getDefaultAuthedPath());
 			return;
 		}
 		currentStep.value = currentUser.value?.mustChangePassword ? 1 : 2;
@@ -347,12 +352,12 @@ async function createFirstStore() {
 			},
 		});
 		await fetchMe();
-		appToast.success({
-			title: "สร้างร้านแรกแล้ว",
-			description: `${response.data.name} พร้อมเริ่มใช้งานแล้ว`,
-		});
-		await navigateTo("/");
-	} catch (error) {
+			appToast.success({
+				title: "สร้างร้านแรกแล้ว",
+				description: `${response.data.name} พร้อมเริ่มใช้งานแล้ว`,
+			});
+			await navigateTo(getDefaultAuthedPath());
+		} catch (error) {
 		storeError.value = extractErrorMessage(error, "สร้างร้านแรกไม่สำเร็จ");
 	} finally {
 		createStorePending.value = false;

@@ -6,6 +6,7 @@ import {
 	SystemAdminClientDeleteCheck,
 	SystemAdminClientInterface,
 	SystemAdminClientListParams,
+	SystemAdminClientPasswordResetInput,
 	SystemAdminClientListResult,
 	SystemAdminClientRecord,
 	SystemAdminClientStatusInput,
@@ -98,8 +99,19 @@ export class SystemAdminClientComponent {
 		if (payload.name !== undefined && !payload.name?.trim()) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_REQUIRED_FIELDS);
 		}
+		if (payload.email !== undefined && !payload.email?.trim()) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_REQUIRED_FIELDS);
+		}
 
-		const updated = await SystemAdminClientInterface.update(id, payload);
+		let updated: SystemAdminClientRecord | null;
+		try {
+			updated = await SystemAdminClientInterface.update(id, payload);
+		} catch (error) {
+			if (error instanceof Error && error.message === "CLIENT_ALREADY_EXISTS") {
+				throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_ALREADY_EXISTS);
+			}
+			throw error;
+		}
 		if (!updated) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
 		}
@@ -137,6 +149,43 @@ export class SystemAdminClientComponent {
 			before,
 			after: updated,
 			metadata: payload.reason ? { reason: payload.reason } : undefined,
+		});
+
+		return updated;
+	}
+
+	static async resetClientPassword(
+		requestId: string,
+		id: string,
+		payload: SystemAdminClientPasswordResetInput,
+	): Promise<SystemAdminClientRecord> {
+		const before = await SystemAdminClientInterface.findById(id);
+		if (!before) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		if (!payload.password?.trim()) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_REQUIRED_FIELDS);
+		}
+
+		const updated = await SystemAdminClientInterface.resetPassword(id, payload);
+		if (!updated) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.CLIENT_ACCOUNT_NOT_FOUND);
+		}
+
+		await SystemAdminClientComponent.logAudit(requestId, {
+			actor_user_id: payload.actor_user_id,
+			action: "reset_client_password",
+			entity_id: updated.id,
+			before,
+			after: {
+				id: updated.id,
+				email: updated.email,
+				must_change_password: updated.must_change_password,
+			},
+			metadata: {
+				must_change_password: Boolean(payload.must_change_password),
+			},
 		});
 
 		return updated;

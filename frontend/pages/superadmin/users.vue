@@ -21,6 +21,12 @@ type ClientRecord = {
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
 	created_at: string;
+	membership_count: number;
+	primary_store_id: string | null;
+	primary_store_name: string | null;
+	primary_role_id: string | null;
+	primary_role_name: string | null;
+	primary_member_status: string | null;
 };
 
 type ClientListResponse = {
@@ -65,9 +71,19 @@ const usersListScrollRef = ref<HTMLElement | null>(null);
 const selectedUserId = ref("");
 const createOpen = ref(false);
 const detailOpen = ref(false);
+const memberDetailOpen = ref(false);
 const createStores = ref<StoreRecord[]>([]);
 const createRoles = ref<RoleRecord[]>([]);
 const createMetaPending = ref(false);
+const memberMetaPending = ref(false);
+const memberRoles = ref<RoleRecord[]>([]);
+const showCreatePassword = ref(false);
+const showMemberResetPassword = ref(false);
+const createSuccess = ref<{
+	name: string;
+	email: string;
+	password: string;
+} | null>(null);
 
 const summaryData = ref({
 	total: 0,
@@ -99,6 +115,15 @@ const detailForm = reactive({
 	suspend_reason: "",
 });
 
+const memberForm = reactive({
+	store_id: "",
+	store_name: "",
+	role_id: "",
+	status: "active" as "active" | "inactive",
+	reset_password: "",
+	must_change_password: true,
+});
+
 const canManageSystem = computed(() => (
 	can("superadmin.users.create")
 	|| can("superadmin.users.update")
@@ -107,6 +132,13 @@ const canManageSystem = computed(() => (
 	|| can("settings.users.suspend")
 	|| can("settings.users.assign_role")
 	|| can("system_admin.clients.update")
+));
+const canEditClientAccounts = computed(() => can("system_admin.clients.update"));
+const canManageMemberDetail = computed(() => (
+	Boolean(selectedUser.value)
+	&& selectedUser.value?.system_role !== "superadmin"
+	&& selectedUser.value?.membership_count === 1
+	&& Boolean(selectedUser.value?.primary_store_id)
 ));
 
 const selectedUser = computed(() => users.value.find((user) => user.id === selectedUserId.value) || null);
@@ -162,6 +194,34 @@ function roleLabel(role: string) {
 	return role || "superadmin";
 }
 
+function canOpenDetail(user: ClientRecord) {
+	if (user.system_role !== "superadmin") return false;
+	return canEditClientAccounts.value;
+}
+
+function canOpenMemberDetail(user: ClientRecord) {
+	return user.system_role !== "superadmin"
+		&& user.membership_count === 1
+		&& Boolean(user.primary_store_id);
+}
+
+function rowActionLabel(user: ClientRecord) {
+	if (user.system_role === "superadmin") {
+		return canOpenDetail(user) ? "จัดการ" : "System Admin";
+	}
+	if (canOpenMemberDetail(user)) {
+		return "จัดการ";
+	}
+	if (user.membership_count > 1) {
+		return `${user.membership_count} stores`;
+	}
+	return "Store Member";
+}
+
+function rowActionDisabled(user: ClientRecord) {
+	return !canOpenDetail(user) && !canOpenMemberDetail(user);
+}
+
 function formatDateTime(value: string) {
 	return new Intl.DateTimeFormat("th-TH", {
 		dateStyle: "medium",
@@ -207,6 +267,67 @@ function resetCreateForm() {
 	createForm.ui_locale = "th";
 	createForm.status = "active";
 	createRoles.value = [];
+	showCreatePassword.value = false;
+	createSuccess.value = null;
+}
+
+function quickFillCreatePassword() {
+	createForm.password = "123456";
+}
+
+function closeCreateModal() {
+	createOpen.value = false;
+	resetCreateForm();
+}
+
+async function copyCreatedCredential() {
+	if (!createSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${createSuccess.value.email}`,
+		`Password: ${createSuccess.value.password}`,
+	].join("\n");
+
+	try {
+		await navigator.clipboard.writeText(text);
+		appToast.success({
+			title: "คัดลอก credential แล้ว",
+			description: "นำไปส่งต่อให้พนักงานได้ทันที",
+		});
+	} catch {
+		appToast.error({
+			title: "คัดลอกไม่สำเร็จ",
+			description: "โปรดลองคัดลอกอีกครั้ง",
+		});
+	}
+}
+
+async function shareCreatedCredential() {
+	if (!createSuccess.value || !import.meta.client) return;
+
+	const text = [
+		`Username: ${createSuccess.value.email}`,
+		`Password: ${createSuccess.value.password}`,
+	].join("\n");
+
+	if (typeof navigator.share === "function") {
+		try {
+			await navigator.share({
+				title: "Store staff credential",
+				text,
+			});
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "";
+			if (message.toLowerCase().includes("abort")) return;
+		}
+	}
+
+	await copyCreatedCredential();
+	appToast.success({
+		title: "อุปกรณ์นี้ไม่รองรับ share โดยตรง",
+		description: "ระบบคัดลอก credential ให้แล้ว เพื่อนำไปวางส่งต่อได้ทันที",
+	});
 }
 
 function scrollUsersListToTop() {
@@ -260,6 +381,15 @@ async function loadCreateRoles(storeId: string) {
 	}
 }
 
+async function loadMemberRoles(storeId: string) {
+	if (!storeId) {
+		memberRoles.value = [];
+		return;
+	}
+	const response = await apiFetch<ApiEnvelope<RoleRecord[]>>(`/rbac/roles?store_id=${encodeURIComponent(storeId)}`);
+	memberRoles.value = response.data;
+}
+
 async function openCreateModal() {
 	if (!canManageSystem.value) {
 		appToast.error({
@@ -294,9 +424,42 @@ function openDetailModal(userId: string) {
 	const user = users.value.find((item) => item.id === userId);
 	if (!user) return;
 	if (user.system_role !== "superadmin") {
+		if (!canOpenMemberDetail(user)) {
+			appToast.info({
+				title: "จัดการผู้ใช้นี้จากหน้าร้าน",
+				description: user.membership_count > 1
+					? "ผู้ใช้นี้อยู่หลายร้าน จึงควรจัดการจากหน้าผู้ใช้ของร้านที่เกี่ยวข้อง"
+					: "ผู้ใช้นี้ยังไม่มี membership ร้านที่จัดการต่อจากหน้านี้ได้",
+			});
+			return;
+		}
+
+		selectedUserId.value = user.id;
+		memberForm.store_id = user.primary_store_id || "";
+		memberForm.store_name = user.primary_store_name || "";
+		memberForm.role_id = user.primary_role_id || "";
+		memberForm.status = (user.primary_member_status === "inactive" ? "inactive" : "active");
+		memberForm.reset_password = "";
+		memberForm.must_change_password = true;
+		showMemberResetPassword.value = false;
+		memberMetaPending.value = true;
+		memberDetailOpen.value = true;
+		void loadMemberRoles(memberForm.store_id)
+			.catch((err) => {
+				appToast.error({
+					title: "โหลดข้อมูลสมาชิกไม่สำเร็จ",
+					description: resolveApiErrorMessage(err),
+				});
+			})
+			.finally(() => {
+				memberMetaPending.value = false;
+			});
+		return;
+	}
+	if (!canEditClientAccounts.value) {
 		appToast.info({
-			title: "ผู้ใช้พนักงาน",
-			description: "แนะนำจัดการสิทธิ์ของพนักงานผ่านหน้าผู้ใช้งานในร้าน",
+			title: "ดูได้เฉพาะ System Admin",
+			description: "การแก้ไขบัญชี Superadmin ต้องทำจากหน้าฝั่ง System Admin",
 		});
 		return;
 	}
@@ -358,6 +521,7 @@ async function createUser() {
 	if (!canCreateUser.value) return;
 	saving.value = true;
 	try {
+		const plainPassword = createForm.password;
 		await apiFetch("/rbac/store-members", {
 			method: "POST",
 			body: {
@@ -369,6 +533,7 @@ async function createUser() {
 				status: createForm.status,
 				ui_locale: createForm.ui_locale,
 				system_role: "staff",
+				must_change_password: true,
 				added_by: currentUser.value?.id || null,
 			},
 		});
@@ -377,7 +542,11 @@ async function createUser() {
 			title: "สร้างผู้ใช้แล้ว",
 			description: "เพิ่มพนักงานเข้าร้านเรียบร้อยแล้ว",
 		});
-		createOpen.value = false;
+		createSuccess.value = {
+			name: createForm.name.trim(),
+			email: createForm.email.trim(),
+			password: plainPassword,
+		};
 		resetListPage();
 		await loadUsers();
 	} catch (err) {
@@ -435,6 +604,57 @@ async function saveDetail() {
 	}
 }
 
+async function saveMemberDetail() {
+	if (!selectedUser.value || !canManageMemberDetail.value || !memberForm.store_id || !memberForm.role_id) return;
+	saving.value = true;
+	try {
+		if (memberForm.role_id !== selectedUser.value.primary_role_id) {
+			await apiFetch(`/rbac/store-members/${encodeURIComponent(memberForm.store_id)}/${encodeURIComponent(selectedUser.value.id)}/role`, {
+				method: "PUT",
+				body: {
+					role_id: memberForm.role_id,
+					added_by: currentUser.value?.id || null,
+				},
+			});
+		}
+
+		if (memberForm.status !== (selectedUser.value.primary_member_status === "inactive" ? "inactive" : "active")) {
+			await apiFetch(`/rbac/store-members/${encodeURIComponent(memberForm.store_id)}/${encodeURIComponent(selectedUser.value.id)}/status`, {
+				method: "PATCH",
+				body: {
+					status: memberForm.status,
+					added_by: currentUser.value?.id || null,
+				},
+			});
+		}
+
+		if (memberForm.reset_password.trim().length >= 6) {
+			await apiFetch(`/rbac/store-members/${encodeURIComponent(memberForm.store_id)}/${encodeURIComponent(selectedUser.value.id)}/reset-password`, {
+				method: "POST",
+				body: {
+					password: memberForm.reset_password,
+					must_change_password: memberForm.must_change_password,
+					actor_user_id: currentUser.value?.id || null,
+				},
+			});
+		}
+
+		appToast.success({
+			title: "อัปเดตผู้ใช้แล้ว",
+			description: "บทบาท สถานะ และรหัสผ่านของพนักงานถูกบันทึกแล้ว",
+		});
+		memberDetailOpen.value = false;
+		await loadUsers();
+	} catch (err) {
+		appToast.error({
+			title: "บันทึกไม่สำเร็จ",
+			description: resolveApiErrorMessage(err),
+		});
+	} finally {
+		saving.value = false;
+	}
+}
+
 watch(() => createForm.store_id, async (storeId) => {
 	if (!createOpen.value || createMetaPending.value) return;
 	await loadCreateRoles(storeId);
@@ -460,7 +680,7 @@ onMounted(loadUsers);
 		sidebar-description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
 				<AppPageHeader
 					title="Superadmin Users"
 					description="ข้อมูลผู้ใช้ภายใต้ client ปัจจุบันจาก API /superadmin/users"
@@ -478,7 +698,7 @@ onMounted(loadUsers);
 					</template>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+				<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 							<div
@@ -538,18 +758,32 @@ onMounted(loadUsers);
 											v-for="user in users"
 											:key="user.id"
 											type="button"
-											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
+											:disabled="rowActionDisabled(user)"
+											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition enabled:hover:bg-primary-50 disabled:cursor-not-allowed disabled:bg-neutral-50/70"
 											@click="openDetailModal(user.id)"
 										>
 											<div class="flex items-center justify-between gap-3">
 												<div class="min-w-0">
 													<p class="truncate text-sm font-semibold text-stone-900">{{ user.name }}</p>
 													<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
-													<p class="mt-2 text-xs text-stone-500">{{ roleLabel(user.system_role) }} · สร้างเมื่อ {{ formatDateTime(user.created_at) }}</p>
+													<p class="mt-2 text-xs text-stone-500">
+														{{ roleLabel(user.system_role) }}
+														<span v-if="user.primary_store_name"> · {{ user.primary_store_name }}</span>
+														<span v-if="user.primary_role_name"> · {{ user.primary_role_name }}</span>
+														· สร้างเมื่อ {{ formatDateTime(user.created_at) }}
+													</p>
 												</div>
 												<div class="flex items-center gap-2">
 													<UBadge :color="statusTone(user.status)" variant="soft" :label="statusLabel(user.status)" />
-													<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-chevron-right-20-solid">จัดการ</AppButton>
+													<AppButton
+														color="neutral"
+														variant="soft"
+														size="md"
+														icon="i-heroicons-chevron-right-20-solid"
+														:disabled="rowActionDisabled(user)"
+													>
+														{{ rowActionLabel(user) }}
+													</AppButton>
 												</div>
 											</div>
 										</button>
@@ -631,7 +865,7 @@ onMounted(loadUsers);
 			>
 				<div class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
-						<div class="space-y-4 pb-6">
+						<div v-if="!createSuccess" class="space-y-4 pb-6">
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
 								<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
@@ -642,7 +876,32 @@ onMounted(loadUsers);
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่าน</label>
-								<input v-model="createForm.password" type="password" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<div class="relative">
+									<input
+										v-model="createForm.password"
+										:type="showCreatePassword ? 'text' : 'password'"
+										placeholder="ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร"
+										class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+									<button
+										type="button"
+										class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+										:aria-label="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="showCreatePassword = !showCreatePassword"
+									>
+										<UIcon :name="showCreatePassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
+									</button>
+								</div>
+								<p class="mt-2 text-xs leading-5 text-stone-500">ใช้รหัสชั่วคราวสำหรับส่งให้พนักงานก่อนเปลี่ยนเองครั้งแรก</p>
+								<button
+									type="button"
+									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+									@click="quickFillCreatePassword"
+								>
+									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
+									ใช้รหัส 123456
+								</button>
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">เลือกร้าน</label>
@@ -681,11 +940,52 @@ onMounted(loadUsers);
 								ยังไม่มีร้านในบัญชีนี้ กรุณาสร้างร้านก่อนเพิ่มพนักงาน
 							</div>
 						</div>
+						<div v-else class="space-y-4 pb-6">
+							<div class="rounded-md border border-success/20 bg-success/5 p-4">
+								<div class="flex items-start gap-3">
+									<div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-success/10 text-success ring-1 ring-success/15">
+										<UIcon name="i-heroicons-check-circle-20-solid" class="h-5 w-5" />
+									</div>
+									<div>
+										<p class="text-sm font-semibold text-stone-950">สร้างผู้ใช้สำเร็จแล้ว</p>
+										<p class="mt-1 text-sm leading-6 text-stone-600">คัดลอก username และ password ชุดนี้ไปส่งต่อให้พนักงานได้ทันที ก่อนกด done เพื่อปิด modal</p>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Credential</p>
+								<div class="mt-4 space-y-3">
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ createSuccess.email }}
+										</div>
+									</div>
+									<div>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Password</label>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
+											{{ createSuccess.password }}
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+								<p class="text-sm font-medium text-stone-900">{{ createSuccess.name }}</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">credential นี้แสดงชั่วคราวใน modal นี้เท่านั้น หลังปิด modal แล้วจะไม่แสดง password เดิมอีก</p>
+							</div>
+						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="!canCreateUser" :spin-icon-on-loading="true" :block="true" @click="createUser">สร้างผู้ใช้</AppButton>
+						<div v-if="!createSuccess" class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateModal">ยกเลิก</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :loading="saving" :disabled="!canCreateUser" :spin-icon-on-loading="true" :block="true" @click="createUser">สร้างผู้ใช้</AppButton>
+						</div>
+						<div v-else class="grid w-full gap-2 sm:grid-cols-3">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clipboard-document-20-solid" :block="true" @click="copyCreatedCredential">Copy</AppButton>
+							<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-share-20-solid" :block="true" @click="shareCreatedCredential">Share</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" @click="closeCreateModal">Done</AppButton>
 						</div>
 					</div>
 				</div>
@@ -760,6 +1060,93 @@ onMounted(loadUsers);
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
 							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="!canSaveDetail" :spin-icon-on-loading="true" :block="true" @click="saveDetail">บันทึก</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="memberDetailOpen"
+				title="Member Detail"
+				description="จัดการบทบาท สถานะ และรีเซ็ตรหัสผ่านของพนักงานในร้าน"
+				desktop-width="560px"
+				mobile-max-height="88dvh"
+				:fill-mobile-height="true"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div v-if="selectedUser" class="flex h-full min-h-0 flex-col">
+					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
+						<div class="space-y-4 pb-6">
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-sm font-semibold text-stone-950">{{ selectedUser.name }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ selectedUser.email }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ memberForm.store_name || selectedUser.primary_store_name || "-" }}</p>
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">บทบาทในร้าน</label>
+								<select
+									v-model="memberForm.role_id"
+									:disabled="memberMetaPending || saving || !memberRoles.length"
+									class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50"
+								>
+									<option value="" disabled>เลือกบทบาทของพนักงาน</option>
+									<option v-for="role in memberRoles" :key="role.id" :value="role.id">
+										{{ role.name }}
+									</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">สถานะสมาชิกในร้าน</label>
+								<select v-model="memberForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<option value="active">ใช้งาน</option>
+									<option value="inactive">ไม่ใช้งาน</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">รีเซ็ตรหัสผ่าน</label>
+								<div class="relative">
+									<input
+										v-model="memberForm.reset_password"
+										:type="showMemberResetPassword ? 'text' : 'password'"
+										placeholder="เว้นว่างได้ ถ้ายังไม่ต้องเปลี่ยนรหัส"
+										class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+									<button
+										type="button"
+										class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+										:aria-label="showMemberResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:title="showMemberResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										@click="showMemberResetPassword = !showMemberResetPassword"
+									>
+										<UIcon :name="showMemberResetPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
+									</button>
+								</div>
+								<p class="mt-2 text-xs leading-5 text-stone-500">ถ้ากรอกรหัสใหม่ ระบบจะบังคับให้พนักงานเปลี่ยนรหัสผ่านเองหลัง login ครั้งถัดไป</p>
+								<button
+									type="button"
+									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+									@click="memberForm.reset_password = '123456'"
+								>
+									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
+									ใช้รหัส 123456
+								</button>
+							</div>
+
+							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<input v-model="memberForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+								<div><p class="text-sm font-medium text-stone-900">บังคับเปลี่ยนรหัสผ่านหลัง login</p></div>
+							</label>
+						</div>
+					</div>
+					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="memberDetailOpen = false">ปิด</AppButton>
+							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="memberMetaPending || !memberForm.role_id" :spin-icon-on-loading="true" :block="true" @click="saveMemberDetail">บันทึก</AppButton>
 						</div>
 					</div>
 				</div>

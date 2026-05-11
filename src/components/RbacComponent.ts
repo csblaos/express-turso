@@ -20,6 +20,15 @@ function isMissingRoleCreateField(payload: CreateRoleInput): boolean {
 	return !payload.store_id || !payload.name;
 }
 
+function sanitizeRolePermissionKeysForActor(
+	actor: { userId: string; systemRole: string },
+	permissionKeys?: string[],
+): string[] | undefined {
+	if (!permissionKeys) return permissionKeys;
+	if (actor.systemRole !== "superadmin") return permissionKeys;
+	return permissionKeys.filter((permissionKey) => !permissionKey.startsWith("system_admin."));
+}
+
 async function resolveActor(actorUserId?: string | null) {
 	if (!actorUserId) {
 		return {
@@ -169,7 +178,7 @@ export class RbacComponent {
 		}
 		await RbacComponent.assertStorePermissionScope(actor, payload.store_id, "settings.roles.create");
 
-		const role = await RbacInterface.createRole(payload, payload.permission_keys);
+		const role = await RbacInterface.createRole(payload, sanitizeRolePermissionKeysForActor(actor, payload.permission_keys));
 		await RbacComponent.logAudit(requestId, {
 			store_id: role.store_id,
 			actor_user_id: actor.userId,
@@ -192,7 +201,7 @@ export class RbacComponent {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
 		}
 		await RbacComponent.assertStorePermissionScope(actor, before.store_id, "settings.roles.update");
-		const role = await RbacInterface.updateRole(id, payload, payload.permission_keys);
+		const role = await RbacInterface.updateRole(id, payload, sanitizeRolePermissionKeysForActor(actor, payload.permission_keys));
 		if (!role) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
 		}
@@ -219,7 +228,11 @@ export class RbacComponent {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
 		}
 		await RbacComponent.assertStorePermissionScope(actor, sourceRole.store_id, "settings.roles.create");
-		const role = await RbacInterface.duplicateRole(id, payload.name);
+		const sanitizedPermissionKeys = sanitizeRolePermissionKeysForActor(
+			actor,
+			sourceRole.permissions.map((permission) => permission.key),
+		);
+		const role = await RbacInterface.duplicateRole(id, payload.name, sanitizedPermissionKeys);
 		if (!role) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
 		}
@@ -234,6 +247,77 @@ export class RbacComponent {
 			metadata: { source_role_id: sourceRole.id },
 		});
 		return role;
+	}
+
+	static async applyRoleToStore(
+		requestId: string,
+		id: string,
+		payload: {
+			target_store_id: string;
+			mode: "create" | "update";
+			name?: string | null;
+			target_role_id?: string | null;
+			actor_user_id?: string | null;
+		},
+		actor: { userId: string; systemRole: string },
+	): Promise<RoleWithPermissions> {
+		const sourceRole = await RbacInterface.getRoleById(id);
+		if (!sourceRole) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
+		}
+
+		const targetStoreId = String(payload.target_store_id || "").trim();
+		if (!targetStoreId) {
+			throw ApiError.BadRequestError("target_store_id is required");
+		}
+		if (targetStoreId === sourceRole.store_id) {
+			throw ApiError.BadRequestError("Target store must be different from source store");
+		}
+
+		await RbacComponent.assertStorePermissionScope(actor, sourceRole.store_id, "settings.roles.view");
+		if (payload.mode === "update") {
+			await RbacComponent.assertStorePermissionScope(actor, targetStoreId, "settings.roles.update");
+		} else {
+			await RbacComponent.assertStorePermissionScope(actor, targetStoreId, "settings.roles.create");
+		}
+
+		try {
+			const sanitizedPermissionKeys = sanitizeRolePermissionKeysForActor(
+				actor,
+				sourceRole.permissions.map((permission) => permission.key),
+			);
+			const role = await RbacInterface.applyRoleToStore(id, payload, sanitizedPermissionKeys);
+			if (!role) {
+				throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
+			}
+
+			await RbacComponent.logAudit(requestId, {
+				store_id: role.store_id,
+				actor_user_id: actor.userId,
+				action: "apply_role_to_store",
+				entity_type: "role",
+				entity_id: role.id,
+				before: sourceRole,
+				after: role,
+				metadata: {
+					source_role_id: sourceRole.id,
+					source_store_id: sourceRole.store_id,
+					target_store_id: targetStoreId,
+					mode: payload.mode,
+					target_role_id: payload.target_role_id || null,
+				},
+			});
+			return role;
+		} catch (error) {
+			if (error instanceof Error && [ "ROLE_NOT_FOUND", "ROLE_NAME_REQUIRED" ].includes(error.message)) {
+				throw ApiError.BadRequestError(
+					error.message === "ROLE_NAME_REQUIRED"
+						? "name is required when mode is create"
+						: "Target role not found in selected store",
+				);
+			}
+			throw error;
+		}
 	}
 
 	static async deleteRole(

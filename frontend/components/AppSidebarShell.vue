@@ -29,6 +29,11 @@ const isDesktopViewport = ref(import.meta.server
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
 const { logout, currentUser, currentAccess } = useAuthSession();
+const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
+	sameSite: "lax",
+	path: "/",
+	default: () => null,
+});
 const route = useRoute();
 const currentNavItem = computed(() => props.navItems.find((item) => props.activeIds.includes(item.id)));
 let mediaQueryList: MediaQueryList | null = null;
@@ -124,8 +129,19 @@ const roleLabelMap: Record<string, string> = {
 
 const profileDisplayName = computed(() => currentUser.value?.name || "ทีมงานร้าน");
 const profileDisplayEmail = computed(() => currentUser.value?.email || "ไม่ได้ระบุอีเมล");
+const inferredWorkspaceRole = computed(() => {
+	if (route.path === "/system-admin" || route.path.startsWith("/system-admin/")) return "system_admin";
+	if (route.path === "/superadmin" || route.path.startsWith("/superadmin/")) return "superadmin";
+	return "";
+});
+const resolvedSystemRole = computed(() => (
+	currentUser.value?.systemRole
+	|| systemRoleCookie.value
+	|| inferredWorkspaceRole.value
+	|| ""
+));
 const profileDisplayRole = computed(() => {
-	const systemRole = currentUser.value?.systemRole || "";
+	const systemRole = resolvedSystemRole.value;
 	if (!systemRole) return "Staff";
 	return roleLabelMap[systemRole] || systemRole.replace(/_/g, " ");
 });
@@ -140,9 +156,25 @@ const profileInitials = computed(() => (
 		.filter(Boolean)
 		.slice(0, 2)
 		.map((part) => part[0]?.toUpperCase() ?? "")
-		.join("") || "ST"
+	.join("") || "ST"
 ));
 const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.navItems));
+const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "reports", "activity", "settings" ]);
+const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security" ]);
+
+const visibleNavItems = computed(() => {
+	const systemRole = resolvedSystemRole.value;
+
+	if (systemRole === "system_admin") {
+		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id));
+	}
+
+	if (systemRole === "superadmin") {
+		return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) || item.id === "superadmin");
+	}
+
+	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
+});
 
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
@@ -295,9 +327,9 @@ onErrorCaptured((error) => {
 					</div>
 
 					<nav class="flex flex-1 flex-col gap-2">
-							<NuxtLink
-								v-for="item in navItems"
-								:key="item.id"
+								<NuxtLink
+									v-for="item in visibleNavItems"
+									:key="item.id"
 								:to="item.to"
 								class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
 							:title="item.label"
@@ -337,10 +369,10 @@ onErrorCaptured((error) => {
 									class="mt-0.5 truncate text-xs text-stone-400"
 								>
 									{{ item.to === '/' ? 'หน้าเริ่มต้น' : 'เปิดหน้าจัดการ' }}
-								</p>
-							</div>
-						</NuxtLink>
-					</nav>
+									</p>
+								</div>
+							</NuxtLink>
+						</nav>
 
 					<div class="px-3 pt-1">
 						<AppButton

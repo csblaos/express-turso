@@ -3,6 +3,7 @@ import { Router } from "express";
 import { ProductController } from "@controllers/ProductController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
+import { RoleScopeMiddleware } from "@middlewares/RoleScopeMiddleware";
 import CommonValidator from "@validators/CommonValidator";
 import ProductValidator from "@validators/ProductValidator";
 
@@ -11,6 +12,7 @@ export class ProductRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.view"), ProductValidator.list, ProductController.getAll);
 		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.view"), CommonValidator.resourceId, ProductController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.create"), ProductValidator.create, ProductController.create);

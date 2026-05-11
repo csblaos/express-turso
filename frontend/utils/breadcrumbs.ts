@@ -28,7 +28,6 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "กิจกรรม" },
 	],
 	"/profile": [
-		{ label: "Settings", to: "/settings" },
 		{ label: "Profile" },
 	],
 	"/settings": [
@@ -65,27 +64,38 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "Superadmin", to: "/superadmin" },
 		{ label: "Role Settings" },
 	],
+	"/superadmin/security": [
+		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Security" },
+	],
+	"/superadmin/quotas": [
+		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Quotas" },
+	],
+	"/superadmin/branch": [
+		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Branch Config" },
+	],
+	"/superadmin/integrations": [
+		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Integrations" },
+	],
 	"/system-admin": [
 		{ label: "System Admin" },
 	],
 	"/system-admin/dashboard": [
-		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Dashboard" },
 	],
 	"/system-admin/clients": [
-		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Clients" },
 	],
 	"/system-admin/system": [
-		{ label: "System Admin", to: "/system-admin" },
 		{ label: "System Policy" },
 	],
 	"/system-admin/monitoring": [
-		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Monitoring" },
 	],
 	"/system-admin/security": [
-		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Security" },
 	],
 	"/system-admin/config": [
@@ -123,6 +133,9 @@ const segmentLabelMap: Record<string, string> = {
 	system: "System Policy",
 	monitoring: "Monitoring",
 	security: "Security",
+	quotas: "Quotas",
+	branch: "Branch Config",
+	integrations: "Integrations",
 	config: "Config",
 	roles: "Roles",
 	users: "Users",

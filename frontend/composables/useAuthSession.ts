@@ -90,6 +90,7 @@ const STORAGE_KEYS = {
 const COOKIE_KEYS = {
 	accessToken: "pos.auth.accessToken",
 	refreshToken: "pos.auth.refreshToken",
+	systemRole: "pos.auth.systemRole",
 } as const;
 
 const SYSTEM_ROLE_PERMISSION_MAP: Record<string, string[]> = {
@@ -143,6 +144,11 @@ export function useAuthSession() {
 		path: "/",
 		default: () => null,
 	});
+	const systemRoleCookie = useCookie<string | null>(COOKIE_KEYS.systemRole, {
+		sameSite: "lax",
+		path: "/",
+		default: () => null,
+	});
 
 	function hydrateAuthState() {
 		if (!import.meta.client || hydrated.value) return;
@@ -179,6 +185,8 @@ export function useAuthSession() {
 				removeStorageValue(STORAGE_KEYS.refreshToken);
 			}
 		}
+
+		systemRoleCookie.value = currentUser.value?.systemRole || null;
 
 		if (!import.meta.client) return;
 
