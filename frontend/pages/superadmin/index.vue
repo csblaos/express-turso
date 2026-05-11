@@ -10,11 +10,11 @@ const entries: Entry[] = [
 	{ title: "Role Settings", description: "กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้าน", icon: "i-heroicons-shield-check", to: "/superadmin/roles", badge: "พร้อมใช้งาน" },
 	{ title: "Stores", description: "ดูและจัดการร้านในระดับ superadmin", icon: "i-heroicons-building-storefront", to: "/superadmin/stores", badge: "พร้อมใช้งาน" },
 	{ title: "กิจกรรม", description: "ดูประวัติการเปลี่ยนแปลงและกิจกรรมสำคัญ", icon: "i-heroicons-clipboard-document-check", to: "/activity", badge: "พร้อมใช้งาน" },
-	{ title: "Security", description: "ดูข้อมูลด้าน security", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
-	{ title: "Quotas", description: "ดู/จัดการ quota หรือข้อจำกัดการใช้งาน", icon: "i-heroicons-swatch", badge: "เร็ว ๆ นี้" },
-	{ title: "Integrations", description: "ดูส่วน integration ที่เกี่ยวข้อง", icon: "i-heroicons-link", badge: "เร็ว ๆ นี้" },
+	{ title: "Security", description: "ดู snapshot ของบัญชี ร้าน และทีม ภายใต้ superadmin นี้", icon: "i-heroicons-shield-check", to: "/superadmin/security", badge: "พร้อมใช้งาน" },
+	{ title: "Quotas", description: "ดู quota ร้านและสาขาของบัญชีภายใต้ superadmin นี้", icon: "i-heroicons-swatch", to: "/superadmin/quotas", badge: "พร้อมใช้งาน" },
+	{ title: "Integrations", description: "workspace สำหรับ social, commerce และ shipping integrations", icon: "i-heroicons-link", to: "/superadmin/integrations", badge: "พร้อมใช้งาน" },
 	{ title: "Store Config", description: "ตั้งค่าระดับร้านจากมุม superadmin", icon: "i-heroicons-wrench-screwdriver", badge: "เร็ว ๆ นี้" },
-	{ title: "Branch Config", description: "ตั้งค่าระดับสาขาจากมุม superadmin", icon: "i-heroicons-building-office-2", badge: "เร็ว ๆ นี้" },
+	{ title: "Branch Config", description: "ดู branch config และความพร้อมของสาขาใต้ superadmin นี้", icon: "i-heroicons-building-office-2", to: "/superadmin/branch", badge: "พร้อมใช้งาน" },
 ];
 
 const coreEntries = computed(() => entries.filter((entry) => entry.badge !== "เร็ว ๆ นี้"));

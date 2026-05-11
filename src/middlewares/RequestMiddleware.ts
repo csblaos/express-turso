@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 
 import { Config } from "@configs/Config";
 import { Log } from "@utils/Log";
+import { SystemRuntimeTelemetry } from "@utils/SystemRuntimeTelemetry";
 import { uuid } from "@utils/UUID";
 
 function toLowerSet(values: string[]): Set<string> {
@@ -103,6 +104,12 @@ export class RequestMiddleware {
 			logEntry.query = redactSecrets(req.query, secretKeys) as Record<string, unknown>;
 			logEntry.body = redactSecrets(req.body, secretKeys);
 			logEntry.headers = cleanHeaders(req.headers, excludeHeaders, standardHeaders);
+
+			SystemRuntimeTelemetry.recordRequest({
+				statusCode: res.statusCode,
+				path: req.path,
+				method: req.method,
+			});
 
 			Log.printLog(requestId);
 		});

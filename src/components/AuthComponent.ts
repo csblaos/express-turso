@@ -13,6 +13,7 @@ import { SystemConfigInterface } from "@interfaces/SystemConfigInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { User } from "@models/User";
 import { AuthToken, AuthTokenPayload } from "@utils/AuthToken";
+import { SystemRuntimeTelemetry } from "@utils/SystemRuntimeTelemetry";
 
 type LoginInput = {
 	emailOrUsername: string;
@@ -410,26 +411,37 @@ export class AuthComponent {
 		const rememberMe = Boolean(input.rememberMe);
 		const policy = await AuthComponent.getAuthPolicy();
 
-		await AuthComponent.assertAccountNotLocked(identifier, policy);
+		try {
+			await AuthComponent.assertAccountNotLocked(identifier, policy);
+		} catch (error) {
+			if (error instanceof ApiError && error.code === ErrorConfig.DOMAIN.AUTH_ACCOUNT_LOCKED.code) {
+				SystemRuntimeTelemetry.recordAuthEvent("account_locked");
+			}
+			throw error;
+		}
 
 		const user = await AuthInterface.findUserByIdentifier(identifier);
 		if (!user) {
 			await AuthComponent.consumeFailedAttempt(identifier, policy);
+			SystemRuntimeTelemetry.recordAuthEvent("login_failure");
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
 		}
 
 		if (user.client_suspended) {
+			SystemRuntimeTelemetry.recordAuthEvent("login_blocked_suspended");
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_USER_SUSPENDED);
 		}
 
 		const isValidPassword = await verifyPassword(password, user.password_hash);
 		if (!isValidPassword) {
 			await AuthComponent.consumeFailedAttempt(identifier, policy);
+			SystemRuntimeTelemetry.recordAuthEvent("login_failure");
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
 		}
 
 		await AuthComponent.clearFailedAttempts(identifier);
 		await AuthComponent.enforceSessionLimit(user, policy);
+		SystemRuntimeTelemetry.recordAuthEvent("login_success");
 		return AuthComponent.createTokensAndSession(user, policy, rememberMe);
 	}
 

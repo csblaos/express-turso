@@ -67,6 +67,7 @@ export type SystemAdminClientCreateInput = {
 
 export type SystemAdminClientUpdateInput = {
 	name?: string | null;
+	email?: string | null;
 	ui_locale?: string | null;
 	max_stores?: number | null;
 	can_create_stores?: number | null;
@@ -78,6 +79,12 @@ export type SystemAdminClientUpdateInput = {
 export type SystemAdminClientStatusInput = {
 	status: "active" | "suspended";
 	reason?: string | null;
+	actor_user_id?: string | null;
+};
+
+export type SystemAdminClientPasswordResetInput = {
+	password: string;
+	must_change_password?: boolean;
 	actor_user_id?: string | null;
 };
 
@@ -361,8 +368,22 @@ export class SystemAdminClientInterface {
 	static async update(id: string, input: SystemAdminClientUpdateInput): Promise<SystemAdminClientRecord | null> {
 		await SystemAdminClientInterface.ensureColumns();
 		const updatePayload: Record<string, InValue> = {};
+		const db = DbConn.getClient();
 
 		if (input.name !== undefined) updatePayload.name = input.name?.trim() || "";
+		if (input.email !== undefined) {
+			const normalizedEmail = input.email?.trim().toLowerCase() || "";
+			const existing = await db.execute({
+				sql: "SELECT id FROM users WHERE LOWER(email) = ? AND id != ? LIMIT 1",
+				args: [ normalizedEmail, id ],
+			});
+
+			if (existing.rows.length > 0) {
+				throw new Error("CLIENT_ALREADY_EXISTS");
+			}
+
+			updatePayload.email = normalizedEmail;
+		}
 		if (input.ui_locale !== undefined) updatePayload.ui_locale = input.ui_locale?.trim() || "th";
 		if (input.max_stores !== undefined) updatePayload.max_stores = input.max_stores;
 		if (input.can_create_stores !== undefined) updatePayload.can_create_stores = input.can_create_stores;
@@ -375,7 +396,6 @@ export class SystemAdminClientInterface {
 			return SystemAdminClientInterface.findById(id);
 		}
 
-		const db = DbConn.getClient();
 		const setClause = keys.map((key) => `${key} = ?`).join(", ");
 
 		await db.execute({
@@ -409,6 +429,35 @@ export class SystemAdminClientInterface {
 				suspendedAt,
 				suspendedReason,
 				suspendedBy,
+				id,
+				"superadmin",
+			],
+		});
+
+		return SystemAdminClientInterface.findById(id);
+	}
+
+	static async resetPassword(id: string, input: SystemAdminClientPasswordResetInput): Promise<SystemAdminClientRecord | null> {
+		await SystemAdminClientInterface.ensureColumns();
+		const client = await SystemAdminClientInterface.findById(id);
+		if (!client) return null;
+
+		const db = DbConn.getClient();
+		const passwordHash = await bcrypt.hash(input.password, 10);
+
+		await db.execute({
+			sql: `
+				UPDATE users
+				SET
+					password_hash = ?,
+					must_change_password = ?,
+					password_updated_at = ?
+				WHERE id = ? AND system_role = ?
+			`,
+			args: [
+				passwordHash,
+				input.must_change_password ? 1 : 0,
+				new Date().toISOString(),
 				id,
 				"superadmin",
 			],

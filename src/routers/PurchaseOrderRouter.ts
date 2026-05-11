@@ -3,6 +3,7 @@ import { Router } from "express";
 import { PurchaseOrderController } from "@controllers/PurchaseOrderController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
+import { RoleScopeMiddleware } from "@middlewares/RoleScopeMiddleware";
 import PurchaseOrderValidator from "@validators/PurchaseOrderValidator";
 
 export class PurchaseOrderRouter {
@@ -10,6 +11,7 @@ export class PurchaseOrderRouter {
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.list, PurchaseOrderController.getAll);
 		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.create"), PurchaseOrderValidator.create, PurchaseOrderController.create);

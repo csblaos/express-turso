@@ -44,6 +44,8 @@ const profileError = ref<string | null>(null);
 const passwordError = ref<string | null>(null);
 const profileModalOpen = ref(false);
 const passwordModalOpen = ref(false);
+const profileNameFieldRef = ref<HTMLElement | null>(null);
+const passwordCurrentFieldRef = ref<HTMLElement | null>(null);
 const passwordVisibility = reactive({
 	current: false,
 	next: false,
@@ -57,6 +59,18 @@ const membershipCount = computed(() => currentAccess.value?.memberships?.length 
 watch(currentUser, (value) => {
 	profileForm.name = value?.name || "";
 }, { immediate: true });
+
+watch(profileModalOpen, async (opened) => {
+	if (!opened) return;
+	await nextTick();
+	profileNameFieldRef.value?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus();
+});
+
+watch(passwordModalOpen, async (opened) => {
+	if (!opened) return;
+	await nextTick();
+	passwordCurrentFieldRef.value?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus();
+});
 
 function extractErrorMessage(error: unknown, fallback: string) {
 	if (typeof error === "object" && error && "data" in error) {
@@ -350,7 +364,7 @@ onMounted(async () => {
 										<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
 										<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
 									</div>
-									<div>
+									<div ref="profileNameFieldRef">
 										<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อผู้ใช้</label>
 										<UInput v-model="profileForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
 									</div>
@@ -360,11 +374,11 @@ onMounted(async () => {
 
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="profileModalOpen = false">
-									ยกเลิก
-								</AppButton>
-								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="profilePending" :spin-icon-on-loading="true" :block="true" @click="submitProfile">
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="profilePending" :spin-icon-on-loading="true" :block="true" class="order-2" @click="submitProfile">
 									บันทึกชื่อผู้ใช้
+								</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" class="order-1" @click="profileModalOpen = false">
+									ยกเลิก
 								</AppButton>
 							</div>
 						</div>
@@ -392,7 +406,7 @@ onMounted(async () => {
 								<p class="text-sm font-semibold text-stone-900">ตั้งรหัสผ่านใหม่</p>
 								<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อบันทึกแล้ว ระบบจะยกเลิก session อื่นของบัญชีนี้โดยอัตโนมัติเพื่อความปลอดภัย</p>
 								<div class="mt-4 grid gap-4">
-									<div>
+									<div ref="passwordCurrentFieldRef">
 										<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
 										<div class="relative">
 											<UInput
@@ -406,6 +420,7 @@ onMounted(async () => {
 												color="neutral"
 												variant="ghost"
 												size="xs"
+												tabindex="-1"
 												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
 												:icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 												:aria-label="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
@@ -428,6 +443,7 @@ onMounted(async () => {
 												color="neutral"
 												variant="ghost"
 												size="xs"
+												tabindex="-1"
 												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
 												:icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 												:aria-label="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
@@ -450,6 +466,7 @@ onMounted(async () => {
 												color="neutral"
 												variant="ghost"
 												size="xs"
+												tabindex="-1"
 												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
 												:icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
 												:aria-label="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
@@ -464,11 +481,11 @@ onMounted(async () => {
 
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="passwordModalOpen = false">
-									ยกเลิก
-								</AppButton>
-								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-key-20-solid" :loading="passwordPending" :spin-icon-on-loading="true" :block="true" @click="submitPassword">
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-key-20-solid" :loading="passwordPending" :spin-icon-on-loading="true" :block="true" class="order-2" @click="submitPassword">
 									เปลี่ยนรหัสผ่าน
+								</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" class="order-1" @click="passwordModalOpen = false">
+									ยกเลิก
 								</AppButton>
 							</div>
 						</div>

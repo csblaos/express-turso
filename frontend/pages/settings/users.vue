@@ -46,7 +46,7 @@ type StoreMemberRecord = {
 };
 
 const { apiFetch } = useApiClient();
-const { currentUser, can } = useAuthSession();
+const { currentUser, currentAccess, can, fetchMe } = useAuthSession();
 
 const searchQuery = ref("");
 const activeStatus = ref("all");
@@ -89,13 +89,28 @@ const memberStatusOptions = [
 	{ id: "inactive", label: "ปิดใช้งาน" },
 ];
 
-const canManageUsers = computed(() => (
-	can("settings.users.create")
-	|| can("settings.users.update")
-	|| can("settings.users.suspend")
-	|| can("settings.users.reset_password")
+const isElevatedStoreManager = computed(() => (
+	currentUser.value?.systemRole === "superadmin"
+	|| currentUser.value?.systemRole === "system_admin"
 ));
-const canManageRoles = computed(() => can("settings.users.assign_role"));
+const canCreateUsers = computed(() => isElevatedStoreManager.value || can("settings.users.create"));
+const canUpdateUsers = computed(() => isElevatedStoreManager.value || can("settings.users.update"));
+const canSuspendUsers = computed(() => isElevatedStoreManager.value || can("settings.users.suspend"));
+const canResetPasswords = computed(() => isElevatedStoreManager.value || can("settings.users.reset_password"));
+const canManageUsers = computed(() => (
+	canCreateUsers.value
+	|| canUpdateUsers.value
+	|| canSuspendUsers.value
+	|| canResetPasswords.value
+));
+const canManageRoles = computed(() => isElevatedStoreManager.value || can("settings.users.assign_role"));
+const lockedStoreId = computed(() => (
+	currentAccess.value?.store_id
+	|| currentAccess.value?.memberships?.[0]?.store_id
+	|| ""
+));
+const membershipCount = computed(() => currentAccess.value?.memberships?.length ?? 0);
+const hasMultipleStoreAccess = computed(() => membershipCount.value > 1);
 
 const selectedMember = computed(() =>
 	members.value.find((member) => member.user_id === selectedMemberId.value) ?? members.value[0] ?? null,
@@ -105,6 +120,16 @@ const roleOptions = computed(() => [
 	{ id: "all", label: "ทุกบทบาท" },
 	...roles.value.map((role) => ({ id: role.id, label: role.name })),
 ]);
+const selectedStoreLabel = computed(() => (
+	stores.value.find((store) => store.id === selectedStoreId.value)?.name
+	|| "ยังไม่พบร้านที่กำลังใช้งาน"
+));
+const overviewStats = computed(() => ([
+	{ label: "สมาชิกทั้งหมด", value: members.value.length },
+	{ label: "ใช้งาน", value: members.value.filter((member) => member.status === "active").length },
+	{ label: "ปิดใช้งาน", value: members.value.filter((member) => member.status !== "active").length },
+	{ label: "บทบาทในร้าน", value: roles.value.length },
+]));
 
 function resolveDefaultRoleId(roleList: RoleRecord[]): string {
 	if (!roleList.length) return "";
@@ -114,8 +139,16 @@ function resolveDefaultRoleId(roleList: RoleRecord[]): string {
 
 watch(selectedStoreId, async (value) => {
 	if (!value) return;
+	await fetchMe(value);
 	await Promise.all([fetchRoles(), fetchMembers()]);
 }, { immediate: false });
+
+watch([ lockedStoreId, stores ], () => {
+	const nextStoreId = lockedStoreId.value || stores.value[0]?.id || "";
+	if (nextStoreId && selectedStoreId.value !== nextStoreId) {
+		selectedStoreId.value = nextStoreId;
+	}
+}, { immediate: true });
 
 watch(members, (value) => {
 	if (!value.length) {
@@ -163,8 +196,9 @@ async function fetchStores() {
 	try {
 		const response = await apiFetch<ApiEnvelope<StoreRecord[]>>("/stores");
 		stores.value = response.data;
-		if (!selectedStoreId.value) {
-			selectedStoreId.value = stores.value[0]?.id || "";
+		const nextLockedStoreId = lockedStoreId.value || stores.value[0]?.id || "";
+		if (nextLockedStoreId) {
+			selectedStoreId.value = nextLockedStoreId;
 		}
 	} finally {
 		storesPending.value = false;
@@ -298,18 +332,18 @@ onMounted(async () => {
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
-		sidebar-title="สิทธิ์การใช้งาน"
-		sidebar-compact-title="ACC"
-		sidebar-description="จัดการสมาชิกในร้าน, บทบาท และ permission summary"
+		sidebar-title="Users"
+		sidebar-compact-title="USR"
+		sidebar-description="จัดการสมาชิกในร้าน บทบาท และสิทธิ์การใช้งานตามร้านที่กำลังดู"
 	>
 		<template #default="{ openSidebar }">
-			<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
 				<AppPageHeader
 					title="ผู้ใช้งานและสิทธิ์การใช้งาน"
-					description="จัดการสมาชิกในร้านและกำหนดบทบาทให้ผู้ใช้ โดยรายการบทบาทถูกตั้งค่าจากหน้า Superadmin"
+					description="จัดการสมาชิกในร้าน กำหนดบทบาท และดู permission summary ตามร้านที่กำลังใช้งาน"
 					@menu="openSidebar"
 				>
-					<div class="grid gap-3 pt-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+					<div class="ml-auto grid w-full gap-3 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:justify-end">
 						<UInput
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
@@ -324,7 +358,7 @@ onMounted(async () => {
 							variant="soft"
 							size="md"
 							class="justify-center rounded-md"
-							icon="i-heroicons-funnel-20-solid"
+							icon="i-heroicons-arrow-path-20-solid"
 							label="รีเฟรช"
 							@click="fetchMembers"
 						/>
@@ -334,25 +368,52 @@ onMounted(async () => {
 							class="justify-center rounded-md"
 							icon="i-heroicons-user-plus-20-solid"
 							label="เพิ่มผู้ใช้"
-							:disabled="!canManageUsers || !selectedStoreId"
+							:disabled="!canCreateUsers || !selectedStoreId"
 							@click="createOpen = true"
 						/>
 					</div>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 gap-3">
-					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
-						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+				<div class="grid min-h-0 gap-3 overflow-hidden lg:grid-rows-[auto_auto_minmax(0,1fr)] lg:pr-1">
+					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+						<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+							<div
+								v-for="stat in overviewStats"
+								:key="stat.label"
+								class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3"
+							>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ stat.label }}</p>
+								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ stat.value }}</p>
+							</div>
+						</div>
+					</UCard>
+
+					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+						<div class="space-y-3">
+							<div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+								<div>
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Filters</p>
+									<h2 class="mt-2 text-lg font-semibold text-stone-950">ตัวกรองของร้านที่กำลังใช้งาน</h2>
+								</div>
+								<div class="flex flex-wrap gap-2">
+									<UBadge color="neutral" variant="soft" :label="selectedStoreLabel" />
+									<UBadge
+										:color="hasMultipleStoreAccess ? 'primary' : 'neutral'"
+										variant="soft"
+										:label="hasMultipleStoreAccess ? 'เปลี่ยนร้านจากตัวสลับหลัก' : 'ยึดตามร้านที่กำลังใช้งาน'"
+									/>
+								</div>
+							</div>
+
 							<div class="grid gap-3 md:grid-cols-3">
 								<div class="space-y-2">
-									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้าน</label>
-									<select
-										v-model="selectedStoreId"
-										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-										:disabled="storesPending"
-									>
-										<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
-									</select>
+									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้านที่กำลังใช้งาน</label>
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm font-medium text-stone-700">
+										{{ selectedStoreLabel }}
+									</div>
+									<p class="text-xs text-stone-500">
+										{{ hasMultipleStoreAccess ? "ถ้าต้องการจัดการอีกร้าน ให้เปลี่ยนร้านจากตัวสลับหลักก่อนเข้าหน้านี้" : "หน้านี้จะแสดงสมาชิกของร้านที่คุณกำลังใช้งานอยู่เท่านั้น" }}
+									</p>
 								</div>
 
 								<div class="space-y-2">
@@ -377,25 +438,29 @@ onMounted(async () => {
 									</select>
 								</div>
 							</div>
-						</UCard>
+						</div>
+					</UCard>
 
-						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-							<div class="flex items-center justify-between gap-3">
+					<UCard class="h-full min-h-0 rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Members</p>
 									<h2 class="text-lg font-semibold text-stone-950">สมาชิกในร้าน</h2>
-									<p class="mt-1 text-sm text-stone-500">คลิกผู้ใช้เพื่อดู role และ permission summary แบบละเอียด</p>
+									<p class="mt-1 text-sm text-stone-500">คลิกผู้ใช้เพื่อดูบทบาท สถานะ และ permission summary แบบละเอียด</p>
 								</div>
-								<UBadge color="neutral" variant="soft" :label="`${members.length} รายการ`" />
+								<div class="flex flex-wrap gap-2">
+									<UBadge color="neutral" variant="soft" :label="selectedStoreLabel" />
+									<UBadge color="neutral" variant="soft" :label="`${members.length} รายการ`" />
+								</div>
+							</div>
+
+							<div v-if="membersPending" class="mt-4">
+								<AppInlineLoadingBar minimal />
 							</div>
 
 							<div v-if="membersError" class="mt-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
 								{{ membersError }}
-							</div>
-
-							<div v-else-if="membersPending" class="mt-4 min-h-[120px]">
-								<div class="overflow-hidden bg-neutral-100">
-									<div class="users-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
-								</div>
 							</div>
 
 							<div v-else-if="!members.length" class="mt-4 rounded-md border border-dashed border-neutral-200 bg-[#faf8f4] px-5 py-10 text-center">
@@ -404,35 +469,36 @@ onMounted(async () => {
 								<p class="mt-1 text-sm text-stone-500">เพิ่มผู้ใช้ใหม่หรือเชิญผู้ใช้เดิมเข้ามาในร้านก่อน</p>
 							</div>
 
-							<div v-else class="mt-4 grid gap-3">
-								<button
-									v-for="member in members"
-									:key="`${member.store_id}:${member.user_id}`"
-									type="button"
-									class="rounded-md border border-neutral-200 bg-[#fffefd] p-4 text-left transition hover:border-neutral-300 hover:shadow-sm"
-									@click="openMemberDetail(member.user_id)"
-								>
-									<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-										<div class="min-w-0">
-											<div class="flex flex-wrap items-center gap-2">
-												<p class="text-base font-semibold text-stone-950">{{ member.name }}</p>
-												<UBadge :color="statusTone(member.status)" variant="soft" :label="member.status === 'active' ? 'ใช้งาน' : 'ปิดใช้งาน'" />
-												<UBadge color="neutral" variant="soft" :label="member.role_name" />
+							<div v-else class="mt-4 min-h-0 flex-1">
+								<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto pb-1">
+									<button
+										v-for="member in members"
+										:key="`${member.store_id}:${member.user_id}`"
+										type="button"
+										class="w-full rounded-md border border-neutral-200 bg-neutral-50 p-4 text-left transition hover:border-primary-200 hover:bg-primary-50"
+										@click="openMemberDetail(member.user_id)"
+									>
+										<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+											<div class="min-w-0">
+												<div class="flex flex-wrap items-center gap-2">
+													<p class="text-base font-semibold text-stone-950">{{ member.name }}</p>
+													<UBadge :color="statusTone(member.status)" variant="soft" :label="member.status === 'active' ? 'ใช้งาน' : 'ปิดใช้งาน'" />
+													<UBadge color="neutral" variant="soft" :label="member.role_name" />
+												</div>
+												<p class="mt-1 text-sm text-stone-500">{{ member.email }}</p>
+												<div class="mt-3 flex flex-wrap gap-2 text-xs text-stone-500">
+													<span class="rounded-md bg-white px-2.5 py-1 ring-1 ring-neutral-200">System role: {{ member.system_role }}</span>
+													<span class="rounded-md bg-white px-2.5 py-1 ring-1 ring-neutral-200">{{ member.permissions_count }} permissions</span>
+													<span class="rounded-md bg-white px-2.5 py-1 ring-1 ring-neutral-200">เพิ่มเมื่อ {{ formatDate(member.created_at) }}</span>
+												</div>
 											</div>
-											<p class="mt-1 text-sm text-stone-500">{{ member.email }}</p>
-											<div class="mt-3 flex flex-wrap gap-2 text-xs text-stone-500">
-												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">System role: {{ member.system_role }}</span>
-												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">{{ member.permissions_count }} permissions</span>
-												<span class="rounded-md bg-[#f5f5f4] px-2.5 py-1">เพิ่มเมื่อ {{ formatDate(member.created_at) }}</span>
-											</div>
+											<UIcon name="i-heroicons-chevron-right-20-solid" class="hidden h-5 w-5 text-stone-300 lg:block" />
 										</div>
-										<UIcon name="i-heroicons-chevron-right-20-solid" class="hidden h-5 w-5 text-stone-300 lg:block" />
-									</div>
-								</button>
+									</button>
+								</div>
 							</div>
-						</UCard>
-					</div>
-
+						</div>
+					</UCard>
 				</div>
 			</div>
 
@@ -471,7 +537,7 @@ onMounted(async () => {
 								<select
 									:value="selectedMember.status"
 									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									:disabled="!canManageUsers"
+									:disabled="!canSuspendUsers"
 									@change="saveMemberStatus(selectedMember, ($event.target as HTMLSelectElement).value)"
 								>
 									<option v-for="status in memberStatusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
@@ -495,7 +561,7 @@ onMounted(async () => {
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
-								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-key-20-solid" :block="true" :disabled="!canManageUsers" @click="resetPasswordOpen = true">
+								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-key-20-solid" :block="true" :disabled="!canResetPasswords" @click="resetPasswordOpen = true">
 									รีเซ็ตรหัสผ่าน
 								</AppButton>
 							</div>
@@ -544,7 +610,7 @@ onMounted(async () => {
 					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canManageUsers" @click="createMember">
+							<AppButton color="primary" variant="solid" size="md" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canCreateUsers" @click="createMember">
 								บันทึกผู้ใช้
 							</AppButton>
 						</div>
@@ -588,7 +654,7 @@ onMounted(async () => {
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="resetPasswordOpen = false">ยกเลิก</AppButton>
-								<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canManageUsers || saving" :loading="saving" :spin-icon-on-loading="true" @click="resetMemberPassword">
+								<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canResetPasswords || saving" :loading="saving" :spin-icon-on-loading="true" @click="resetMemberPassword">
 									บันทึกรหัสผ่านใหม่
 								</AppButton>
 							</div>
@@ -599,15 +665,3 @@ onMounted(async () => {
 		</template>
 	</AppSidebarShell>
 </template>
-
-<style scoped>
-@keyframes users-loading-slide {
-	0% { transform: translateX(-120%); }
-	100% { transform: translateX(420%); }
-}
-
-.users-loading-line {
-	animation: users-loading-slide 1.2s linear infinite;
-	will-change: transform;
-}
-</style>

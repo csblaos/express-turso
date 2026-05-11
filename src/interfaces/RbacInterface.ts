@@ -66,6 +66,7 @@ type StoreMemberCreateInput = {
 	status?: string;
 	system_role?: string;
 	ui_locale?: string;
+	must_change_password?: boolean;
 	added_by?: string | null;
 };
 
@@ -586,16 +587,53 @@ export class RbacInterface {
 	static async duplicateRole(
 		id: string,
 		name: string,
+		permissionKeysOverride?: string[],
 	): Promise<RoleWithPermissions | null> {
 		await RbacInterface.ensurePermissionSeed();
 		const role = await RbacInterface.getRoleById(id);
 		if (!role) return null;
+		const permissionKeys = permissionKeysOverride ?? role.permissions.map((permission) => permission.key);
 
 		return RbacInterface.createRole({
 			store_id: role.store_id,
 			name,
 			is_system: 0,
-		}, role.permissions.map((permission) => permission.key));
+		}, permissionKeys);
+	}
+
+	static async applyRoleToStore(
+		id: string,
+		payload: { target_store_id: string; mode: "create" | "update"; name?: string | null; target_role_id?: string | null },
+		permissionKeysOverride?: string[],
+	): Promise<RoleWithPermissions | null> {
+		await RbacInterface.ensurePermissionSeed();
+		const sourceRole = await RbacInterface.getRoleById(id);
+		if (!sourceRole) return null;
+
+		const permissionKeys = permissionKeysOverride ?? sourceRole.permissions.map((permission) => permission.key);
+
+		if (payload.mode === "update") {
+			const targetRoleId = String(payload.target_role_id || "").trim();
+			if (!targetRoleId) {
+				throw new Error("ROLE_NOT_FOUND");
+			}
+			const targetRole = await RbacInterface.getRoleById(targetRoleId);
+			if (!targetRole || targetRole.store_id !== payload.target_store_id) {
+				throw new Error("ROLE_NOT_FOUND");
+			}
+			return RbacInterface.updateRole(targetRole.id, {}, permissionKeys);
+		}
+
+		const nextName = String(payload.name || "").trim();
+		if (!nextName) {
+			throw new Error("ROLE_NAME_REQUIRED");
+		}
+
+		return RbacInterface.createRole({
+			store_id: payload.target_store_id,
+			name: nextName,
+			is_system: 0,
+		}, permissionKeys);
 	}
 
 	static async ensureDefaultRolePresetsForStore(storeId: string): Promise<void> {
@@ -934,27 +972,32 @@ export class RbacInterface {
 			userId = String(existingUser.rows[0].id);
 		} else {
 			const passwordHash = await bcrypt.hash(payload.password, 10);
+			const now = new Date().toISOString();
+			userId = randomUUID();
 			const insertResult = await db.execute({
 				sql: `
 					INSERT INTO users (
-						name, email, password_hash, created_at, system_role,
-						must_change_password, password_updated_at, ui_locale, client_suspended
+						id, email, name, password_hash, created_at, session_limit, system_role,
+						created_by, must_change_password, password_updated_at, ui_locale, client_suspended
 					)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 				args: [
-					payload.name.trim(),
+					userId,
 					normalizedEmail,
+					payload.name.trim(),
 					passwordHash,
-					new Date().toISOString(),
+					now,
+					null,
 					payload.system_role?.trim() || "staff",
-					0,
-					new Date().toISOString(),
+					payload.added_by || null,
+					payload.must_change_password ? 1 : 0,
+					now,
 					payload.ui_locale?.trim() || "th",
 					0,
 				],
 			});
-			userId = String(insertResult.lastInsertRowid);
+			void insertResult;
 		}
 
 		const resolvedRoleId = await RbacInterface.resolveStoreMemberRoleId(payload.store_id, payload.role_id);

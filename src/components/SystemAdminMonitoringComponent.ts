@@ -1,6 +1,9 @@
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { DbConn } from "@connections/DbConn";
 import { RedisConn } from "@connections/RedisConn";
 import { SystemAdminMonitoringInterface } from "@interfaces/SystemAdminMonitoringInterface";
+import { SystemHealthHistory, type SystemHealthHistorySample } from "@utils/SystemHealthHistory";
+import { SystemRuntimeTelemetry } from "@utils/SystemRuntimeTelemetry";
 
 type ServiceHealthStatus = "healthy" | "degraded" | "down";
 
@@ -9,6 +12,7 @@ type ServiceHealth = {
 	latency_ms: number | null;
 	message: string;
 	checked_at: string;
+	history: SystemHealthHistorySample[];
 };
 
 type MonitoringSnapshot = {
@@ -44,6 +48,22 @@ type MonitoringSnapshot = {
 		wa_connections_online: number;
 		integrations_total: number;
 	};
+	recent_activity: {
+		window_hours: number;
+		admin_changes_total: number;
+		client_changes: number;
+		role_changes: number;
+		member_changes: number;
+		password_resets: number;
+	};
+	request_telemetry: {
+		window_hours: number;
+		total_requests: number;
+		success_2xx: number;
+		client_errors_4xx: number;
+		server_errors_5xx: number;
+		error_rate_percent: number;
+	};
 	warnings: string[];
 };
 
@@ -68,6 +88,7 @@ export class SystemAdminMonitoringComponent {
 			latency_ms: 0,
 			message: "API process is running",
 			checked_at: nowIso,
+			history: SystemHealthHistory.read("api"),
 		};
 	}
 
@@ -78,6 +99,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: null,
 				message: "Database client is not connected",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		}
 
@@ -91,6 +113,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: latency,
 				message: `Database ping OK (${latency}ms)`,
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		} catch (error) {
 			return {
@@ -98,6 +121,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: ms(startedAt),
 				message: error instanceof Error ? error.message : "Database ping failed",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		}
 	}
@@ -109,6 +133,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: null,
 				message: "Redis client is not connected",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		}
 
@@ -122,6 +147,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: latency,
 				message: `Redis ping ${response || "OK"} (${latency}ms)`,
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		} catch (error) {
 			return {
@@ -129,6 +155,7 @@ export class SystemAdminMonitoringComponent {
 				latency_ms: ms(startedAt),
 				message: error instanceof Error ? error.message : "Redis ping failed",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		}
 	}
@@ -136,18 +163,81 @@ export class SystemAdminMonitoringComponent {
 	static async getSnapshot(requestId: string): Promise<MonitoringSnapshot> {
 		void requestId;
 		const checkedAt = new Date().toISOString();
+		const recentWindowHours = 24;
+		const recentSince = new Date(Date.now() - recentWindowHours * 60 * 60 * 1000).toISOString();
 		const memoryUsage = process.memoryUsage();
 
-		const [ dbHealth, redisHealth, summary ] = await Promise.all([
+		const [
+			dbHealth,
+			redisHealth,
+			summary,
+			adminChangesTotal,
+			clientChanges,
+			roleChanges,
+			memberChanges,
+			passwordResets,
+		] = await Promise.all([
 			SystemAdminMonitoringComponent.getDbHealth(checkedAt),
 			SystemAdminMonitoringComponent.getRedisHealth(checkedAt),
 			SystemAdminMonitoringInterface.getSummaryCounts(),
+			AuditEventInterface.countSince({ since: recentSince, scopes: [ "system_admin", "settings" ] }),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "system_admin",
+				actions: [ "create_client_account", "update_client_account", "suspend_client_account", "activate_client_account" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "settings",
+				actions: [ "create_role", "update_role", "delete_role" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "settings",
+				actions: [ "create_store_member" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				actions: [ "reset_client_password", "reset_store_member_password" ],
+			}),
 		]);
+		const requestTelemetry = SystemRuntimeTelemetry.getRequestSummary();
 
 		const warnings: string[] = [];
 		if (dbHealth.status !== "healthy") warnings.push(`DB status: ${dbHealth.status}`);
 		if (redisHealth.status !== "healthy") warnings.push(`Redis status: ${redisHealth.status}`);
 		if (summary.users_suspended > 0) warnings.push(`Suspended users: ${summary.users_suspended}`);
+		if ((summary.fb_connections_total - summary.fb_connections_online) > 0) warnings.push(`FB offline: ${summary.fb_connections_total - summary.fb_connections_online}`);
+		if ((summary.wa_connections_total - summary.wa_connections_online) > 0) warnings.push(`WA offline: ${summary.wa_connections_total - summary.wa_connections_online}`);
+		if (requestTelemetry.server_errors_5xx > 0) warnings.push(`5xx responses 24h: ${requestTelemetry.server_errors_5xx}`);
+
+		const services = {
+			api: SystemAdminMonitoringComponent.getApiHealth(checkedAt),
+			db: dbHealth,
+			redis: redisHealth,
+		};
+
+		SystemHealthHistory.record({
+			api: {
+				status: services.api.status,
+				latency_ms: services.api.latency_ms,
+				checked_at: services.api.checked_at,
+			},
+			db: {
+				status: services.db.status,
+				latency_ms: services.db.latency_ms,
+				checked_at: services.db.checked_at,
+			},
+			redis: {
+				status: services.redis.status,
+				latency_ms: services.redis.latency_ms,
+				checked_at: services.redis.checked_at,
+			},
+		});
+
+		services.api.history = SystemHealthHistory.read("api");
+		services.db.history = SystemHealthHistory.read("db");
+		services.redis.history = SystemHealthHistory.read("redis");
 
 		return {
 			checked_at: checkedAt,
@@ -163,12 +253,17 @@ export class SystemAdminMonitoringComponent {
 					external_mb: mb(memoryUsage.external),
 				},
 			},
-			services: {
-				api: SystemAdminMonitoringComponent.getApiHealth(checkedAt),
-				db: dbHealth,
-				redis: redisHealth,
-			},
+			services,
 			summary,
+			recent_activity: {
+				window_hours: recentWindowHours,
+				admin_changes_total: adminChangesTotal,
+				client_changes: clientChanges,
+				role_changes: roleChanges,
+				member_changes: memberChanges,
+				password_resets: passwordResets,
+			},
+			request_telemetry: requestTelemetry,
 			warnings,
 		};
 	}

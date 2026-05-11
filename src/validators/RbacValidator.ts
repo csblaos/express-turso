@@ -38,6 +38,30 @@ export default class RbacValidator extends ValidatorMiddleware {
 		actor_user_id: optionalString,
 	});
 
+	private static readonly applyRoleBodySchema = z.object({
+		target_store_id: nonEmptyString,
+		mode: z.enum([ "create", "update" ]),
+		name: optionalString,
+		target_role_id: optionalString,
+		actor_user_id: optionalString,
+	}).superRefine((value, ctx) => {
+		if (value.mode === "create" && !value.name?.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: [ "name" ],
+				message: "name is required when mode is create",
+			});
+		}
+
+		if (value.mode === "update" && !value.target_role_id?.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: [ "target_role_id" ],
+				message: "target_role_id is required when mode is update",
+			});
+		}
+	});
+
 	private static readonly getUserPermissionsQuerySchema = z.object({
 		store_id: z.string().trim().optional(),
 	});
@@ -57,6 +81,7 @@ export default class RbacValidator extends ValidatorMiddleware {
 		status: optionalString,
 		system_role: optionalString,
 		ui_locale: optionalString,
+		must_change_password: z.boolean().optional(),
 		added_by: optionalString,
 	});
 
@@ -101,6 +126,13 @@ export default class RbacValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: RbacValidator.duplicateRoleBodySchema,
+	});
+
+	public static readonly applyRole = RbacValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: RbacValidator.applyRoleBodySchema,
 	});
 
 	public static readonly deleteRole = RbacValidator.init({

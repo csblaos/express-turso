@@ -1,8 +1,11 @@
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { ENV } from "@configs/ENV";
 import { DbConn } from "@connections/DbConn";
 import { RedisConn } from "@connections/RedisConn";
 import { SystemConfigInterface } from "@interfaces/SystemConfigInterface";
 import { SystemAdminSecurityInterface } from "@interfaces/SystemAdminSecurityInterface";
+import { SystemHealthHistory, type SystemHealthHistorySample } from "@utils/SystemHealthHistory";
+import { SystemRuntimeTelemetry } from "@utils/SystemRuntimeTelemetry";
 
 type SecurityHealthStatus = "healthy" | "degraded" | "down";
 
@@ -11,6 +14,7 @@ type SecurityHealth = {
 	latency_ms: number | null;
 	message: string;
 	checked_at: string;
+	history: SystemHealthHistorySample[];
 };
 
 type SecuritySnapshot = {
@@ -45,6 +49,22 @@ type SecuritySnapshot = {
 		stores_total: number;
 		store_members_total: number;
 	};
+	recent_activity: {
+		window_hours: number;
+		password_resets: number;
+		suspensions: number;
+		role_changes: number;
+		client_updates: number;
+	};
+	auth_telemetry: {
+		window_hours: number;
+		login_successes: number;
+		login_failures: number;
+		lockouts: number;
+		suspended_blocks: number;
+		total_auth_events: number;
+		failure_pressure_percent: number;
+	};
 	warnings: string[];
 };
 
@@ -65,6 +85,7 @@ export class SystemAdminSecurityComponent {
 			latency_ms: 0,
 			message: "API process is running",
 			checked_at: nowIso,
+			history: SystemHealthHistory.read("api"),
 		};
 	}
 
@@ -75,6 +96,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: null,
 				message: "Database client is not connected",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		}
 
@@ -88,6 +110,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: latency,
 				message: `Database ping OK (${latency}ms)`,
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		} catch (error) {
 			return {
@@ -95,6 +118,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: ms(startedAt),
 				message: error instanceof Error ? error.message : "Database ping failed",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("db"),
 			};
 		}
 	}
@@ -106,6 +130,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: null,
 				message: "Redis client is not connected",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		}
 
@@ -119,6 +144,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: latency,
 				message: `Redis ping ${response || "OK"} (${latency}ms)`,
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		} catch (error) {
 			return {
@@ -126,6 +152,7 @@ export class SystemAdminSecurityComponent {
 				latency_ms: ms(startedAt),
 				message: error instanceof Error ? error.message : "Redis ping failed",
 				checked_at: nowIso,
+				history: SystemHealthHistory.read("redis"),
 			};
 		}
 	}
@@ -133,14 +160,45 @@ export class SystemAdminSecurityComponent {
 	static async getSnapshot(requestId: string): Promise<SecuritySnapshot> {
 		void requestId;
 		const checkedAt = new Date().toISOString();
+		const recentWindowHours = 24;
+		const recentSince = new Date(Date.now() - recentWindowHours * 60 * 60 * 1000).toISOString();
 		const isDefaultJwtSecret = ENV.AUTH.JWT_SECRET === "dev-jwt-secret-change-me";
 
-		const [ dbHealth, redisHealth, authConfig, summary ] = await Promise.all([
+		const [
+			dbHealth,
+			redisHealth,
+			authConfig,
+			summary,
+			passwordResets,
+			suspensions,
+			roleChanges,
+			clientUpdates,
+		] = await Promise.all([
 			SystemAdminSecurityComponent.getDbHealth(checkedAt),
 			SystemAdminSecurityComponent.getRedisHealth(checkedAt),
 			SystemConfigInterface.getConfig(),
 			SystemAdminSecurityInterface.getSummaryCounts(),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				actions: [ "reset_client_password", "reset_store_member_password" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "system_admin",
+				actions: [ "suspend_client_account", "activate_client_account" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "settings",
+				actions: [ "create_role", "update_role", "delete_role" ],
+			}),
+			AuditEventInterface.countSince({
+				since: recentSince,
+				scope: "system_admin",
+				actions: [ "update_client_account" ],
+			}),
 		]);
+		const authTelemetry = SystemRuntimeTelemetry.getAuthSummary();
 
 		const warnings: string[] = [];
 		if (isDefaultJwtSecret) warnings.push("JWT secret ยังเป็นค่า default");
@@ -151,14 +209,40 @@ export class SystemAdminSecurityComponent {
 		if (summary.users_suspended > 0) warnings.push(`Users ถูก suspended: ${summary.users_suspended}`);
 		if (authConfig.auth_max_failed_attempts > 10) warnings.push("max failed attempts สูงเกินแนะนำ (มากกว่า 10)");
 		if (authConfig.auth_lockout_minutes < 5) warnings.push("lockout minutes ต่ำเกินแนะนำ (น้อยกว่า 5)");
+		if (passwordResets > 10) warnings.push(`Password resets 24h: ${passwordResets}`);
+		if (authTelemetry.lockouts > 0) warnings.push(`Account lockouts 24h: ${authTelemetry.lockouts}`);
+
+		const services = {
+			api: SystemAdminSecurityComponent.getApiHealth(checkedAt),
+			db: dbHealth,
+			redis: redisHealth,
+		};
+
+		SystemHealthHistory.record({
+			api: {
+				status: services.api.status,
+				latency_ms: services.api.latency_ms,
+				checked_at: services.api.checked_at,
+			},
+			db: {
+				status: services.db.status,
+				latency_ms: services.db.latency_ms,
+				checked_at: services.db.checked_at,
+			},
+			redis: {
+				status: services.redis.status,
+				latency_ms: services.redis.latency_ms,
+				checked_at: services.redis.checked_at,
+			},
+		});
+
+		services.api.history = SystemHealthHistory.read("api");
+		services.db.history = SystemHealthHistory.read("db");
+		services.redis.history = SystemHealthHistory.read("redis");
 
 		return {
 			checked_at: checkedAt,
-			services: {
-				api: SystemAdminSecurityComponent.getApiHealth(checkedAt),
-				db: dbHealth,
-				redis: redisHealth,
-			},
+			services,
 			auth_policy: {
 				access_token_ttl_minutes: authConfig.auth_access_token_ttl_minutes,
 				refresh_token_ttl_days: authConfig.auth_refresh_token_ttl_days,
@@ -175,8 +259,15 @@ export class SystemAdminSecurityComponent {
 				redis_driver: ENV.REDIS.DRIVER,
 			},
 			summary,
+			recent_activity: {
+				window_hours: recentWindowHours,
+				password_resets: passwordResets,
+				suspensions,
+				role_changes: roleChanges,
+				client_updates: clientUpdates,
+			},
+			auth_telemetry: authTelemetry,
 			warnings,
 		};
 	}
 }
-

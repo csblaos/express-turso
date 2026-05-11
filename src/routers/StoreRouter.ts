@@ -3,12 +3,14 @@ import { Router } from "express";
 import { StoreController } from "@controllers/StoreController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
+import { RoleScopeMiddleware } from "@middlewares/RoleScopeMiddleware";
 
 export class StoreRouter {
 	private static instance: StoreRouter;
 	private readonly router: Router = Router();
 
 	private constructor() {
+		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getAll);
 		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.create"), StoreController.create);

@@ -26,6 +26,7 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 
 	private static readonly updateBodySchema = z.object({
 		name: optionalString,
+		email: z.string().trim().email().optional(),
 		ui_locale: optionalString,
 		max_stores: z.number().int().positive().nullable().optional(),
 		can_create_stores: z.number().int().min(0).max(1).optional(),
@@ -38,6 +39,12 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 	private static readonly updateStatusBodySchema = z.object({
 		status: z.enum([ "active", "suspended" ]),
 		reason: optionalString,
+		actor_user_id: optionalString,
+	});
+
+	private static readonly resetPasswordBodySchema = z.object({
+		password: z.string().min(6, "password must be at least 6 characters"),
+		must_change_password: z.boolean().optional(),
 		actor_user_id: optionalString,
 	});
 
@@ -65,6 +72,13 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: SystemAdminClientValidator.updateStatusBodySchema,
+	});
+
+	public static readonly resetPassword = SystemAdminClientValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: SystemAdminClientValidator.resetPasswordBodySchema,
 	});
 
 	public static readonly deleteCheck = SystemAdminClientValidator.init({

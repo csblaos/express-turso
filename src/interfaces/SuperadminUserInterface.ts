@@ -19,6 +19,12 @@ export type SuperadminScopedUserRecord = {
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
 	created_at: string;
+	membership_count: number;
+	primary_store_id: string | null;
+	primary_store_name: string | null;
+	primary_role_id: string | null;
+	primary_role_name: string | null;
+	primary_member_status: string | null;
 };
 
 export type SuperadminScopedUserListParams = {
@@ -57,6 +63,12 @@ function mapRow(row: Record<string, unknown>): SuperadminScopedUserRecord {
 		status: suspended ? "suspended" : "active",
 		client_suspended_reason: row.client_suspended_reason ? String(row.client_suspended_reason) : null,
 		created_at: String(row.created_at || new Date(0).toISOString()),
+		membership_count: Number(row.membership_count || 0),
+		primary_store_id: row.primary_store_id ? String(row.primary_store_id) : null,
+		primary_store_name: row.primary_store_name ? String(row.primary_store_name) : null,
+		primary_role_id: row.primary_role_id ? String(row.primary_role_id) : null,
+		primary_role_name: row.primary_role_name ? String(row.primary_role_name) : null,
+		primary_member_status: row.primary_member_status ? String(row.primary_member_status) : null,
 	};
 }
 
@@ -135,13 +147,66 @@ export class SuperadminUserInterface {
 					u.must_change_password,
 					u.client_suspended,
 					u.client_suspended_reason,
-					u.created_at
+					u.created_at,
+					(
+						SELECT COUNT(*)
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+					) AS membership_count,
+					(
+						SELECT sm.store_id
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+						ORDER BY sm.created_at DESC
+						LIMIT 1
+					) AS primary_store_id,
+					(
+						SELECT s.name
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+						ORDER BY sm.created_at DESC
+						LIMIT 1
+					) AS primary_store_name,
+					(
+						SELECT sm.role_id
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+						ORDER BY sm.created_at DESC
+						LIMIT 1
+					) AS primary_role_id,
+					(
+						SELECT r.name
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						INNER JOIN roles r ON r.id = sm.role_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+						ORDER BY sm.created_at DESC
+						LIMIT 1
+					) AS primary_role_name,
+					(
+						SELECT sm.status
+						FROM store_members sm
+						INNER JOIN stores s ON s.id = sm.store_id
+						WHERE sm.user_id = u.id
+							AND s.owner_user_id = ?
+						ORDER BY sm.created_at DESC
+						LIMIT 1
+					) AS primary_member_status
 				FROM users u
 				WHERE ${whereClause}
 				ORDER BY u.created_at DESC, u.name ASC
 				LIMIT ? OFFSET ?
 			`,
-			args: [ ...args, limit, offset ],
+			args: [ ...args, ownerUserId, ownerUserId, ownerUserId, ownerUserId, ownerUserId, ownerUserId, limit, offset ],
 		});
 
 		return {

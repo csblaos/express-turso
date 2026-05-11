@@ -88,6 +88,19 @@ export class RbacController {
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
+	static applyRole = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await RbacComponent.applyRoleToStore(
+			req.requestId,
+			req.params.id as string,
+			req.body || {},
+			{
+				userId: req.auth?.userId || "",
+				systemRole: req.auth?.systemRole || "",
+			},
+		);
+		SuccessHandler.created(res, req.requestId, { data });
+	});
+
 	static deleteRole = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await RbacComponent.deleteRole(
 			req.requestId,

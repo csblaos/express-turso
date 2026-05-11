@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -313,7 +314,9 @@ async function loadDashboard(options?: { refresh?: boolean }) {
 		const response = await apiFetch<ApiEnvelope<DashboardSnapshot>>("/system-admin/dashboard");
 		snapshot.value = response.data;
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : "โหลด dashboard ไม่สำเร็จ";
+		error.value = resolveApiErrorMessage(err, "โหลด dashboard ไม่สำเร็จ", {
+			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู System Admin Dashboard",
+		});
 	} finally {
 		pending.value = false;
 		refreshing.value = false;
@@ -331,11 +334,11 @@ onMounted(async () => {
 </script>
 
 <template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
-		:active-ids="['system-admin']"
-		sidebar-eyebrow="System"
-		sidebar-title="System Admin"
+		<AppSidebarShell
+			:nav-items="appNavItems"
+			:active-ids="['system-dashboard']"
+			sidebar-eyebrow="System"
+			sidebar-title="System Admin"
 		sidebar-compact-title="SYS"
 		sidebar-description="ภาพรวมของระบบกลาง, clients, policy, monitoring และ security จากมุมเดียว"
 	>

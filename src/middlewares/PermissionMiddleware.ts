@@ -6,6 +6,7 @@ import { hasPermissionByKey } from "@utils/PermissionCompat";
 import { resolveAcceptedPermissionKeys } from "@utils/PermissionCompat";
 
 const SYSTEM_BYPASS_ROLES = new Set([ "system_admin", "superadmin" ]);
+const SYSTEM_ADMIN_PERMISSION_PREFIX = "system_admin.";
 
 export class PermissionMiddleware {
 	static require(permissionKey: string): RequestHandler {
@@ -13,6 +14,15 @@ export class PermissionMiddleware {
 			try {
 				if (!req.auth) {
 					throw ApiError.UnauthorizedError("Authentication context is missing");
+				}
+
+				if (
+					permissionKey.startsWith(SYSTEM_ADMIN_PERMISSION_PREFIX)
+					&& req.auth.systemRole !== "system_admin"
+				) {
+					const acceptedKeys = resolveAcceptedPermissionKeys(permissionKey);
+					await PermissionMiddleware.logPermissionDenied(req, permissionKey, acceptedKeys);
+					throw ApiError.ForbiddenError(`Missing system admin scope: ${permissionKey}`);
 				}
 
 				if (SYSTEM_BYPASS_ROLES.has(req.auth.systemRole)) {

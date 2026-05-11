@@ -310,7 +310,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 		sidebar-description="จัดการร้านในมุม superadmin และติดตามสถานะการใช้งานแต่ละร้าน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
+			<div class="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
 				<AppPageHeader
 					title="Superadmin Stores"
 					description="ข้อมูลร้านภายใต้ superadmin ปัจจุบันจาก API /superadmin/stores"
@@ -328,7 +328,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 					</template>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+				<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 							<div

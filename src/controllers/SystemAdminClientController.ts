@@ -30,6 +30,11 @@ export class SystemAdminClientController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static resetPassword = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await SystemAdminClientComponent.resetClientPassword(req.requestId, req.params.id as string, req.body || {});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static deleteCheck = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await SystemAdminClientComponent.getClientDeleteCheck(req.requestId, req.params.id as string);
 		SuccessHandler.send(res, req.requestId, { data });

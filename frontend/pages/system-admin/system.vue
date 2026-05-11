@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type ApiEnvelope<T> = { success: true; requestId: string; data: T };
 type ApiSystemConfig = {
@@ -72,10 +73,12 @@ async function loadConfig() {
 	pending.value = true;
 	error.value = null;
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/settings");
+		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config");
 		apply(response.data);
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : "โหลด policy ไม่สำเร็จ";
+		error.value = resolveApiErrorMessage(err, "โหลด policy ไม่สำเร็จ", {
+			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู System Policy",
+		});
 	} finally {
 		pending.value = false;
 	}
@@ -83,7 +86,7 @@ async function loadConfig() {
 async function saveConfig() {
 	saving.value = true;
 	try {
-		await apiFetch<ApiEnvelope<ApiSystemConfig>>("/settings", {
+		await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config", {
 			method: "PUT",
 			body: {
 				default_can_create_branches: form.defaultCanCreateBranches ? 1 : 0,
@@ -100,7 +103,9 @@ async function saveConfig() {
 		initialState.value = currentState.value;
 		setToast("บันทึก System policy แล้ว");
 	} catch (err) {
-		setToast(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
+		setToast(resolveApiErrorMessage(err, "บันทึกไม่สำเร็จ", {
+			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์บันทึก System Policy",
+		}));
 	} finally {
 		saving.value = false;
 	}
@@ -110,11 +115,11 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 </script>
 
 <template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
-		:active-ids="['system-admin']"
-		sidebar-eyebrow="System"
-		sidebar-title="System Admin"
+		<AppSidebarShell
+			:nav-items="appNavItems"
+			:active-ids="['system-policy']"
+			sidebar-eyebrow="System"
+			sidebar-title="System Admin"
 		sidebar-compact-title="SYS"
 		sidebar-description="branch policy, session policy และ store logo policy ของแพลตฟอร์ม"
 	>

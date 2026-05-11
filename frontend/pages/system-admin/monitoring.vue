@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { getApiErrorStatus, resolveApiErrorMessage } from "~/utils/api-errors";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -8,6 +9,17 @@ type ApiEnvelope<T> = {
 };
 
 type ServiceHealthStatus = "healthy" | "degraded" | "down";
+
+type ServiceHistorySample = {
+	status: ServiceHealthStatus;
+	latency_ms: number | null;
+	checked_at: string;
+};
+
+type SignalSlot = {
+	key: string;
+	entry: ServiceHistorySample | null;
+};
 
 type MonitoringSnapshot = {
 	checked_at: string;
@@ -24,9 +36,9 @@ type MonitoringSnapshot = {
 		};
 	};
 	services: {
-		api: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string };
-		db: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string };
-		redis: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string };
+		api: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string; history: ServiceHistorySample[] };
+		db: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string; history: ServiceHistorySample[] };
+		redis: { status: ServiceHealthStatus; latency_ms: number | null; message: string; checked_at: string; history: ServiceHistorySample[] };
 	};
 	summary: {
 		users_total: number;
@@ -42,14 +54,37 @@ type MonitoringSnapshot = {
 		wa_connections_online: number;
 		integrations_total: number;
 	};
+	recent_activity: {
+		window_hours: number;
+		admin_changes_total: number;
+		client_changes: number;
+		role_changes: number;
+		member_changes: number;
+		password_resets: number;
+	};
+	request_telemetry: {
+		window_hours: number;
+		total_requests: number;
+		success_2xx: number;
+		client_errors_4xx: number;
+		server_errors_5xx: number;
+		error_rate_percent: number;
+	};
 	warnings: string[];
 };
 
 const { apiFetch } = useApiClient();
+const AUTO_REFRESH_SECONDS = 30;
+const VISIBILITY_RESUME_REFRESH_THRESHOLD_SECONDS = 15;
+const SIGNAL_SLOT_COUNT = 24;
 const pending = ref(true);
+const refreshing = ref(false);
 const error = ref<string | null>(null);
 const snapshot = ref<MonitoringSnapshot | null>(null);
+const nextRefreshInSeconds = ref(AUTO_REFRESH_SECONDS);
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let tabWasHidden = false;
+let hiddenAtMs: number | null = null;
 
 function statusTone(status: ServiceHealthStatus) {
 	if (status === "healthy") return "success";
@@ -79,39 +114,155 @@ function formatUptime(seconds: number) {
 	return `${minutes}m`;
 }
 
-async function loadMonitoring() {
-	pending.value = true;
-	error.value = null;
-	try {
-		const response = await apiFetch<ApiEnvelope<MonitoringSnapshot>>("/system-admin/monitoring");
-		snapshot.value = response.data;
-	} catch (err) {
-		error.value = err instanceof Error ? err.message : "โหลด monitoring ไม่สำเร็จ";
-	} finally {
-		pending.value = false;
+function signalBarClass(status: ServiceHealthStatus) {
+	if (status === "healthy") return "bg-emerald-500";
+	if (status === "degraded") return "bg-amber-400";
+	return "bg-rose-500";
+}
+
+function signalBarTitle(entry: ServiceHistorySample) {
+	return `${statusLabel(entry.status)} • ${entry.latency_ms === null ? "n/a" : `${entry.latency_ms}ms`} • ${formatDateTime(entry.checked_at)}`;
+}
+
+function historyHealthyPercent(history: ServiceHistorySample[]) {
+	if (!history.length) return 0;
+	return Math.round((history.filter((entry) => entry.status === "healthy").length / history.length) * 100);
+}
+
+function historyIncidentCount(history: ServiceHistorySample[]) {
+	return history.filter((entry) => entry.status !== "healthy").length;
+}
+
+function historyDownCount(history: ServiceHistorySample[]) {
+	return history.filter((entry) => entry.status === "down").length;
+}
+
+function percentage(part: number, total: number) {
+	if (total <= 0) return 0;
+	return Math.round((part / total) * 100);
+}
+
+function signalSlots(history: ServiceHistorySample[]): SignalSlot[] {
+	const safeHistory = history.slice(-SIGNAL_SLOT_COUNT);
+	const emptyCount = Math.max(0, SIGNAL_SLOT_COUNT - safeHistory.length);
+	return [
+		...Array.from({ length: emptyCount }, (_, index) => ({
+			key: `empty-${index}`,
+			entry: null,
+		})),
+		...safeHistory.map((entry, index) => ({
+			key: `${entry.checked_at}-${index}`,
+			entry,
+		})),
+	];
+}
+
+function stopAutoRefresh() {
+	if (autoRefreshTimer) {
+		clearInterval(autoRefreshTimer);
+		autoRefreshTimer = null;
 	}
 }
 
-onMounted(async () => {
-	await loadMonitoring();
+function startAutoRefresh(preserveCountdown = false) {
+	if (import.meta.client && document.hidden) {
+		stopAutoRefresh();
+		return;
+	}
+	stopAutoRefresh();
+	if (!preserveCountdown) {
+		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+	}
 	autoRefreshTimer = setInterval(() => {
-		void loadMonitoring();
-	}, 30_000);
+		if (pending.value || refreshing.value) return;
+		if (nextRefreshInSeconds.value <= 1) {
+			void loadMonitoring("auto");
+			return;
+		}
+		nextRefreshInSeconds.value -= 1;
+	}, 1000);
+}
+
+async function loadMonitoring(mode: "initial" | "manual" | "auto" = "initial") {
+	if (mode === "initial") {
+		pending.value = true;
+	} else {
+		refreshing.value = true;
+	}
+	if (!snapshot.value) {
+		error.value = null;
+	}
+	try {
+		const response = await apiFetch<ApiEnvelope<MonitoringSnapshot>>("/system-admin/monitoring");
+		snapshot.value = response.data;
+		error.value = null;
+		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+	} catch (err) {
+		if (!snapshot.value) {
+			error.value = resolveApiErrorMessage(err, "โหลด monitoring ไม่สำเร็จ", {
+				forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู Monitoring ของ System Admin",
+			});
+		}
+		if (getApiErrorStatus(err) === 403) {
+			stopAutoRefresh();
+		}
+	} finally {
+		pending.value = false;
+		refreshing.value = false;
+	}
+}
+
+function handleVisibilityChange() {
+	if (document.hidden) {
+		tabWasHidden = true;
+		hiddenAtMs = Date.now();
+		stopAutoRefresh();
+		return;
+	}
+	if (!tabWasHidden) {
+		startAutoRefresh();
+		return;
+	}
+	tabWasHidden = false;
+	const hiddenDurationSeconds = hiddenAtMs === null ? 0 : Math.floor((Date.now() - hiddenAtMs) / 1000);
+	hiddenAtMs = null;
+	if (
+		hiddenDurationSeconds >= VISIBILITY_RESUME_REFRESH_THRESHOLD_SECONDS ||
+		hiddenDurationSeconds >= nextRefreshInSeconds.value
+	) {
+		void loadMonitoring("auto").finally(() => {
+			startAutoRefresh();
+		});
+		return;
+	}
+	nextRefreshInSeconds.value = Math.max(1, nextRefreshInSeconds.value - hiddenDurationSeconds);
+	startAutoRefresh(true);
+}
+
+onMounted(async () => {
+	await loadMonitoring("initial");
+	document.addEventListener("visibilitychange", handleVisibilityChange);
+	if (document.hidden) {
+		tabWasHidden = true;
+		return;
+	}
+	startAutoRefresh();
 });
 
 onBeforeUnmount(() => {
-	if (autoRefreshTimer) {
-		clearInterval(autoRefreshTimer);
+	stopAutoRefresh();
+	if (import.meta.client) {
+		document.removeEventListener("visibilitychange", handleVisibilityChange);
 	}
 });
 </script>
 
 <template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
-		:active-ids="['system-admin']"
-		sidebar-eyebrow="System"
-		sidebar-title="System Admin"
+		<AppSidebarShell
+			:nav-items="appNavItems"
+			:active-ids="['system-monitoring']"
+			sidebar-eyebrow="System"
+			sidebar-title="System Admin"
 		sidebar-compact-title="SYS"
 		sidebar-description="monitoring dashboard สำหรับดูสถานะ API, DB, Redis และภาพรวมทรัพยากรหลักของแพลตฟอร์ม"
 	>
@@ -123,44 +274,52 @@ onBeforeUnmount(() => {
 					:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 lg:flex lg:w-auto">
-							<NuxtLink to="/system-admin/security">
-								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-shield-check-20-solid">
-									Security
+						<template #actions>
+							<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 lg:flex lg:w-auto">
+								<NuxtLink to="/system-admin/security">
+									<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-shield-check-20-solid">
+										Security
+									</AppButton>
+								</NuxtLink>
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending || refreshing" :disabled="pending || refreshing" :spin-icon-on-loading="true" @click="loadMonitoring('manual')">
+									รีโหลด
 								</AppButton>
-							</NuxtLink>
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadMonitoring">
-								รีโหลด
-							</AppButton>
-						</div>
-					</template>
+							</div>
+						</template>
 				</AppPageHeader>
 
 				<div class="grid min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
 					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">System monitoring</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติทุก 30 วินาที และกดรีโหลดได้ทุกเมื่อ</p>
+								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+									<div>
+										<p class="text-sm font-semibold text-stone-950">System monitoring</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติทุก 30 วินาที และกดรีโหลดได้ทุกเมื่อ</p>
+									</div>
+									<div class="flex flex-wrap items-center gap-2">
+										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ` }}
+										</div>
+										<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}
+										</div>
+									</div>
 								</div>
-								<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}
-								</div>
-							</div>
 
-							<div class="min-h-0 flex-1 overflow-auto pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0">
-								<div v-if="pending" class="min-h-[320px]">
+								<div class="min-h-0 flex-1 overflow-auto pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0">
+									<div v-if="pending" class="min-h-[320px]">
 									<div class="overflow-hidden bg-neutral-100">
 										<div class="system-monitoring-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
 									</div>
 								</div>
-								<div v-else-if="error" class="flex h-full min-h-[320px] items-center justify-center px-4 text-center text-stone-500">
-									{{ error }}
-								</div>
-								<div v-else-if="snapshot" class="grid gap-4 p-4 xl:grid-cols-2">
-									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
+									<div v-else-if="error && !snapshot" class="flex h-full min-h-[320px] items-center justify-center px-4 text-center text-stone-500">
+										{{ error }}
+									</div>
+									<div v-else-if="snapshot" class="grid gap-4 p-4 xl:grid-cols-2">
+										<div v-if="refreshing" class="xl:col-span-2 overflow-hidden bg-neutral-100">
+											<div class="system-monitoring-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
+										</div>
+										<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
 										<div class="space-y-4">
 											<div class="flex flex-wrap items-center justify-between gap-3">
 												<div>
@@ -187,9 +346,46 @@ onBeforeUnmount(() => {
 														<UBadge :color="statusTone(service.data.status)" variant="soft" :label="statusLabel(service.data.status)" />
 													</div>
 													<p class="mt-2 text-xs text-stone-500">{{ service.data.message }}</p>
-													<p class="mt-2 text-xs font-medium text-stone-700">
-														Latency: {{ service.data.latency_ms === null ? "n/a" : `${service.data.latency_ms}ms` }}
-													</p>
+													<div class="mt-3 flex items-center justify-between gap-2 text-xs">
+														<p class="font-medium text-stone-700">
+															Latency: {{ service.data.latency_ms === null ? "n/a" : `${service.data.latency_ms}ms` }}
+														</p>
+														<p class="text-stone-500">{{ historyHealthyPercent(service.data.history) }}%</p>
+													</div>
+													<div class="mt-2 flex items-end gap-1">
+														<UPopover
+															v-for="slot in signalSlots(service.data.history)"
+															:key="`${service.id}-${slot.key}`"
+															:content="{ side: 'top', align: 'center', sideOffset: 8, collisionPadding: 8 }"
+															:disabled="!slot.entry"
+														>
+															<component
+																:is="slot.entry ? 'button' : 'span'"
+																:type="slot.entry ? 'button' : undefined"
+																class="h-4 flex-1 rounded-sm"
+																:class="slot.entry ? `${signalBarClass(slot.entry.status)} cursor-pointer transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400` : 'bg-neutral-200 ring-1 ring-neutral-200/80'"
+																:title="slot.entry ? signalBarTitle(slot.entry) : 'ยังไม่มีข้อมูล'"
+																:aria-label="slot.entry ? signalBarTitle(slot.entry) : 'ยังไม่มีข้อมูล'"
+															/>
+
+															<template #content>
+																<div class="w-[200px] rounded-md bg-white p-3 shadow-xl ring-1 ring-neutral-200">
+																	<div class="flex items-center justify-between gap-2">
+																		<p class="text-xs font-semibold text-stone-950">{{ slot.entry ? statusLabel(slot.entry.status) : "No data" }}</p>
+																		<span v-if="slot.entry" class="h-2.5 w-2.5 rounded-full" :class="signalBarClass(slot.entry.status)" />
+																	</div>
+																	<p class="mt-2 text-[11px] text-stone-500">{{ slot.entry ? formatDateTime(slot.entry.checked_at) : "waiting for first checks" }}</p>
+																	<p v-if="slot.entry" class="mt-1 text-xs font-medium text-stone-700">
+																		Latency {{ slot.entry.latency_ms === null ? "n/a" : `${slot.entry.latency_ms}ms` }}
+																	</p>
+																</div>
+															</template>
+														</UPopover>
+													</div>
+													<div class="mt-2 flex items-center justify-between gap-2 text-[11px] text-stone-500">
+														<p>Last {{ service.data.history.length }} checks</p>
+														<p>{{ historyIncidentCount(service.data.history) }} incidents, {{ historyDownCount(service.data.history) }} down</p>
+													</div>
 												</div>
 											</div>
 										</div>
@@ -233,6 +429,37 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
 											<div>
+												<h2 class="text-lg font-semibold text-stone-950">Request telemetry</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ภาพรวม request ใน {{ snapshot.request_telemetry.window_hours }} ชั่วโมงล่าสุด</p>
+											</div>
+											<div class="grid gap-3 sm:grid-cols-2">
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Total requests</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.total_requests }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">2xx success</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.success_2xx }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">4xx client errors</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.client_errors_4xx }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">5xx server errors</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.server_errors_5xx }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5 sm:col-span-2">
+													<p class="text-xs text-stone-500">Error rate</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.error_rate_percent }}%</p>
+												</div>
+											</div>
+										</div>
+									</UCard>
+
+									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+										<div class="space-y-4">
+											<div>
 												<h2 class="text-lg font-semibold text-stone-950">Integrations</h2>
 												<p class="mt-1 text-xs leading-5 text-stone-500">FB/WA connection coverage</p>
 											</div>
@@ -256,6 +483,45 @@ onBeforeUnmount(() => {
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5 sm:col-span-2">
 													<p class="text-xs text-stone-500">Store integrations total</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.summary.integrations_total }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">FB online rate</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ percentage(snapshot.summary.fb_connections_online, snapshot.summary.fb_connections_total) }}%</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">WA online rate</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ percentage(snapshot.summary.wa_connections_online, snapshot.summary.wa_connections_total) }}%</p>
+												</div>
+											</div>
+										</div>
+									</UCard>
+
+									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
+										<div class="space-y-4">
+											<div>
+												<h2 class="text-lg font-semibold text-stone-950">Operations pulse</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ความเคลื่อนไหวล่าสุดจาก audit log ใน {{ snapshot.recent_activity.window_hours }} ชั่วโมง</p>
+											</div>
+											<div class="grid gap-3 sm:grid-cols-2">
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Admin changes</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.recent_activity.admin_changes_total }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Client changes</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.recent_activity.client_changes }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Role changes</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.recent_activity.role_changes }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Member creates</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.recent_activity.member_changes }}</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5 sm:col-span-2">
+													<p class="text-xs text-stone-500">Password resets</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.recent_activity.password_resets }}</p>
 												</div>
 											</div>
 										</div>
