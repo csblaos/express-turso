@@ -6,6 +6,7 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "baseUrl": "./src",
+	"ignoreDeprecations": "6.0",
     "paths": {
       "@components/*": ["components/*"],
       "@configs/*": ["configs/*"],
