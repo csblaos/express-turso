@@ -56,18 +56,25 @@ const primaryMembership = computed(() => currentAccess.value?.memberships?.[0] ?
 const permissionCount = computed(() => currentAccess.value?.permissions?.length ?? 0);
 const membershipCount = computed(() => currentAccess.value?.memberships?.length ?? 0);
 
+function shouldAutoFocusProfileModalInput() {
+	if (!import.meta.client) return false;
+	return window.matchMedia("(min-width: 1024px)").matches;
+}
+
 watch(currentUser, (value) => {
 	profileForm.name = value?.name || "";
 }, { immediate: true });
 
 watch(profileModalOpen, async (opened) => {
 	if (!opened) return;
+	if (!shouldAutoFocusProfileModalInput()) return;
 	await nextTick();
 	profileNameFieldRef.value?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus();
 });
 
 watch(passwordModalOpen, async (opened) => {
 	if (!opened) return;
+	if (!shouldAutoFocusProfileModalInput()) return;
 	await nextTick();
 	passwordCurrentFieldRef.value?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus();
 });
