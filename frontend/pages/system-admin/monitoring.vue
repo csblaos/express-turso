@@ -62,26 +62,41 @@ type MonitoringSnapshot = {
 		member_changes: number;
 		password_resets: number;
 	};
-	request_telemetry: {
+	pos_performance: {
 		window_hours: number;
 		total_requests: number;
-		success_2xx: number;
-		client_errors_4xx: number;
-		server_errors_5xx: number;
+		avg_latency_ms: number;
+		p95_latency_ms: number;
+		slow_requests: number;
+		slow_rate_percent: number;
 		error_rate_percent: number;
+		slow_threshold_ms: number;
+		groups: Array<{
+			id: string;
+			label: string;
+			request_count: number;
+			avg_latency_ms: number;
+		}>;
 	};
 	warnings: string[];
 };
 
 const { apiFetch } = useApiClient();
-const AUTO_REFRESH_SECONDS = 30;
 const VISIBILITY_RESUME_REFRESH_THRESHOLD_SECONDS = 15;
 const SIGNAL_SLOT_COUNT = 24;
+const REFRESH_INTERVAL_STORAGE_KEY = "system-admin-monitoring-refresh-interval-seconds";
+const refreshIntervalOptions = [
+	{ label: "30 วิ", value: 30 },
+	{ label: "1 นาที", value: 60 },
+	{ label: "3 นาที", value: 180 },
+	{ label: "5 นาที", value: 300 },
+];
 const pending = ref(true);
 const refreshing = ref(false);
 const error = ref<string | null>(null);
 const snapshot = ref<MonitoringSnapshot | null>(null);
-const nextRefreshInSeconds = ref(AUTO_REFRESH_SECONDS);
+const selectedRefreshIntervalSeconds = ref(30);
+const nextRefreshInSeconds = ref(selectedRefreshIntervalSeconds.value);
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let tabWasHidden = false;
 let hiddenAtMs: number | null = null;
@@ -112,6 +127,34 @@ function formatUptime(seconds: number) {
 	if (days > 0) return `${days}d ${hours}h ${minutes}m`;
 	if (hours > 0) return `${hours}h ${minutes}m`;
 	return `${minutes}m`;
+}
+
+function formatLatency(value: number) {
+	return value > 0 ? `${value}ms` : "n/a";
+}
+
+function refreshIntervalLabel(seconds: number) {
+	const matched = refreshIntervalOptions.find((option) => option.value === seconds);
+	return matched?.label || `${seconds} วิ`;
+}
+
+function isAllowedRefreshInterval(seconds: number) {
+	return refreshIntervalOptions.some((option) => option.value === seconds);
+}
+
+function loadStoredRefreshInterval() {
+	if (!import.meta.client) return;
+	const rawValue = window.localStorage.getItem(REFRESH_INTERVAL_STORAGE_KEY);
+	if (!rawValue) return;
+	const parsedValue = Number(rawValue);
+	if (!Number.isFinite(parsedValue) || !isAllowedRefreshInterval(parsedValue)) return;
+	selectedRefreshIntervalSeconds.value = parsedValue;
+	nextRefreshInSeconds.value = parsedValue;
+}
+
+function persistRefreshInterval(seconds: number) {
+	if (!import.meta.client) return;
+	window.localStorage.setItem(REFRESH_INTERVAL_STORAGE_KEY, String(seconds));
 }
 
 function signalBarClass(status: ServiceHealthStatus) {
@@ -171,7 +214,7 @@ function startAutoRefresh(preserveCountdown = false) {
 	}
 	stopAutoRefresh();
 	if (!preserveCountdown) {
-		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+		nextRefreshInSeconds.value = selectedRefreshIntervalSeconds.value;
 	}
 	autoRefreshTimer = setInterval(() => {
 		if (pending.value || refreshing.value) return;
@@ -196,7 +239,7 @@ async function loadMonitoring(mode: "initial" | "manual" | "auto" = "initial") {
 		const response = await apiFetch<ApiEnvelope<MonitoringSnapshot>>("/system-admin/monitoring");
 		snapshot.value = response.data;
 		error.value = null;
-		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+		nextRefreshInSeconds.value = selectedRefreshIntervalSeconds.value;
 	} catch (err) {
 		if (!snapshot.value) {
 			error.value = resolveApiErrorMessage(err, "โหลด monitoring ไม่สำเร็จ", {
@@ -239,7 +282,15 @@ function handleVisibilityChange() {
 	startAutoRefresh(true);
 }
 
+function applyRefreshInterval(seconds: number) {
+	selectedRefreshIntervalSeconds.value = seconds;
+	nextRefreshInSeconds.value = seconds;
+	persistRefreshInterval(seconds);
+	startAutoRefresh();
+}
+
 onMounted(async () => {
+	loadStoredRefreshInterval();
 	await loadMonitoring("initial");
 	document.addEventListener("visibilitychange", handleVisibilityChange);
 	if (document.hidden) {
@@ -294,11 +345,23 @@ onBeforeUnmount(() => {
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
 										<p class="text-sm font-semibold text-stone-950">System monitoring</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติทุก 30 วินาที และกดรีโหลดได้ทุกเมื่อ</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติตามช่วงเวลาที่เลือก และกดรีโหลดได้ทุกเมื่อ</p>
 									</div>
 									<div class="flex flex-wrap items-center gap-2">
+										<label class="flex items-center gap-2 rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											<span>ทุก</span>
+											<select
+												:value="selectedRefreshIntervalSeconds"
+												class="min-w-[88px] border-0 bg-transparent pr-6 text-right text-xs font-medium text-stone-700 focus:outline-none"
+												@change="applyRefreshInterval(Number(($event.target as HTMLSelectElement).value))"
+											>
+												<option v-for="option in refreshIntervalOptions" :key="option.value" :value="option.value">
+													{{ option.label }}
+												</option>
+											</select>
+										</label>
 										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ` }}
+											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ • ทุก ${refreshIntervalLabel(selectedRefreshIntervalSeconds)}` }}
 										</div>
 										<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 											อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}
@@ -429,31 +492,54 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Request telemetry</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ภาพรวม request ใน {{ snapshot.request_telemetry.window_hours }} ชั่วโมงล่าสุด</p>
+												<h2 class="text-lg font-semibold text-stone-950">POS performance</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">เฉพาะ route ใช้งานจริงของร้าน เช่น orders, products, inventory และ purchase orders ใน {{ snapshot.pos_performance.window_hours }} ชั่วโมงล่าสุด</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Total requests</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.total_requests }}</p>
+													<p class="text-xs text-stone-500">Requests counted</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.pos_performance.total_requests }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">2xx success</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.success_2xx }}</p>
+													<p class="text-xs text-stone-500">Avg latency</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ formatLatency(snapshot.pos_performance.avg_latency_ms) }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">4xx client errors</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.client_errors_4xx }}</p>
+													<p class="text-xs text-stone-500">P95 latency</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ formatLatency(snapshot.pos_performance.p95_latency_ms) }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">5xx server errors</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.server_errors_5xx }}</p>
+													<p class="text-xs text-stone-500">Slow requests</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.pos_performance.slow_requests }}</p>
 												</div>
-												<div class="rounded-md bg-neutral-50 px-3 py-3.5 sm:col-span-2">
-													<p class="text-xs text-stone-500">Error rate</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.request_telemetry.error_rate_percent }}%</p>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">Slow rate</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.pos_performance.slow_rate_percent }}%</p>
+												</div>
+												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
+													<p class="text-xs text-stone-500">5xx rate</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.pos_performance.error_rate_percent }}%</p>
 												</div>
 											</div>
+											<div v-if="snapshot.pos_performance.groups.length" class="space-y-2">
+												<p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Route groups</p>
+												<div class="grid gap-2 sm:grid-cols-2">
+													<div
+														v-for="group in snapshot.pos_performance.groups"
+														:key="group.id"
+														class="rounded-md border border-neutral-200 bg-white px-3 py-3"
+													>
+														<div class="flex items-center justify-between gap-3">
+															<p class="text-sm font-medium text-stone-900">{{ group.label }}</p>
+															<p class="text-xs text-stone-500">{{ group.request_count }} req</p>
+														</div>
+														<p class="mt-2 text-xs text-stone-500">Avg {{ formatLatency(group.avg_latency_ms) }}</p>
+													</div>
+												</div>
+											</div>
+											<p class="text-[11px] text-stone-500">
+												Slow threshold > {{ snapshot.pos_performance.slow_threshold_ms }}ms และไม่รวม monitoring, security, reports, settings หรือ health checks
+											</p>
 										</div>
 									</UCard>
 

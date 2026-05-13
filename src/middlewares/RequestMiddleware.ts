@@ -59,6 +59,7 @@ function cleanHeaders(
 
 export class RequestMiddleware {
 	static requestResponseLog(req: Request, res: Response, next: NextFunction): void {
+		const requestStartedAt = process.hrtime.bigint();
 		const requestId = (req.header("request-id") || uuid()).toString();
 		req.requestId = requestId;
 		res.setHeader("request-id", requestId);
@@ -109,6 +110,10 @@ export class RequestMiddleware {
 				statusCode: res.statusCode,
 				path: req.path,
 				method: req.method,
+				durationMs: Math.max(
+					1,
+					Math.round(Number(process.hrtime.bigint() - requestStartedAt) / 1_000_000),
+				),
 			});
 
 			Log.printLog(requestId);

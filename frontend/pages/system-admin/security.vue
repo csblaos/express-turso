@@ -73,14 +73,21 @@ type SecuritySnapshot = {
 };
 
 const { apiFetch } = useApiClient();
-const AUTO_REFRESH_SECONDS = 30;
 const VISIBILITY_RESUME_REFRESH_THRESHOLD_SECONDS = 15;
 const SIGNAL_SLOT_COUNT = 24;
+const REFRESH_INTERVAL_STORAGE_KEY = "system-admin-security-refresh-interval-seconds";
+const refreshIntervalOptions = [
+	{ label: "30 วิ", value: 30 },
+	{ label: "1 นาที", value: 60 },
+	{ label: "3 นาที", value: 180 },
+	{ label: "5 นาที", value: 300 },
+];
 const pending = ref(true);
 const refreshing = ref(false);
 const error = ref<string | null>(null);
 const snapshot = ref<SecuritySnapshot | null>(null);
-const nextRefreshInSeconds = ref(AUTO_REFRESH_SECONDS);
+const selectedRefreshIntervalSeconds = ref(30);
+const nextRefreshInSeconds = ref(selectedRefreshIntervalSeconds.value);
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let tabWasHidden = false;
 let hiddenAtMs: number | null = null;
@@ -102,6 +109,30 @@ function formatDateTime(value: string) {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
+}
+
+function refreshIntervalLabel(seconds: number) {
+	const matched = refreshIntervalOptions.find((option) => option.value === seconds);
+	return matched?.label || `${seconds} วิ`;
+}
+
+function isAllowedRefreshInterval(seconds: number) {
+	return refreshIntervalOptions.some((option) => option.value === seconds);
+}
+
+function loadStoredRefreshInterval() {
+	if (!import.meta.client) return;
+	const rawValue = window.localStorage.getItem(REFRESH_INTERVAL_STORAGE_KEY);
+	if (!rawValue) return;
+	const parsedValue = Number(rawValue);
+	if (!Number.isFinite(parsedValue) || !isAllowedRefreshInterval(parsedValue)) return;
+	selectedRefreshIntervalSeconds.value = parsedValue;
+	nextRefreshInSeconds.value = parsedValue;
+}
+
+function persistRefreshInterval(seconds: number) {
+	if (!import.meta.client) return;
+	window.localStorage.setItem(REFRESH_INTERVAL_STORAGE_KEY, String(seconds));
 }
 
 function signalBarClass(status: ServiceHealthStatus) {
@@ -161,7 +192,7 @@ function startAutoRefresh(preserveCountdown = false) {
 	}
 	stopAutoRefresh();
 	if (!preserveCountdown) {
-		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+		nextRefreshInSeconds.value = selectedRefreshIntervalSeconds.value;
 	}
 	autoRefreshTimer = setInterval(() => {
 		if (pending.value || refreshing.value) return;
@@ -186,7 +217,7 @@ async function loadSecurity(mode: "initial" | "manual" | "auto" = "initial") {
 		const response = await apiFetch<ApiEnvelope<SecuritySnapshot>>("/system-admin/security");
 		snapshot.value = response.data;
 		error.value = null;
-		nextRefreshInSeconds.value = AUTO_REFRESH_SECONDS;
+		nextRefreshInSeconds.value = selectedRefreshIntervalSeconds.value;
 	} catch (err) {
 		if (!snapshot.value) {
 			error.value = resolveApiErrorMessage(err, "โหลด security monitoring ไม่สำเร็จ", {
@@ -229,7 +260,15 @@ function handleVisibilityChange() {
 	startAutoRefresh(true);
 }
 
+function applyRefreshInterval(seconds: number) {
+	selectedRefreshIntervalSeconds.value = seconds;
+	nextRefreshInSeconds.value = seconds;
+	persistRefreshInterval(seconds);
+	startAutoRefresh();
+}
+
 onMounted(async () => {
+	loadStoredRefreshInterval();
 	await loadSecurity("initial");
 	document.addEventListener("visibilitychange", handleVisibilityChange);
 	if (document.hidden) {
@@ -284,11 +323,23 @@ onBeforeUnmount(() => {
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
 										<p class="text-sm font-semibold text-stone-950">System security</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติทุก 30 วินาที และกดรีโหลดได้ทุกเมื่อ</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติตามช่วงเวลาที่เลือก และกดรีโหลดได้ทุกเมื่อ</p>
 									</div>
 									<div class="flex flex-wrap items-center gap-2">
+										<label class="flex items-center gap-2 rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											<span>ทุก</span>
+											<select
+												:value="selectedRefreshIntervalSeconds"
+												class="min-w-[88px] border-0 bg-transparent pr-6 text-right text-xs font-medium text-stone-700 focus:outline-none"
+												@change="applyRefreshInterval(Number(($event.target as HTMLSelectElement).value))"
+											>
+												<option v-for="option in refreshIntervalOptions" :key="option.value" :value="option.value">
+													{{ option.label }}
+												</option>
+											</select>
+										</label>
 										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ` }}
+											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ • ทุก ${refreshIntervalLabel(selectedRefreshIntervalSeconds)}` }}
 										</div>
 										<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 											อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}

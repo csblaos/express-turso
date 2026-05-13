@@ -1,3 +1,5 @@
+import http from "http";
+
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { ENV } from "@configs/ENV";
 import { DbConn } from "@connections/DbConn";
@@ -72,21 +74,66 @@ function ms(startedAt: number): number {
 	return Math.max(0, Date.now() - startedAt);
 }
 
+function hrtimeMs(startedAt: bigint): number {
+	return Math.max(1, Math.round(Number(process.hrtime.bigint() - startedAt) / 1_000_000));
+}
+
 function resolveStatusByLatency(latencyMs: number): SecurityHealthStatus {
 	if (latencyMs <= 300) return "healthy";
-	if (latencyMs <= 1200) return "degraded";
-	return "down";
+	return "degraded";
 }
 
 export class SystemAdminSecurityComponent {
-	private static getApiHealth(nowIso: string): SecurityHealth {
-		return {
-			status: "healthy",
-			latency_ms: 0,
-			message: "API process is running",
-			checked_at: nowIso,
-			history: SystemHealthHistory.read("api"),
-		};
+	private static readonly API_SELF_CHECK_TIMEOUT_MS = 1_500;
+
+	private static async getApiSelfCheckHealth(nowIso: string): Promise<SecurityHealth> {
+		const startedAt = process.hrtime.bigint();
+
+		return new Promise((resolve) => {
+			const req = http.get(
+				{
+					host: ENV.SERVER.SELF_CHECK_HOST,
+					port: ENV.SERVER.PORT,
+					path: "/healthz",
+					timeout: SystemAdminSecurityComponent.API_SELF_CHECK_TIMEOUT_MS,
+				},
+				(res) => {
+					res.resume();
+					res.on("end", () => {
+						const latency = hrtimeMs(startedAt);
+						const statusCode = res.statusCode || 0;
+						const status = statusCode >= 500
+							? "down"
+							: resolveStatusByLatency(latency);
+						resolve({
+							status,
+							latency_ms: latency,
+							message: `API self-check /healthz ${statusCode || "unknown"} (${latency}ms)`,
+							checked_at: nowIso,
+							history: SystemHealthHistory.read("api"),
+						});
+					});
+				},
+			);
+
+			req.on("timeout", () => {
+				req.destroy(new Error("API health check timeout"));
+			});
+
+			req.on("error", (error) => {
+				resolve({
+					status: "down",
+					latency_ms: hrtimeMs(startedAt),
+					message: error instanceof Error ? error.message : "API health check failed",
+					checked_at: nowIso,
+					history: SystemHealthHistory.read("api"),
+				});
+			});
+		});
+	}
+
+	private static async getApiHealth(nowIso: string): Promise<SecurityHealth> {
+		return SystemAdminSecurityComponent.getApiSelfCheckHealth(nowIso);
 	}
 
 	private static async getDbHealth(nowIso: string): Promise<SecurityHealth> {
@@ -165,6 +212,7 @@ export class SystemAdminSecurityComponent {
 		const isDefaultJwtSecret = ENV.AUTH.JWT_SECRET === "dev-jwt-secret-change-me";
 
 		const [
+			apiHealth,
 			dbHealth,
 			redisHealth,
 			authConfig,
@@ -174,6 +222,7 @@ export class SystemAdminSecurityComponent {
 			roleChanges,
 			clientUpdates,
 		] = await Promise.all([
+			SystemAdminSecurityComponent.getApiHealth(checkedAt),
 			SystemAdminSecurityComponent.getDbHealth(checkedAt),
 			SystemAdminSecurityComponent.getRedisHealth(checkedAt),
 			SystemConfigInterface.getConfig(),
@@ -203,6 +252,7 @@ export class SystemAdminSecurityComponent {
 		const warnings: string[] = [];
 		if (isDefaultJwtSecret) warnings.push("JWT secret ยังเป็นค่า default");
 		if (ENV.AUTH.JWT_SECRET.length < 24) warnings.push("JWT secret ควรยาวมากกว่า 24 ตัวอักษร");
+		if (apiHealth.status !== "healthy") warnings.push(`API status: ${apiHealth.status}`);
 		if (dbHealth.status !== "healthy") warnings.push(`DB status: ${dbHealth.status}`);
 		if (redisHealth.status !== "healthy") warnings.push(`Redis status: ${redisHealth.status}`);
 		if (summary.users_without_password_hash > 0) warnings.push(`Users ไม่มี password hash: ${summary.users_without_password_hash}`);
@@ -213,7 +263,7 @@ export class SystemAdminSecurityComponent {
 		if (authTelemetry.lockouts > 0) warnings.push(`Account lockouts 24h: ${authTelemetry.lockouts}`);
 
 		const services = {
-			api: SystemAdminSecurityComponent.getApiHealth(checkedAt),
+			api: apiHealth,
 			db: dbHealth,
 			redis: redisHealth,
 		};

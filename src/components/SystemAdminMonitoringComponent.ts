@@ -1,4 +1,7 @@
+import http from "http";
+
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
+import { ENV } from "@configs/ENV";
 import { DbConn } from "@connections/DbConn";
 import { RedisConn } from "@connections/RedisConn";
 import { SystemAdminMonitoringInterface } from "@interfaces/SystemAdminMonitoringInterface";
@@ -56,13 +59,21 @@ type MonitoringSnapshot = {
 		member_changes: number;
 		password_resets: number;
 	};
-	request_telemetry: {
+	pos_performance: {
 		window_hours: number;
 		total_requests: number;
-		success_2xx: number;
-		client_errors_4xx: number;
-		server_errors_5xx: number;
+		avg_latency_ms: number;
+		p95_latency_ms: number;
+		slow_requests: number;
+		slow_rate_percent: number;
 		error_rate_percent: number;
+		slow_threshold_ms: number;
+		groups: Array<{
+			id: string;
+			label: string;
+			request_count: number;
+			avg_latency_ms: number;
+		}>;
 	};
 	warnings: string[];
 };
@@ -71,10 +82,13 @@ function ms(startedAt: number): number {
 	return Math.max(0, Date.now() - startedAt);
 }
 
+function hrtimeMs(startedAt: bigint): number {
+	return Math.max(1, Math.round(Number(process.hrtime.bigint() - startedAt) / 1_000_000));
+}
+
 function resolveStatusByLatency(latencyMs: number): ServiceHealthStatus {
 	if (latencyMs <= 300) return "healthy";
-	if (latencyMs <= 1200) return "degraded";
-	return "down";
+	return "degraded";
 }
 
 function mb(bytes: number): number {
@@ -82,14 +96,56 @@ function mb(bytes: number): number {
 }
 
 export class SystemAdminMonitoringComponent {
-	private static getApiHealth(nowIso: string): ServiceHealth {
-		return {
-			status: "healthy",
-			latency_ms: 0,
-			message: "API process is running",
-			checked_at: nowIso,
-			history: SystemHealthHistory.read("api"),
-		};
+	private static readonly API_SELF_CHECK_TIMEOUT_MS = 1_500;
+
+	private static async getApiSelfCheckHealth(nowIso: string): Promise<ServiceHealth> {
+		const startedAt = process.hrtime.bigint();
+
+		return new Promise((resolve) => {
+			const req = http.get(
+				{
+					host: ENV.SERVER.SELF_CHECK_HOST,
+					port: ENV.SERVER.PORT,
+					path: "/healthz",
+					timeout: SystemAdminMonitoringComponent.API_SELF_CHECK_TIMEOUT_MS,
+				},
+				(res) => {
+					res.resume();
+					res.on("end", () => {
+						const latency = hrtimeMs(startedAt);
+						const statusCode = res.statusCode || 0;
+						const status = statusCode >= 500
+							? "down"
+							: resolveStatusByLatency(latency);
+						resolve({
+							status,
+							latency_ms: latency,
+							message: `API self-check /healthz ${statusCode || "unknown"} (${latency}ms)`,
+							checked_at: nowIso,
+							history: SystemHealthHistory.read("api"),
+						});
+					});
+				},
+			);
+
+			req.on("timeout", () => {
+				req.destroy(new Error("API health check timeout"));
+			});
+
+			req.on("error", (error) => {
+				resolve({
+					status: "down",
+					latency_ms: hrtimeMs(startedAt),
+					message: error instanceof Error ? error.message : "API health check failed",
+					checked_at: nowIso,
+					history: SystemHealthHistory.read("api"),
+				});
+			});
+		});
+	}
+
+	private static async getApiHealth(nowIso: string): Promise<ServiceHealth> {
+		return SystemAdminMonitoringComponent.getApiSelfCheckHealth(nowIso);
 	}
 
 	private static async getDbHealth(nowIso: string): Promise<ServiceHealth> {
@@ -168,6 +224,7 @@ export class SystemAdminMonitoringComponent {
 		const memoryUsage = process.memoryUsage();
 
 		const [
+			apiHealth,
 			dbHealth,
 			redisHealth,
 			summary,
@@ -177,6 +234,7 @@ export class SystemAdminMonitoringComponent {
 			memberChanges,
 			passwordResets,
 		] = await Promise.all([
+			SystemAdminMonitoringComponent.getApiHealth(checkedAt),
 			SystemAdminMonitoringComponent.getDbHealth(checkedAt),
 			SystemAdminMonitoringComponent.getRedisHealth(checkedAt),
 			SystemAdminMonitoringInterface.getSummaryCounts(),
@@ -201,18 +259,20 @@ export class SystemAdminMonitoringComponent {
 				actions: [ "reset_client_password", "reset_store_member_password" ],
 			}),
 		]);
-		const requestTelemetry = SystemRuntimeTelemetry.getRequestSummary();
+		const posPerformance = SystemRuntimeTelemetry.getPosPerformanceSummary();
 
 		const warnings: string[] = [];
+		if (apiHealth.status !== "healthy") warnings.push(`API status: ${apiHealth.status}`);
 		if (dbHealth.status !== "healthy") warnings.push(`DB status: ${dbHealth.status}`);
 		if (redisHealth.status !== "healthy") warnings.push(`Redis status: ${redisHealth.status}`);
 		if (summary.users_suspended > 0) warnings.push(`Suspended users: ${summary.users_suspended}`);
 		if ((summary.fb_connections_total - summary.fb_connections_online) > 0) warnings.push(`FB offline: ${summary.fb_connections_total - summary.fb_connections_online}`);
 		if ((summary.wa_connections_total - summary.wa_connections_online) > 0) warnings.push(`WA offline: ${summary.wa_connections_total - summary.wa_connections_online}`);
-		if (requestTelemetry.server_errors_5xx > 0) warnings.push(`5xx responses 24h: ${requestTelemetry.server_errors_5xx}`);
+		if (posPerformance.slow_rate_percent > 20 && posPerformance.total_requests > 0) warnings.push(`POS slow rate 24h: ${posPerformance.slow_rate_percent}%`);
+		if (posPerformance.error_rate_percent > 0) warnings.push(`POS 5xx rate 24h: ${posPerformance.error_rate_percent}%`);
 
 		const services = {
-			api: SystemAdminMonitoringComponent.getApiHealth(checkedAt),
+			api: apiHealth,
 			db: dbHealth,
 			redis: redisHealth,
 		};
@@ -263,7 +323,7 @@ export class SystemAdminMonitoringComponent {
 				member_changes: memberChanges,
 				password_resets: passwordResets,
 			},
-			request_telemetry: requestTelemetry,
+			pos_performance: posPerformance,
 			warnings,
 		};
 	}
