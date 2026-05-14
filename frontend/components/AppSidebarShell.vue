@@ -32,6 +32,7 @@ const pendingMobileNavigation = ref(false);
 const { logout, currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
 const { apiFetch } = useApiClient();
 const appToast = useAppToast();
+const colorMode = useColorMode();
 const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	sameSite: "lax",
 	path: "/",
@@ -228,6 +229,11 @@ const visibleNavItems = computed(() => {
 
 	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
 });
+const isDarkMode = computed(() => colorMode.value === "dark");
+const colorModeLabel = computed(() => isDarkMode.value ? "โหมดสว่าง" : "โหมดมืด");
+const colorModeIcon = computed(() => (
+	isDarkMode.value ? "i-heroicons-sun-20-solid" : "i-heroicons-moon-20-solid"
+));
 
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
@@ -241,6 +247,15 @@ function isNavItemActive(item: AppNavItem) {
 	}
 
 	return route.path === item.to || route.path.startsWith(`${item.to}/`);
+}
+
+function toggleColorMode() {
+	const nextMode = isDarkMode.value ? "light" : "dark";
+	colorMode.preference = nextMode;
+	colorMode.value = nextMode;
+	if (import.meta.client) {
+		document.documentElement.style.colorScheme = nextMode;
+	}
 }
 
 function openLogoutConfirm() {
@@ -536,6 +551,19 @@ onErrorCaptured((error) => {
 
 										<template #right>
 											<slot name="navbar-right" />
+
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="sm"
+												:icon="colorModeIcon"
+												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 sm:h-10"
+												:title="colorModeLabel"
+												:aria-label="colorModeLabel"
+												@click="toggleColorMode"
+											>
+												<span class="hidden text-xs font-medium md:inline">{{ colorModeLabel }}</span>
+											</AppButton>
 
 											<UPopover
 												v-model:open="profileMenuOpen"

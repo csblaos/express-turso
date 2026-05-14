@@ -10,6 +10,7 @@ export default defineNuxtConfig({
 	colorMode: {
 		preference: "light",
 		fallback: "light",
+		classSuffix: "",
 	},
 	runtimeConfig: {
 		public: {
@@ -49,7 +50,7 @@ export default defineNuxtConfig({
 				},
 				{
 					name: "color-scheme",
-					content: "light",
+					content: "light dark",
 				},
 				{
 					name: "theme-color",
