@@ -342,3 +342,28 @@ Files:
 	- `REDIS_DRIVER=local` uses TCP Redis via `REDIS_URL`
 	- `REDIS_DRIVER=upstash` uses REST Redis via Upstash credentials
 - `RedisConn` exposes a driver-agnostic API for basic cache operations (`get`, `set`, `del`, `ping` via connect check).
+
+---
+
+## 14) Frontend UI baseline
+
+For current backoffice/admin page styling:
+
+- If a task says `same style` and does not explicitly name another page, use:
+	- `frontend/pages/settings/categories.vue`
+	- as the default style baseline
+- This baseline currently represents the preferred pattern for:
+	- page shell with `AppSidebarShell`
+	- standard page header with `AppPageHeader`
+	- top overview stats card
+	- bordered list section with header strip
+	- scrollable list body
+	- sticky bottom pagination footer
+	- `AppResponsivePanel` create/edit/delete flows
+	- modal action buttons using shared loading icon style
+	- confirm modal instead of browser `alert` / `confirm`
+	- save/update buttons disabled until data actually changes
+
+Rule:
+
+- When matching new backoffice UI to the current project standard, prefer the latest pattern from `frontend/pages/settings/categories.vue` over older page-specific variations unless the user explicitly requests another reference page.

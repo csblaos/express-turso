@@ -16,6 +16,10 @@ function isProfileRoute(path: string) {
 	return path === "/profile";
 }
 
+function isChooseStoreRoute(path: string) {
+	return path === "/choose-store";
+}
+
 function getDefaultAuthedPath(systemRole?: string | null) {
 	return systemRole === "system_admin" ? "/system-admin/dashboard" : "/";
 }
@@ -41,6 +45,7 @@ function canAccessRoleScopedRoute(path: string, systemRole?: string | null) {
 export default defineNuxtRouteMiddleware(async (to) => {
 	const isLoginRoute = to.path === "/login";
 	const isOnboardingRoute = to.path === "/onboarding";
+	const isChooseStore = isChooseStoreRoute(to.path);
 	const accessTokenCookie = useCookie<string | null>("pos.auth.accessToken", {
 		sameSite: "lax",
 		path: "/",
@@ -74,7 +79,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			return navigateTo(onboardingRequired ? "/onboarding" : defaultAuthedPath, { replace: true });
 		}
 
-		if (hasAccessToken && onboardingRequired && !isOnboardingRoute) {
+		if (hasAccessToken && onboardingRequired && !isOnboardingRoute && !isChooseStore) {
 			return navigateTo("/onboarding", { replace: true });
 		}
 

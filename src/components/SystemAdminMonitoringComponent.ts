@@ -61,6 +61,8 @@ type MonitoringSnapshot = {
 	};
 	pos_performance: {
 		window_hours: number;
+		sample_limit: number;
+		last_reset_at: string | null;
 		total_requests: number;
 		avg_latency_ms: number;
 		p95_latency_ms: number;
@@ -268,8 +270,8 @@ export class SystemAdminMonitoringComponent {
 		if (summary.users_suspended > 0) warnings.push(`Suspended users: ${summary.users_suspended}`);
 		if ((summary.fb_connections_total - summary.fb_connections_online) > 0) warnings.push(`FB offline: ${summary.fb_connections_total - summary.fb_connections_online}`);
 		if ((summary.wa_connections_total - summary.wa_connections_online) > 0) warnings.push(`WA offline: ${summary.wa_connections_total - summary.wa_connections_online}`);
-		if (posPerformance.slow_rate_percent > 20 && posPerformance.total_requests > 0) warnings.push(`POS slow rate 24h: ${posPerformance.slow_rate_percent}%`);
-		if (posPerformance.error_rate_percent > 0) warnings.push(`POS 5xx rate 24h: ${posPerformance.error_rate_percent}%`);
+		if (posPerformance.slow_rate_percent > 20 && posPerformance.total_requests > 0) warnings.push(`POS slow rate 1h: ${posPerformance.slow_rate_percent}%`);
+		if (posPerformance.error_rate_percent > 0) warnings.push(`POS 5xx rate 1h: ${posPerformance.error_rate_percent}%`);
 
 		const services = {
 			api: apiHealth,

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { DbConn } from "@connections/DbConn";
+import { StoreInterface } from "@interfaces/StoreInterface";
 import { Permission } from "@models/Permission";
 import { Role, RoleCreateInput, RoleUpdateInput } from "@models/Role";
 import { resolveAcceptedPermissionKeys } from "@utils/PermissionCompat";
@@ -160,6 +161,7 @@ const DEFAULT_PERMISSION_SEED = [
 ] as const;
 
 const DEFAULT_STORE_MEMBER_ROLE_NAME = "Cashier";
+const DEFAULT_STORE_OWNER_ROLE_NAME = "Owner";
 
 const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 	name: string;
@@ -735,6 +737,64 @@ export class RbacInterface {
 		return defaultRole.id;
 	}
 
+	static async resolveStoreOwnerRoleId(storeId: string): Promise<string> {
+		await RbacInterface.ensurePermissionSeed();
+
+		let roles = await RbacInterface.listRoles(storeId);
+		if (!roles.length) {
+			roles = await RbacInterface.ensureDefaultRolesForStore(storeId);
+		}
+
+		const ownerRole = (
+			roles.find((role) => Number(role.is_system || 0) === 1 && normalizeRoleName(role.name) === normalizeRoleName(DEFAULT_STORE_OWNER_ROLE_NAME))
+			|| roles.find((role) => normalizeRoleName(role.name) === normalizeRoleName(DEFAULT_STORE_OWNER_ROLE_NAME))
+			|| roles.find((role) => Number(role.is_system || 0) === 1)
+			|| roles[0]
+		);
+
+		if (!ownerRole) {
+			throw new Error("ROLE_NOT_FOUND");
+		}
+
+		return ownerRole.id;
+	}
+
+	static async ensureOwnerMembershipForStore(storeId: string, userId: string): Promise<void> {
+		await RbacInterface.ensurePermissionSeed();
+		const ownerRoleId = await RbacInterface.resolveStoreOwnerRoleId(storeId);
+		await RbacInterface.assignStoreMemberRole({
+			store_id: storeId,
+			user_id: userId,
+			role_id: ownerRoleId,
+			status: "active",
+			added_by: userId,
+		});
+	}
+
+	static async ensureOwnerMemberships(userId: string): Promise<void> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		const missingMembershipStores = await db.execute({
+			sql: `
+				SELECT s.id
+				FROM stores s
+				LEFT JOIN store_members sm
+					ON sm.store_id = s.id
+					AND sm.user_id = ?
+				WHERE s.owner_user_id = ?
+					AND sm.user_id IS NULL
+				ORDER BY s.created_at DESC
+			`,
+			args: [ userId, userId ],
+		});
+
+		for (const row of missingMembershipStores.rows) {
+			const storeId = String(row.id || "");
+			if (!storeId) continue;
+			await RbacInterface.ensureOwnerMembershipForStore(storeId, userId);
+		}
+	}
+
 	static async updateRole(
 		id: string,
 		data: RoleUpdateInput,
@@ -763,15 +823,15 @@ export class RbacInterface {
 	static async getUserPermissions(userId: string, storeId?: string): Promise<UserAccessSummary> {
 		await RbacInterface.ensurePermissionSeed();
 		const db = DbConn.getClient();
-		const where: string[] = [ "sm.user_id = ?" ];
-		const args: InValue[] = [ userId ];
+		const scopedWhere: string[] = [ "sm.user_id = ?" ];
+		const scopedArgs: InValue[] = [ userId ];
 
 		if (storeId) {
-			where.push("sm.store_id = ?");
-			args.push(storeId);
+			scopedWhere.push("sm.store_id = ?");
+			scopedArgs.push(storeId);
 		}
 
-		const result = await db.execute({
+		const membershipsResult = await db.execute({
 			sql: `
 				SELECT
 					sm.store_id,
@@ -787,16 +847,38 @@ export class RbacInterface {
 				INNER JOIN roles r ON r.id = sm.role_id AND r.deleted_at IS NULL
 				LEFT JOIN role_permissions rp ON rp.role_id = r.id
 				LEFT JOIN permissions p ON p.id = rp.permission_id
-				WHERE ${where.join(" AND ")}
+				WHERE sm.user_id = ?
 				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
 			`,
-			args,
+			args: [ userId ],
+		});
+
+		const scopedPermissionsResult = await db.execute({
+			sql: `
+				SELECT
+					sm.store_id,
+					sm.user_id,
+					sm.role_id,
+					sm.status,
+					r.name AS role_name,
+					p.id AS permission_id,
+					p.key AS permission_key,
+					p.resource AS permission_resource,
+					p.action AS permission_action
+				FROM store_members sm
+				INNER JOIN roles r ON r.id = sm.role_id AND r.deleted_at IS NULL
+				LEFT JOIN role_permissions rp ON rp.role_id = r.id
+				LEFT JOIN permissions p ON p.id = rp.permission_id
+				WHERE ${scopedWhere.join(" AND ")}
+				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
+			`,
+			args: scopedArgs,
 		});
 
 		const membershipMap = new Map<string, UserAccessMembership>();
 		const permissionMap = new Map<string, Permission>();
 
-		for (const row of result.rows) {
+		for (const row of membershipsResult.rows) {
 			const storeKey = String(row.store_id);
 			const membershipKey = `${storeKey}:${String(row.role_id)}`;
 			if (!membershipMap.has(membershipKey)) {
@@ -808,7 +890,11 @@ export class RbacInterface {
 					permissions: [],
 				});
 			}
+		}
 
+		for (const row of scopedPermissionsResult.rows) {
+			const storeKey = String(row.store_id);
+			const membershipKey = `${storeKey}:${String(row.role_id)}`;
 			if (row.permission_id) {
 				const permission = {
 					id: String(row.permission_id),

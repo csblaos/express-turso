@@ -9,10 +9,16 @@ const items = [
 		icon: "i-heroicons-users",
 	},
 	{
-		id: "roles",
-		label: "บทบาท",
-		to: "/settings/roles",
-		icon: "i-heroicons-identification",
+		id: "categories",
+		label: "หมวดสินค้า",
+		to: "/settings/categories",
+		icon: "i-heroicons-tag",
+	},
+	{
+		id: "units",
+		label: "หน่วยสินค้า",
+		to: "/settings/units",
+		icon: "i-heroicons-scale",
 	},
 ];
 

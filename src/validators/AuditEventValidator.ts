@@ -24,6 +24,7 @@ export default class AuditEventValidator extends ValidatorMiddleware {
 		result: optionalText,
 		entity_type: optionalText,
 		actor_role: optionalText,
+		page: positiveInteger,
 		limit: positiveInteger,
 	});
 

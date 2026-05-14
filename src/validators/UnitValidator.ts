@@ -25,6 +25,10 @@ export default class UnitValidator extends ValidatorMiddleware {
 		store_id: optionalString,
 	});
 
+	private static readonly importDefaultsBodySchema = z.object({
+		store_id: nonEmptyString,
+	});
+
 	public static readonly list = UnitValidator.init({
 		query: UnitValidator.listQuerySchema,
 	});
@@ -38,5 +42,9 @@ export default class UnitValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: UnitValidator.updateBodySchema,
+	});
+
+	public static readonly importDefaults = UnitValidator.init({
+		body: UnitValidator.importDefaultsBodySchema,
 	});
 }

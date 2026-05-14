@@ -3,6 +3,7 @@ import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { StoreInterface } from "@interfaces/StoreInterface";
+import { UnitInterface } from "@interfaces/UnitInterface";
 import { CreateStoreInput, Store } from "@models/Store";
 
 const UPDATABLE_FIELDS: Array<keyof Store> = [
@@ -61,7 +62,11 @@ export class StoreComponent {
 		}
 
 		if (actor.systemRole === "superadmin") {
-			return StoreInterface.findAll(actor.userId);
+			const access = await RbacInterface.getUserPermissions(actor.userId);
+			const accessibleStoreIds = new Set(access.memberships.map((membership) => membership.store_id));
+			return (await StoreInterface.findAll()).filter((store) => (
+				store.owner_user_id === actor.userId || accessibleStoreIds.has(store.id)
+			));
 		}
 
 		const access = await RbacInterface.getUserPermissions(actor.userId);
@@ -102,6 +107,8 @@ export class StoreComponent {
 				owner_user_id: actor.userId,
 			});
 			await RbacInterface.ensureDefaultRolesForStore(created.id);
+			await RbacInterface.ensureOwnerMembershipForStore(created.id, actor.userId);
+			await UnitInterface.ensureDefaultUnitsForStore(created.id);
 			return created;
 		}
 
@@ -111,6 +118,8 @@ export class StoreComponent {
 			}
 			const created = await StoreInterface.create(payload);
 			await RbacInterface.ensureDefaultRolesForStore(created.id);
+			await RbacInterface.ensureOwnerMembershipForStore(created.id, payload.owner_user_id);
+			await UnitInterface.ensureDefaultUnitsForStore(created.id);
 			return created;
 		}
 

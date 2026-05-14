@@ -1,8 +1,7 @@
-type RequestTelemetrySample = {
+type PosRequestTelemetrySample = {
 	at: number;
 	statusCode: number;
-	path: string;
-	method: string;
+	groupId: string;
 	durationMs: number;
 };
 
@@ -23,10 +22,12 @@ type AuthTelemetrySample = {
 	type: AuthTelemetryType;
 };
 
-const HOURS_WINDOW = 24;
-const MAX_REQUEST_SAMPLES = 5000;
+const AUTH_HOURS_WINDOW = 24;
+const POS_HOURS_WINDOW = 1;
+const MAX_POS_REQUEST_SAMPLES = 100;
 const MAX_AUTH_SAMPLES = 2000;
-const WINDOW_MS = HOURS_WINDOW * 60 * 60 * 1000;
+const AUTH_WINDOW_MS = AUTH_HOURS_WINDOW * 60 * 60 * 1000;
+const POS_WINDOW_MS = POS_HOURS_WINDOW * 60 * 60 * 1000;
 const POS_SLOW_REQUEST_THRESHOLD_MS = 800;
 const POS_ROUTE_GROUPS: PosRouteGroup[] = [
 	{ id: "orders", label: "Orders", prefixes: [ "/api/orders" ] },
@@ -36,13 +37,13 @@ const POS_ROUTE_GROUPS: PosRouteGroup[] = [
 	{ id: "stores", label: "Stores", prefixes: [ "/api/stores" ] },
 ];
 
-function trimByWindow<T extends { at: number }>(samples: T[], maxCount: number): void {
-	const cutoff = Date.now() - WINDOW_MS;
+function trimAuthSamples(samples: AuthTelemetrySample[]): void {
+	const cutoff = Date.now() - AUTH_WINDOW_MS;
 	while (samples.length && samples[0].at < cutoff) {
 		samples.shift();
 	}
-	if (samples.length > maxCount) {
-		samples.splice(0, samples.length - maxCount);
+	if (samples.length > MAX_AUTH_SAMPLES) {
+		samples.splice(0, samples.length - MAX_AUTH_SAMPLES);
 	}
 }
 
@@ -58,15 +59,45 @@ function resolvePosRouteGroup(path: string): PosRouteGroup | null {
 }
 
 export class SystemRuntimeTelemetry {
-	private static readonly requestSamples: RequestTelemetrySample[] = [];
+	private static readonly posRequestSamples: PosRequestTelemetrySample[] = [];
 	private static readonly authSamples: AuthTelemetrySample[] = [];
+	private static posRequestLastResetAt: number | null = null;
 
-	static recordRequest(sample: Omit<RequestTelemetrySample, "at">): void {
-		SystemRuntimeTelemetry.requestSamples.push({
-			at: Date.now(),
-			...sample,
+	private static trimPosRequestSamples(now: number): void {
+		const cutoff = now - POS_WINDOW_MS;
+		while (SystemRuntimeTelemetry.posRequestSamples.length && SystemRuntimeTelemetry.posRequestSamples[0].at < cutoff) {
+			SystemRuntimeTelemetry.posRequestSamples.shift();
+		}
+		if (SystemRuntimeTelemetry.posRequestSamples.length > MAX_POS_REQUEST_SAMPLES) {
+			SystemRuntimeTelemetry.posRequestSamples.splice(0, SystemRuntimeTelemetry.posRequestSamples.length - MAX_POS_REQUEST_SAMPLES);
+		}
+		if (!SystemRuntimeTelemetry.posRequestSamples.length) {
+			SystemRuntimeTelemetry.posRequestLastResetAt = null;
+		}
+	}
+
+	static recordRequest(sample: {
+		statusCode: number;
+		path: string;
+		method?: string;
+		durationMs: number;
+	}): void {
+		void sample.method;
+		const group = resolvePosRouteGroup(sample.path);
+		if (!group) return;
+
+		const now = Date.now();
+		SystemRuntimeTelemetry.trimPosRequestSamples(now);
+		if (!SystemRuntimeTelemetry.posRequestSamples.length) {
+			SystemRuntimeTelemetry.posRequestLastResetAt = now;
+		}
+		SystemRuntimeTelemetry.posRequestSamples.push({
+			at: now,
+			statusCode: sample.statusCode,
+			groupId: group.id,
+			durationMs: sample.durationMs,
 		});
-		trimByWindow(SystemRuntimeTelemetry.requestSamples, MAX_REQUEST_SAMPLES);
+		SystemRuntimeTelemetry.trimPosRequestSamples(now);
 	}
 
 	static recordAuthEvent(type: AuthTelemetryType): void {
@@ -74,45 +105,13 @@ export class SystemRuntimeTelemetry {
 			at: Date.now(),
 			type,
 		});
-		trimByWindow(SystemRuntimeTelemetry.authSamples, MAX_AUTH_SAMPLES);
+		trimAuthSamples(SystemRuntimeTelemetry.authSamples);
 	}
 
-	static getRequestSummary(windowHours = HOURS_WINDOW) {
-		const cutoff = Date.now() - (windowHours * 60 * 60 * 1000);
-		const samples = SystemRuntimeTelemetry.requestSamples.filter((sample) => sample.at >= cutoff);
-		const total_requests = samples.length;
-		const success_2xx = samples.filter((sample) => sample.statusCode >= 200 && sample.statusCode < 300).length;
-		const client_errors_4xx = samples.filter((sample) => sample.statusCode >= 400 && sample.statusCode < 500).length;
-		const server_errors_5xx = samples.filter((sample) => sample.statusCode >= 500).length;
-		const error_rate_percent = total_requests > 0
-			? Math.round(((client_errors_4xx + server_errors_5xx) / total_requests) * 100)
-			: 0;
-
-		return {
-			window_hours: windowHours,
-			total_requests,
-			success_2xx,
-			client_errors_4xx,
-			server_errors_5xx,
-			error_rate_percent,
-		};
-	}
-
-	static getLatestRequestSample(maxAgeMs = 60_000): RequestTelemetrySample | null {
-		const cutoff = Date.now() - maxAgeMs;
-		for (let index = SystemRuntimeTelemetry.requestSamples.length - 1; index >= 0; index -= 1) {
-			const sample = SystemRuntimeTelemetry.requestSamples[index];
-			if (sample.at < cutoff) break;
-			return sample;
-		}
-		return null;
-	}
-
-	static getPosPerformanceSummary(windowHours = HOURS_WINDOW) {
-		const cutoff = Date.now() - (windowHours * 60 * 60 * 1000);
-		const samples = SystemRuntimeTelemetry.requestSamples.filter((sample) => (
-			sample.at >= cutoff && resolvePosRouteGroup(sample.path)
-		));
+	static getPosPerformanceSummary() {
+		const now = Date.now();
+		SystemRuntimeTelemetry.trimPosRequestSamples(now);
+		const samples = SystemRuntimeTelemetry.posRequestSamples;
 		const total_requests = samples.length;
 		const durations = samples.map((sample) => sample.durationMs);
 		const avg_latency_ms = total_requests > 0
@@ -131,7 +130,7 @@ export class SystemRuntimeTelemetry {
 			: 0;
 
 		const groups = POS_ROUTE_GROUPS.map((group) => {
-			const groupSamples = samples.filter((sample) => group.prefixes.some((prefix) => sample.path.startsWith(prefix)));
+			const groupSamples = samples.filter((sample) => sample.groupId === group.id);
 			const request_count = groupSamples.length;
 			const groupAvgLatency = request_count > 0
 				? Math.round(groupSamples.reduce((sum, sample) => sum + sample.durationMs, 0) / request_count)
@@ -145,7 +144,11 @@ export class SystemRuntimeTelemetry {
 		}).filter((group) => group.request_count > 0);
 
 		return {
-			window_hours: windowHours,
+			window_hours: POS_HOURS_WINDOW,
+			sample_limit: MAX_POS_REQUEST_SAMPLES,
+			last_reset_at: SystemRuntimeTelemetry.posRequestLastResetAt
+				? new Date(SystemRuntimeTelemetry.posRequestLastResetAt).toISOString()
+				: null,
 			total_requests,
 			avg_latency_ms,
 			p95_latency_ms,
@@ -157,7 +160,8 @@ export class SystemRuntimeTelemetry {
 		};
 	}
 
-	static getAuthSummary(windowHours = HOURS_WINDOW) {
+	static getAuthSummary(windowHours = AUTH_HOURS_WINDOW) {
+		trimAuthSamples(SystemRuntimeTelemetry.authSamples);
 		const cutoff = Date.now() - (windowHours * 60 * 60 * 1000);
 		const samples = SystemRuntimeTelemetry.authSamples.filter((sample) => sample.at >= cutoff);
 		const login_successes = samples.filter((sample) => sample.type === "login_success").length;

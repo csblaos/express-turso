@@ -1,5 +1,5 @@
 <script setup lang="ts">
-await navigateTo('/superadmin/roles', { redirectCode: 301, replace: true })
+await navigateTo('/settings', { redirectCode: 301, replace: true })
 </script>
 
 <template>

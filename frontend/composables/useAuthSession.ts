@@ -64,6 +64,7 @@ type LoginPayload = {
 type LoginResponse = {
 	user: AuthUser;
 	session: AuthSession;
+	access: AuthAccess;
 	tokens: {
 		accessToken: string;
 		refreshToken: string;
@@ -85,12 +86,14 @@ const STORAGE_KEYS = {
 	user: "pos.auth.user",
 	session: "pos.auth.session",
 	access: "pos.auth.access",
+	currentStoreId: "pos.auth.currentStoreId",
 } as const;
 
 const COOKIE_KEYS = {
 	accessToken: "pos.auth.accessToken",
 	refreshToken: "pos.auth.refreshToken",
 	systemRole: "pos.auth.systemRole",
+	currentStoreId: "pos.auth.currentStoreId",
 } as const;
 
 const SYSTEM_ROLE_PERMISSION_MAP: Record<string, string[]> = {
@@ -125,6 +128,10 @@ function removeStorageValue(key: string) {
 	window.localStorage.removeItem(key);
 }
 
+function normalizeSystemRole(systemRole?: string | null) {
+	return String(systemRole || "").trim().toLowerCase();
+}
+
 export function useAuthSession() {
 	const runtimeConfig = useRuntimeConfig();
 	const accessToken = useState<string | null>("auth.access-token", () => null);
@@ -132,6 +139,7 @@ export function useAuthSession() {
 	const currentUser = useState<AuthUser | null>("auth.current-user", () => null);
 	const currentSession = useState<AuthSession | null>("auth.current-session", () => null);
 	const currentAccess = useState<AuthAccess | null>("auth.current-access", () => null);
+	const currentStoreId = useState<string | null>("auth.current-store-id", () => null);
 	const hydrated = useState<boolean>("auth.hydrated", () => false);
 	const redirectingToLogin = useState<boolean>("auth.redirecting-to-login", () => false);
 	const accessTokenCookie = useCookie<string | null>(COOKIE_KEYS.accessToken, {
@@ -149,6 +157,41 @@ export function useAuthSession() {
 		path: "/",
 		default: () => null,
 	});
+	const currentStoreIdCookie = useCookie<string | null>(COOKIE_KEYS.currentStoreId, {
+		sameSite: "lax",
+		path: "/",
+		default: () => null,
+	});
+
+	function resolveAccessStoreId(access: AuthAccess | null, requestedStoreId?: string): string | null {
+		const memberships = access?.memberships || [];
+		if (memberships.length === 0) return null;
+
+		const normalizedRequestedStoreId = requestedStoreId?.trim();
+		if (normalizedRequestedStoreId && memberships.some((membership) => membership.store_id === normalizedRequestedStoreId)) {
+			return normalizedRequestedStoreId;
+		}
+
+		const scopedStoreId = access?.store_id?.trim();
+		if (scopedStoreId && memberships.some((membership) => membership.store_id === scopedStoreId)) {
+			return scopedStoreId;
+		}
+
+		const ownerMembership = memberships.find((membership) => (
+			membership.status === "active" && normalizeSystemRole(membership.role_name) === "owner"
+		));
+		if (ownerMembership?.store_id?.trim()) {
+			return ownerMembership.store_id.trim();
+		}
+
+		const activeMembership = memberships.find((membership) => membership.status === "active");
+		if (activeMembership?.store_id?.trim()) {
+			return activeMembership.store_id.trim();
+		}
+
+		const membershipStoreId = memberships[0]?.store_id;
+		return membershipStoreId?.trim() || null;
+	}
 
 	function hydrateAuthState() {
 		if (!import.meta.client || hydrated.value) return;
@@ -158,6 +201,10 @@ export function useAuthSession() {
 		currentUser.value = readStorageValue<AuthUser>(STORAGE_KEYS.user);
 		currentSession.value = readStorageValue<AuthSession>(STORAGE_KEYS.session);
 		currentAccess.value = readStorageValue<AuthAccess>(STORAGE_KEYS.access);
+		currentStoreId.value = readStorageValue<string>(STORAGE_KEYS.currentStoreId) || currentStoreIdCookie.value || null;
+		if (!currentStoreId.value) {
+			currentStoreId.value = resolveAccessStoreId(currentAccess.value);
+		}
 		hydrated.value = true;
 	}
 
@@ -187,6 +234,7 @@ export function useAuthSession() {
 		}
 
 		systemRoleCookie.value = currentUser.value?.systemRole || null;
+		currentStoreIdCookie.value = currentStoreId.value;
 
 		if (!import.meta.client) return;
 
@@ -207,6 +255,12 @@ export function useAuthSession() {
 		} else {
 			removeStorageValue(STORAGE_KEYS.access);
 		}
+
+		if (currentStoreId.value) {
+			writeStorageValue(STORAGE_KEYS.currentStoreId, currentStoreId.value);
+		} else {
+			removeStorageValue(STORAGE_KEYS.currentStoreId);
+		}
 	}
 
 	function clearAuthState() {
@@ -215,6 +269,7 @@ export function useAuthSession() {
 		currentUser.value = null;
 		currentSession.value = null;
 		currentAccess.value = null;
+		currentStoreId.value = null;
 		persistAuthState();
 	}
 
@@ -256,7 +311,10 @@ export function useAuthSession() {
 
 				currentUser.value = response.data.user;
 				currentSession.value = response.data.session;
+				currentAccess.value = response.data.access;
+				currentStoreId.value = resolveAccessStoreId(response.data.access, currentStoreId.value || undefined);
 				setTokens(response.data.tokens.accessToken, response.data.tokens.refreshToken);
+				persistAuthState();
 				return true;
 			} catch {
 				await handleAuthFailure();
@@ -284,11 +342,12 @@ export function useAuthSession() {
 		return nextHeaders;
 	}
 
-	async function fetchMe(storeId?: string) {
+	async function fetchMe(storeId?: string, bootstrapPreferredStore = true) {
 		hydrateAuthState();
 		if (!accessToken.value) return null;
 
-		const queryString = storeId ? `?store_id=${encodeURIComponent(storeId)}` : "";
+		const requestedStoreId = storeId?.trim() || currentStoreId.value || undefined;
+		const queryString = requestedStoreId ? `?store_id=${encodeURIComponent(requestedStoreId)}` : "";
 		let response: AuthEnvelope<MeResponse>;
 		try {
 			response = await $fetch<AuthEnvelope<MeResponse>>(`${runtimeConfig.public.apiBase}/auth/me${queryString}`, {
@@ -299,16 +358,29 @@ export function useAuthSession() {
 			if (statusCode === 401) {
 				const refreshed = await refreshAccessToken();
 				if (refreshed) {
-					return fetchMe(storeId);
+					return fetchMe(storeId, bootstrapPreferredStore);
 				}
 				await handleAuthFailure();
 			}
 			throw error;
 		}
 
+		const resolvedStoreId = resolveAccessStoreId(response.data.access, requestedStoreId);
+		const shouldBootstrapScopedStore = (
+			bootstrapPreferredStore
+			&& !requestedStoreId
+			&& resolvedStoreId
+			&& response.data.access.store_id !== resolvedStoreId
+		);
+
+		if (shouldBootstrapScopedStore) {
+			return fetchMe(resolvedStoreId, false);
+		}
+
 		currentUser.value = response.data.user;
 		currentSession.value = response.data.session;
 		currentAccess.value = response.data.access;
+		currentStoreId.value = resolvedStoreId;
 		persistAuthState();
 		return response.data;
 	}
@@ -325,9 +397,39 @@ export function useAuthSession() {
 
 		currentUser.value = response.data.user;
 		currentSession.value = response.data.session;
+		currentAccess.value = response.data.access;
+		currentStoreId.value = resolveAccessStoreId(response.data.access, payload.storeId);
 		setTokens(response.data.tokens.accessToken, response.data.tokens.refreshToken);
-		await fetchMe(payload.storeId);
+		persistAuthState();
 		return response.data;
+	}
+
+	async function switchStore(storeId: string) {
+		const normalizedStoreId = storeId.trim();
+		if (!normalizedStoreId) return null;
+		const previousStoreId = currentStoreId.value;
+		currentStoreId.value = normalizedStoreId;
+		if (currentAccess.value) {
+			currentAccess.value = {
+				...currentAccess.value,
+				store_id: normalizedStoreId,
+			};
+		}
+		persistAuthState();
+
+		try {
+			return await fetchMe(normalizedStoreId, false);
+		} catch (error) {
+			currentStoreId.value = previousStoreId;
+			if (currentAccess.value) {
+				currentAccess.value = {
+					...currentAccess.value,
+					store_id: previousStoreId || undefined,
+				};
+			}
+			persistAuthState();
+			throw error;
+		}
 	}
 
 	async function logout() {
@@ -373,12 +475,14 @@ export function useAuthSession() {
 		currentUser,
 		currentSession,
 		currentAccess,
+		currentStoreId,
 		hydrateAuthState,
 		authHeaders,
 		login,
 		logout,
 		clearAuthState,
 		fetchMe,
+		switchStore,
 		can,
 		handleAuthFailure,
 		refreshAccessToken,

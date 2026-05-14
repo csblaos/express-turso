@@ -1,4 +1,4 @@
-import { AuditEventCreatePayload, AuditEventFilters, AuditEventInterface, AuditEventRecord } from "@interfaces/AuditEventInterface";
+import { AuditEventCreatePayload, AuditEventFilters, AuditEventInterface, AuditEventListResult, AuditEventRecord } from "@interfaces/AuditEventInterface";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { ApiError } from "@middlewares/ApiError";
 
@@ -8,7 +8,7 @@ function normalizeOptionalString(value?: string | null): string | null {
 }
 
 export class AuditEventComponent {
-	static async getEvents(requestId: string, filters: AuditEventFilters): Promise<AuditEventRecord[]> {
+	static async getEvents(requestId: string, filters: AuditEventFilters): Promise<AuditEventListResult> {
 		void requestId;
 		return AuditEventInterface.findMany(filters);
 	}

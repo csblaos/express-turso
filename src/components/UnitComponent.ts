@@ -50,6 +50,15 @@ export class UnitComponent {
 		return UnitInterface.create(payload);
 	}
 
+	static async importDefaults(requestId: string, storeId: string): Promise<Unit[]> {
+		void requestId;
+		if (!storeId.trim()) {
+			throw ApiError.CustomError(ErrorConfig.DOMAIN.UNIT_REQUIRED_FIELDS);
+		}
+
+		return UnitInterface.ensureDefaultUnitsForStore(storeId.trim());
+	}
+
 	static async update(requestId: string, id: string, data: Record<string, unknown>): Promise<Unit> {
 		void requestId;
 		const updateData = pickUpdateFields(data || {});
