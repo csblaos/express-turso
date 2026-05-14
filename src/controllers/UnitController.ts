@@ -23,6 +23,12 @@ export class UnitController {
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
+	static importDefaults = SyncFunction.handler(async (req: Request, res: Response) => {
+		const storeId = typeof req.body?.store_id === "string" ? req.body.store_id : "";
+		const data = await UnitComponent.importDefaults(req.requestId, storeId);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static update = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await UnitComponent.update(req.requestId, req.params.id as string, req.body || {});
 		SuccessHandler.send(res, req.requestId, { data });

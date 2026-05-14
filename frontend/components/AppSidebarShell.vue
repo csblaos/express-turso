@@ -20,6 +20,7 @@ const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
 const logoutConfirmOpen = ref(false);
 const profileMenuOpen = ref(false);
+const storeSwitcherOpen = ref(false);
 const shellError = ref<string | null>(null);
 const requestHeaders = import.meta.server ? useRequestHeaders([ "user-agent" ]) : {};
 const initialUserAgent = import.meta.server ? requestHeaders["user-agent"] || "" : "";
@@ -28,19 +29,34 @@ const isDesktopViewport = ref(import.meta.server
 	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
-const { logout, currentUser, currentAccess } = useAuthSession();
+const { logout, currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
+const { apiFetch } = useApiClient();
+const appToast = useAppToast();
+const colorMode = useColorMode();
 const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	sameSite: "lax",
 	path: "/",
 	default: () => null,
 });
 const route = useRoute();
+type AccessibleStoreRecord = {
+	id: string;
+	name: string;
+	currency?: string;
+};
+type ApiEnvelope<T> = {
+	success: true;
+	requestId: string;
+	data: T;
+};
 const currentNavItem = computed(() => props.navItems.find((item) => props.activeIds.includes(item.id)));
 let mediaQueryList: MediaQueryList | null = null;
 let syncViewportListener: (() => void) | null = null;
 let reducedMotionQueryList: MediaQueryList | null = null;
 let syncReducedMotionListener: (() => void) | null = null;
 const MOBILE_SIDEBAR_CLOSE_DELAY_MS = 180;
+const switchStorePending = ref(false);
+const accessibleStores = ref<AccessibleStoreRecord[]>([]);
 
 const sidebarWidthClass = computed(() => {
 	if (!isDesktopViewport.value) {
@@ -150,6 +166,44 @@ const profileStoreSummary = computed(() => {
 	if (!membershipCount) return "ยังไม่ได้ผูกกับร้าน";
 	return membershipCount === 1 ? "ดูแล 1 store" : `ดูแล ${membershipCount} stores`;
 });
+const canShowStoreSection = computed(() => (
+	resolvedSystemRole.value !== "system_admin"
+	&& (currentAccess.value?.memberships?.length ?? 0) > 0
+));
+const canSwitchStores = computed(() => (
+	resolvedSystemRole.value !== "system_admin"
+	&& (currentAccess.value?.memberships?.length ?? 0) > 1
+));
+const currentStoreCount = computed(() => visibleSwitchableStores.value.length);
+const storeSectionTitle = computed(() => (
+	canSwitchStores.value ? "เปลี่ยนร้าน" : "ร้านปัจจุบัน"
+));
+const currentStoreLabel = computed(() => (
+	accessibleStores.value.find((store) => store.id === currentStoreId.value)?.name
+	|| currentAccess.value?.memberships?.find((membership) => membership.store_id === currentStoreId.value)?.store_id
+	|| currentAccess.value?.memberships?.[0]?.store_id
+	|| "ยังไม่ได้เลือกร้าน"
+));
+const visibleSwitchableStores = computed(() => {
+	if (!canShowStoreSection.value) return [];
+	const membershipIds = new Set((currentAccess.value?.memberships || []).map((membership) => membership.store_id));
+	const storesById = new Map(
+		accessibleStores.value
+			.filter((store) => membershipIds.has(store.id))
+			.map((store) => [ store.id, store ]),
+	);
+	return Array.from(membershipIds).map((storeId) => ({
+		id: storeId,
+		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : storeId),
+		currency: storesById.get(storeId)?.currency,
+	}));
+});
+const membershipStoreKey = computed(() => (
+	(currentAccess.value?.memberships || [])
+		.map((membership) => membership.store_id)
+		.sort()
+		.join("|")
+));
 const profileInitials = computed(() => (
 	profileDisplayName.value
 		.split(/\s+/)
@@ -160,7 +214,7 @@ const profileInitials = computed(() => (
 ));
 const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.navItems));
 const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "reports", "activity", "settings" ]);
-const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security" ]);
+const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-thirdparty-usage" ]);
 
 const visibleNavItems = computed(() => {
 	const systemRole = resolvedSystemRole.value;
@@ -175,6 +229,11 @@ const visibleNavItems = computed(() => {
 
 	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
 });
+const isDarkMode = computed(() => colorMode.value === "dark");
+const colorModeLabel = computed(() => isDarkMode.value ? "โหมดสว่าง" : "โหมดมืด");
+const colorModeIcon = computed(() => (
+	isDarkMode.value ? "i-heroicons-sun-20-solid" : "i-heroicons-moon-20-solid"
+));
 
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
@@ -190,6 +249,15 @@ function isNavItemActive(item: AppNavItem) {
 	return route.path === item.to || route.path.startsWith(`${item.to}/`);
 }
 
+function toggleColorMode() {
+	const nextMode = isDarkMode.value ? "light" : "dark";
+	colorMode.preference = nextMode;
+	colorMode.value = nextMode;
+	if (import.meta.client) {
+		document.documentElement.style.colorScheme = nextMode;
+	}
+}
+
 function openLogoutConfirm() {
 	logoutConfirmOpen.value = true;
 }
@@ -203,6 +271,54 @@ async function openLogoutConfirmFromProfile() {
 async function navigateToProfile() {
 	profileMenuOpen.value = false;
 	await navigateTo("/profile");
+}
+
+async function openStoreSwitcher() {
+	await loadAccessibleStores();
+	profileMenuOpen.value = false;
+	await nextTick();
+	storeSwitcherOpen.value = true;
+}
+
+async function loadAccessibleStores() {
+	if (!canShowStoreSection.value || accessibleStores.value.length > 0) return;
+	try {
+		const response = await apiFetch<ApiEnvelope<AccessibleStoreRecord[]>>("/stores");
+		accessibleStores.value = response.data;
+	} catch {
+		accessibleStores.value = [];
+	}
+}
+
+async function handleSwitchStore(storeId: string) {
+	if (switchStorePending.value || storeId === currentStoreId.value) {
+		profileMenuOpen.value = false;
+		return;
+	}
+
+	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || storeId;
+	storeSwitcherOpen.value = false;
+	profileMenuOpen.value = false;
+	switchStorePending.value = true;
+	try {
+		await switchStore(storeId);
+		if (route.path !== "/") {
+			await navigateTo("/");
+		}
+		appToast.success({
+			title: "เปลี่ยนร้านแล้ว",
+			description: targetStoreName,
+			timeout: 1800,
+		});
+	} catch (error) {
+		appToast.error({
+			title: "เปลี่ยนร้านไม่สำเร็จ",
+			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			timeout: 3200,
+		});
+	} finally {
+		switchStorePending.value = false;
+	}
 }
 
 async function confirmLogout() {
@@ -234,6 +350,15 @@ watch(mobileSidebarOpen, (isOpen) => {
 	if (isOpen && !isDesktopViewport.value) {
 		profileMenuOpen.value = false;
 	}
+});
+
+watch(profileMenuOpen, (opened) => {
+	if (!opened) return;
+	void loadAccessibleStores();
+});
+
+watch(membershipStoreKey, () => {
+	accessibleStores.value = [];
 });
 
 watch(sidebarCollapsed, (value) => {
@@ -427,6 +552,19 @@ onErrorCaptured((error) => {
 										<template #right>
 											<slot name="navbar-right" />
 
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="sm"
+												:icon="colorModeIcon"
+												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 sm:h-10"
+												:title="colorModeLabel"
+												:aria-label="colorModeLabel"
+												@click="toggleColorMode"
+											>
+												<span class="hidden text-xs font-medium md:inline">{{ colorModeLabel }}</span>
+											</AppButton>
+
 											<UPopover
 												v-model:open="profileMenuOpen"
 												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
@@ -468,6 +606,39 @@ onErrorCaptured((error) => {
 														</div>
 
 														<div class="p-2">
+															<div
+																v-if="canShowStoreSection"
+																class="mb-2 rounded-md border border-[#efece4] bg-[#fbfbf8] px-3 py-2.5"
+															>
+																<div class="flex items-center gap-3">
+																	<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 ring-1 ring-[#e7e4dd]">
+																		<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4.5 w-4.5" />
+																	</div>
+																	<div class="min-w-0 flex-1">
+																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">{{ storeSectionTitle }}</p>
+																		<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
+																		<p class="mt-0.5 truncate text-[11px] text-stone-500">
+																			{{ canSwitchStores ? `${currentStoreCount} stores available` : "1 store available" }}
+																		</p>
+																	</div>
+																	<button
+																		v-if="canSwitchStores"
+																		type="button"
+																		class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+																		@click="openStoreSwitcher"
+																	>
+																		<UIcon name="i-heroicons-arrows-right-left-20-solid" class="h-4 w-4" />
+																		<span>เปลี่ยนร้าน</span>
+																	</button>
+																	<div
+																		v-else
+																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd]"
+																	>
+																		Current
+																	</div>
+																</div>
+															</div>
+
 															<button
 																type="button"
 																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700"
@@ -545,6 +716,47 @@ onErrorCaptured((error) => {
 			@close="logoutConfirmOpen = false"
 			@confirm="confirmLogout"
 		/>
+		<AppResponsivePanel
+			v-model="storeSwitcherOpen"
+			title="เปลี่ยนร้าน"
+			description="เลือกร้านที่ต้องการใช้เป็น workspace ปัจจุบัน"
+			desktop-width="420px"
+			mobile-max-height="82dvh"
+			close-button-size="md"
+			compact-header
+			content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+		>
+			<div class="flex h-full min-h-0 flex-col">
+				<div class="border-b border-[#efece4] bg-[#fbfbf8] px-5 py-4">
+					<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">Current store</p>
+					<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
+					<p class="mt-1 text-xs text-stone-500">{{ currentStoreCount }} stores available</p>
+				</div>
+
+				<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-3 py-3">
+					<div class="space-y-1">
+						<button
+							v-for="store in visibleSwitchableStores"
+							:key="store.id"
+							type="button"
+							class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3 text-left transition"
+							:class="store.id === currentStoreId ? 'border-primary-200 bg-primary-50 text-primary-700' : 'border-[#efece4] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
+							:disabled="switchStorePending"
+							@click="handleSwitchStore(store.id)"
+						>
+							<span class="min-w-0">
+								<span class="block truncate text-sm font-medium">{{ store.name }}</span>
+								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600' : 'text-stone-400'">{{ store.id }}</span>
+							</span>
+							<UIcon
+								:name="store.id === currentStoreId ? 'i-heroicons-check-circle-20-solid' : 'i-heroicons-arrow-right-circle-20-solid'"
+								class="h-4.5 w-4.5 shrink-0"
+							/>
+						</button>
+					</div>
+				</div>
+			</div>
+		</AppResponsivePanel>
 		<AppFloatingGoTop :hidden="mobileSidebarOpen" />
 	</main>
 </template>

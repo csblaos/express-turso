@@ -4,7 +4,7 @@
 
 @layer base {
 	:root {
-		color-scheme: only light;
+		color-scheme: light;
 		--pos-page: #f6f6f3;
 		--pos-surface: #fffefd;
 		--pos-surface-soft: #fbfbf8;
@@ -16,6 +16,21 @@
 		--pos-text-soft: #90877d;
 		--pos-accent: #c97745;
 		--pos-accent-soft: #f8e9de;
+	}
+
+	:is(html.dark, html.dark-mode) {
+		color-scheme: dark;
+		--pos-page: #13110f;
+		--pos-surface: #1a1714;
+		--pos-surface-soft: #221f1b;
+		--pos-surface-muted: #2a2621;
+		--pos-border: #3b342d;
+		--pos-border-strong: #4a433b;
+		--pos-text: #f4efe8;
+		--pos-text-muted: #c7bdb1;
+		--pos-text-soft: #988d82;
+		--pos-accent: #df9566;
+		--pos-accent-soft: #3f2b1f;
 	}
 
 	* {
@@ -40,6 +55,19 @@
 		font: inherit;
 	}
 
+	:is(html.dark, html.dark-mode) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+	:is(html.dark, html.dark-mode) textarea,
+	:is(html.dark, html.dark-mode) select {
+		background: var(--pos-surface) !important;
+		color: var(--pos-text) !important;
+		border-color: var(--pos-border) !important;
+	}
+
+	:is(html.dark, html.dark-mode) input::placeholder,
+	:is(html.dark, html.dark-mode) textarea::placeholder {
+		color: var(--pos-text-soft) !important;
+	}
+
 	/* Prevent mobile browsers (especially iOS Safari) from auto-zooming on focus. */
 	@media (hover: none) and (pointer: coarse) {
 		input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
@@ -52,6 +80,85 @@
 }
 
 @layer utilities {
+	:is(html.dark, html.dark-mode) .bg-white,
+	:is(html.dark, html.dark-mode) .bg-\[\#fffefd\],
+	:is(html.dark, html.dark-mode) .bg-\[\#fbfbf8\],
+	:is(html.dark, html.dark-mode) .bg-\[\#f7f5f1\],
+	:is(html.dark, html.dark-mode) .bg-\[\#fff8f5\] {
+		background-color: var(--pos-surface) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .bg-neutral-50,
+	:is(html.dark, html.dark-mode) .bg-neutral-100,
+	:is(html.dark, html.dark-mode) .bg-\[\#f6f6f3\],
+	:is(html.dark, html.dark-mode) .bg-\[\#f3f2ee\],
+	:is(html.dark, html.dark-mode) .bg-\[\#f5f4ef\],
+	:is(html.dark, html.dark-mode) .bg-\[\#fbf1ea\],
+	:is(html.dark, html.dark-mode) .bg-\[\#f8e9de\] {
+		background-color: var(--pos-surface-soft) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .bg-white\/95,
+	:is(html.dark, html.dark-mode) [class*="bg-[rgba(255,254,253,0.96)]"],
+	:is(html.dark, html.dark-mode) [class*="bg-[rgba(255,254,253,0.98)]"] {
+		background-color: rgba(26, 23, 20, 0.94) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .text-stone-950,
+	:is(html.dark, html.dark-mode) .text-stone-900,
+	:is(html.dark, html.dark-mode) .text-stone-800,
+	:is(html.dark, html.dark-mode) .text-stone-700 {
+		color: var(--pos-text) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .text-stone-600,
+	:is(html.dark, html.dark-mode) .text-stone-500 {
+		color: var(--pos-text-muted) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .text-stone-400 {
+		color: var(--pos-text-soft) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .border-neutral-200,
+	:is(html.dark, html.dark-mode) .border-\[\#e7e4dd\],
+	:is(html.dark, html.dark-mode) .border-\[\#ece6dc\],
+	:is(html.dark, html.dark-mode) .border-\[\#efece4\],
+	:is(html.dark, html.dark-mode) .border-\[\#f0ece4\],
+	:is(html.dark, html.dark-mode) .border-\[\#f1ede6\],
+	:is(html.dark, html.dark-mode) .border-\[\#efeae2\] {
+		border-color: var(--pos-border) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .ring-neutral-200,
+	:is(html.dark, html.dark-mode) .ring-\[\#e7e4dd\],
+	:is(html.dark, html.dark-mode) .ring-\[\#f7e7df\],
+	:is(html.dark, html.dark-mode) .ring-\[\#efece4\] {
+		--tw-ring-color: var(--pos-border) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .hover\:bg-white:hover,
+	:is(html.dark, html.dark-mode) .group:hover .group-hover\:bg-white {
+		background-color: var(--pos-surface) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .hover\:text-stone-900:hover,
+	:is(html.dark, html.dark-mode) .group:hover .group-hover\:text-stone-900 {
+		color: var(--pos-text) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .shadow-\[0_8px_24px_rgba\(31\,28\,24\,0\.06\)\],
+	:is(html.dark, html.dark-mode) .shadow-\[0_-8px_24px_rgba\(31\,28\,24\,0\.06\)\],
+	:is(html.dark, html.dark-mode) .shadow-\[0_10px_30px_rgba\(31\,28\,24\,0\.06\)\],
+	:is(html.dark, html.dark-mode) .shadow-\[0_18px_44px_rgba\(31\,28\,24\,0\.18\)\],
+	:is(html.dark, html.dark-mode) .shadow-\[0_18px_40px_rgba\(15\,23\,42\,0\.22\)\] {
+		box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34) !important;
+	}
+
+	:is(html.dark, html.dark-mode) .scrollbar-soft {
+		scrollbar-color: rgba(244, 239, 232, 0.18) transparent;
+	}
+
 	.scrollbar-soft {
 		scrollbar-width: thin;
 		scrollbar-color: rgba(31, 28, 24, 0.16) transparent;
@@ -65,6 +172,10 @@
 	.scrollbar-soft::-webkit-scrollbar-thumb {
 		border-radius: 999px;
 		background: rgba(31, 28, 24, 0.14);
+	}
+
+	:is(html.dark, html.dark-mode) .scrollbar-soft::-webkit-scrollbar-thumb {
+		background: rgba(244, 239, 232, 0.16);
 	}
 
 	.category-rail {

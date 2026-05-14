@@ -77,6 +77,7 @@ type LoginResponse = {
 		ownedStoresCount: number;
 	};
 	session: SessionRecord;
+	access: Awaited<ReturnType<typeof RbacInterface.getUserPermissions>>;
 	tokens: {
 		accessToken: string;
 		refreshToken: string;
@@ -151,6 +152,26 @@ async function buildUserSummaryWithOnboarding(user: User) {
 		...summary,
 		ownedStoresCount,
 	};
+}
+
+function resolvePreferredStoreId(access: Awaited<ReturnType<typeof RbacInterface.getUserPermissions>>): string | undefined {
+	const memberships = access.memberships || [];
+	if (memberships.length === 0) return undefined;
+
+	const ownerMembership = memberships.find((membership) => (
+		String(membership.status || "").toLowerCase() === "active"
+		&& String(membership.role_name || "").trim().toLowerCase() === "owner"
+	));
+	if (ownerMembership?.store_id) {
+		return ownerMembership.store_id;
+	}
+
+	const activeMembership = memberships.find((membership) => String(membership.status || "").toLowerCase() === "active");
+	if (activeMembership?.store_id) {
+		return activeMembership.store_id;
+	}
+
+	return memberships[0]?.store_id;
 }
 
 async function getSessionRecord(sessionId: string): Promise<SessionRecord | null> {
@@ -364,9 +385,20 @@ export class AuthComponent {
 		const existingSessionIds = await AuthComponent.getSessionIds(userId);
 		await AuthComponent.saveSessionIds(userId, [ ...existingSessionIds, sessionId ]);
 
+		if (String(user.system_role || "").toLowerCase() === "superadmin") {
+			await RbacInterface.ensureOwnerMemberships(userId);
+		}
+
+		const unscopedAccess = await RbacInterface.getUserPermissions(userId);
+		const preferredStoreId = resolvePreferredStoreId(unscopedAccess);
+		const access = preferredStoreId
+			? await RbacInterface.getUserPermissions(userId, preferredStoreId)
+			: unscopedAccess;
+
 		return {
 			user: await buildUserSummaryWithOnboarding(user),
 			session: sessionRecord,
+			access,
 			tokens: {
 				accessToken,
 				refreshToken,
@@ -494,6 +526,10 @@ export class AuthComponent {
 
 		if (user.client_suspended) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_USER_SUSPENDED);
+		}
+
+		if (String(user.system_role || "").toLowerCase() === "superadmin") {
+			await RbacInterface.ensureOwnerMemberships(getUserId(user));
 		}
 
 		const session = await getJsonValue<SessionRecord>(getSessionKey(token.sid));

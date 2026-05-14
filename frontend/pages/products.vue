@@ -97,6 +97,7 @@ const activeCategory = ref("all");
 const activeStatus = ref<ProductStatus>("all");
 const activeSort = ref<SortKey>("updated");
 const selectedProductId = ref("");
+const productsListScrollRef = ref<HTMLElement | null>(null);
 const productDetailOpen = ref(false);
 const mobileSearchOpen = ref(false);
 const scanToast = ref("");
@@ -108,6 +109,9 @@ const cameraScannerOpen = ref(false);
 const cameraScannerStarting = ref(false);
 const cameraScannerError = ref<string | null>(null);
 const scannerVideoRef = ref<HTMLVideoElement | null>(null);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const pageSizeOptions = [10, 20, 50];
 
 let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 let cameraScannerControls: { stop?: () => void } | null = null;
@@ -162,9 +166,16 @@ const filteredProducts = computed(() => {
 	return result;
 });
 
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / pageSize.value)));
+const paginatedProducts = computed(() => {
+	const startIndex = (currentPage.value - 1) * pageSize.value;
+	return filteredProducts.value.slice(startIndex, startIndex + pageSize.value);
+});
+
 const selectedProduct = computed(() => {
-	return filteredProducts.value.find((product) => product.id === selectedProductId.value)
-		?? filteredProducts.value[0]
+	return paginatedProducts.value.find((product) => product.id === selectedProductId.value)
+		?? filteredProducts.value.find((product) => product.id === selectedProductId.value)
+		?? paginatedProducts.value[0]
 		?? products.value[0];
 });
 
@@ -187,13 +198,43 @@ const totalProducts = computed(() => products.value.length);
 const activeProductsCount = computed(() => products.value.filter((product) => product.status === "active").length);
 const lowStockCount = computed(() => products.value.filter((product) => product.stockState === "low").length);
 const inactiveCount = computed(() => products.value.filter((product) => product.status === "inactive").length);
+const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageStart = computed(() => (
+	filteredProducts.value.length === 0
+		? 0
+		: ((currentPage.value - 1) * pageSize.value) + 1
+));
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredProducts.value.length));
+const pageSummaryText = computed(() => (
+	filteredProducts.value.length === 0
+		? "ยังไม่มีข้อมูล"
+		: `${pageStart.value}-${pageEnd.value} จาก ${filteredProducts.value.length} สินค้า`
+));
+const overviewStats = computed(() => ([
+	{ label: "สินค้าทั้งหมด", value: totalProducts.value },
+	{ label: "พร้อมขาย", value: activeProductsCount.value },
+	{ label: "สต็อกต่ำ", value: lowStockCount.value },
+	{ label: "หมวดสินค้า", value: namedCategoryCount.value },
+]));
 
 watch(filteredProducts, (value) => {
+	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
+	if (currentPage.value > maxPage) {
+		currentPage.value = maxPage;
+	}
 	if (!value.length) return;
 	if (!value.some((product) => product.id === selectedProductId.value)) {
 		selectedProductId.value = value[0].id;
 	}
 }, { immediate: true });
+
+watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
+	currentPage.value = 1;
+});
+
+watch(pageSize, () => {
+	currentPage.value = 1;
+});
 
 function formatMoney(value: number) {
 	return numberFormatter.format(value);
@@ -379,6 +420,31 @@ function focusSearchInput() {
 	const input = searchInputRef.value?.input;
 	input?.focus();
 	input?.select();
+}
+
+function scrollProductsListToTop() {
+	productsListScrollRef.value?.scrollTo({
+		top: 0,
+		behavior: "auto",
+	});
+}
+
+function goToPage(nextPage: number) {
+	const normalizedPage = Math.min(Math.max(1, nextPage), totalPages.value);
+	if (normalizedPage === currentPage.value) return;
+	currentPage.value = normalizedPage;
+	nextTick(() => {
+		scrollProductsListToTop();
+	});
+}
+
+function updatePageSize(nextPageSize: number | string) {
+	const normalizedSize = Number(nextPageSize);
+	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
+	pageSize.value = normalizedSize;
+	nextTick(() => {
+		scrollProductsListToTop();
+	});
 }
 
 function toggleMobileSearch() {
@@ -572,320 +638,324 @@ onBeforeUnmount(() => {
 		sidebar-description="จัดการ SKU, barcode, ราคา และสถานะขาย"
 	>
 		<template #default="{ openSidebar }">
-			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
-				<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
-					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md lg:sticky lg:top-0 lg:z-20">
-								<div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-										<div class="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)]">
-											<div class="grid grid-cols-4 gap-2 lg:hidden">
-												<AppButton
-													color="neutral"
-													variant="soft"
-													size="md"
-													class="justify-center rounded-md"
-													icon="i-heroicons-bars-3-20-solid"
-													aria-label="เปิดเมนู"
-													title="เปิดเมนู"
-													@click="openSidebar"
-												/>
+			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
+				<AppPageHeader
+					title="สินค้า"
+					description="จัดการ SKU, barcode, ราคา และสถานะขายด้วย list view และ panel style เดียวกับหน้าตั้งค่า"
+					@menu="openSidebar"
+				>
+					<div class="ml-auto grid w-full gap-3 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
+						<div class="relative min-w-0" :class="mobileSearchOpen ? 'block' : 'hidden lg:block'">
+							<UInput
+								ref="searchInputRef"
+								v-model="searchQuery"
+								size="lg"
+								icon="i-heroicons-magnifying-glass-20-solid"
+								placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+								color="neutral"
+								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+								@keydown.enter.prevent="submitSearchInput"
+							/>
+							<AppButton
+								v-if="searchQuery"
+								color="neutral"
+								variant="ghost"
+								size="xs"
+								icon="i-heroicons-x-mark-20-solid"
+								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
+								aria-label="ล้างคำค้น"
+								title="ล้างคำค้น"
+								@click="searchQuery = ''"
+							/>
+						</div>
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							class="justify-center rounded-md lg:hidden"
+							icon="i-heroicons-magnifying-glass-20-solid"
+							:aria-label="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
+							:title="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
+							@click="toggleMobileSearch"
+						/>
+						<AppButton
+							color="primary"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-qr-code-20-solid"
+							class="justify-center rounded-md"
+							aria-label="สแกนบาร์โค้ด"
+							title="สแกนบาร์โค้ด"
+							@click="openCameraScanner"
+						>
+							<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-plus-20-solid"
+							class="justify-center rounded-md"
+							aria-label="เพิ่มสินค้า"
+							title="เพิ่มสินค้า"
+							:disabled="!canCreateProduct"
+						>
+							<span class="hidden sm:inline">เพิ่มสินค้า</span>
+						</AppButton>
+					</div>
+				</AppPageHeader>
 
-												<AppButton
-													color="neutral"
-													variant="soft"
-													size="md"
-													class="justify-center rounded-md"
-													icon="i-heroicons-magnifying-glass-20-solid"
-													:aria-label="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
-													:title="mobileSearchOpen ? 'ซ่อนการค้นหา' : 'เปิดการค้นหา'"
-													@click="toggleMobileSearch"
-												/>
+				<div class="grid min-h-0 gap-3 overflow-hidden lg:grid-rows-[auto_auto_minmax(0,1fr)] lg:pr-1">
+					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+						<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+							<div
+								v-for="stat in overviewStats"
+								:key="stat.label"
+								class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3"
+							>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ stat.label }}</p>
+								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ stat.value }}</p>
+							</div>
+						</div>
+					</UCard>
 
-												<AppButton
-													color="primary"
-													variant="soft"
-													size="md"
-													icon="i-heroicons-qr-code-20-solid"
-													class="justify-center rounded-md"
-													aria-label="สแกนบาร์โค้ด"
-													title="สแกนบาร์โค้ด"
-													@click="openCameraScanner"
-												/>
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">Product filters</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">กรองตามหมวด สถานะ และเรียงลำดับก่อนดูรายละเอียดหรือสแกนบาร์โค้ด</p>
+								</div>
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+									{{ filteredProducts.length }} รายการ
+								</div>
+							</div>
 
-											<AppButton
-												color="primary"
-												variant="solid"
-												size="md"
-													icon="i-heroicons-plus-20-solid"
-													class="justify-center rounded-md"
-													aria-label="เพิ่มสินค้า"
-													title="เพิ่มสินค้า"
-													:disabled="!canCreateProduct"
-												/>
-											</div>
-
-											<div v-if="mobileSearchOpen" class="relative min-w-0 lg:hidden">
-												<UInput
-													ref="searchInputRef"
-													v-model="searchQuery"
-													size="lg"
-													icon="i-heroicons-magnifying-glass-20-solid"
-													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-													color="neutral"
-													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
-													@keydown.enter.prevent="submitSearchInput"
-												/>
-												<AppButton
-													v-if="searchQuery"
-													color="neutral"
-													variant="ghost"
-													size="xs"
-													icon="i-heroicons-x-mark-20-solid"
-													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-													aria-label="ล้างคำค้น"
-													title="ล้างคำค้น"
-													@click="searchQuery = ''"
-												/>
-											</div>
-
-												<div class="relative hidden min-w-0 lg:block">
-												<UInput
-													ref="searchInputRef"
-													v-model="searchQuery"
-													size="lg"
-													icon="i-heroicons-magnifying-glass-20-solid"
-													placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
-													color="neutral"
-													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
-													@keydown.enter.prevent="submitSearchInput"
-												/>
-												<AppButton
-													v-if="searchQuery"
-													color="neutral"
-													variant="ghost"
-													size="xs"
-													icon="i-heroicons-x-mark-20-solid"
-													class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-													aria-label="ล้างคำค้น"
-													title="ล้างคำค้น"
-													@click="searchQuery = ''"
-												/>
-											</div>
-										</div>
-
-										<AppButton
-											color="primary"
-											variant="soft"
-											size="md"
-											icon="i-heroicons-qr-code-20-solid"
-											class="hidden justify-center rounded-md px-4 lg:inline-flex"
-											aria-label="สแกนบาร์โค้ด"
-											title="สแกนบาร์โค้ด"
-											@click="openCameraScanner"
+							<div class="space-y-3 px-4 py-4">
+								<div class="md:hidden">
+									<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-category-select">
+										เลือกหมวดสินค้า
+									</label>
+									<div class="relative">
+										<select
+											id="product-category-select"
+											v-model="activeCategory"
+											class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										>
-											<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
-										</AppButton>
-
-										<AppButton
-											color="primary"
-											variant="solid"
-											size="md"
-											icon="i-heroicons-plus-20-solid"
-											class="hidden justify-center rounded-md px-4 lg:inline-flex"
-											aria-label="เพิ่มสินค้า"
-											title="เพิ่มสินค้า"
-											:disabled="!canCreateProduct"
-										>
-											<span class="hidden sm:inline">เพิ่มสินค้า</span>
-										</AppButton>
+											<option
+												v-for="category in categoryOptions"
+												:key="category.id"
+												:value="category.id"
+											>
+												{{ category.label }} ({{ categoryCounts[category.id] }})
+											</option>
+										</select>
+										<UIcon
+											name="i-heroicons-chevron-up-down"
+											class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+										/>
 									</div>
-							</UCard>
+								</div>
 
-					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
-						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+								<div class="category-rail scrollbar-soft hidden gap-2 overflow-x-auto pb-1 md:flex">
+									<AppButton
+										v-for="category in categoryOptions"
+										:key="category.id"
+										:color="activeCategory === category.id ? 'primary' : 'neutral'"
+										:variant="activeCategory === category.id ? 'soft' : 'ghost'"
+										size="md"
+										class="shrink-0 whitespace-nowrap snap-start rounded-md"
+										@click="activeCategory = category.id"
+									>
+										{{ category.label }}
+										<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
+											{{ categoryCounts[category.id] }}
+										</span>
+									</AppButton>
+								</div>
+
+								<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+									<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+										<AppButton
+											v-for="status in statusOptions"
+											:key="status.id"
+											color="neutral"
+											:variant="activeStatus === status.id ? 'solid' : 'soft'"
+											size="md"
+											:label="status.label"
+											class="whitespace-nowrap rounded-md"
+											@click="activeStatus = status.id"
+										/>
+									</div>
+
+									<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
+										<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="นำเข้า" :disabled="!canCreateProduct" />
+										<AppButton
+											v-for="sort in sortOptions"
+											:key="sort.id"
+											color="neutral"
+											:variant="activeSort === sort.id ? 'solid' : 'soft'"
+											size="md"
+											class="rounded-md"
+											:label="sort.label"
+											@click="activeSort = sort.id"
+										/>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex h-full min-h-0 flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">Products</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูราคา ต้นทุน และสถานะขาย</p>
+								</div>
+								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+									{{ pageSummaryText }}
+								</div>
+							</div>
+
+							<div ref="productsListScrollRef" class="scrollbar-soft min-h-0 flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+								<div v-if="productsPending" class="min-h-[280px]">
+									<AppInlineLoadingBar container-class="bg-neutral-100" />
+								</div>
+								<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
-										<div class="flex flex-wrap items-center gap-2">
-											<UBadge color="neutral" variant="soft" :label="`${totalProducts} SKU`" />
-											<UBadge color="success" variant="soft" :label="`พร้อมขาย ${activeProductsCount}`" />
-											<UBadge color="warning" variant="soft" :label="`สต็อกต่ำ ${lowStockCount}`" />
-											<UBadge color="neutral" variant="soft" :label="`ปิดขาย ${inactiveCount}`" />
-										</div>
-
-										<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-											<div class="space-y-2">
-												<div class="md:hidden">
-													<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-category-select">
-														เลือกหมวดสินค้า
-													</label>
-													<div class="relative">
-														<select
-															id="product-category-select"
-															v-model="activeCategory"
-																class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-														>
-															<option
-																v-for="category in categoryOptions"
-																:key="category.id"
-																:value="category.id"
-															>
-																{{ category.label }} ({{ categoryCounts[category.id] }})
-															</option>
-														</select>
-														<UIcon
-															name="i-heroicons-chevron-up-down"
-															class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
-														/>
-													</div>
-												</div>
-
-												<div class="category-rail scrollbar-soft hidden gap-2 overflow-x-auto pb-1 md:flex">
-													<AppButton
-														v-for="category in categoryOptions"
-														:key="category.id"
-														:color="activeCategory === category.id ? 'primary' : 'neutral'"
-														:variant="activeCategory === category.id ? 'soft' : 'ghost'"
-															size="md"
-														class="shrink-0 whitespace-nowrap snap-start"
-														@click="activeCategory = category.id"
-													>
-														{{ category.label }}
-														<span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
-															{{ categoryCounts[category.id] }}
-														</span>
-													</AppButton>
-												</div>
-
-												<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
-													<AppButton
-														v-for="status in statusOptions"
-														:key="status.id"
-														:color="activeStatus === status.id ? 'neutral' : 'neutral'"
-														:variant="activeStatus === status.id ? 'solid' : 'soft'"
-															size="md"
-														:label="status.label"
-														class="whitespace-nowrap"
-														@click="activeStatus = status.id"
-													/>
-												</div>
-											</div>
-
-											<div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
-													<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="นำเข้า" :disabled="!canCreateProduct" />
-												<AppButton
-													v-for="sort in sortOptions"
-													:key="sort.id"
-													color="neutral"
-													:variant="activeSort === sort.id ? 'solid' : 'soft'"
-														size="md"
-														class="rounded-md"
-													:label="sort.label"
-													@click="activeSort = sort.id"
-												/>
-											</div>
-										</div>
-									</div>
-								</UCard>
-
-						<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-							<div class="flex h-full min-h-0 flex-col">
-								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-									<div>
-										<p class="text-sm font-semibold text-stone-950">Products list</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูราคา ต้นทุน และสถานะขาย</p>
-									</div>
-									<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-										{{ filteredProducts.length }} รายการ
+										<p class="text-sm text-stone-600">{{ productsError }}</p>
+										<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
 									</div>
 								</div>
+								<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+									<div class="space-y-3">
+										<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
+										<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
+									</div>
+								</div>
+								<div v-else>
+									<button
+										v-for="product in paginatedProducts"
+										:key="product.id"
+										type="button"
+										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
+										:class="selectedProductId === product.id ? 'bg-primary-50' : 'bg-white'"
+										@click="openProductDetail(product.id)"
+									>
+										<div class="flex items-start gap-3">
+											<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
+												<img
+													v-if="product.imageUrl"
+													:src="product.imageUrl"
+													:alt="product.name"
+													class="h-full w-full object-cover"
+												>
+												<UIcon v-else name="i-heroicons-cube" class="h-6 w-6 text-white/95" />
+											</div>
 
-								<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-									<div v-if="productsPending" class="min-h-[280px]">
-										<div class="overflow-hidden bg-neutral-100">
-											<div class="products-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
-										</div>
-									</div>
-									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-										<div class="space-y-3">
-											<p class="text-sm text-stone-600">{{ productsError }}</p>
-											<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
-										</div>
-									</div>
-									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-										<div class="space-y-3">
-											<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-											<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
-										</div>
-									</div>
-									<div v-else>
-										<button
-											v-for="product in filteredProducts"
-											:key="product.id"
-											type="button"
-											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-											:class="selectedProductId === product.id ? 'bg-primary-50' : 'bg-white'"
-											@click="openProductDetail(product.id)"
-										>
-											<div class="flex items-start gap-3">
-												<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
-													<img
-														v-if="product.imageUrl"
-														:src="product.imageUrl"
-														:alt="product.name"
-														class="h-full w-full object-cover"
-													>
-													<UIcon v-else name="i-heroicons-cube" class="h-6 w-6 text-white/95" />
-												</div>
-
-												<div class="min-w-0 flex-1">
-													<div class="flex flex-wrap items-start justify-between gap-2">
-														<div class="min-w-0">
-															<div class="flex flex-wrap items-center gap-2">
-																<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
-																<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
-															</div>
-															<p class="mt-1 truncate text-[11px] text-stone-500">
-																{{ product.sku }} · {{ product.barcode }}
-															</p>
+											<div class="min-w-0 flex-1">
+												<div class="flex flex-wrap items-start justify-between gap-2">
+													<div class="min-w-0">
+														<div class="flex flex-wrap items-center gap-2">
+															<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
+															<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
 														</div>
-
-														<div class="text-right">
-															<p class="text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(product.price) }}</p>
-															<p class="mt-1 text-[11px] text-stone-500">ทุน {{ formatMoney(product.cost) }}</p>
-														</div>
-													</div>
-
-													<div class="mt-3 flex flex-wrap items-center gap-2">
-														<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
-														<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
-														<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
-														<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
-													</div>
-
-													<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-														<p class="text-[11px] text-stone-500">
-															อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
+														<p class="mt-1 truncate text-[11px] text-stone-500">
+															{{ product.sku }} · {{ product.barcode }}
 														</p>
-														<div class="flex flex-wrap gap-2">
-															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
-															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
-															<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
-														</div>
+													</div>
+
+													<div class="text-right">
+														<p class="text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(product.price) }}</p>
+														<p class="mt-1 text-[11px] text-stone-500">ทุน {{ formatMoney(product.cost) }}</p>
+													</div>
+												</div>
+
+												<div class="mt-3 flex flex-wrap items-center gap-2">
+													<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
+													<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
+													<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
+													<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
+												</div>
+
+												<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+													<p class="text-[11px] text-stone-500">
+														อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
+													</p>
+													<div class="flex flex-wrap gap-2">
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
+														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
 													</div>
 												</div>
 											</div>
-										</button>
-									</div>
+										</div>
+									</button>
 								</div>
+							</div>
 
-								<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-									<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
-										<div>{{ activeProductsCount }} พร้อมขาย • {{ inactiveCount }} ปิดขาย</div>
-										<div>{{ lowStockCount }} สต็อกต่ำ • {{ namedCategoryCount }} หมวด</div>
+							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
+									<div class="flex items-center justify-between gap-3 md:min-w-0 md:flex-1">
+										<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
+											<span class="sm:hidden">{{ pageSummaryText }}</span>
+											<span class="hidden sm:inline">{{ pageLabel }} • {{ pageSummaryText }}</span>
+										</div>
+										<div class="shrink-0 rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-stone-600 sm:hidden">
+											{{ pageLabel }}
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
+										<div class="flex items-center gap-2">
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<select
+												:value="pageSize"
+												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												@change="updatePageSize(($event.target as HTMLSelectElement).value)"
+											>
+												<option v-for="option in pageSizeOptions" :key="option" :value="option">
+													{{ option }}
+												</option>
+											</select>
+										</div>
+
+										<div class="flex items-center gap-2">
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="md"
+												class="rounded-md"
+												icon="i-heroicons-chevron-left-20-solid"
+												:disabled="currentPage <= 1 || productsPending"
+												aria-label="หน้าก่อนหน้า"
+												title="หน้าก่อนหน้า"
+												@click="goToPage(currentPage - 1)"
+											>
+												<span class="hidden sm:inline">ก่อนหน้า</span>
+											</AppButton>
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="md"
+												class="rounded-md"
+												trailing-icon="i-heroicons-chevron-right-20-solid"
+												:disabled="currentPage >= totalPages || productsPending"
+												aria-label="หน้าถัดไป"
+												title="หน้าถัดไป"
+												@click="goToPage(currentPage + 1)"
+											>
+												<span class="hidden sm:inline">ถัดไป</span>
+											</AppButton>
+										</div>
 									</div>
 								</div>
 							</div>
 						</div>
-							</div>
-						</div>
+					</div>
+				</div>
+			</div>
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productDetailOpen"
@@ -1143,19 +1213,6 @@ onBeforeUnmount(() => {
 					{{ scanToast }}
 				</div>
 			</Transition>
-			</section>
 		</template>
 	</AppSidebarShell>
 </template>
-
-<style scoped>
-@keyframes products-loading-slide {
-	0% { transform: translateX(-120%); }
-	100% { transform: translateX(420%); }
-}
-
-.products-loading-line {
-	animation: products-loading-slide 1.2s linear infinite;
-	will-change: transform;
-}
-</style>

@@ -15,6 +15,7 @@ export class AuditEventController {
 			result: typeof query.result === "string" ? query.result : undefined,
 			entityType: typeof query.entity_type === "string" ? query.entity_type : undefined,
 			actorRole: typeof query.actor_role === "string" ? query.actor_role : undefined,
+			page: typeof query.page === "number" ? query.page : typeof query.page === "string" ? Number(query.page) : undefined,
 			limit: typeof query.limit === "number" ? query.limit : typeof query.limit === "string" ? Number(query.limit) : undefined,
 		};
 

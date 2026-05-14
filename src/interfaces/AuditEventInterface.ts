@@ -11,7 +11,16 @@ export type AuditEventFilters = {
 	result?: string;
 	entityType?: string;
 	actorRole?: string;
+	page?: number;
 	limit?: number;
+};
+
+export type AuditEventListResult = {
+	items: AuditEventRecord[];
+	page: number;
+	limit: number;
+	total: number;
+	has_more: boolean;
 };
 
 export type AuditEventCountFilters = {
@@ -149,7 +158,7 @@ export class AuditEventInterface {
 		AuditEventInterface.initialized = true;
 	}
 
-	static async findMany(filters: AuditEventFilters = {}): Promise<AuditEventRecord[]> {
+	static async findMany(filters: AuditEventFilters = {}): Promise<AuditEventListResult> {
 		await AuditEventInterface.ensureTable();
 
 		const db = DbConn.getClient();
@@ -190,7 +199,19 @@ export class AuditEventInterface {
 		}
 
 		const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+		const page = Math.max(1, Number(filters.page) || 1);
 		const limit = Math.max(1, Math.min(filters.limit ?? 100, 200));
+		const offset = (page - 1) * limit;
+
+		const countResult = await db.execute({
+			sql: `
+				SELECT COUNT(*) AS total
+				FROM audit_events
+				${whereClause}
+			`,
+			args,
+		});
+		const total = Number((countResult.rows[0] as Record<string, unknown> | undefined)?.total || 0);
 
 		const result = await db.execute({
 			sql: `
@@ -216,12 +237,20 @@ export class AuditEventInterface {
 				FROM audit_events
 				${whereClause}
 				ORDER BY occurred_at DESC
-				LIMIT ${limit}
+				LIMIT ?
+				OFFSET ?
 			`,
-			args,
+			args: [ ...args, limit, offset ],
 		});
 
-		return result.rows.map((row) => mapRow(row as Record<string, unknown>));
+		const items = result.rows.map((row) => mapRow(row as Record<string, unknown>));
+		return {
+			items,
+			page,
+			limit,
+			total,
+			has_more: offset + items.length < total,
+		};
 	}
 
 	static async findById(id: string): Promise<AuditEventRecord | null> {

@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { needsAuthOnboarding } from "~/utils/auth-onboarding";
-
-const { login } = useAuthSession();
+const { login, currentAccess } = useAuthSession();
 const appToast = useAppToast();
 const route = useRoute();
 
 const DEV_PASSWORD = "dev123456";
 const DEV_LOGINS = [
+	{
+		label: "Alex",
+		role: "preset_user",
+		email: "alex@gmail.com",
+		password: "1234567",
+		description: "preset สำหรับทดสอบการเข้าสู่ระบบด้วยบัญชีของ Alex",
+	},
 	{
 		label: "System Admin",
 		role: "system_admin",
@@ -75,6 +81,12 @@ function extractLoginErrorMessage(error: unknown) {
 	return "เข้าสู่ระบบไม่สำเร็จ";
 }
 
+function resolvePostLoginPath(systemRole?: string | null) {
+	return typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
+		? route.query.redirect
+		: (systemRole === "system_admin" ? "/system-admin/dashboard" : "/");
+}
+
 async function loginToPos() {
 	submitting.value = true;
 	try {
@@ -83,10 +95,23 @@ async function loginToPos() {
 			password: form.password,
 			rememberMe: form.remember,
 		});
-		const redirectPath = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
-			? route.query.redirect
-			: (response.user.systemRole === "system_admin" ? "/system-admin/dashboard" : "/");
-		return navigateTo(needsAuthOnboarding(response.user) ? "/onboarding" : redirectPath);
+		const membershipCount = currentAccess.value?.memberships?.length ?? 0;
+		const shouldChooseStoreFirst = response.user.systemRole !== "system_admin" && membershipCount > 1;
+		if (shouldChooseStoreFirst) {
+			const redirectPath = resolvePostLoginPath(response.user.systemRole);
+			const chooseStoreQuery: Record<string, string> = {
+				redirect: redirectPath,
+			};
+			if (needsAuthOnboarding(response.user)) {
+				chooseStoreQuery.onboarding = "1";
+			}
+			return navigateTo({
+				path: "/choose-store",
+				query: chooseStoreQuery,
+			});
+		}
+
+		return navigateTo(needsAuthOnboarding(response.user) ? "/onboarding" : resolvePostLoginPath(response.user.systemRole));
 	} catch (err) {
 		const message = extractLoginErrorMessage(err);
 		appToast.error({

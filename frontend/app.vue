@@ -4,22 +4,9 @@ import { Toaster } from "vue-sonner";
 
 const colorMode = useColorMode();
 
-colorMode.preference = "light";
-
 if (import.meta.client) {
-	onMounted(() => {
-		colorMode.preference = "light";
-		colorMode.value = "light";
-
-		const root = document.documentElement;
-		root.classList.remove("dark", "dark-mode");
-		root.style.colorScheme = "light";
-
-		try {
-			localStorage.setItem("nuxt-color-mode", "light");
-		} catch {
-			// Ignore storage failures in restricted contexts.
-		}
+	watchEffect(() => {
+		document.documentElement.style.colorScheme = colorMode.value === "dark" ? "dark" : "light";
 	});
 }
 </script>
@@ -30,6 +17,7 @@ if (import.meta.client) {
 	</NuxtLayout>
 	<Toaster
 		position="top-right"
+		:theme="colorMode.value === 'dark' ? 'dark' : 'light'"
 		:rich-colors="true"
 		:close-button="true"
 		:expand="false"

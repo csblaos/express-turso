@@ -64,6 +64,8 @@ type MonitoringSnapshot = {
 	};
 	pos_performance: {
 		window_hours: number;
+		sample_limit: number;
+		last_reset_at: string | null;
 		total_requests: number;
 		avg_latency_ms: number;
 		p95_latency_ms: number;
@@ -494,6 +496,12 @@ onBeforeUnmount(() => {
 											<div>
 												<h2 class="text-lg font-semibold text-stone-950">POS performance</h2>
 												<p class="mt-1 text-xs leading-5 text-stone-500">เฉพาะ route ใช้งานจริงของร้าน เช่น orders, products, inventory และ purchase orders ใน {{ snapshot.pos_performance.window_hours }} ชั่วโมงล่าสุด</p>
+												<p class="mt-1 text-[11px] text-stone-400">
+													Last reset
+													<span class="font-medium text-stone-600">
+														{{ snapshot.pos_performance.last_reset_at ? formatDateTime(snapshot.pos_performance.last_reset_at) : "ยังไม่มีข้อมูล" }}
+													</span>
+												</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -538,7 +546,7 @@ onBeforeUnmount(() => {
 												</div>
 											</div>
 											<p class="text-[11px] text-stone-500">
-												Slow threshold > {{ snapshot.pos_performance.slow_threshold_ms }}ms และไม่รวม monitoring, security, reports, settings หรือ health checks
+												Slow threshold > {{ snapshot.pos_performance.slow_threshold_ms }}ms, เก็บสูงสุด {{ snapshot.pos_performance.sample_limit }} requests และไม่รวม monitoring, security, reports, settings หรือ health checks
 											</p>
 										</div>
 									</UCard>

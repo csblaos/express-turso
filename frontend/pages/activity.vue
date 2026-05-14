@@ -28,6 +28,14 @@ type ApiAuditEvent = {
 	occurred_at: string;
 };
 
+type AuditEventListResponse = {
+	items: ApiAuditEvent[];
+	page: number;
+	limit: number;
+	total: number;
+	has_more: boolean;
+};
+
 const { apiFetch } = useApiClient();
 
 const searchQuery = ref("");
@@ -37,6 +45,10 @@ const activeEntityType = ref("all");
 const events = ref<ApiAuditEvent[]>([]);
 const pending = ref(true);
 const error = ref<string | null>(null);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const pageSizeOptions = [ 10, 20, 50 ];
+const totalEvents = ref(0);
 const selectedEventId = ref("");
 const detailOpen = ref(false);
 
@@ -80,7 +92,19 @@ const selectedEvent = computed(() =>
 
 const successCount = computed(() => events.value.filter((event) => event.result === "success").length);
 const failedCount = computed(() => events.value.filter((event) => event.result === "failed").length);
-const uniqueActors = computed(() => new Set(events.value.map((event) => event.actor_name || event.actor_user_id || "unknown")).size);
+const totalPages = computed(() => Math.max(1, Math.ceil(totalEvents.value / pageSize.value)));
+const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageStart = computed(() => (
+	totalEvents.value === 0
+		? 0
+		: ((currentPage.value - 1) * pageSize.value) + 1
+));
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalEvents.value));
+const pageSummaryText = computed(() => (
+	totalEvents.value === 0
+		? "ยังไม่มีข้อมูล"
+		: `${pageStart.value}-${pageEnd.value} จาก ${totalEvents.value} events`
+));
 
 watch(events, (value) => {
 	if (!value.length) {
@@ -98,6 +122,7 @@ watch(events, (value) => {
 watch([searchQuery, activeScope, activeResult, activeEntityType], () => {
 	if (loadTimer) clearTimeout(loadTimer);
 	loadTimer = setTimeout(() => {
+		currentPage.value = 1;
 		void loadEvents();
 	}, 180);
 });
@@ -122,18 +147,41 @@ async function loadEvents() {
 		if (activeScope.value !== "all") params.set("scope", activeScope.value);
 		if (activeResult.value !== "all") params.set("result", activeResult.value);
 		if (activeEntityType.value !== "all") params.set("entity_type", activeEntityType.value);
-		params.set("limit", "100");
+		params.set("page", String(currentPage.value));
+		params.set("limit", String(pageSize.value));
 
 		const queryString = params.toString();
-		const response = await apiFetch<ApiEnvelope<ApiAuditEvent[]>>(
+		const response = await apiFetch<ApiEnvelope<AuditEventListResponse>>(
 			`/audit-events${queryString ? `?${queryString}` : ""}`,
 		);
-		events.value = response.data;
+		events.value = response.data.items;
+		totalEvents.value = response.data.total;
+		const maxPage = Math.max(1, Math.ceil(response.data.total / pageSize.value));
+		if (currentPage.value > maxPage) {
+			currentPage.value = maxPage;
+			void loadEvents();
+			return;
+		}
 	} catch (err) {
 		error.value = err instanceof Error ? err.message : "โหลดกิจกรรมไม่สำเร็จ";
 	} finally {
 		pending.value = false;
 	}
+}
+
+function goToPage(page: number) {
+	const normalizedPage = Math.max(1, Math.min(page, totalPages.value));
+	if (normalizedPage === currentPage.value || pending.value) return;
+	currentPage.value = normalizedPage;
+	void loadEvents();
+}
+
+function updatePageSize(value: string) {
+	const normalizedSize = Number(value);
+	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
+	pageSize.value = normalizedSize;
+	currentPage.value = 1;
+	void loadEvents();
 }
 
 function openEvent(eventId: string) {
@@ -248,17 +296,17 @@ function stringifyBlock(value: unknown) {
 								</AppButton>
 							</div>
 
-							<div class="grid gap-2 sm:grid-cols-3">
+								<div class="grid gap-2 sm:grid-cols-3">
 								<div class="rounded-md border border-neutral-200 bg-white p-3">
 									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ทั้งหมด</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(events.length) }}</p>
+									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalEvents) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สำเร็จ</p>
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สำเร็จในหน้า</p>
 									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(successCount) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Failed</p>
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Failed ในหน้า</p>
 									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(failedCount) }}</p>
 								</div>
 							</div>
@@ -275,7 +323,7 @@ function stringifyBlock(value: unknown) {
 									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ไล่ดูเหตุการณ์ล่าสุดเพื่อเช็กการเปลี่ยนแปลงและผลลัพธ์จาก action สำคัญ</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ numberFormatter.format(uniqueActors) }} actors
+									{{ pageSummaryText }}
 								</div>
 							</div>
 
@@ -327,9 +375,60 @@ function stringifyBlock(value: unknown) {
 							</div>
 
 							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-								<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
-									<div>{{ numberFormatter.format(events.length) }} events</div>
-									<div>{{ numberFormatter.format(successCount) }} success • {{ numberFormatter.format(failedCount) }} failed</div>
+								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
+									<div class="flex items-center justify-between gap-3 md:min-w-0 md:flex-1">
+										<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
+											<span class="sm:hidden">{{ pageSummaryText }}</span>
+											<span class="hidden sm:inline">{{ pageLabel }} • {{ pageSummaryText }}</span>
+										</div>
+										<div class="shrink-0 rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-stone-600 sm:hidden">
+											{{ pageLabel }}
+										</div>
+									</div>
+
+									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
+										<div class="flex items-center gap-2">
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<select
+												:value="pageSize"
+												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												@change="updatePageSize(($event.target as HTMLSelectElement).value)"
+											>
+												<option v-for="option in pageSizeOptions" :key="option" :value="option">
+													{{ option }}
+												</option>
+											</select>
+										</div>
+
+										<div class="flex items-center gap-2">
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="md"
+												class="rounded-md"
+												icon="i-heroicons-chevron-left-20-solid"
+												:disabled="currentPage <= 1 || pending"
+												aria-label="หน้าก่อนหน้า"
+												title="หน้าก่อนหน้า"
+												@click="goToPage(currentPage - 1)"
+											>
+												<span class="hidden sm:inline">ก่อนหน้า</span>
+											</AppButton>
+											<AppButton
+												color="neutral"
+												variant="soft"
+												size="md"
+												class="rounded-md"
+												trailing-icon="i-heroicons-chevron-right-20-solid"
+												:disabled="currentPage >= totalPages || pending"
+												aria-label="หน้าถัดไป"
+												title="หน้าถัดไป"
+												@click="goToPage(currentPage + 1)"
+											>
+												<span class="hidden sm:inline">ถัดไป</span>
+											</AppButton>
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>

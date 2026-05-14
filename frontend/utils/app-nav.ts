@@ -20,4 +20,5 @@ export const appNavItems: AppNavItem[] = [
 	{ id: "system-policy", label: "System Policy", icon: "i-heroicons-cog-8-tooth-20-solid", to: "/system-admin/system" },
 	{ id: "system-monitoring", label: "Monitoring", icon: "i-heroicons-signal-20-solid", to: "/system-admin/monitoring" },
 	{ id: "system-security", label: "Security", icon: "i-heroicons-shield-check-20-solid", to: "/system-admin/security" },
+	{ id: "system-thirdparty-usage", label: "Third-party Usage", icon: "i-heroicons-cloud-20-solid", to: "/system-admin/thirdparty-usage" },
 ];

@@ -4,6 +4,7 @@ import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
 import { CreateUnitInput, Unit, UpdateUnitInput } from "@models/Unit";
+import { DEFAULT_STORE_UNIT_PRESETS } from "@utils/DefaultStoreUnits";
 
 type UnitWritableKey = Exclude<keyof Unit, "id">;
 
@@ -93,6 +94,27 @@ export class UnitInterface {
 		if (!created) throw new Error("Failed to create unit");
 
 		return created;
+	}
+
+	static async ensureDefaultUnitsForStore(storeId: string): Promise<Unit[]> {
+		const existingUnits = await UnitInterface.findAll({ storeId, scope: "store" });
+		const existingCodes = new Set(existingUnits.map((unit) => String(unit.code || "").trim().toLowerCase()));
+		const createdUnits: Unit[] = [];
+
+		for (const preset of DEFAULT_STORE_UNIT_PRESETS) {
+			const normalizedCode = preset.code.trim().toLowerCase();
+			if (existingCodes.has(normalizedCode)) continue;
+			const created = await UnitInterface.create({
+				code: preset.code,
+				name_th: preset.name_th,
+				scope: "store",
+				store_id: storeId,
+			});
+			createdUnits.push(created);
+			existingCodes.add(normalizedCode);
+		}
+
+		return createdUnits;
 	}
 
 	static async update(id: string, data: UpdateUnitInput): Promise<Unit> {

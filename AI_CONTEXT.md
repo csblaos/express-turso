@@ -165,6 +165,24 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 - หน้า login เป็น standalone ที่ `frontend/pages/login.vue`
 - ถ้าสร้างหน้าใหม่ใน backoffice ไม่ต้องทำ auth guard ใหม่ซ้ำ
 
+### 9.8 Current backoffice style baseline
+
+- ถ้าผู้ใช้สั่งว่า `do same style` หรือ `same style as latest page` โดยไม่ได้ระบุหน้าอื่นชัดเจน
+	- ให้ยึด `frontend/pages/settings/categories.vue` เป็น baseline ล่าสุด
+- baseline นี้ครอบคลุม pattern หลักของหน้า backoffice:
+	- `AppSidebarShell` + `AppPageHeader`
+	- overview stats card ด้านบน
+	- list container แบบ bordered section
+	- list header bar พร้อม summary pill ด้านขวา
+	- scrollable list body
+	- sticky pagination footer
+	- `AppResponsivePanel` สำหรับ create/edit/delete flows
+	- ปุ่มใน modal ใช้ shared loading icon style ผ่าน `AppButton` + `icon` + `spin-icon-on-loading`
+	- delete confirm ใช้ modal confirm ในระบบ ไม่ใช้ browser `alert` / `confirm`
+	- ปุ่ม save/update ควร disabled จนกว่าข้อมูลจะเปลี่ยนจริง
+- ถ้าผู้ใช้บอกให้ `same style as /superadmin/users`
+	- ให้ตีความว่าต้องออกมาใกล้เคียง baseline ของ `settings/categories` ด้วย เพราะหน้านี้ถูกเก็บให้ align กับ users pattern แล้ว
+
 ## 10) กติกาเวลาสร้างหน้าใหม่
 
 ### ใช้ของเดิมก่อน
@@ -236,6 +254,8 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 6. ถ้าต้องเรียก protected API ใช้ `useApiClient.ts`
 7. ถ้าต้องซ่อน/disable ปุ่มตามสิทธิ์ ใช้ `useAuthSession.ts` และ `can(...)`
 8. ถ้าต้องเพิ่มเมนูใหม่ แก้ `frontend/utils/app-nav.ts`
+9. ถ้าผู้ใช้บอกว่า `same style`
+	- default ไปที่ `frontend/pages/settings/categories.vue` ก่อน ยกเว้นผู้ใช้ระบุหน้าอ้างอิงอื่นชัดเจน
 
 ## 12) หมายเหตุสำคัญ
 

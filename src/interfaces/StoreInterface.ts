@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
 
+import { InValue } from "@libsql/client";
+
 import { DbConn } from "@connections/DbConn";
 import { CreateStoreInput, Store } from "@models/Store";
 
@@ -55,10 +57,24 @@ export class StoreInterface {
 		await StoreInterface.ensureOwnerColumn();
 		const db = DbConn.getClient();
 		const id = randomUUID();
+		const insertPayload: Record<string, InValue> = {
+			id,
+			name: payload.name,
+		};
+
+		for (const [ key, value ] of Object.entries(payload)) {
+			if (key === "id" || key === "name") continue;
+			if (value === undefined) continue;
+			insertPayload[key] = value as InValue;
+		}
+
+		const columns = Object.keys(insertPayload);
+		const placeholders = columns.map(() => "?").join(", ");
+		const values = columns.map((column) => insertPayload[column]);
 
 		await db.execute({
-			sql: "INSERT INTO stores (id, name, owner_user_id) VALUES (?, ?, ?)",
-			args: [ id, payload.name, payload.owner_user_id ?? null ],
+			sql: `INSERT INTO stores (${columns.join(", ")}) VALUES (${placeholders})`,
+			args: values,
 		});
 
 		const created = await StoreInterface.findById(id);

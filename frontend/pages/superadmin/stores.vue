@@ -20,7 +20,7 @@ type StoreRecord = {
 };
 
 const { apiFetch } = useApiClient();
-const { currentUser, can } = useAuthSession();
+const { currentUser, currentStoreId, fetchMe, can } = useAuthSession();
 const appToast = useAppToast();
 
 const searchQuery = ref("");
@@ -247,6 +247,7 @@ async function createStore() {
 			description: "บันทึกลงฐานข้อมูลเรียบร้อย",
 		});
 		createOpen.value = false;
+		await fetchMe(currentStoreId.value || undefined);
 		await loadStores();
 	} catch (err) {
 		appToast.error({
@@ -528,7 +529,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="!canCreateStore" :spin-icon-on-loading="true" :block="true" @click="createStore">สร้างร้าน</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-building-storefront-20-solid" :loading="saving" :disabled="!canCreateStore" :spin-icon-on-loading="true" :block="true" @click="createStore">สร้างร้าน</AppButton>
 						</div>
 					</div>
 				</div>

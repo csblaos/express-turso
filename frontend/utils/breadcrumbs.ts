@@ -33,13 +33,17 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	"/settings": [
 		{ label: "Settings" },
 	],
-	"/settings/roles": [
-		{ label: "Settings", to: "/settings" },
-		{ label: "Roles" },
-	],
 	"/settings/users": [
 		{ label: "Settings", to: "/settings" },
 		{ label: "Users" },
+	],
+	"/settings/categories": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Categories" },
+	],
+	"/settings/units": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Units" },
 	],
 	"/superadmin": [
 		{ label: "Superadmin" },
@@ -98,6 +102,9 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	"/system-admin/security": [
 		{ label: "Security" },
 	],
+	"/system-admin/thirdparty-usage": [
+		{ label: "Third-party Usage" },
+	],
 	"/system-admin/config": [
 		{ label: "System Admin", to: "/system-admin" },
 		{ label: "Config" },
@@ -133,12 +140,15 @@ const segmentLabelMap: Record<string, string> = {
 	system: "System Policy",
 	monitoring: "Monitoring",
 	security: "Security",
+	"thirdparty-usage": "Third-party Usage",
 	quotas: "Quotas",
 	branch: "Branch Config",
 	integrations: "Integrations",
 	config: "Config",
 	roles: "Roles",
 	users: "Users",
+	categories: "Categories",
+	units: "Units",
 };
 
 function formatSegmentLabel(segment: string): string {
