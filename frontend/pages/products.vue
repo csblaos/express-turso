@@ -2449,82 +2449,98 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 
-							<div class="pb-[calc(4rem+env(safe-area-inset-bottom))]">
-								<div v-if="productsPending" class="min-h-[280px]">
-									<AppInlineLoadingBar container-class="bg-neutral-100" />
-								</div>
-								<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+								<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+									<div v-if="productsPending" class="min-h-[280px]">
+										<AppInlineLoadingBar container-class="bg-neutral-100" />
+									</div>
+									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ productsError }}</p>
 										<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
 									</div>
-								</div>
-								<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-									<div class="space-y-3">
-										<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-										<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
 									</div>
-								</div>
-								<div v-else>
-									<button
-										v-for="product in paginatedProducts"
-										:key="product.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										:class="selectedProductId === product.id ? 'bg-primary-50' : 'bg-white'"
-										@click="openProductDetail(product.id)"
-									>
-										<div class="flex items-start gap-3">
-											<div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md text-lg font-semibold text-white" :style="{ background: product.accent }">
-												<img
-													v-if="product.imageUrl"
-													:src="product.imageUrl"
-													:alt="product.name"
-													class="h-full w-full object-cover"
-												>
-												<UIcon v-else name="i-heroicons-cube" class="h-6 w-6 text-white/95" />
-											</div>
-
-											<div class="min-w-0 flex-1">
-												<div class="flex flex-wrap items-start justify-between gap-2">
-													<div class="min-w-0">
-														<div class="flex flex-wrap items-center gap-2">
-															<h3 class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</h3>
-															<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
-														</div>
-														<p class="mt-1 truncate text-[11px] text-stone-500">
-															{{ product.sku }} · {{ product.barcode }}
-														</p>
-													</div>
-
-													<div class="text-right">
-														<p class="text-sm font-semibold text-stone-900 tabular-nums">{{ formatMoney(product.price) }}</p>
-														<p class="mt-1 text-[11px] text-stone-500">ทุน {{ formatMoney(product.cost) }}</p>
-													</div>
-												</div>
-
-												<div class="mt-3 flex flex-wrap items-center gap-2">
-													<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
-													<UBadge color="neutral" variant="soft" :label="getCategoryLabel(product.categoryId)" />
-													<UBadge color="neutral" variant="soft" :label="product.unitLabel" />
-													<UBadge color="neutral" variant="soft" :label="`${product.variantCount} variants`" />
-												</div>
-
-												<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-													<p class="text-[11px] text-stone-500">
-														อัปเดต {{ product.updatedAt }} โดย {{ product.updatedBy }}
-													</p>
-													<div class="flex flex-wrap gap-2">
-														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ดู" @click.stop="openProductDetail(product.id)" />
-														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="แก้ไข" />
-														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="คัดลอก" />
-													</div>
-												</div>
-											</div>
+									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+										<div class="space-y-3">
+											<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
+											<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
 										</div>
-									</button>
+									</div>
+									<table v-else class="min-w-[980px] w-full border-separate border-spacing-0">
+										<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+												<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">หมวด</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">ราคาขาย</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">ต้นทุน</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">สต็อก</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">หน่วย</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">Variants</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+											</tr>
+										</thead>
+										<tbody>
+											<tr
+												v-for="product in paginatedProducts"
+												:key="product.id"
+												class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50"
+												:class="selectedProductId === product.id ? 'bg-primary-50' : 'bg-white'"
+												@click="openProductDetail(product.id)"
+											>
+												<td class="border-b border-[#f1ede6] px-4 py-4">
+													<div class="flex items-start gap-3">
+														<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md text-base font-semibold text-white" :style="{ background: product.accent }">
+															<img
+																v-if="product.imageUrl"
+																:src="product.imageUrl"
+																:alt="product.name"
+																class="h-full w-full object-cover"
+															>
+															<UIcon v-else name="i-heroicons-cube" class="h-5 w-5 text-white/95" />
+														</div>
+														<div class="min-w-0">
+															<div class="flex flex-wrap items-center gap-2">
+																<p class="truncate font-semibold text-stone-950">{{ product.name }}</p>
+																<UBadge v-if="product.tag" color="neutral" variant="soft" :label="product.tag" />
+															</div>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ product.sku }} · {{ product.barcode }}</p>
+															<p class="mt-1 hidden text-[11px] text-stone-400 lg:block">อัปเดต {{ product.updatedAt }}</p>
+														</div>
+													</div>
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+													{{ getCategoryLabel(product.categoryId) }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 font-semibold text-stone-950 tabular-nums">
+													{{ formatMoney(product.price) }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+													{{ formatMoney(product.cost) }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4">
+													<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+													{{ product.unitLabel }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+													{{ product.variantCount }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+													<AppButton
+														color="neutral"
+														variant="soft"
+														size="md"
+														class="rounded-md"
+														icon="i-heroicons-chevron-right-20-solid"
+														@click.stop="openProductDetail(product.id)"
+													>
+														จัดการ
+													</AppButton>
+												</td>
+											</tr>
+										</tbody>
+									</table>
 								</div>
-							</div>
 
 							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
@@ -2593,7 +2609,8 @@ onBeforeUnmount(() => {
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
-						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden px-0 py-0"
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					>
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
@@ -2957,7 +2974,10 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 
-						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div
+							class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+						>
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCreateOpen = false">ยกเลิก</AppButton>
 								<AppButton
@@ -2982,16 +3002,16 @@ onBeforeUnmount(() => {
 				v-model="productDetailOpen"
 				title="ข้อมูลสินค้า"
 				description="ดูราคา ต้นทุน หมวดสินค้า และจัดการสถานะการขาย"
-				desktop-width="440px"
-				:show-handle="false"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				full-bleed-header
+				content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 				@close="closeProductDetail"
 			>
 				<template #default>
-					<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] text-stone-900">
-						<div class="px-5 pt-4">
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
 								<div class="flex items-start gap-3">
 									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
@@ -3024,24 +3044,22 @@ onBeforeUnmount(() => {
 									</div>
 								</div>
 							</div>
-						</div>
 
-						<div class="grid grid-cols-3 gap-2 px-5 py-4">
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
+							<div class="grid grid-cols-3 gap-2">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
+								</div>
 							</div>
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
-							</div>
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-								<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
-								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
-							</div>
-						</div>
 
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-5 pb-5">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
 									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
@@ -3135,83 +3153,86 @@ onBeforeUnmount(() => {
 											</div>
 										</div>
 									</div>
-									</div>
 								</div>
+							</div>
 
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<div class="flex flex-wrap items-start justify-between gap-3">
-										<div>
-											<h3 class="text-sm font-semibold text-stone-950">ตัวเลือกสินค้า (Variant)</h3>
-											<p class="mt-1 text-xs leading-5 text-stone-500">
-												สต็อก/ราคา/ต้นทุน แยกตาม SKU แต่ละตัวเลือก (สูงสุด 2 แกน)
-											</p>
-										</div>
-										<AppButton
-											color="primary"
-											variant="soft"
-											size="xs"
-											icon="i-heroicons-squares-plus-20-solid"
-											label="เพิ่มตัวเลือก"
-											:disabled="!canCreateProduct"
-											@click="openVariantMatrix"
-										/>
-									</div>
-
-									<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-										<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">สถานะ Variant</p>
-										<p class="mt-2 text-sm text-stone-700">
-											{{ selectedProduct.variantCount > 0 ? `มี ${selectedProduct.variantCount} ตัวเลือก` : "ยังไม่มีตัวเลือก" }}
-										</p>
-										<p class="mt-1 text-xs text-stone-500">
-											กด “เพิ่มตัวเลือก” เพื่อสร้างหลาย SKU แบบ Matrix และเลือกสร้างบาร์โค้ดอัตโนมัติได้
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<div class="flex flex-wrap items-start justify-between gap-3">
+									<div>
+										<h3 class="text-sm font-semibold text-stone-950">ตัวเลือกสินค้า (Variant)</h3>
+										<p class="mt-1 text-xs leading-5 text-stone-500">
+											สต็อก/ราคา/ต้นทุน แยกตาม SKU แต่ละตัวเลือก (สูงสุด 2 แกน)
 										</p>
 									</div>
+									<AppButton
+										color="primary"
+										variant="soft"
+										size="xs"
+										icon="i-heroicons-squares-plus-20-solid"
+										label="เพิ่มตัวเลือก"
+										:disabled="!canCreateProduct"
+										@click="openVariantMatrix"
+									/>
 								</div>
 
-									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">สถานะ Variant</p>
+									<p class="mt-2 text-sm text-stone-700">
+										{{ selectedProduct.variantCount > 0 ? `มี ${selectedProduct.variantCount} ตัวเลือก` : "ยังไม่มีตัวเลือก" }}
+									</p>
+									<p class="mt-1 text-xs text-stone-500">
+										กด “เพิ่มตัวเลือก” เพื่อสร้างหลาย SKU แบบ Matrix และเลือกสร้างบาร์โค้ดอัตโนมัติได้
+									</p>
+								</div>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<div class="flex items-start justify-between gap-3">
+									<div>
+										<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
+										<p class="mt-1 text-xs leading-5 text-stone-500">
+											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
+										</p>
+									</div>
+									<AppButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" @click="openProductCostAdjust" />
+								</div>
+
+								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
+									<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">กำลังโหลด...</div>
+									<div v-else-if="productCostAdjustmentsError" class="mt-2 text-sm text-rose-600">{{ productCostAdjustmentsError }}</div>
+									<div v-else-if="productCostAdjustments.length" class="mt-2 space-y-2">
 										<div class="flex items-start justify-between gap-3">
 											<div>
-												<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
-											<p class="mt-1 text-xs leading-5 text-stone-500">
-												แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
-											</p>
-										</div>
-										<AppButton color="primary" variant="soft" size="xs" label="แก้ต้นทุน" :disabled="!canUpdateProductCost" @click="openProductCostAdjust" />
-									</div>
-
-									<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-										<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
-										<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">กำลังโหลด...</div>
-										<div v-else-if="productCostAdjustmentsError" class="mt-2 text-sm text-rose-600">{{ productCostAdjustmentsError }}</div>
-										<div v-else-if="productCostAdjustments.length" class="mt-2 space-y-2">
-											<div class="flex items-start justify-between gap-3">
-												<div>
-													<p class="text-sm font-semibold text-stone-900">{{ formatApiDate(productCostAdjustments[0].occurred_at) }}</p>
-													<p class="mt-1 text-sm text-stone-500">
-														ทุน {{ formatMoney(productCostAdjustments[0].before_cost_base) }}
-														→ {{ formatMoney(productCostAdjustments[0].after_cost_base) }}
-														({{ productCostAdjustments[0].delta >= 0 ? "+" : "" }}{{ formatMoney(productCostAdjustments[0].delta) }})
-													</p>
-													<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ productCostAdjustments[0].reason }}</p>
-												</div>
-												<UBadge color="neutral" variant="soft" :label="productCostAdjustments[0].actor_role || 'user'" />
+												<p class="text-sm font-semibold text-stone-900">{{ formatApiDate(productCostAdjustments[0].occurred_at) }}</p>
+												<p class="mt-1 text-sm text-stone-500">
+													ทุน {{ formatMoney(productCostAdjustments[0].before_cost_base) }}
+													→ {{ formatMoney(productCostAdjustments[0].after_cost_base) }}
+													({{ productCostAdjustments[0].delta >= 0 ? "+" : "" }}{{ formatMoney(productCostAdjustments[0].delta) }})
+												</p>
+												<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ productCostAdjustments[0].reason }}</p>
 											</div>
-											<div class="flex flex-wrap gap-2">
-												<UBadge
-													v-for="adjustment in productCostAdjustments.slice(0, 3)"
-													:key="adjustment.id"
-													color="neutral"
-													variant="soft"
-													:label="`ทุน ${formatMoney(adjustment.before_cost_base)}→${formatMoney(adjustment.after_cost_base)}`"
-												/>
-											</div>
+											<UBadge color="neutral" variant="soft" :label="productCostAdjustments[0].actor_role || 'user'" />
 										</div>
-										<div v-else class="mt-2 text-sm text-stone-500">ยังไม่มีประวัติการปรับต้นทุน</div>
+										<div class="flex flex-wrap gap-2">
+											<UBadge
+												v-for="adjustment in productCostAdjustments.slice(0, 3)"
+												:key="adjustment.id"
+												color="neutral"
+												variant="soft"
+												:label="`ทุน ${formatMoney(adjustment.before_cost_base)}→${formatMoney(adjustment.after_cost_base)}`"
+											/>
+										</div>
 									</div>
+									<div v-else class="mt-2 text-sm text-stone-500">ยังไม่มีประวัติการปรับต้นทุน</div>
 								</div>
+							</div>
 						</div>
 
-						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+						<div
+							class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+						>
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" :disabled="!canCreateProduct">คัดลอกสินค้า</AppButton>
 								<AppButton
@@ -3227,7 +3248,7 @@ onBeforeUnmount(() => {
 						</div>
 					</div>
 				</template>
-				</AppResponsivePanel>
+			</AppResponsivePanel>
 
 				<AppResponsivePanel
 					v-if="selectedProduct"
@@ -3330,7 +3351,10 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 
-						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div
+							class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+						>
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCostAdjustOpen = false">ยกเลิก</AppButton>
 								<AppButton
@@ -3351,18 +3375,19 @@ onBeforeUnmount(() => {
 					</div>
 				</AppResponsivePanel>
 
-				<AppResponsivePanel
-					v-if="selectedProduct"
-					v-model="productVariantMatrixOpen"
-					title="เพิ่มตัวเลือก (Matrix)"
-					description="สร้างหลาย SKU อัตโนมัติ (สูงสุด 2 แกน) และเลือกสร้างบาร์โค้ดแบบกดปุ่มได้"
-					desktop-width="680px"
-					close-button-size="md"
-					compact-header
-					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-				>
-					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+					<AppResponsivePanel
+						v-if="selectedProduct"
+						v-model="productVariantMatrixOpen"
+						title="เพิ่มตัวเลือก (Matrix)"
+						description="สร้างหลาย SKU อัตโนมัติ (สูงสุด 2 แกน) และเลือกสร้างบาร์โค้ดแบบกดปุ่มได้"
+						desktop-width="680px"
+						close-button-size="md"
+						compact-header
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+					>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
@@ -3517,9 +3542,12 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 
-						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">ยกเลิก</AppButton>
+							<div
+								class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+							>
+								<div class="grid w-full grid-cols-2 gap-2">
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">ยกเลิก</AppButton>
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -3538,22 +3566,23 @@ onBeforeUnmount(() => {
 					</div>
 				</AppResponsivePanel>
 
-				<AppResponsivePanel
-					v-model="productUnitEditorOpen"
-					:title="selectedProductUnit ? 'แก้หน่วยขาย' : 'เพิ่มหน่วยขาย'"
-					:description="selectedProduct ? `กำหนด conversion สำหรับ ${selectedProduct.name}` : 'กำหนดหน่วยขายของสินค้า'"
-					desktop-width="420px"
-				close-button-size="md"
-				compact-header
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
-						<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Base unit</p>
-							<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.unitLabel }}</p>
-							<p class="mt-1 text-xs text-stone-500">ตัวอย่าง conversion: {{ productUnitSummary }}</p>
-						</div>
+					<AppResponsivePanel
+						v-model="productUnitEditorOpen"
+						:title="selectedProductUnit ? 'แก้หน่วยขาย' : 'เพิ่มหน่วยขาย'"
+						:description="selectedProduct ? `กำหนด conversion สำหรับ ${selectedProduct.name}` : 'กำหนดหน่วยขายของสินค้า'"
+						desktop-width="680px"
+						close-button-size="md"
+						compact-header
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+					>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+							<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Base unit</p>
+								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.unitLabel }}</p>
+								<p class="mt-1 text-xs text-stone-500">ตัวอย่าง conversion: {{ productUnitSummary }}</p>
+							</div>
 
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">หน่วยขาย</label>
@@ -3610,13 +3639,16 @@ onBeforeUnmount(() => {
 								<span class="block text-sm font-medium text-stone-900">เปิดขายหน่วยนี้ใน POS</span>
 								<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ จะเก็บ conversion นี้ได้ แต่ยังไม่ให้เลือกขายในหน้าขาย</span>
 							</span>
-						</label>
-					</div>
-
-					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">ยกเลิก</AppButton>
-							<AppButton
+							</label>
+							</div>
+	
+						<div
+							class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+						>
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">ยกเลิก</AppButton>
+								<AppButton
 								color="primary"
 								variant="solid"
 								size="md"
@@ -3627,12 +3659,12 @@ onBeforeUnmount(() => {
 								:disabled="productUnitSaving || !canSaveProductUnit"
 								@click="saveProductUnit"
 							>
-								{{ selectedProductUnit ? "บันทึกหน่วยขาย" : "เพิ่มหน่วยขาย" }}
-							</AppButton>
+									{{ selectedProductUnit ? "บันทึกหน่วยขาย" : "เพิ่มหน่วยขาย" }}
+								</AppButton>
+							</div>
 						</div>
 					</div>
-				</div>
-			</AppResponsivePanel>
+				</AppResponsivePanel>
 
 			<AppResponsivePanel
 				v-model="productUnitDeleteOpen"

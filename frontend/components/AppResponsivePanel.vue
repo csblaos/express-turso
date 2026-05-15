@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
 	closeButtonSize?: "xs" | "sm" | "md" | "lg" | "xl";
 	closeOnBackdrop?: boolean;
 	compactHeader?: boolean;
+	fullBleedHeader?: boolean;
 	backdropZClass?: string;
 	panelZClass?: string;
 	panelClass?: string;
@@ -24,6 +25,7 @@ const props = withDefaults(defineProps<{
 	closeButtonSize: "md",
 	closeOnBackdrop: true,
 	compactHeader: false,
+	fullBleedHeader: false,
 	backdropZClass: "z-[160]",
 	panelZClass: "z-[170]",
 	panelClass: "",
@@ -62,9 +64,13 @@ const dragState = reactive({
 	offsetY: 0,
 });
 
+const keyboardInset = ref(0);
+let keyboardListenersAttached = false;
+
 const panelVars = computed(() => ({
 	"--app-panel-desktop-width": props.desktopWidth,
 	"--app-panel-mobile-max-height": props.mobileMaxHeight,
+	"--app-panel-keyboard-inset": `${keyboardInset.value}px`,
 }));
 
 const panelStyle = computed(() => ({
@@ -89,6 +95,48 @@ function resetDragState() {
 	dragState.touchId = -1;
 	dragState.startY = 0;
 	dragState.offsetY = 0;
+}
+
+function computeKeyboardInset() {
+	if (!import.meta.client) return 0;
+	const viewport = window.visualViewport;
+	if (!viewport) return 0;
+	const rawInset = window.innerHeight - (viewport.height + viewport.offsetTop);
+	return Math.max(0, Math.round(rawInset));
+}
+
+function updateKeyboardInset() {
+	if (isDesktopViewport()) {
+		keyboardInset.value = 0;
+		return;
+	}
+	keyboardInset.value = computeKeyboardInset();
+}
+
+function attachKeyboardListeners() {
+	if (!import.meta.client) return;
+	if (keyboardListenersAttached) return;
+	keyboardListenersAttached = true;
+	const viewport = window.visualViewport;
+	if (viewport) {
+		viewport.addEventListener("resize", updateKeyboardInset);
+		viewport.addEventListener("scroll", updateKeyboardInset);
+	}
+	window.addEventListener("resize", updateKeyboardInset);
+	updateKeyboardInset();
+}
+
+function detachKeyboardListeners() {
+	if (!import.meta.client) return;
+	if (!keyboardListenersAttached) return;
+	keyboardListenersAttached = false;
+	const viewport = window.visualViewport;
+	if (viewport) {
+		viewport.removeEventListener("resize", updateKeyboardInset);
+		viewport.removeEventListener("scroll", updateKeyboardInset);
+	}
+	window.removeEventListener("resize", updateKeyboardInset);
+	keyboardInset.value = 0;
 }
 
 function resolveTargetElement(target: EventTarget | null) {
@@ -248,9 +296,11 @@ watch(() => props.modelValue, (isOpen, wasOpen) => {
 	if (isOpen === wasOpen) return;
 	if (isOpen) {
 		lockBodyScroll();
+		attachKeyboardListeners();
 		return;
 	}
 	resetDragState();
+	detachKeyboardListeners();
 	unlockBodyScroll();
 });
 
@@ -258,6 +308,7 @@ onUnmounted(() => {
 	if (props.modelValue) {
 		unlockBodyScroll();
 	}
+	detachKeyboardListeners();
 });
 </script>
 
@@ -319,10 +370,11 @@ onUnmounted(() => {
 					contentClass,
 				]"
 			>
-					<div
+				<div
 						v-if="title || description || showCloseButton"
 						:class="[
 							'flex items-start justify-between border-b border-[#f1ede6]',
+							fullBleedHeader ? '-mx-5 px-5' : '',
 							compactHeader ? 'mb-3 gap-3 pb-3' : 'mb-5 gap-4 pb-4',
 							]"
 							data-panel-drag-handle
