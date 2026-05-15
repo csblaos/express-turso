@@ -49,6 +49,38 @@ export class ProductInterface {
 		return result.rows.map(ProductInterface.mapRow);
 	}
 
+	static async findBySkus(storeId: string, skus: string[]): Promise<Product[]> {
+		const normalized = skus
+			.map((sku) => String(sku || "").trim())
+			.filter(Boolean);
+		if (normalized.length === 0) return [];
+
+		const unique = Array.from(new Set(normalized));
+		const placeholders = unique.map(() => "?").join(", ");
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `SELECT * FROM products WHERE store_id = ? AND sku IN (${placeholders})`,
+			args: [ storeId, ...unique ],
+		});
+		return result.rows.map(ProductInterface.mapRow);
+	}
+
+	static async findByBarcodes(storeId: string, barcodes: string[]): Promise<Product[]> {
+		const normalized = barcodes
+			.map((barcode) => String(barcode || "").trim())
+			.filter(Boolean);
+		if (normalized.length === 0) return [];
+
+		const unique = Array.from(new Set(normalized));
+		const placeholders = unique.map(() => "?").join(", ");
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `SELECT * FROM products WHERE store_id = ? AND barcode IN (${placeholders})`,
+			args: [ storeId, ...unique ],
+		});
+		return result.rows.map(ProductInterface.mapRow);
+	}
+
 	static async findById(id: string): Promise<Product | null> {
 		const db = DbConn.getClient();
 		const result = await db.execute({

@@ -32,19 +32,19 @@ const actionsLayoutClass = computed(() => (
 		:ui="{ body: 'p-3 sm:p-4 lg:p-5' }"
 		:class="sticky ? 'lg:sticky lg:top-0 lg:z-20' : ''"
 	>
-		<div class="space-y-3 lg:space-y-4">
-			<div class="flex flex-col gap-3 lg:gap-4" :class="headerLayoutClass">
+		<div class="space-y-2.5 lg:space-y-3">
+			<div class="flex flex-col gap-2.5 lg:gap-3" :class="headerLayoutClass">
 				<div class="min-w-0 flex-1">
 					<div v-if="hasBadges" class="flex flex-wrap items-center gap-2">
 						<slot name="badges" />
 					</div>
 					<h1
-						class="text-xl font-semibold tracking-[-0.04em] text-stone-950 lg:text-[1.7rem]"
-						:class="hasBadges ? 'mt-2 lg:mt-3' : ''"
+						class="inline-flex max-w-full items-center gap-2 rounded-full bg-primary-50 px-3 py-1.5 text-sm font-semibold tracking-[-0.02em] text-primary-800 ring-1 ring-primary-100"
+						:class="hasBadges ? 'mt-2' : ''"
 					>
-						{{ title }}
+						<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500" />
+						<span class="truncate">{{ title }}</span>
 					</h1>
-					<p v-if="description" class="mt-1.5 max-w-3xl text-sm leading-6 text-stone-500">{{ description }}</p>
 				</div>
 
 				<div v-if="hasActions" class="flex flex-wrap gap-2" :class="actionsLayoutClass">

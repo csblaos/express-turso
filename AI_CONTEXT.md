@@ -108,6 +108,7 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 	- desktop: right drawer
 	- mobile: bottom sheet
 - อย่าสร้าง overlay shell ใหม่ซ้ำ ถ้าเป็น pattern เดียวกัน
+- มาตรฐานความกว้างบน desktop สำหรับ modal/panel กลุ่ม “สร้างข้อมูล” ให้ใช้ `desktop-width="680px"` (เช่น modal เพิ่มสินค้า)
 
 หน้าที่ใช้แล้ว:
 

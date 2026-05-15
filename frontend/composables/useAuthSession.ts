@@ -464,7 +464,15 @@ export function useAuthSession() {
 		}
 
 		const acceptedKeys = new Set(resolveAcceptedPermissionKeys(permissionKey));
-		return Boolean(currentAccess.value?.permissions.some((permission) => acceptedKeys.has(permission.key)));
+		if (currentAccess.value?.permissions.some((permission) => acceptedKeys.has(permission.key))) {
+			return true;
+		}
+
+		const scopedStoreId = currentStoreId.value || currentAccess.value?.store_id || resolveAccessStoreId(currentAccess.value);
+		const matchingMembership = currentAccess.value?.memberships.find((membership) => membership.store_id === scopedStoreId)
+			|| currentAccess.value?.memberships.find((membership) => membership.status === "active")
+			|| currentAccess.value?.memberships[0];
+		return Boolean(matchingMembership?.permissions.some((permission) => acceptedKeys.has(permission.key)));
 	}
 
 	hydrateAuthState();
