@@ -15,6 +15,9 @@ export class ProductRouter {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.view"), ProductValidator.list, ProductController.getAll);
 		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.view"), CommonValidator.resourceId, ProductController.getById);
+		this.router.post("/:id/variants/bulk", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.create"), ProductValidator.bulkCreateVariants, ProductController.bulkCreateVariants);
+		this.router.get("/:id/cost-adjustments", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.update_cost"), CommonValidator.resourceId, ProductController.listCostAdjustments);
+		this.router.post("/:id/cost-adjustments", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.update_cost"), ProductValidator.adjustCost, ProductController.adjustCost);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.create"), ProductValidator.create, ProductController.create);
 		this.router.put("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.update"), ProductValidator.update, ProductController.update);
 		this.router.delete("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("products.archive"), CommonValidator.resourceId, ProductController.delete);

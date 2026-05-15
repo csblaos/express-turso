@@ -289,6 +289,56 @@ export class AuditEventInterface {
 		return row ? mapRow(row) : null;
 	}
 
+	static async findRecentByEntity(params: {
+		entityType: string;
+		entityId: string;
+		action?: string;
+		limit?: number;
+	}): Promise<AuditEventRecord[]> {
+		await AuditEventInterface.ensureTable();
+
+		const db = DbConn.getClient();
+		const limit = Math.max(1, Math.min(params.limit ?? 20, 200));
+		const where: string[] = [ "entity_type = ?", "entity_id = ?" ];
+		const args: InValue[] = [ params.entityType, params.entityId ];
+
+		if (params.action) {
+			where.push("action = ?");
+			args.push(params.action);
+		}
+
+		const result = await db.execute({
+			sql: `
+				SELECT
+					id,
+					scope,
+					store_id,
+					actor_user_id,
+					actor_name,
+					actor_role,
+					action,
+					entity_type,
+					entity_id,
+					result,
+					reason_code,
+					ip_address,
+					user_agent,
+					request_id,
+					metadata,
+					"before",
+					"after",
+					occurred_at
+				FROM audit_events
+				WHERE ${where.join(" AND ")}
+				ORDER BY occurred_at DESC
+				LIMIT ?
+			`,
+			args: [ ...args, limit ],
+		});
+
+		return result.rows.map((row) => mapRow(row as Record<string, unknown>));
+	}
+
 	static async create(payload: AuditEventCreatePayload): Promise<AuditEventRecord> {
 		await AuditEventInterface.ensureTable();
 
