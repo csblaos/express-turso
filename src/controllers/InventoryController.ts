@@ -41,7 +41,12 @@ export class InventoryController {
 	});
 
 	static adjust = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await InventoryComponent.adjust(req.requestId, req.body as InventoryAdjustmentInput);
+		const payload = req.body as InventoryAdjustmentInput;
+		// Do not trust client-provided created_by; use the authenticated user id to satisfy FK and audit trail.
+		const data = await InventoryComponent.adjust(req.requestId, {
+			...payload,
+			created_by: req.auth?.userId || null,
+		});
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 }

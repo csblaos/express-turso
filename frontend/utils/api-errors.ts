@@ -1,10 +1,33 @@
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && (typeof value === "object" || typeof value === "function");
+}
+
+function getProp(value: unknown, key: string): unknown {
+	if (!isObjectLike(value)) return undefined;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return (value as any)[key];
+}
+
+function normalizeMessage(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed ? trimmed : null;
+}
+
+function isNetworkLikeMessage(message: string) {
+	const lower = message.toLowerCase();
+	return lower.includes("err_connection_refused")
+		|| lower.includes("failed to fetch")
+		|| lower.includes("fetch failed")
+		|| lower.includes("networkerror")
+		|| lower.includes("load failed")
+		|| lower.includes("econnrefused")
+		|| lower.includes("network request failed");
+}
+
 export function getApiErrorStatus(errorValue: unknown): number | null {
-	if (typeof errorValue !== "object" || !errorValue) return null;
-
-	const response = Reflect.get(errorValue, "response");
-	if (typeof response !== "object" || !response) return null;
-
-	const status = Reflect.get(response, "status");
+	const response = getProp(errorValue, "response");
+	const status = getProp(response, "status");
 	return typeof status === "number" ? status : null;
 }
 
@@ -14,6 +37,7 @@ export function resolveApiErrorMessage(
 	options?: {
 		forbiddenMessage?: string;
 		unauthorizedMessage?: string;
+		networkMessage?: string;
 	},
 ) {
 	const status = getApiErrorStatus(errorValue);
@@ -26,21 +50,18 @@ export function resolveApiErrorMessage(
 		return options?.unauthorizedMessage || "เซสชันหมดอายุหรือยังไม่พร้อมใช้งาน กรุณาเข้าสู่ระบบใหม่";
 	}
 
-	if (typeof errorValue === "object" && errorValue) {
-		const response = Reflect.get(errorValue, "response");
-		if (typeof response === "object" && response) {
-			const data = Reflect.get(response, "_data") || Reflect.get(response, "data");
-			if (typeof data === "object" && data) {
-				const message = Reflect.get(data, "message");
-				if (typeof message === "string" && message.trim()) {
-					return message;
-				}
-			}
-		}
-	}
+	const response = getProp(errorValue, "response");
+	const data = getProp(response, "_data") || getProp(response, "data");
+	const messageFromData = normalizeMessage(getProp(data, "message"));
+	if (messageFromData) return messageFromData;
 
-	if (errorValue instanceof Error && errorValue.message.trim()) {
-		return errorValue.message;
+	const messageFromError = normalizeMessage(getProp(errorValue, "message"))
+		|| (errorValue instanceof Error ? normalizeMessage(errorValue.message) : null);
+	if (messageFromError) {
+		if (isNetworkLikeMessage(messageFromError)) {
+			return options?.networkMessage || "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง";
+		}
+		return messageFromError;
 	}
 
 	return fallback;

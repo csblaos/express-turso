@@ -356,7 +356,7 @@ onMounted(async () => {
 								</div>
 
 									<div class="space-y-4 px-4 py-4">
-										<div class="grid grid-cols-3 gap-2">
+										<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
 											<button
 												v-for="option in CURRENCY_OPTIONS"
 												:key="option.code"

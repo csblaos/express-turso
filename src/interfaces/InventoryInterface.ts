@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
+import { ProductInterface } from "@interfaces/ProductInterface";
 
 export type InventoryFilters = {
 	storeId?: string;
@@ -18,6 +19,7 @@ export type InventoryBalanceListItem = {
 	name: string;
 	barcode: string | null;
 	image_url: string | null;
+	location: string | null;
 	category_id: string | null;
 	category_name: string | null;
 	base_unit_id: string;
@@ -43,6 +45,7 @@ export type InventoryMovementListItem = {
 	ref_id: string | null;
 	note: string | null;
 	created_by: string | null;
+	created_by_name: string | null;
 	created_at: string;
 	unit_name: string | null;
 };
@@ -61,6 +64,11 @@ export type InventoryAdjustmentResult = {
 	movement: InventoryMovementListItem;
 };
 
+export type InventoryBalanceNumbers = {
+	on_hand_base: number;
+	reserved_base: number;
+};
+
 type InventoryMovementFilters = {
 	storeId?: string;
 	productId?: string;
@@ -73,15 +81,37 @@ type InventoryMovementFilters = {
 
 function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 	if (!imageUrl) return null;
-	if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+	const normalized = imageUrl.trim();
+	if (!normalized) return null;
+	if (/^(https?:\/\/|data:|blob:)/i.test(normalized) || normalized.startsWith("//")) return normalized;
 	const base = String(process.env.R2_PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
-	if (!base) return imageUrl;
-	const path = imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`;
+	if (!base) return normalized;
+	const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
 	return `${base}${path}`;
 }
 
 export class InventoryInterface {
+	static async getBalanceNumbers(storeId: string, productId: string): Promise<InventoryBalanceNumbers> {
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `
+				SELECT on_hand_base, reserved_base
+				FROM inventory_balances
+				WHERE store_id = ? AND product_id = ?
+				LIMIT 1
+			`,
+			args: [ storeId, productId ],
+		});
+
+		const row = result.rows[0] as Record<string, unknown> | undefined;
+		return {
+			on_hand_base: Number(row?.on_hand_base ?? 0),
+			reserved_base: Number(row?.reserved_base ?? 0),
+		};
+	}
+
 	static async findBalances(filters: InventoryFilters = {}): Promise<InventoryBalanceListItem[]> {
+		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const where: string[] = [];
 		const args: InValue[] = [];
@@ -127,6 +157,7 @@ export class InventoryInterface {
 					p.name,
 					p.barcode,
 					p.image_url,
+					p.location,
 					p.category_id,
 					pc.name AS category_name,
 					p.base_unit_id,
@@ -194,17 +225,19 @@ export class InventoryInterface {
 			}
 		}
 
-		if (filters.query) {
-			const like = `%${filters.query.trim().toLowerCase()}%`;
-			where.push(`(
-				LOWER(p.name) LIKE ?
-				OR LOWER(p.sku) LIKE ?
-				OR LOWER(COALESCE(p.barcode, '')) LIKE ?
-				OR LOWER(COALESCE(m.note, '')) LIKE ?
-				OR LOWER(COALESCE(m.created_by, '')) LIKE ?
-			)`);
-			args.push(like, like, like, like, like);
-		}
+			if (filters.query) {
+				const like = `%${filters.query.trim().toLowerCase()}%`;
+				where.push(`(
+					LOWER(p.name) LIKE ?
+					OR LOWER(p.sku) LIKE ?
+					OR LOWER(COALESCE(p.barcode, '')) LIKE ?
+					OR LOWER(COALESCE(m.note, '')) LIKE ?
+					OR LOWER(COALESCE(m.created_by, '')) LIKE ?
+					OR LOWER(COALESCE(actor.name, '')) LIKE ?
+					OR LOWER(COALESCE(actor.email, '')) LIKE ?
+				)`);
+				args.push(like, like, like, like, like, like, like);
+			}
 
 		if (filters.from) {
 			where.push("m.created_at >= ?");
@@ -221,27 +254,29 @@ export class InventoryInterface {
 
 		const result = await db.execute({
 			sql: `
-				SELECT
-					m.id,
-					m.store_id,
-					m.product_id,
-					p.name AS product_name,
-					p.sku AS product_sku,
-					m.type,
-					m.qty_base,
-					m.ref_type,
-					m.ref_id,
-					m.note,
-					m.created_by,
-					m.created_at,
-					u.name_th AS unit_name
-				FROM inventory_movements m
-				INNER JOIN products p ON p.id = m.product_id
-				LEFT JOIN units u ON u.id = p.base_unit_id
-				${whereClause}
-				ORDER BY m.created_at DESC
-				LIMIT ${limit}
-			`,
+					SELECT
+						m.id,
+						m.store_id,
+						m.product_id,
+						p.name AS product_name,
+						p.sku AS product_sku,
+						m.type,
+						m.qty_base,
+						m.ref_type,
+						m.ref_id,
+						m.note,
+						m.created_by,
+						COALESCE(NULLIF(TRIM(actor.name), ''), NULLIF(TRIM(actor.email), '')) AS created_by_name,
+						m.created_at,
+						unit.name_th AS unit_name
+					FROM inventory_movements m
+					INNER JOIN products p ON p.id = m.product_id
+					LEFT JOIN units unit ON unit.id = p.base_unit_id
+					LEFT JOIN users actor ON actor.id = m.created_by
+					${whereClause}
+					ORDER BY m.created_at DESC
+					LIMIT ${limit}
+				`,
 			args,
 		});
 

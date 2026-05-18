@@ -25,6 +25,7 @@ const UPDATABLE_FIELDS: Array<keyof UpdateProductInput> = [
 	"variant_options_json",
 	"variant_sort_order",
 	"allow_base_unit_sale",
+	"location",
 ];
 
 function pickUpdateFields(input: Record<string, unknown>): UpdateProductInput {
@@ -75,6 +76,12 @@ export class ProductComponent {
 			id: productId,
 		};
 
+		if (Object.prototype.hasOwnProperty.call(nextPayload, "location")) {
+			const raw = typeof nextPayload.location === "string" ? nextPayload.location : "";
+			const normalized = raw.trim().toUpperCase();
+			nextPayload.location = normalized ? normalized : null;
+		}
+
 		if (typeof nextPayload.image_url === "string" && nextPayload.image_url.trim().startsWith("data:")) {
 			const uploaded = await R2Storage.uploadProductImage({
 				storeId: nextPayload.store_id,
@@ -90,6 +97,12 @@ export class ProductComponent {
 	static async update(requestId: string, id: string, data: Record<string, unknown>): Promise<Product> {
 		void requestId;
 		const updateData = pickUpdateFields(data || {});
+
+		if (Object.prototype.hasOwnProperty.call(updateData, "location")) {
+			const raw = typeof updateData.location === "string" ? updateData.location : "";
+			const normalized = raw.trim().toUpperCase();
+			updateData.location = normalized ? normalized : null;
+		}
 
 		if (typeof updateData.image_url === "string" && updateData.image_url.trim().startsWith("data:")) {
 			const existing = await ProductInterface.findById(id);

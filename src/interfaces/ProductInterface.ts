@@ -12,6 +12,10 @@ const PRODUCT_OPTIONAL_COLUMNS = [
 		name: "deleted_at",
 		sql: "ALTER TABLE products ADD COLUMN deleted_at TEXT",
 	},
+	{
+		name: "location",
+		sql: "ALTER TABLE products ADD COLUMN location TEXT",
+	},
 ] as const;
 
 function getInsertPayload(payload: CreateProductInput): Record<string, InValue> {

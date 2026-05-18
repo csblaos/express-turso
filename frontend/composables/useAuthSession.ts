@@ -104,7 +104,12 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 function getFetchErrorStatus(error: unknown): number | undefined {
 	if (typeof error !== "object" || !error || !("response" in error)) return undefined;
-	return Reflect.get(error.response as object, "status") as number | undefined;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const response = (error as any).response;
+	if (!response || typeof response !== "object") return undefined;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const status = (response as any).status;
+	return typeof status === "number" ? status : undefined;
 }
 
 function readStorageValue<T>(key: string): T | null {

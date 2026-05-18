@@ -67,15 +67,14 @@ onMounted(() => {
 	document.body.scrollTop = 0;
 });
 
-function extractLoginErrorMessage(error: unknown) {
-	if (typeof error === "object" && error) {
-		const data = Reflect.get(error, "data") as
-			| { message?: string; response?: { message?: string } }
-			| undefined;
+	function extractLoginErrorMessage(error: unknown) {
+		if (typeof error === "object" && error) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const data = (error as any).data as { message?: string; response?: { message?: string } } | undefined;
 
-		if (data?.response?.message) return data.response.message;
-		if (data?.message) return data.message;
-	}
+			if (data?.response?.message) return data.response.message;
+			if (data?.message) return data.message;
+		}
 
 	if (error instanceof Error && error.message) return error.message;
 	return "เข้าสู่ระบบไม่สำเร็จ";

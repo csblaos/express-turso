@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type InventoryStatus = "all" | "low" | "out" | "negative" | "active" | "inactive";
@@ -19,6 +20,7 @@ type ApiInventoryBalance = {
 	name: string;
 	barcode: string | null;
 	image_url: string | null;
+	location: string | null;
 	category_id: string | null;
 	category_name: string | null;
 	base_unit_id: string;
@@ -32,21 +34,22 @@ type ApiInventoryBalance = {
 	updated_at: string;
 };
 
-type ApiInventoryMovement = {
-	id: string;
-	store_id: string;
-	product_id: string;
-	product_name: string;
-	product_sku: string;
-	type: string;
-	qty_base: number;
-	ref_type: string;
-	ref_id: string | null;
-	note: string | null;
-	created_by: string | null;
-	created_at: string;
-	unit_name: string | null;
-};
+	type ApiInventoryMovement = {
+		id: string;
+		store_id: string;
+		product_id: string;
+		product_name: string;
+		product_sku: string;
+		type: string;
+		qty_base: number;
+		ref_type: string;
+		ref_id: string | null;
+		note: string | null;
+		created_by: string | null;
+		created_by_name: string | null;
+		created_at: string;
+		unit_name: string | null;
+	};
 
 type InventoryRecord = {
 	id: string;
@@ -54,6 +57,7 @@ type InventoryRecord = {
 	name: string;
 	sku: string;
 	barcode: string;
+	location: string | null;
 	categoryId: string;
 	categoryLabel: string;
 	unitLabel: string;
@@ -70,9 +74,10 @@ type InventoryRecord = {
 	updatedAt: string;
 };
 
-const runtimeConfig = useRuntimeConfig();
-const { apiFetch } = useApiClient();
-const { can } = useAuthSession();
+	const runtimeConfig = useRuntimeConfig();
+	const { apiFetch } = useApiClient();
+	const { can } = useAuthSession();
+	const appToast = useAppToast();
 
 const statusOptions: Array<{ id: InventoryStatus; label: string }> = [
 	{ id: "all", label: "ทั้งหมด" },
@@ -113,32 +118,32 @@ const detailOpen = ref(false);
 const searchInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 const scannerVideoRef = ref<HTMLVideoElement | null>(null);
 
-const scanToast = ref("");
-const balances = ref<InventoryRecord[]>([]);
-const balancesPending = ref(true);
-const balancesError = ref<string | null>(null);
+	const balances = ref<InventoryRecord[]>([]);
+	const balancesPending = ref(true);
+	const balancesError = ref<string | null>(null);
 const movements = ref<ApiInventoryMovement[]>([]);
 const movementsPending = ref(false);
 const movementsError = ref<string | null>(null);
 const cameraScannerOpen = ref(false);
 const cameraScannerStarting = ref(false);
 const cameraScannerError = ref<string | null>(null);
-const adjustmentMode = ref<AdjustmentMode>("increment");
-const adjustmentQty = ref("");
-const adjustmentNote = ref("");
+	const adjustmentMode = ref<AdjustmentMode>("increment");
+	const adjustmentQty = ref("");
+	const adjustmentNote = ref("");
+	const adjustmentQtyInputRef = ref<HTMLInputElement | null>(null);
 const adjustmentSubmitting = ref(false);
 const adjustmentBadgeIso = useState("inventory-adjustment-badge-iso", () => new Date().toISOString());
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
 
-let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
-let cameraScannerControls: { stop?: () => void } | null = null;
-let scannerBuffer = "";
-let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
-let lastScannerKeyAt = 0;
+	let cameraScannerControls: { stop?: () => void } | null = null;
+	let scannerBuffer = "";
+	let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastScannerKeyAt = 0;
 
-const canAdjustInventory = computed(() => can("inventory.adjust"));
+	const canAdjustInventory = computed(() => can("inventory.adjust"));
+	const canUpdateProduct = computed(() => can("products.update"));
 
 const numberFormatter = new Intl.NumberFormat("th-TH");
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
@@ -160,7 +165,7 @@ const categoryOptions = computed(() => [
 const filteredBalances = computed(() => {
 	const query = searchQuery.value.trim().toLowerCase();
 	let result = balances.value.filter((item) => {
-		const matchesQuery = !query || [item.name, item.sku, item.barcode].some((value) => value.toLowerCase().includes(query));
+		const matchesQuery = !query || [item.name, item.sku, item.barcode, item.location || ""].some((value) => value.toLowerCase().includes(query));
 		const matchesCategory = activeCategory.value === "all" || item.categoryId === activeCategory.value;
 		const matchesStatus = activeStatus.value === "all"
 			|| (activeStatus.value === "active" && item.status === "active")
@@ -236,10 +241,15 @@ watch([filteredBalances, pageSize], ([value]) => {
 	}
 }, { immediate: true });
 
-watch([detailOpen, selectedProductId], ([open]) => {
-	if (!open || !selectedBalance.value) return;
-	void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
-}, { immediate: false });
+	watch([detailOpen, selectedProductId], ([open]) => {
+		if (!open) return;
+		adjustmentMode.value = "increment";
+		adjustmentQty.value = "";
+		adjustmentNote.value = "";
+		adjustmentBadgeIso.value = new Date().toISOString();
+		if (!selectedBalance.value) return;
+		void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
+	}, { immediate: false });
 
 watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
 	currentPage.value = 1;
@@ -277,9 +287,11 @@ function getAccent(seed: string) {
 
 function resolveImageUrl(imageUrl: string | null) {
 	if (!imageUrl) return null;
-	if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+	const normalized = imageUrl.trim();
+	if (!normalized) return null;
+	if (/^(https?:\/\/|data:|blob:)/i.test(normalized) || normalized.startsWith("//")) return normalized;
 	const base = String(runtimeConfig.public.r2PublicBaseUrl || "").replace(/\/$/, "");
-	const path = imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`;
+	const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
 	return `${base}${path}`;
 }
 
@@ -301,6 +313,7 @@ function mapBalance(item: ApiInventoryBalance): InventoryRecord {
 		name: item.name,
 		sku: item.sku,
 		barcode: item.barcode || "-",
+		location: item.location?.trim() ? item.location.trim() : null,
 		categoryId,
 		categoryLabel: item.category_name || "ไม่ระบุหมวด",
 		unitLabel: item.unit_name || "หน่วยหลัก",
@@ -364,7 +377,7 @@ async function loadBalances() {
 		}
 	} catch (error) {
 		balances.value = [];
-		balancesError.value = error instanceof Error ? error.message : "โหลดข้อมูลสต็อกไม่สำเร็จ";
+		balancesError.value = resolveApiErrorMessage(error, "โหลดข้อมูลสต็อกไม่สำเร็จ");
 	} finally {
 		balancesPending.value = false;
 	}
@@ -385,21 +398,23 @@ async function loadMovements(storeId: string, productId: string) {
 		movements.value = response.data;
 	} catch (error) {
 		movements.value = [];
-		movementsError.value = error instanceof Error ? error.message : "โหลดประวัติการปรับสต็อกไม่สำเร็จ";
+		movementsError.value = resolveApiErrorMessage(error, "โหลดประวัติการปรับสต็อกไม่สำเร็จ");
 	} finally {
 		movementsPending.value = false;
 	}
 }
 
-function triggerToast(message: string) {
-	scanToast.value = message;
-	if (scanToastTimer) {
-		clearTimeout(scanToastTimer);
+	function toastInfo(message: string, timeout = 2200) {
+		appToast.info({ title: message, timeout });
 	}
-	scanToastTimer = setTimeout(() => {
-		scanToast.value = "";
-	}, 2200);
-}
+
+	function toastSuccess(message: string, timeout = 2200) {
+		appToast.success({ title: message, timeout });
+	}
+
+	function toastError(message: string, timeout = 3200) {
+		appToast.error({ title: message, timeout });
+	}
 
 function focusSearchInput() {
 	const input = searchInputRef.value?.input;
@@ -407,14 +422,70 @@ function focusSearchInput() {
 	input?.select();
 }
 
-function openDetail(productId: string) {
-	selectedProductId.value = productId;
-	detailOpen.value = true;
-}
+	function openDetail(productId: string) {
+		selectedProductId.value = productId;
+		adjustmentMode.value = "increment";
+		adjustmentQty.value = "";
+		adjustmentNote.value = "";
+		adjustmentBadgeIso.value = new Date().toISOString();
+		detailOpen.value = true;
+	}
 
-function closeDetail() {
-	detailOpen.value = false;
-}
+	function closeDetail() {
+		detailOpen.value = false;
+		adjustmentMode.value = "increment";
+		adjustmentQty.value = "";
+		adjustmentNote.value = "";
+	}
+
+	function openSelectedProductLocationEditor() {
+		if (!selectedBalance.value) return;
+		if (!canUpdateProduct.value) {
+			toastError("คุณไม่มีสิทธิ์แก้ไขตำแหน่งสินค้า");
+			return;
+		}
+		detailOpen.value = false;
+		navigateTo(`/products?edit_product_id=${encodeURIComponent(selectedBalance.value.id)}&focus=location`);
+	}
+
+	function formatIntegerWithCommas(value: string) {
+		const digits = value.replace(/\D/g, "");
+		if (!digits) return "";
+		const normalized = digits.replace(/^0+(?=\d)/, "");
+		return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+	}
+
+	function caretIndexFromDigitCount(value: string, digitCount: number) {
+		if (digitCount <= 0) return 0;
+		let seen = 0;
+		for (let i = 0; i < value.length; i += 1) {
+			if (/\d/.test(value[i] || "")) {
+				seen += 1;
+				if (seen >= digitCount) return i + 1;
+			}
+		}
+		return value.length;
+	}
+
+	function handleAdjustmentQtyInput(event: Event) {
+		const input = event.target as HTMLInputElement | null;
+		if (!input) return;
+
+		const rawValue = input.value || "";
+		const selectionStart = input.selectionStart ?? rawValue.length;
+		const digitsBeforeCaret = rawValue.slice(0, selectionStart).replace(/\D/g, "").length;
+		const nextFormatted = formatIntegerWithCommas(rawValue);
+
+		if (adjustmentQty.value === nextFormatted) return;
+		adjustmentQty.value = nextFormatted;
+
+		nextTick(() => {
+			const el = adjustmentQtyInputRef.value;
+			if (!el) return;
+			const nextCaret = caretIndexFromDigitCount(nextFormatted, digitsBeforeCaret);
+			el.setSelectionRange(nextCaret, nextCaret);
+		});
+	}
 
 function selectFromScan(code: string, source: "scanner" | "camera") {
 	const normalized = code.trim();
@@ -430,11 +501,11 @@ function selectFromScan(code: string, source: "scanner" | "camera") {
 		openDetail(matched.id);
 	}
 
-	triggerToast(
-		matched
-			? `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} พบ ${matched.name}`
-			: `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} แต่ไม่พบสินค้า`,
-	);
+		toastInfo(
+			matched
+				? `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} พบ ${matched.name}`
+				: `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} แต่ไม่พบสินค้า`,
+		);
 
 	nextTick(() => {
 		focusSearchInput();
@@ -594,58 +665,62 @@ async function openCameraScanner() {
 	}
 }
 
-async function submitAdjustment() {
-	if (!selectedBalance.value || adjustmentSubmitting.value) return;
+	async function submitAdjustment() {
+		if (!selectedBalance.value || adjustmentSubmitting.value) return;
 
-	const qty = Number(adjustmentQty.value);
-	if (!Number.isFinite(qty) || (adjustmentMode.value === "set" ? qty < 0 : qty <= 0)) {
-		triggerToast("ระบุจำนวนสต็อกให้ถูกต้องก่อนบันทึก");
-		return;
-	}
-
-	adjustmentSubmitting.value = true;
-	try {
-		await apiFetch<ApiEnvelope<unknown>>("/inventory/adjustments", {
-			method: "POST",
-			body: {
-				store_id: selectedBalance.value.storeId,
-				product_id: selectedBalance.value.id,
-				mode: adjustmentMode.value,
-				qty_base: qty,
-				note: adjustmentNote.value.trim() || null,
-				created_by: "Lina",
-			},
-		});
-
-		triggerToast("บันทึกการปรับสต็อกแล้ว");
-		adjustmentQty.value = "";
-		adjustmentNote.value = "";
-		await loadBalances();
-		if (selectedBalance.value) {
-			await loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
+		const qty = Number(String(adjustmentQty.value).replace(/\D/g, ""));
+		if (!Number.isFinite(qty) || (adjustmentMode.value === "set" ? qty < 0 : qty <= 0)) {
+			toastError("ระบุจำนวนสต็อกให้ถูกต้องก่อนบันทึก");
+			return;
 		}
-	} catch (error) {
-		triggerToast(error instanceof Error ? error.message : "บันทึกการปรับสต็อกไม่สำเร็จ");
-	} finally {
-		adjustmentSubmitting.value = false;
+
+		adjustmentSubmitting.value = true;
+		try {
+			const response = await apiFetch<ApiEnvelope<{ balance: ApiInventoryBalance; movement: ApiInventoryMovement }>>("/inventory/adjustments", {
+				method: "POST",
+				body: {
+					store_id: selectedBalance.value.storeId,
+					product_id: selectedBalance.value.id,
+					mode: adjustmentMode.value,
+					qty_base: qty,
+					note: adjustmentNote.value.trim() || null,
+				},
+			});
+
+			// Update list immediately (avoid stale values while waiting for refetch).
+			const nextRecord = mapBalance(response.data.balance);
+			balances.value = balances.value.map((item) => item.id === nextRecord.id ? nextRecord : item);
+			if (detailOpen.value && selectedBalance.value?.id === nextRecord.id) {
+				movements.value = [response.data.movement, ...movements.value].slice(0, 12);
+			}
+
+			toastSuccess("บันทึกการปรับสต็อกแล้ว");
+			adjustmentQty.value = "";
+			adjustmentNote.value = "";
+			// Still refresh from API for correctness (sorting/filtering may change).
+			void loadBalances();
+			if (selectedBalance.value) {
+				void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
+			}
+		} catch (error) {
+			toastError(resolveApiErrorMessage(error, "บันทึกการปรับสต็อกไม่สำเร็จ"));
+		} finally {
+			adjustmentSubmitting.value = false;
+		}
 	}
-}
 
 onMounted(() => {
 	loadBalances();
 	window.addEventListener("keydown", handleGlobalScannerKeydown);
 });
 
-onBeforeUnmount(() => {
-	stopCameraScanner();
-	if (scannerBufferTimer) {
-		clearTimeout(scannerBufferTimer);
-	}
-	if (scanToastTimer) {
-		clearTimeout(scanToastTimer);
-	}
-	window.removeEventListener("keydown", handleGlobalScannerKeydown);
-});
+	onBeforeUnmount(() => {
+		stopCameraScanner();
+		if (scannerBufferTimer) {
+			clearTimeout(scannerBufferTimer);
+		}
+		window.removeEventListener("keydown", handleGlobalScannerKeydown);
+	});
 </script>
 
 <template>
@@ -883,12 +958,14 @@ onBeforeUnmount(() => {
 													<img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.name" class="h-full w-full object-cover">
 													<UIcon v-else name="i-heroicons-cube" class="h-5 w-5 text-white/95" />
 												</div>
-												<div class="min-w-0">
+										<div class="min-w-0">
 													<div class="flex flex-wrap items-center gap-2">
 														<p class="truncate font-semibold text-stone-950">{{ item.name }}</p>
 														<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
 													</div>
-													<p class="mt-1 truncate text-xs text-stone-500">{{ item.sku }} · {{ item.barcode }}</p>
+													<p class="mt-1 truncate text-xs text-stone-500">
+														{{ item.sku }} · {{ item.barcode }}<span v-if="item.location"> · {{ item.location }}</span>
+													</p>
 												</div>
 											</div>
 										</td>
@@ -1018,7 +1095,9 @@ onBeforeUnmount(() => {
 											<div class="flex flex-wrap items-start justify-between gap-2">
 												<div class="min-w-0">
 													<h3 class="truncate text-lg font-semibold text-stone-950">{{ selectedBalance.name }}</h3>
-													<p class="mt-1 truncate text-sm text-stone-500">{{ selectedBalance.sku }} · {{ selectedBalance.barcode }}</p>
+													<p class="mt-1 truncate text-sm text-stone-500">
+														{{ selectedBalance.sku }} · {{ selectedBalance.barcode }}<span v-if="selectedBalance.location"> · {{ selectedBalance.location }}</span>
+													</p>
 												</div>
 												<UBadge :color="getStockTone(selectedBalance.stockState)" variant="soft" :label="getStockLabel(selectedBalance)" />
 											</div>
@@ -1055,6 +1134,24 @@ onBeforeUnmount(() => {
 										<UBadge color="neutral" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
 									</div>
 
+										<div class="mt-3 flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-stone-700">
+											<UIcon name="i-heroicons-map-pin-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
+											<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ตำแหน่งสินค้า</span>
+											<UBadge color="neutral" variant="soft" class="max-w-full">
+												<span class="truncate">{{ selectedBalance.location || "ยังไม่ตั้งค่า" }}</span>
+											</UBadge>
+											<AppButton
+												v-if="canUpdateProduct"
+												color="neutral"
+												variant="soft"
+												size="xs"
+												class="ml-auto rounded-md"
+												icon="i-heroicons-pencil-square-20-solid"
+												:label="selectedBalance.location ? 'แก้ไข' : 'ตั้งค่า'"
+												@click="openSelectedProductLocationEditor"
+											/>
+										</div>
+
 									<div class="mt-4 grid gap-2 sm:grid-cols-3">
 										<AppButton
 											v-for="mode in adjustmentModeOptions"
@@ -1071,17 +1168,19 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div class="mt-4 grid gap-3">
-										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน (หน่วยฐาน)</label>
-											<input
-												v-model="adjustmentQty"
-												type="number"
-												min="0"
-												step="1"
-												class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-												placeholder="ระบุจำนวน"
-											>
-										</div>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน (หน่วยฐาน)</label>
+												<input
+													v-model="adjustmentQty"
+													ref="adjustmentQtyInputRef"
+													type="text"
+													inputmode="numeric"
+													pattern="[0-9,]*"
+													class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+													placeholder="ระบุจำนวน"
+													@input="handleAdjustmentQtyInput"
+												>
+											</div>
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุ</label>
 											<textarea
@@ -1156,7 +1255,7 @@ onBeforeUnmount(() => {
 													</div>
 													<p class="mt-2 text-sm font-medium text-stone-900">{{ movement.note || "ไม่มีหมายเหตุ" }}</p>
 													<p class="mt-1 text-xs text-stone-500">
-														โดย {{ movement.created_by || "ระบบ" }} · {{ movement.product_sku }} · {{ movement.unit_name || "หน่วยฐาน" }}
+														โดย {{ movement.created_by_name || (movement.created_by ? "ไม่พบชื่อผู้ใช้" : "ระบบ") }} · {{ movement.product_sku }} · {{ movement.unit_name || "หน่วยฐาน" }}
 													</p>
 												</div>
 												<p class="text-sm font-semibold tabular-nums text-stone-900">{{ getMovementQtyLabel(movement.qty_base) }}</p>
@@ -1250,22 +1349,7 @@ onBeforeUnmount(() => {
 					</div>
 				</AppResponsivePanel>
 
-				<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="translate-y-3 opacity-0"
-				enter-to-class="translate-y-0 opacity-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="translate-y-0 opacity-100"
-				leave-to-class="translate-y-3 opacity-0"
-			>
-				<div
-					v-if="scanToast"
-					class="fixed bottom-4 left-1/2 z-[80] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-[#1f1c18] px-4 py-3 text-sm font-medium text-white shadow-xl"
-				>
-					{{ scanToast }}
 				</div>
-			</Transition>
-			</div>
-		</template>
-	</AppSidebarShell>
-</template>
+			</template>
+		</AppSidebarShell>
+	</template>

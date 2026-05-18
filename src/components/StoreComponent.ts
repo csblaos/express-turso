@@ -20,6 +20,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"vat_mode",
 	"out_stock_threshold",
 	"low_stock_threshold",
+	"allow_negative_stock",
 	"max_branches_override",
 	"pdf_show_logo",
 	"pdf_show_signature",

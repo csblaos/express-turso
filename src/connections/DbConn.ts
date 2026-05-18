@@ -92,6 +92,7 @@ export class DbConn {
 
 				out_stock_threshold INTEGER NOT NULL DEFAULT 0,
 				low_stock_threshold INTEGER NOT NULL DEFAULT 0,
+				allow_negative_stock INTEGER NOT NULL DEFAULT 0,
 				max_branches_override INTEGER,
 
 				pdf_show_logo INTEGER NOT NULL DEFAULT 1,

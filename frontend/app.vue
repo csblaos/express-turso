@@ -15,13 +15,15 @@ if (import.meta.client) {
 	<NuxtLayout>
 		<NuxtPage />
 	</NuxtLayout>
-	<Toaster
-		position="top-right"
-		:theme="colorMode.value === 'dark' ? 'dark' : 'light'"
-		:rich-colors="true"
-		:close-button="true"
-		:expand="false"
-		:visible-toasts="5"
-		:toast-options="{ duration: 2800 }"
-	/>
+	<Teleport to="body">
+		<Toaster
+			position="top-right"
+			:theme="colorMode.value === 'dark' ? 'dark' : 'light'"
+			:rich-colors="true"
+			:close-button="true"
+			:expand="false"
+			:visible-toasts="5"
+			:toast-options="{ duration: 2800 }"
+		/>
+	</Teleport>
 </template>
