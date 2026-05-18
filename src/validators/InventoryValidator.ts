@@ -26,6 +26,19 @@ const finiteInteger = z.preprocess((value) => {
 	return value;
 }, z.number().int("must be an integer").positive("must be greater than 0").max(100, "must be less than or equal to 100"));
 
+function createPositiveIntegerSchema(maxValue: number) {
+	return z.preprocess((value) => {
+		if (typeof value === "string") {
+			const trimmedValue = value.trim();
+			if (trimmedValue === "") return value;
+			const parsedValue = Number(trimmedValue);
+			return Number.isFinite(parsedValue) ? parsedValue : value;
+		}
+
+		return value;
+	}, z.number().int("must be an integer").positive("must be greater than 0").max(maxValue, `must be less than or equal to ${maxValue}`));
+}
+
 export default class InventoryValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
 		store_id: z.string().optional(),
@@ -37,7 +50,11 @@ export default class InventoryValidator extends ValidatorMiddleware {
 	private static readonly movementsQuerySchema = z.object({
 		store_id: z.string().optional(),
 		product_id: z.string().optional(),
-		limit: finiteInteger.optional(),
+		limit: createPositiveIntegerSchema(500).optional(),
+		query: z.string().optional(),
+		type: z.string().optional(),
+		from: z.string().optional(),
+		to: z.string().optional(),
 	});
 
 	private static readonly adjustmentBodySchema = z.object({

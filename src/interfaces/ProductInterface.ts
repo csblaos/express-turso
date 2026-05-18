@@ -7,6 +7,13 @@ import { CreateProductInput, Product, UpdateProductInput } from "@models/Product
 
 type ProductWritableKey = Exclude<keyof Product, "id">;
 
+const PRODUCT_OPTIONAL_COLUMNS = [
+	{
+		name: "deleted_at",
+		sql: "ALTER TABLE products ADD COLUMN deleted_at TEXT",
+	},
+] as const;
+
 function getInsertPayload(payload: CreateProductInput): Record<string, InValue> {
 	const result: Record<string, InValue> = {
 		id: payload.id || randomUUID(),
@@ -34,22 +41,52 @@ function getUpdatePayload(data: UpdateProductInput): Record<string, InValue> {
 }
 
 export class ProductInterface {
+	private static ensured = false;
+	private static ensureColumnsPromise: Promise<void> | null = null;
+
+	static async ensureColumns(): Promise<void> {
+		if (ProductInterface.ensured) return;
+		if (ProductInterface.ensureColumnsPromise) return ProductInterface.ensureColumnsPromise;
+
+		ProductInterface.ensureColumnsPromise = (async () => {
+			const db = DbConn.getClient();
+			const pragmaResult = await db.execute("PRAGMA table_info(products)");
+			const existingColumns = new Set(
+				pragmaResult.rows.map((row) => String(row.name || "")),
+			);
+
+			for (const column of PRODUCT_OPTIONAL_COLUMNS) {
+				if (existingColumns.has(column.name)) continue;
+				await db.execute(column.sql);
+			}
+
+			ProductInterface.ensured = true;
+		})().catch((error) => {
+			ProductInterface.ensureColumnsPromise = null;
+			throw error;
+		});
+
+		return ProductInterface.ensureColumnsPromise;
+	}
+
 	static async findAll(storeId?: string): Promise<Product[]> {
+		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
 
 		if (storeId) {
 			const result = await db.execute({
-				sql: "SELECT * FROM products WHERE store_id = ? ORDER BY created_at DESC",
+				sql: "SELECT * FROM products WHERE store_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
 				args: [ storeId ],
 			});
 			return result.rows.map(ProductInterface.mapRow);
 		}
 
-		const result = await db.execute("SELECT * FROM products ORDER BY created_at DESC");
+		const result = await db.execute("SELECT * FROM products WHERE deleted_at IS NULL ORDER BY created_at DESC");
 		return result.rows.map(ProductInterface.mapRow);
 	}
 
 	static async findBySkus(storeId: string, skus: string[]): Promise<Product[]> {
+		await ProductInterface.ensureColumns();
 		const normalized = skus
 			.map((sku) => String(sku || "").trim())
 			.filter(Boolean);
@@ -59,13 +96,14 @@ export class ProductInterface {
 		const placeholders = unique.map(() => "?").join(", ");
 		const db = DbConn.getClient();
 		const result = await db.execute({
-			sql: `SELECT * FROM products WHERE store_id = ? AND sku IN (${placeholders})`,
+			sql: `SELECT * FROM products WHERE store_id = ? AND deleted_at IS NULL AND sku IN (${placeholders})`,
 			args: [ storeId, ...unique ],
 		});
 		return result.rows.map(ProductInterface.mapRow);
 	}
 
 	static async findByBarcodes(storeId: string, barcodes: string[]): Promise<Product[]> {
+		await ProductInterface.ensureColumns();
 		const normalized = barcodes
 			.map((barcode) => String(barcode || "").trim())
 			.filter(Boolean);
@@ -75,16 +113,28 @@ export class ProductInterface {
 		const placeholders = unique.map(() => "?").join(", ");
 		const db = DbConn.getClient();
 		const result = await db.execute({
-			sql: `SELECT * FROM products WHERE store_id = ? AND barcode IN (${placeholders})`,
+			sql: `SELECT * FROM products WHERE store_id = ? AND deleted_at IS NULL AND barcode IN (${placeholders})`,
 			args: [ storeId, ...unique ],
 		});
 		return result.rows.map(ProductInterface.mapRow);
 	}
 
 	static async findById(id: string): Promise<Product | null> {
+		await ProductInterface.ensureColumns();
+		return ProductInterface.findByIdInternal(id, false);
+	}
+
+	static async findByIdIncludingDeleted(id: string): Promise<Product | null> {
+		await ProductInterface.ensureColumns();
+		return ProductInterface.findByIdInternal(id, true);
+	}
+
+	private static async findByIdInternal(id: string, includeDeleted: boolean): Promise<Product | null> {
 		const db = DbConn.getClient();
 		const result = await db.execute({
-			sql: "SELECT * FROM products WHERE id = ? LIMIT 1",
+			sql: includeDeleted
+				? "SELECT * FROM products WHERE id = ? LIMIT 1"
+				: "SELECT * FROM products WHERE id = ? AND deleted_at IS NULL LIMIT 1",
 			args: [ id ],
 		});
 
@@ -93,6 +143,7 @@ export class ProductInterface {
 	}
 
 	static async create(payload: CreateProductInput): Promise<Product> {
+		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const insertPayload = getInsertPayload(payload);
 		const id = String(insertPayload.id);
@@ -112,6 +163,7 @@ export class ProductInterface {
 	}
 
 	static async update(id: string, data: UpdateProductInput): Promise<Product> {
+		await ProductInterface.ensureColumns();
 		const updatePayload = getUpdatePayload(data);
 		const keys = Object.keys(updatePayload) as ProductWritableKey[];
 		const values = Object.values(updatePayload);
@@ -135,13 +187,15 @@ export class ProductInterface {
 	}
 
 	static async delete(id: string): Promise<boolean> {
+		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
-		const existing = await ProductInterface.findById(id);
+		const existing = await ProductInterface.findByIdIncludingDeleted(id);
 		if (!existing) return false;
+		if ((existing as unknown as { deleted_at?: string | null }).deleted_at) return false;
 
 		await db.execute({
-			sql: "DELETE FROM products WHERE id = ?",
-			args: [ id ],
+			sql: "UPDATE products SET deleted_at = ? WHERE id = ?",
+			args: [ new Date().toISOString(), id ],
 		});
 
 		return true;

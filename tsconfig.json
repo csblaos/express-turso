@@ -4,10 +4,9 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "rootDir": "./src",
-    "outDir": "./dist",
-    "baseUrl": "./src",
-	"ignoreDeprecations": "6.0",
-    "paths": {
+	    "outDir": "./dist",
+	    "baseUrl": "./src",
+	    "paths": {
       "@components/*": ["components/*"],
       "@configs/*": ["configs/*"],
       "@connections/*": ["connections/*"],

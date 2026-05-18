@@ -21,10 +21,20 @@ export class InventoryController {
 
 	static getMovements = SyncFunction.handler(async (req: Request, res: Response) => {
 		const query = req.query as Record<string, unknown>;
+		const rawLimit = query.limit;
+		const parsedLimit = typeof rawLimit === "number"
+			? rawLimit
+			: typeof rawLimit === "string"
+				? Number(rawLimit)
+				: undefined;
 		const data = await InventoryComponent.getMovements(req.requestId, {
 			storeId: typeof query.store_id === "string" ? query.store_id : undefined,
 			productId: typeof query.product_id === "string" ? query.product_id : undefined,
-			limit: typeof query.limit === "number" ? query.limit : undefined,
+			limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+			query: typeof query.query === "string" ? query.query : undefined,
+			type: typeof query.type === "string" ? query.type : undefined,
+			from: typeof query.from === "string" ? query.from : undefined,
+			to: typeof query.to === "string" ? query.to : undefined,
 		});
 
 		SuccessHandler.send(res, req.requestId, { data });

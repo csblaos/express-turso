@@ -120,6 +120,7 @@ export class ProductComponent {
 		input: {
 			baseProductId: string;
 			modelName?: string;
+			includeBaseSale?: boolean;
 			axes?: Array<{ key: string; label: string }>;
 			variants: Array<{
 				sku: string;
@@ -245,13 +246,16 @@ export class ProductComponent {
 			});
 		}
 
-		const updatedBase = await ProductInterface.update(base.id, {
+		const includeBaseSale = Boolean(input.includeBaseSale);
+		const desiredActive = includeBaseSale ? 1 : 0;
+		const finalBase = await ProductInterface.update(base.id, {
 			model_id: modelId,
 			variant_options_json: JSON.stringify(baseVariantOptions),
+			active: desiredActive,
 		});
 
 		return {
-			base_product: updatedBase,
+			base_product: finalBase,
 			created,
 		};
 	}

@@ -497,7 +497,7 @@ function simulateScan() {
 
 												<div class="grid gap-3 border-t border-[#e7e4dd] pt-3 xl:grid-cols-[minmax(0,1fr)_auto]">
 													<div class="space-y-2">
-														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+														<div class="scrollbar-hidden md:scrollbar-soft flex gap-2 overflow-x-auto pb-1">
 															<AppButton
 																v-for="mode in serviceModes"
 																:key="mode"
@@ -510,7 +510,7 @@ function simulateScan() {
 															/>
 														</div>
 
-														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+														<div class="scrollbar-hidden md:scrollbar-soft flex gap-2 overflow-x-auto pb-1">
 															<AppButton
 																v-for="category in categories"
 																:key="category.id"
@@ -527,7 +527,7 @@ function simulateScan() {
 															</AppButton>
 														</div>
 
-														<div class="scrollbar-soft flex gap-2 overflow-x-auto pb-1">
+														<div class="scrollbar-hidden md:scrollbar-soft flex gap-2 overflow-x-auto pb-1">
 															<AppButton
 																v-for="view in quickViews"
 																:key="view.id"

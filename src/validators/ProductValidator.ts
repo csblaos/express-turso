@@ -63,6 +63,10 @@ export default class ProductValidator extends ValidatorMiddleware {
 		allow_base_unit_sale: optionalNumber,
 	});
 
+	private static readonly statusBodySchema = z.object({
+		active: z.number().int().min(0).max(1),
+	});
+
 	private static readonly costAdjustmentBodySchema = z.object({
 		cost_base: finiteNumber,
 		reason: z.string().trim().max(280).nullish(),
@@ -80,6 +84,7 @@ export default class ProductValidator extends ValidatorMiddleware {
 
 	private static readonly bulkVariantBodySchema = z.object({
 		model_name: z.string().trim().max(160).optional(),
+		include_base_sale: z.boolean().optional(),
 		axes: z.array(z.object({
 			key: z.string().trim().min(1).max(32),
 			label: z.string().trim().min(1).max(64),
@@ -100,6 +105,13 @@ export default class ProductValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: ProductValidator.updateBodySchema,
+	});
+
+	public static readonly setStatus = ProductValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: ProductValidator.statusBodySchema,
 	});
 
 	public static readonly adjustCost = ProductValidator.init({

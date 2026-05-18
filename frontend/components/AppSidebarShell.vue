@@ -180,9 +180,7 @@ const storeSectionTitle = computed(() => (
 ));
 const currentStoreLabel = computed(() => (
 	accessibleStores.value.find((store) => store.id === currentStoreId.value)?.name
-	|| currentAccess.value?.memberships?.find((membership) => membership.store_id === currentStoreId.value)?.store_id
-	|| currentAccess.value?.memberships?.[0]?.store_id
-	|| "ยังไม่ได้เลือกร้าน"
+	|| (currentStoreId.value ? "ร้านที่กำลังใช้งาน" : "ยังไม่ได้เลือกร้าน")
 ));
 const visibleSwitchableStores = computed(() => {
 	if (!canShowStoreSection.value) return [];
@@ -194,7 +192,7 @@ const visibleSwitchableStores = computed(() => {
 	);
 	return Array.from(membershipIds).map((storeId) => ({
 		id: storeId,
-		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : storeId),
+		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : "ร้านที่ไม่ทราบชื่อ"),
 		currency: storesById.get(storeId)?.currency,
 	}));
 });
@@ -296,7 +294,7 @@ async function handleSwitchStore(storeId: string) {
 		return;
 	}
 
-	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || storeId;
+	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || "ร้านที่เลือก";
 	storeSwitcherOpen.value = false;
 	profileMenuOpen.value = false;
 	switchStorePending.value = true;
@@ -720,10 +718,11 @@ onErrorCaptured((error) => {
 			v-model="storeSwitcherOpen"
 			title="เปลี่ยนร้าน"
 			description="เลือกร้านที่ต้องการใช้เป็น workspace ปัจจุบัน"
-			desktop-width="420px"
+			desktop-width="680px"
 			mobile-max-height="82dvh"
 			close-button-size="md"
 			compact-header
+			full-bleed-header
 			content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 		>
 			<div class="flex h-full min-h-0 flex-col">
@@ -746,7 +745,9 @@ onErrorCaptured((error) => {
 						>
 							<span class="min-w-0">
 								<span class="block truncate text-sm font-medium">{{ store.name }}</span>
-								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600' : 'text-stone-400'">{{ store.id }}</span>
+								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600' : 'text-stone-400'">
+									{{ store.id === currentStoreId ? "ร้านที่กำลังใช้งาน" : "แตะเพื่อเปลี่ยนร้าน" }}
+								</span>
 							</span>
 							<UIcon
 								:name="store.id === currentStoreId ? 'i-heroicons-check-circle-20-solid' : 'i-heroicons-arrow-right-circle-20-solid'"

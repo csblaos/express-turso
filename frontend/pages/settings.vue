@@ -56,7 +56,7 @@ const settingsSections: SettingsSection[] = [
 		description: "โปรไฟล์ร้าน การเงิน การชำระเงิน ขนส่ง และค่าของสาขาที่กำลังใช้งาน",
 		entries: [
 			{ id: "store-profile", title: "Store Profile", description: "ชื่อร้าน โลโก้ ที่อยู่ และช่องทางติดต่อ", icon: "i-heroicons-building-storefront", badge: "เร็ว ๆ นี้" },
-			{ id: "store-finance", title: "Store Finance", description: "base currency, supported currencies และ VAT", icon: "i-heroicons-banknotes", badge: "เร็ว ๆ นี้" },
+				{ id: "store-finance", title: "Store Finance", description: "base currency และสกุลเงินที่รองรับ", icon: "i-heroicons-banknotes", to: "/settings/store-finance", badge: "พร้อมใช้งาน" },
 			{ id: "store-payments", title: "Store Payments", description: "บัญชีรับเงินของร้าน เช่น ธนาคาร, QR และสกุลเงิน", icon: "i-heroicons-credit-card", badge: "เร็ว ๆ นี้" },
 			{ id: "shipping", title: "Shipping Providers", description: "รายชื่อขนส่งหลักของร้านเพื่อใช้กับออเดอร์ออนไลน์", icon: "i-heroicons-truck", badge: "เร็ว ๆ นี้" },
 			{ id: "branch-switch", title: "Store / Branch Switch", description: "เปลี่ยนร้านหรือเปลี่ยนสาขาที่ active อยู่", icon: "i-heroicons-arrows-right-left", badge: "เร็ว ๆ นี้" },

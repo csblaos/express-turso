@@ -22,13 +22,12 @@ type CategoryRecord = {
 };
 
 const { apiFetch } = useApiClient();
-const { currentUser, currentAccess, can } = useAuthSession();
+const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
 
 const searchQuery = ref("");
 const selectedStoreId = ref("");
 const selectedCategoryId = ref("");
-const categoriesListScrollRef = ref<HTMLElement | null>(null);
 const categoriesPending = ref(false);
 const storesPending = ref(true);
 const categoriesError = ref<string | null>(null);
@@ -61,15 +60,25 @@ const canViewCategories = computed(() => isElevatedStoreManager.value || can("pr
 const canCreateCategories = computed(() => isElevatedStoreManager.value || can("products.create"));
 const canUpdateCategories = computed(() => isElevatedStoreManager.value || can("products.update"));
 const canDeleteCategories = computed(() => isElevatedStoreManager.value || can("products.archive"));
+const authPermissionReady = ref(false);
 const lockedStoreId = computed(() => (
-	currentAccess.value?.store_id
+	currentStoreId.value
+	|| currentAccess.value?.store_id
 	|| currentAccess.value?.memberships?.[0]?.store_id
+	|| ""
+));
+const effectiveStoreId = computed(() => (
+	selectedStoreId.value
+	|| currentStoreId.value
+	|| currentAccess.value?.store_id
+	|| currentAccess.value?.memberships?.[0]?.store_id
+	|| stores.value[0]?.id
 	|| ""
 ));
 const membershipCount = computed(() => currentAccess.value?.memberships?.length ?? 0);
 const hasMultipleStoreAccess = computed(() => membershipCount.value > 1);
 const selectedStoreLabel = computed(() => (
-	stores.value.find((store) => store.id === selectedStoreId.value)?.name
+	stores.value.find((store) => store.id === effectiveStoreId.value)?.name
 	|| "ยังไม่พบร้านที่กำลังใช้งาน"
 ));
 const filteredCategories = computed(() => {
@@ -107,19 +116,16 @@ const pageSummaryText = computed(() => (
 		? "ยังไม่มีข้อมูล"
 		: `${pageStart.value}-${pageEnd.value} จาก ${totalCategories.value} หมวด`
 ));
-const overviewStats = computed(() => ([
-	{ label: "หมวดทั้งหมด", value: categories.value.length },
-	{ label: "ผลลัพธ์ที่แสดง", value: filteredCategories.value.length },
-	{ label: "sort order สูงสุด", value: categories.value.length ? Math.max(...categories.value.map((category) => Number(category.sort_order || 0))) : 0 },
-	{ label: "โหลดล่าสุด", value: categories.value.length ? formatDate(categories.value[0].created_at) : "-" },
-]));
+const maxSortOrder = computed(() => (
+	categories.value.length ? Math.max(...categories.value.map((category) => Number(category.sort_order || 0))) : 0
+));
 const nextSortOrder = computed(() => (
 	categories.value.length
 		? Math.max(...categories.value.map((category) => Number(category.sort_order || 0))) + 1
 		: 1
 ));
 const canCreateCategory = computed(() => (
-	Boolean(selectedStoreId.value)
+	Boolean(effectiveStoreId.value)
 	&& createForm.name.trim().length > 0
 ));
 const canSaveDetail = computed(() => (
@@ -142,10 +148,13 @@ watch([ lockedStoreId, stores ], () => {
 	}
 }, { immediate: true });
 
-watch(selectedStoreId, async (value) => {
-	if (!value || !canViewCategories.value) return;
+watch([effectiveStoreId, canViewCategories], async ([value, canView]) => {
+	if (!value || !canView) return;
+	if (selectedStoreId.value !== value) {
+		selectedStoreId.value = value;
+	}
 	await fetchCategories();
-}, { immediate: false });
+}, { immediate: true });
 
 watch(filteredCategories, (value) => {
 	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
@@ -218,7 +227,8 @@ function formatDate(value: string) {
 }
 
 function scrollCategoriesListToTop() {
-	categoriesListScrollRef.value?.scrollTo({
+	if (!import.meta.client) return;
+	document.getElementById("app-shell-scroll-root")?.scrollTo({
 		top: 0,
 		behavior: "auto",
 	});
@@ -270,11 +280,11 @@ async function fetchStores() {
 }
 
 async function fetchCategories() {
-	if (!selectedStoreId.value) return;
+	if (!effectiveStoreId.value) return;
 	categoriesPending.value = true;
 	categoriesError.value = null;
 	try {
-		const response = await apiFetch<ApiEnvelope<CategoryRecord[]>>(`/product-categories?store_id=${encodeURIComponent(selectedStoreId.value)}`);
+		const response = await apiFetch<ApiEnvelope<CategoryRecord[]>>(`/product-categories?store_id=${encodeURIComponent(effectiveStoreId.value)}`);
 		categories.value = response.data;
 		await nextTick();
 		scrollCategoriesListToTop();
@@ -286,13 +296,13 @@ async function fetchCategories() {
 }
 
 async function createCategory() {
-	if (!canCreateCategory.value || !selectedStoreId.value) return;
+	if (!canCreateCategory.value || !effectiveStoreId.value) return;
 	saving.value = true;
 	try {
 		await apiFetch<ApiEnvelope<CategoryRecord>>("/product-categories", {
 			method: "POST",
 			body: {
-				store_id: selectedStoreId.value,
+				store_id: effectiveStoreId.value,
 				name: createForm.name.trim(),
 				sort_order: toNumberStringValue(createForm.sort_order),
 			},
@@ -378,14 +388,12 @@ function closeDeleteModal() {
 }
 
 onMounted(async () => {
+	authPermissionReady.value = true;
 	storesPending.value = true;
 	categoriesPending.value = true;
 	categoriesError.value = null;
 	try {
 		await fetchStores();
-		if (selectedStoreId.value && canViewCategories.value) {
-			await fetchCategories();
-		}
 	} catch (error) {
 		categoriesError.value = resolveApiErrorMessage(error, "โหลดหมวดสินค้าไม่สำเร็จ");
 	} finally {
@@ -400,111 +408,153 @@ onMounted(async () => {
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
-		sidebar-title="Categories"
+		sidebar-title="หมวดสินค้า"
 		sidebar-compact-title="CAT"
 		sidebar-description="จัดการหมวดสินค้าในร้านที่กำลังใช้งาน พร้อมลำดับการแสดงผลสำหรับหน้าสินค้าและ POS"
-	>
-		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
-				<AppPageHeader
-					title="หมวดสินค้า"
-					description="จัดการหมวดสินค้า ลำดับการแสดงผล และดูรายการหมวดของร้านที่กำลังใช้งาน"
-					@menu="openSidebar"
-				>
-					<div class="ml-auto grid w-full gap-3 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:justify-end">
-						<UInput
-							v-model="searchQuery"
-							icon="i-heroicons-magnifying-glass-20-solid"
-							size="lg"
-							color="neutral"
-							placeholder="ค้นหาชื่อหมวดหรือ category id"
-							class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
-						/>
-						<AppButton
-							color="neutral"
-							variant="soft"
-							size="md"
-							class="justify-center rounded-md"
-							icon="i-heroicons-arrow-path-20-solid"
-							label="รีเฟรช"
-							@click="fetchCategories"
-						/>
-						<AppButton
-							color="primary"
-							size="md"
-							class="justify-center rounded-md"
-							icon="i-heroicons-plus-20-solid"
-							label="เพิ่มหมวด"
-							:disabled="!canCreateCategories || !selectedStoreId"
-							@click="createOpen = true"
-						/>
-					</div>
-				</AppPageHeader>
-
-				<div class="grid min-h-0 gap-3 overflow-hidden lg:grid-rows-[auto_minmax(0,1fr)] lg:pr-1">
-					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
-							<div
-								v-for="stat in overviewStats"
-								:key="stat.label"
-								class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3"
+		>
+			<template #default="{ openSidebar }">
+				<div class="grid gap-3 pb-3 lg:gap-4">
+					<AppPageHeader
+						title="หมวดสินค้า"
+						description="จัดการหมวดสินค้า ลำดับการแสดงผล และดูรายการหมวดของร้านที่กำลังใช้งาน"
+						@menu="openSidebar"
+					>
+						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:justify-end">
+							<div class="relative min-w-0">
+								<UInput
+									v-model="searchQuery"
+									size="lg"
+									icon="i-heroicons-magnifying-glass-20-solid"
+									color="neutral"
+									placeholder="ค้นหาชื่อหมวดหรือ category id"
+									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+								/>
+								<AppButton
+									v-if="searchQuery"
+									color="neutral"
+									variant="ghost"
+									size="xs"
+									icon="i-heroicons-x-mark-20-solid"
+									class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
+									aria-label="ล้างคำค้น"
+									title="ล้างคำค้น"
+									@click="searchQuery = ''"
+								/>
+							</div>
+							<AppButton
+								color="neutral"
+								variant="soft"
+								size="md"
+								icon="i-heroicons-arrow-path-20-solid"
+								class="justify-center rounded-md"
+								aria-label="รีเฟรช"
+								title="รีเฟรช"
+								@click="fetchCategories"
 							>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ stat.label }}</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ stat.value }}</p>
-							</div>
+								<span class="hidden sm:inline">รีเฟรช</span>
+							</AppButton>
+							<AppButton
+								color="primary"
+								variant="solid"
+								size="md"
+								icon="i-heroicons-plus-20-solid"
+								class="justify-center rounded-md"
+								aria-label="เพิ่มหมวด"
+								title="เพิ่มหมวด"
+								:disabled="!authPermissionReady || !canCreateCategories || !effectiveStoreId"
+								@click="createOpen = true"
+							>
+								<span class="hidden sm:inline">เพิ่มหมวด</span>
+							</AppButton>
 						</div>
-					</UCard>
+					</AppPageHeader>
 
-					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="grid gap-3 lg:pr-1">
+							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+							<div class="grid grid-cols-4 gap-2 p-0">
+								<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">หมวด</p>
+									<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ categories.length }}</p>
+								</div>
+								<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ผล</p>
+									<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ filteredCategories.length }}</p>
+								</div>
+								<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ลำดับ</p>
+									<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">
+										{{ maxSortOrder }}
+									</p>
+								</div>
+								<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ร้าน</p>
+									<p class="mt-1 truncate text-base font-semibold text-stone-950" :title="selectedStoreLabel">{{ selectedStoreLabel }}</p>
+								</div>
+							</div>
+						</UCard>
+
+						<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">Categories</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">จัดการหมวดสินค้าและลำดับการแสดงผลของร้านที่กำลังใช้งาน</p>
+								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+									<div>
+										<p class="text-sm font-semibold text-stone-950">หมวดสินค้า</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกหมวดเพื่อแก้ไขชื่อและลำดับการแสดงผล</p>
+									</div>
+									<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+										{{ pageSummaryText }}
+									</div>
 								</div>
-								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ pageSummaryText }}
-								</div>
-							</div>
 
-							<div ref="categoriesListScrollRef" class="scrollbar-soft min-h-0 flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-								<div v-if="categoriesPending" class="min-h-[280px]">
-									<AppInlineLoadingBar container-class="bg-neutral-100" />
+								<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+									<div v-if="categoriesPending" class="min-h-[280px]">
+										<AppInlineLoadingBar container-class="bg-neutral-100" />
+									</div>
+									<div v-else-if="categoriesError" class="p-5 text-center text-sm text-error">{{ categoriesError }}</div>
+									<div v-else-if="!filteredCategories.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีหมวดสินค้า</div>
+									<table v-else class="min-w-[820px] w-full border-separate border-spacing-0">
+										<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+												<th class="border-b border-[#ece6dc] px-4 py-3">หมวดสินค้า</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">ลำดับ</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3">สร้างเมื่อ</th>
+												<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+											</tr>
+										</thead>
+										<tbody>
+											<tr
+												v-for="category in paginatedCategories"
+												:key="category.id"
+												class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50"
+												:class="detailOpen && selectedCategoryId === category.id ? 'bg-primary-50' : 'bg-white'"
+												@click="openCategoryDetail(category.id)"
+											>
+												<td class="border-b border-[#f1ede6] px-4 py-4">
+													<div class="min-w-0">
+														<p class="truncate font-semibold text-stone-950">{{ category.name }}</p>
+													</div>
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+													{{ category.sort_order ?? 0 }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+													{{ formatDate(category.created_at) }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+													<AppButton
+														color="neutral"
+														variant="soft"
+														size="md"
+														class="rounded-md"
+														icon="i-heroicons-chevron-right-20-solid"
+														@click.stop="openCategoryDetail(category.id)"
+													>
+														จัดการ
+													</AppButton>
+												</td>
+											</tr>
+										</tbody>
+									</table>
 								</div>
-								<div v-else-if="categoriesError" class="p-5 text-center text-sm text-error">{{ categoriesError }}</div>
-								<div v-else-if="!filteredCategories.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีหมวดสินค้า</div>
-								<template v-else>
-									<button
-										v-for="category in paginatedCategories"
-										:key="category.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										@click="openCategoryDetail(category.id)"
-									>
-										<div class="flex items-center justify-between gap-3">
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ category.name }}</p>
-												<p class="mt-1 truncate text-xs text-stone-500">{{ category.id }}</p>
-												<p class="mt-2 text-xs text-stone-500">
-													sort {{ category.sort_order ?? 0 }}
-													· สร้างเมื่อ {{ formatDate(category.created_at) }}
-												</p>
-											</div>
-											<div class="flex items-center gap-2">
-												<UBadge color="neutral" variant="soft" :label="`sort ${category.sort_order ?? 0}`" />
-												<AppButton
-													color="neutral"
-													variant="soft"
-													size="md"
-													icon="i-heroicons-chevron-right-20-solid"
-												>
-													จัดการ
-												</AppButton>
-											</div>
-										</div>
-									</button>
-								</template>
-							</div>
 
 							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
@@ -568,15 +618,16 @@ onMounted(async () => {
 				</div>
 			</div>
 
-			<AppResponsivePanel
-				v-model="detailOpen"
-				:title="selectedCategory ? selectedCategory.name : 'รายละเอียดหมวดสินค้า'"
-				description="แก้ชื่อหมวดสินค้าและลำดับการแสดงผลของหมวดนี้"
-				desktop-width="420px"
-				close-button-size="md"
-				compact-header
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
+				<AppResponsivePanel
+					v-model="detailOpen"
+					:title="selectedCategory ? selectedCategory.name : 'รายละเอียดหมวดสินค้า'"
+					description="แก้ชื่อหมวดสินค้าและลำดับการแสดงผลของหมวดนี้"
+					desktop-width="680px"
+					close-button-size="md"
+					compact-header
+					full-bleed-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				>
 				<template v-if="selectedCategory">
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
@@ -592,7 +643,7 @@ onMounted(async () => {
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">sort order</label>
+								<label class="text-sm font-medium text-stone-700">ลำดับแสดงผล</label>
 								<UInput v-model="detailForm.sort_order" type="number" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 								<p class="text-xs leading-5 text-stone-500">เลขน้อยจะแสดงก่อน เลขมากจะแสดงทีหลัง เหมาะใช้จัดลำดับหมวดบนหน้าสินค้าและ POS</p>
 							</div>
@@ -603,11 +654,14 @@ onMounted(async () => {
 							</div>
 						</div>
 
-						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-							<div class="grid w-full grid-cols-3 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
-								<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteCategories || saving" @click="openDeleteModal">ลบ</AppButton>
-								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canSaveDetail || !canUpdateCategories" @click="saveCategoryDetail">
+							<div
+								class="-mx-5 sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+							>
+								<div class="grid w-full grid-cols-3 gap-2">
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
+									<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteCategories || saving" @click="openDeleteModal">ลบ</AppButton>
+									<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canSaveDetail || !canUpdateCategories" @click="saveCategoryDetail">
 									บันทึก
 								</AppButton>
 							</div>
@@ -616,17 +670,18 @@ onMounted(async () => {
 				</template>
 			</AppResponsivePanel>
 
-			<AppResponsivePanel
-				v-model="deleteOpen"
-				title="ลบหมวดสินค้า"
-				description="ยืนยันการลบหมวดสินค้าแบบถาวรจากร้านที่กำลังใช้งาน"
-				desktop-width="420px"
-				close-button-size="md"
-				compact-header
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
-				<div class="flex h-full min-h-0 flex-col">
-					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
+				<AppResponsivePanel
+					v-model="deleteOpen"
+					title="ลบหมวดสินค้า"
+					description="ยืนยันการลบหมวดสินค้าแบบถาวรจากร้านที่กำลังใช้งาน"
+					desktop-width="680px"
+					close-button-size="md"
+					compact-header
+					full-bleed-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				>
+				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 overflow-y-auto px-5 py-4">
 						<div class="space-y-4 pb-6">
 							<div class="rounded-md border border-error-200 bg-error-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">ลบแบบถาวร</p>
@@ -645,7 +700,10 @@ onMounted(async () => {
 						</div>
 					</div>
 
-					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+					<div
+						class="-mx-5 sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+						:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+					>
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDeleteModal">ปิด</AppButton>
 							<AppButton
@@ -666,15 +724,16 @@ onMounted(async () => {
 				</div>
 			</AppResponsivePanel>
 
-			<AppResponsivePanel
-				v-model="createOpen"
-				title="เพิ่มหมวดสินค้า"
-				description="สร้างหมวดสินค้าใหม่สำหรับร้านที่กำลังใช้งาน"
-				desktop-width="420px"
-				close-button-size="md"
-				compact-header
-				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
+				<AppResponsivePanel
+					v-model="createOpen"
+					title="เพิ่มหมวดสินค้า"
+					description="สร้างหมวดสินค้าใหม่สำหรับร้านที่กำลังใช้งาน"
+					desktop-width="680px"
+					close-button-size="md"
+					compact-header
+					full-bleed-header
+					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+				>
 				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 						<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -688,16 +747,19 @@ onMounted(async () => {
 						</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">sort order</label>
+								<label class="text-sm font-medium text-stone-700">ลำดับแสดงผล</label>
 								<UInput v-model="createForm.sort_order" type="number" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 								<p class="text-xs leading-5 text-stone-500">ระบบเติมค่าให้อัตโนมัติเป็นลำดับถัดไป และคุณยังปรับเองได้ถ้าต้องการเรียงหมวดใหม่</p>
 							</div>
 					</div>
 
-					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canCreateCategory" @click="createCategory">
+						<div
+							class="-mx-5 sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+						>
+							<div class="grid w-full grid-cols-2 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
+								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canCreateCategory" @click="createCategory">
 								บันทึกหมวด
 							</AppButton>
 						</div>
