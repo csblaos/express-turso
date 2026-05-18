@@ -125,7 +125,9 @@ onMounted(() => {
 	<main class="min-h-[100dvh] bg-[#f6f6f3]">
 		<div class="relative min-h-[100dvh] overflow-hidden">
 			<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(201,119,69,0.12),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(151,83,44,0.08),_transparent_24%)]" />
-			<div class="relative mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+			<div
+				class="relative mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-4 pt-4 pb-[calc(5.25rem+max(1rem,env(safe-area-inset-bottom)))] sm:px-6 sm:py-6 lg:px-8 lg:py-8"
+			>
 				<header class="flex items-start justify-between gap-4 rounded-md border border-[#e7e4dd] bg-[#fffefd] px-4 py-3 sm:px-5">
 					<div class="flex min-w-0 items-center gap-3">
 						<div class="h-12 w-12 overflow-hidden rounded-md ring-1 ring-[#e7e4dd]">
@@ -233,9 +235,6 @@ onMounted(() => {
 												<p class="truncate text-base font-semibold">{{ store.name }}</p>
 												<UBadge color="neutral" variant="soft" :label="store.role_name || 'Member'" />
 											</div>
-											<p class="mt-1 truncate text-xs" :class="store.id === selectedStoreId ? 'text-primary-600' : 'text-stone-400'">
-												{{ store.id }}
-											</p>
 											<div class="mt-3 flex flex-wrap items-center gap-2">
 												<UBadge color="neutral" variant="soft" :label="store.status || 'active'" />
 												<UBadge v-if="store.currency" color="primary" variant="soft" :label="store.currency" />
@@ -252,7 +251,7 @@ onMounted(() => {
 								</div>
 							</div>
 
-							<div class="border-t border-[#efece4] px-4 py-4 sm:px-5">
+							<div class="hidden border-t border-[#efece4] px-4 py-4 sm:block sm:px-5">
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -270,6 +269,25 @@ onMounted(() => {
 							</div>
 						</div>
 					</section>
+				</div>
+
+				<div class="fixed inset-x-0 bottom-0 z-[200] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] shadow-[0_-10px_28px_rgba(31,28,24,0.10)] backdrop-blur sm:hidden">
+					<div class="mx-auto w-full max-w-6xl">
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-arrow-right-20-solid"
+							:loading="confirmPending"
+							:spin-icon-on-loading="true"
+							:disabled="storesPending || confirmPending || !selectedStoreId"
+							:block="true"
+							class="min-h-12 rounded-md font-semibold"
+							@click="confirmStore"
+						>
+							{{ confirmPending ? "กำลังเข้าสู่ร้าน" : "เข้าร้านนี้" }}
+						</AppButton>
+					</div>
 				</div>
 			</div>
 		</div>

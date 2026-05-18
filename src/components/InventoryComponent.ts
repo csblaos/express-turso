@@ -14,6 +14,10 @@ type InventoryMovementFilters = {
 	storeId?: string;
 	productId?: string;
 	limit?: number;
+	query?: string;
+	type?: string;
+	from?: string;
+	to?: string;
 };
 
 function normalizeAdjustmentInput(payload: InventoryAdjustmentInput): InventoryAdjustmentInput {

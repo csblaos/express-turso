@@ -18,6 +18,10 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	"/inventory": [
 		{ label: "สต็อก" },
 	],
+	"/inventory/history": [
+		{ label: "สต็อก", to: "/inventory" },
+		{ label: "ประวัติสต็อก" },
+	],
 	"/purchase-orders": [
 		{ label: "สั่งซื้อ" },
 	],
@@ -129,6 +133,7 @@ const segmentLabelMap: Record<string, string> = {
 	products: "สินค้า",
 	orders: "ออเดอร์",
 	inventory: "สต็อก",
+	history: "ประวัติสต็อก",
 	"purchase-orders": "สั่งซื้อ",
 	reports: "รายงาน",
 	activity: "กิจกรรม",

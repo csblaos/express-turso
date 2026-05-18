@@ -61,6 +61,25 @@ export type InventoryAdjustmentResult = {
 	movement: InventoryMovementListItem;
 };
 
+type InventoryMovementFilters = {
+	storeId?: string;
+	productId?: string;
+	limit?: number;
+	query?: string;
+	type?: string;
+	from?: string;
+	to?: string;
+};
+
+function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
+	if (!imageUrl) return null;
+	if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+	const base = String(process.env.R2_PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
+	if (!base) return imageUrl;
+	const path = imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`;
+	return `${base}${path}`;
+}
+
 export class InventoryInterface {
 	static async findBalances(filters: InventoryFilters = {}): Promise<InventoryBalanceListItem[]> {
 		const db = DbConn.getClient();
@@ -133,7 +152,13 @@ export class InventoryInterface {
 			args,
 		});
 
-		return result.rows.map((row) => row as unknown as InventoryBalanceListItem);
+		return result.rows.map((row) => {
+			const item = row as unknown as InventoryBalanceListItem;
+			return {
+				...item,
+				image_url: resolvePublicProductImageUrl(item.image_url),
+			};
+		});
 	}
 
 	static async findBalanceByProductId(storeId: string, productId: string): Promise<InventoryBalanceListItem | null> {
@@ -144,7 +169,7 @@ export class InventoryInterface {
 		return rows.find((row) => row.product_id === productId) ?? null;
 	}
 
-	static async findMovements(filters: { storeId?: string; productId?: string; limit?: number }): Promise<InventoryMovementListItem[]> {
+	static async findMovements(filters: InventoryMovementFilters): Promise<InventoryMovementListItem[]> {
 		const db = DbConn.getClient();
 		const where: string[] = [];
 		const args: InValue[] = [];
@@ -159,8 +184,40 @@ export class InventoryInterface {
 			args.push(filters.productId);
 		}
 
+		if (filters.type) {
+			const trimmed = filters.type.trim();
+			if (trimmed === "ADJUSTMENT") {
+				where.push("m.type LIKE 'ADJUSTMENT_%'");
+			} else if (trimmed) {
+				where.push("m.type = ?");
+				args.push(trimmed);
+			}
+		}
+
+		if (filters.query) {
+			const like = `%${filters.query.trim().toLowerCase()}%`;
+			where.push(`(
+				LOWER(p.name) LIKE ?
+				OR LOWER(p.sku) LIKE ?
+				OR LOWER(COALESCE(p.barcode, '')) LIKE ?
+				OR LOWER(COALESCE(m.note, '')) LIKE ?
+				OR LOWER(COALESCE(m.created_by, '')) LIKE ?
+			)`);
+			args.push(like, like, like, like, like);
+		}
+
+		if (filters.from) {
+			where.push("m.created_at >= ?");
+			args.push(filters.from);
+		}
+
+		if (filters.to) {
+			where.push("m.created_at <= ?");
+			args.push(filters.to);
+		}
+
 		const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
-		const limit = Math.max(1, Math.min(filters.limit ?? 20, 100));
+		const limit = Math.max(1, Math.min(filters.limit ?? 20, 500));
 
 		const result = await db.execute({
 			sql: `

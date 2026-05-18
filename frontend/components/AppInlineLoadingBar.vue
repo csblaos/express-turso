@@ -12,14 +12,14 @@ withDefaults(defineProps<{
 });
 </script>
 
-<template>
-	<div :class="minimal ? '' : ['overflow-hidden rounded-md', containerClass]">
-		<div :class="['app-inline-loading-bar h-[2px] w-1/3 rounded-r-full', barClass]" />
-		<div v-if="label && !minimal" class="px-4 py-3 text-sm text-stone-600">
-			{{ label }}
-		</div>
-	</div>
-</template>
+		<template>
+			<div :class="minimal ? ['overflow-hidden', containerClass] : ['overflow-hidden rounded-md', containerClass]">
+				<div :class="['app-inline-loading-bar h-[2px] w-1/3 rounded-r-full', barClass]" />
+				<div v-if="label && !minimal" class="px-4 py-3 text-sm text-stone-600">
+					{{ label }}
+				</div>
+			</div>
+		</template>
 
 <style scoped>
 @keyframes app-inline-loading-slide {

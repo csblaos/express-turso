@@ -27,6 +27,14 @@ export class ProductController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static setStatus = SyncFunction.handler(async (req: Request, res: Response) => {
+		const body = (req.body as Record<string, unknown>) || {};
+		const data = await ProductComponent.update(req.requestId, req.params.id as string, {
+			active: Number(body.active),
+		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static delete = SyncFunction.handler(async (req: Request, res: Response) => {
 		await ProductComponent.delete(req.requestId, req.params.id as string);
 		SuccessHandler.send(res, req.requestId);
@@ -58,6 +66,7 @@ export class ProductController {
 		const data = await ProductComponent.bulkCreateVariants(req.requestId, {
 			baseProductId: req.params.id as string,
 			modelName: typeof body.model_name === "string" ? String(body.model_name) : undefined,
+			includeBaseSale: body.include_base_sale === true,
 			axes: Array.isArray(body.axes) ? (body.axes as Array<{ key: string; label: string }>) : undefined,
 			variants: (body.variants as Array<Record<string, unknown>>).map((item) => ({
 				sku: String(item.sku || ""),

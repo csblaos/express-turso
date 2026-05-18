@@ -178,6 +178,15 @@
 		background: rgba(244, 239, 232, 0.16);
 	}
 
+	.scrollbar-hidden {
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+	}
+
+	.scrollbar-hidden::-webkit-scrollbar {
+		display: none;
+	}
+
 	.category-rail {
 		scroll-snap-type: x proximity;
 		mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
