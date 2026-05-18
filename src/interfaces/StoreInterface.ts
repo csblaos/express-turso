@@ -6,7 +6,12 @@ import { DbConn } from "@connections/DbConn";
 import { CreateStoreInput, Store } from "@models/Store";
 
 export class StoreInterface {
+	// Backward-compatible alias for older callers.
 	static async ensureOwnerColumn(): Promise<void> {
+		await StoreInterface.ensureColumns();
+	}
+
+	static async ensureColumns(): Promise<void> {
 		const db = DbConn.getClient();
 		const pragmaResult = await db.execute("PRAGMA table_info(stores)");
 		const existingColumns = new Set(
@@ -16,10 +21,14 @@ export class StoreInterface {
 		if (!existingColumns.has("owner_user_id")) {
 			await db.execute("ALTER TABLE stores ADD COLUMN owner_user_id TEXT");
 		}
+
+		if (!existingColumns.has("allow_negative_stock")) {
+			await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
+		}
 	}
 
 	static async findAll(ownerUserId?: string): Promise<Store[]> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const result = ownerUserId
 			? await db.execute({
@@ -31,7 +40,7 @@ export class StoreInterface {
 	}
 
 	static async findById(id: string): Promise<Store | null> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const result = await db.execute({
 			sql: "SELECT * FROM stores WHERE id = ? LIMIT 1",
@@ -43,7 +52,7 @@ export class StoreInterface {
 	}
 
 	static async countByOwnerUserId(ownerUserId: string): Promise<number> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const result = await db.execute({
 			sql: "SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
@@ -54,7 +63,7 @@ export class StoreInterface {
 	}
 
 	static async create(payload: CreateStoreInput): Promise<Store> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const id = randomUUID();
 		const insertPayload: Record<string, InValue> = {
@@ -84,7 +93,7 @@ export class StoreInterface {
 	}
 
 	static async update(id: string, data: Partial<Store>): Promise<Store> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const keys = Object.keys(data);
 		const values = Object.values(data);
 
@@ -107,7 +116,7 @@ export class StoreInterface {
 	}
 
 	static async delete(id: string): Promise<boolean> {
-		await StoreInterface.ensureOwnerColumn();
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const existing = await StoreInterface.findById(id);
 		if (!existing) return false;

@@ -100,6 +100,7 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "inventory.read", resource: "inventory", action: "read" },
 	{ key: "inventory.view", resource: "inventory", action: "view" },
 	{ key: "inventory.adjust", resource: "inventory", action: "adjust" },
+	{ key: "inventory.adjust_negative", resource: "inventory", action: "adjust_negative" },
 	{ key: "activity.read", resource: "activity", action: "read" },
 	{ key: "activity.view", resource: "activity", action: "view" },
 	{ key: "stores.read", resource: "stores", action: "read" },
@@ -180,6 +181,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"products.archive",
 			"inventory.view",
 			"inventory.adjust",
+			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
@@ -215,6 +217,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"products.update",
 			"inventory.view",
 			"inventory.adjust",
+			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
@@ -673,6 +676,18 @@ export class RbacInterface {
 			}
 
 			const availablePermissionMap = await RbacInterface.getAvailablePermissionKeyMap();
+
+			// Backfill new permissions into existing system presets without removing custom permissions.
+			for (const preset of DEFAULT_STORE_ROLE_PRESETS) {
+				const existing = rolesByName.get(normalizeRoleName(preset.name));
+				if (!existing || existing.is_system !== 1) continue;
+				const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
+					preset.permissionKeys,
+					availablePermissionMap,
+				);
+				if (compatiblePresetKeys.length === 0) continue;
+				await RbacInterface.addRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+			}
 
 			for (const preset of missingPresets) {
 				const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
@@ -1222,6 +1237,31 @@ export class RbacInterface {
 		await db.execute({
 			sql: `
 				INSERT INTO role_permissions (role_id, permission_id)
+				VALUES ${valuePlaceholders}
+			`,
+			args: insertArgs,
+		});
+	}
+
+	private static async addRolePermissionsByKeys(roleId: string, permissionKeys: string[]): Promise<void> {
+		const db = DbConn.getClient();
+		const normalizedKeys = Array.from(new Set(permissionKeys.map((key) => key.trim()).filter(Boolean)));
+		if (normalizedKeys.length === 0) return;
+
+		const placeholders = normalizedKeys.map(() => "?").join(", ");
+		const permissionResult = await db.execute({
+			sql: `SELECT * FROM permissions WHERE key IN (${placeholders})`,
+			args: normalizedKeys,
+		});
+
+		const permissions = permissionResult.rows.map((row) => mapPermissionRow(row));
+		if (permissions.length === 0) return;
+
+		const valuePlaceholders = permissions.map(() => "(?, ?)").join(", ");
+		const insertArgs: InValue[] = permissions.flatMap((permission) => [ roleId, permission.id ]);
+		await db.execute({
+			sql: `
+				INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 				VALUES ${valuePlaceholders}
 			`,
 			args: insertArgs,

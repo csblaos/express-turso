@@ -79,11 +79,12 @@ watch(passwordModalOpen, async (opened) => {
 	passwordCurrentFieldRef.value?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus();
 });
 
-function extractErrorMessage(error: unknown, fallback: string) {
-	if (typeof error === "object" && error && "data" in error) {
-		const data = Reflect.get(error, "data") as { message?: string } | undefined;
-		if (data?.message) return data.message;
-	}
+	function extractErrorMessage(error: unknown, fallback: string) {
+		if (typeof error === "object" && error && "data" in error) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const data = (error as any).data as { message?: string } | undefined;
+			if (data?.message) return data.message;
+		}
 
 	if (error instanceof Error && error.message) return error.message;
 	return fallback;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -7,21 +8,22 @@ type ApiEnvelope<T> = {
 	data: T;
 };
 
-type ApiInventoryMovement = {
-	id: string;
-	store_id: string;
-	product_id: string;
-	product_name: string;
-	product_sku: string;
-	type: string;
-	qty_base: number;
-	ref_type: string;
-	ref_id: string | null;
-	note: string | null;
-	created_by: string | null;
-	created_at: string;
-	unit_name: string | null;
-};
+	type ApiInventoryMovement = {
+		id: string;
+		store_id: string;
+		product_id: string;
+		product_name: string;
+		product_sku: string;
+		type: string;
+		qty_base: number;
+		ref_type: string;
+		ref_id: string | null;
+		note: string | null;
+		created_by: string | null;
+		created_by_name: string | null;
+		created_at: string;
+		unit_name: string | null;
+	};
 
 const { apiFetch } = useApiClient();
 const { currentStoreId, can, hydrateAuthState } = useAuthSession();
@@ -32,9 +34,10 @@ const canViewInventory = computed(() => can("inventory.view"));
 const searchQuery = ref("");
 const movementType = ref<"all" | "ADJUSTMENT" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "ADJUSTMENT_SET">("all");
 const productIdFilter = computed(() => (typeof route.query.product_id === "string" ? route.query.product_id : ""));
-const fromDate = ref("");
-const toDate = ref("");
-const limit = ref(100);
+	const fromDate = ref("");
+	const toDate = ref("");
+	const limit = ref(100);
+	const filterApplying = ref(false);
 
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -78,7 +81,7 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", {
 	timeStyle: "short",
 });
 
-function formatDate(value: string) {
+	function formatDate(value: string) {
 	try {
 		return dateFormatter.format(new Date(value));
 	} catch {
@@ -99,40 +102,91 @@ function getMovementLabel(type: string) {
 	if (type === "ADJUSTMENT_SET") return "ตั้งค่าใหม่";
 	if (type.startsWith("ADJUSTMENT")) return "ปรับสต็อก";
 	return type;
-}
+	}
 
-function formatQty(value: number) {
-	const formatter = new Intl.NumberFormat("th-TH");
-	return formatter.format(value);
-}
+	type DatePresetId = "today" | "this_week" | "last_week" | "this_month" | "last_month";
+
+	function pad2(value: number) {
+		return String(value).padStart(2, "0");
+	}
+
+	function toDateInputValue(date: Date) {
+		return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+	}
+
+	function startOfLocalDayIso(dateInputValue: string) {
+		// Convert local day boundary to UTC ISO for backend comparisons.
+		return new Date(`${dateInputValue}T00:00:00`).toISOString();
+	}
+
+	function endOfLocalDayIso(dateInputValue: string) {
+		return new Date(`${dateInputValue}T23:59:59.999`).toISOString();
+	}
+
+	function applyPreset(presetId: DatePresetId) {
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+		if (presetId === "today") {
+			const value = toDateInputValue(today);
+			fromDate.value = value;
+			toDate.value = value;
+			return;
+		}
+
+		if (presetId === "this_week" || presetId === "last_week") {
+			const day = today.getDay(); // 0=Sun..6=Sat
+			const diffToMonday = (day + 6) % 7;
+			const thisMonday = new Date(today);
+			thisMonday.setDate(thisMonday.getDate() - diffToMonday);
+
+			if (presetId === "this_week") {
+				fromDate.value = toDateInputValue(thisMonday);
+				toDate.value = toDateInputValue(today);
+				return;
+			}
+
+			const lastMonday = new Date(thisMonday);
+			lastMonday.setDate(lastMonday.getDate() - 7);
+			const lastSunday = new Date(thisMonday);
+			lastSunday.setDate(lastSunday.getDate() - 1);
+			fromDate.value = toDateInputValue(lastMonday);
+			toDate.value = toDateInputValue(lastSunday);
+			return;
+		}
+
+		if (presetId === "this_month") {
+			const first = new Date(today.getFullYear(), today.getMonth(), 1);
+			fromDate.value = toDateInputValue(first);
+			toDate.value = toDateInputValue(today);
+			return;
+		}
+
+		const firstLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+		const lastLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+		fromDate.value = toDateInputValue(firstLastMonth);
+		toDate.value = toDateInputValue(lastLastMonth);
+	}
+
+	function clearFilters() {
+		movementType.value = "all";
+		fromDate.value = "";
+		toDate.value = "";
+		limit.value = 100;
+		currentPage.value = 1;
+	}
+
+	function formatQty(value: number) {
+		const formatter = new Intl.NumberFormat("th-TH");
+		return formatter.format(value);
+	}
 
 function getMovementQtyLabel(value: number) {
 	if (value > 0) return `+${formatQty(value)}`;
 	return formatQty(value);
 }
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
-	if (typeof errorValue === "object" && errorValue) {
-		const response = Reflect.get(errorValue, "response");
-		if (typeof response === "object" && response) {
-			const data = Reflect.get(response, "_data") || Reflect.get(response, "data");
-			if (typeof data === "object" && data) {
-				const message = Reflect.get(data, "message");
-				if (typeof message === "string" && message.trim()) {
-					return message;
-				}
-			}
-		}
-	}
-
-	if (errorValue instanceof Error && errorValue.message.trim()) {
-		return errorValue.message;
-	}
-
-	return fallback;
-}
-
-function scrollListToTop() {
+	function scrollListToTop() {
 	if (!import.meta.client) return;
 	document.getElementById("app-shell-scroll-root")?.scrollTo({ top: 0, behavior: "auto" });
 }
@@ -170,33 +224,36 @@ watch(filteredMovements, (value) => {
 	}
 }, { immediate: true });
 
-async function loadHistory() {
-	if (!canViewInventory.value) return;
+	async function loadHistory() {
+		if (!canViewInventory.value) return;
 
-	movementsPending.value = true;
-	movementsError.value = null;
-	try {
-		const storeId = currentStoreId.value || "";
-		const response = await apiFetch<ApiEnvelope<ApiInventoryMovement[]>>("/inventory/movements", {
+		if (filterApplying.value) return;
+		filterApplying.value = true;
+		movementsPending.value = true;
+		movementsError.value = null;
+		try {
+			const storeId = currentStoreId.value || "";
+			const response = await apiFetch<ApiEnvelope<ApiInventoryMovement[]>>("/inventory/movements", {
 			query: {
 				store_id: storeId || undefined,
 				product_id: productIdFilter.value || undefined,
-				limit: limit.value,
-				query: searchQuery.value.trim() || undefined,
-				type: movementType.value === "all" ? undefined : movementType.value,
-				from: fromDate.value ? `${fromDate.value}T00:00:00.000Z` : undefined,
-				to: toDate.value ? `${toDate.value}T23:59:59.999Z` : undefined,
-			},
-		});
+					limit: limit.value,
+					query: searchQuery.value.trim() || undefined,
+					type: movementType.value === "all" ? undefined : movementType.value,
+					from: fromDate.value ? startOfLocalDayIso(fromDate.value) : undefined,
+					to: toDate.value ? endOfLocalDayIso(toDate.value) : undefined,
+				},
+			});
 
-		movements.value = response.data;
+			movements.value = response.data;
 	} catch (error) {
 		movements.value = [];
 		movementsError.value = resolveApiErrorMessage(error, "โหลดประวัติสต็อกไม่สำเร็จ");
-	} finally {
-		movementsPending.value = false;
+		} finally {
+			movementsPending.value = false;
+			filterApplying.value = false;
+		}
 	}
-}
 
 watch([canViewInventory, currentStoreId, productIdFilter], () => {
 	void loadHistory();
@@ -275,11 +332,46 @@ onMounted(() => {
 							</div>
 						</div>
 
-						<div class="grid gap-2 px-4 py-3">
-							<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)_minmax(180px,0.5fr)] md:items-end">
-								<div class="min-w-0">
-									<label class="mb-1 block text-[11px] font-medium text-stone-500" for="movement-type-select">
-										ประเภท
+							<div class="grid gap-2 px-4 py-3">
+								<div class="flex flex-wrap items-center justify-between gap-2">
+									<div class="flex flex-wrap items-center gap-2">
+										<span class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ช่วงเวลา</span>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('today')">วันนี้</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_week')">สัปดาห์นี้</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_week')">สัปดาห์ที่แล้ว</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_month')">เดือนนี้</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_month')">เดือนที่แล้ว</AppButton>
+									</div>
+									<div class="flex items-center gap-2">
+										<AppButton
+											color="neutral"
+											variant="ghost"
+											size="xs"
+											class="rounded-md"
+											:disabled="movementsPending"
+											@click="clearFilters"
+										>
+											ล้าง
+										</AppButton>
+										<AppButton
+											color="primary"
+											variant="solid"
+											size="xs"
+											class="rounded-md"
+											icon="i-heroicons-funnel"
+											:loading="movementsPending"
+											:spin-icon-on-loading="true"
+											@click="loadHistory"
+										>
+											ใช้ตัวกรอง
+										</AppButton>
+									</div>
+								</div>
+
+								<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)_minmax(180px,0.5fr)] md:items-end">
+									<div class="min-w-0">
+										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="movement-type-select">
+											ประเภท
 									</label>
 									<div class="relative">
 										<select
@@ -392,7 +484,7 @@ onMounted(() => {
 									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
 										<th class="border-b border-[#ece6dc] px-4 py-3">เวลา</th>
 										<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">ประเภท</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3 hidden lg:table-cell">ประเภท</th>
 										<th class="border-b border-[#ece6dc] px-4 py-3 text-right">จำนวน</th>
 										<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ทำ</th>
 										<th class="border-b border-[#ece6dc] px-4 py-3">หมายเหตุ</th>
@@ -408,21 +500,24 @@ onMounted(() => {
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
 											{{ formatDate(movement.created_at) }}
 										</td>
-										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<div class="min-w-0">
-												<p class="truncate font-semibold text-stone-950">{{ movement.product_name }}</p>
-												<p class="mt-1 truncate text-xs text-stone-500">{{ movement.product_sku }}</p>
-											</div>
-										</td>
-										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
-										</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4">
+												<div class="min-w-0">
+													<p class="truncate font-semibold text-stone-950">{{ movement.product_name }}</p>
+													<p class="mt-1 truncate text-xs text-stone-500">{{ movement.product_sku }}</p>
+													<div class="mt-2 flex flex-wrap items-center gap-2 lg:hidden">
+														<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
+													</div>
+												</div>
+											</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 hidden lg:table-cell">
+												<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
+											</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-right font-semibold tabular-nums text-stone-950 whitespace-nowrap">
 											{{ getMovementQtyLabel(movement.qty_base) }}
 										</td>
-										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
-											{{ movement.created_by || "ระบบ" }}
-										</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
+												{{ movement.created_by_name || (movement.created_by ? "ไม่พบชื่อผู้ใช้" : "ระบบ") }}
+											</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
 											{{ movement.note || "-" }}
 										</td>

@@ -1,3 +1,5 @@
+import { resolveApiErrorMessage } from "~/utils/api-errors";
+
 type ApiFetchOptions = Parameters<typeof $fetch>[1] & {
 	auth?: boolean;
 };
@@ -42,24 +44,40 @@ export function useApiClient() {
 				...rest,
 				headers: auth ? authHeaders(headers) : headers,
 			});
-		} catch (error: unknown) {
-			const statusCode = typeof error === "object" && error && "response" in error
-				? Reflect.get(error.response as object, "status")
-				: undefined;
-			if (auth && statusCode === 401) {
-				const refreshed = await refreshAccessToken();
-				if (refreshed) {
+			} catch (error: unknown) {
+				const response = typeof error === "object" && error && "response" in error
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					? (error as any).response
+					: undefined;
+				const statusCode = response && typeof response === "object" && "status" in response
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					? (response as any).status
+					: undefined;
+				if (auth && statusCode === 401) {
+					const refreshed = await refreshAccessToken();
+					if (refreshed) {
 					const retryPath = attachStoreIdToPath(path);
 					return $fetch<T>(`${runtimeConfig.public.apiBase}${retryPath}`, {
 						...rest,
 						headers: authHeaders(headers),
 					});
 				}
-				await handleAuthFailure();
+					await handleAuthFailure();
+				}
+
+				// Normalize network errors so pages won't display raw fetch messages like:
+				// `[GET] "http://...": <no response> Failed to fetch`
+				if (statusCode === undefined || statusCode === null) {
+					const message = resolveApiErrorMessage(error, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง");
+					if (message.includes("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) {
+						const normalized = Object.assign(new Error(message), { cause: error });
+						throw normalized;
+					}
+				}
+
+				throw error;
 			}
-			throw error;
 		}
-	}
 
 	return {
 		apiFetch,

@@ -64,6 +64,25 @@ export default class InventoryValidator extends ValidatorMiddleware {
 		qty_base: finiteNumber,
 		note: z.string().trim().nullish(),
 		created_by: z.string().trim().nullish(),
+	}).superRefine((value, ctx) => {
+		const qty = value.qty_base;
+		if (!Number.isFinite(qty)) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "qty_base must be a number", path: ["qty_base"] });
+			return;
+		}
+		if (!Number.isInteger(qty)) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "qty_base must be an integer", path: ["qty_base"] });
+			return;
+		}
+		if (value.mode === "set") {
+			if (qty < 0) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: "qty_base must be greater than or equal to 0", path: ["qty_base"] });
+			}
+			return;
+		}
+		if (qty <= 0) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "qty_base must be greater than 0", path: ["qty_base"] });
+		}
 	});
 
 	public static readonly list = InventoryValidator.init({

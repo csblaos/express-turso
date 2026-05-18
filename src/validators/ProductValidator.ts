@@ -17,6 +17,7 @@ const finiteNumber = z.preprocess((value) => {
 
 const optionalString = z.string().nullish();
 const optionalNumber = finiteNumber.nullish();
+const optionalLocation = z.string().trim().max(80).nullish();
 
 export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
@@ -41,6 +42,7 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_options_json: optionalString,
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
+		location: optionalLocation,
 	});
 
 	private static readonly updateBodySchema = z.object({
@@ -61,6 +63,7 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_options_json: optionalString,
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
+		location: optionalLocation,
 	});
 
 	private static readonly statusBodySchema = z.object({
