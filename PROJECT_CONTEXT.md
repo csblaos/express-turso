@@ -367,3 +367,19 @@ For current backoffice/admin page styling:
 Rule:
 
 - When matching new backoffice UI to the current project standard, prefer the latest pattern from `frontend/pages/settings/categories.vue` over older page-specific variations unless the user explicitly requests another reference page.
+
+## 15) Current product + PO UI/flow baseline
+
+- Use `/products` and `/inventory` as the current visual baseline for new backoffice work unless the user names a different page.
+- Create/edit modals for product and PO flows should keep `desktop-width="680px"` and the same header/footer treatment.
+- Money formatting must use currency symbols only:
+	- `LAK` → `₭`
+	- `THB` → `฿`
+	- `USD` → `$`
+- PO flow baseline:
+	- `Draft` = editable
+	- `Ordered` = cost-only edit allowed
+	- `Received` = locked
+	- receive options = `now / partial / later`
+- PO detail should prioritize fast open state with inline loading under the header card, not a separate loading section.
+- If a future task says `same style` for product, inventory, or PO pages, treat these as the current shared baseline first before inventing a new pattern.

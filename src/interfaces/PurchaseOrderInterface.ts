@@ -3,6 +3,9 @@ import { randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
+import { ErrorConfig } from "@configs/ErrorConfig";
+import { ProductInterface } from "@interfaces/ProductInterface";
+import { ApiError } from "@middlewares/ApiError";
 import { CreatePurchaseOrderInput, PurchaseOrder } from "@models/PurchaseOrder";
 
 export type PurchaseOrderListFilters = {
@@ -51,6 +54,11 @@ export type PurchaseOrderDetailPayment = {
 	created_at: string;
 };
 
+export type PurchaseOrderReceiveLineInput = {
+	item_id: string;
+	qty_received: number;
+};
+
 export type PurchaseOrderDetail = {
 	order: PurchaseOrderListItem;
 	items: PurchaseOrderDetailItem[];
@@ -72,8 +80,17 @@ export type PurchaseOrderCreatePayload = Omit<CreatePurchaseOrderInput, "id" | "
 	items: PurchaseOrderCreateLineInput[];
 };
 
+export type PurchaseOrderUpdatePayload = PurchaseOrderCreatePayload & {
+	updated_by?: string | null;
+};
+
 function toNumber(value: unknown): number {
 	return Number(value ?? 0);
+}
+
+function normalizeOptionalString(value?: string | null): string | null {
+	const trimmed = value?.trim();
+	return trimmed ? trimmed : null;
 }
 
 function mapOrderRow(row: Record<string, unknown>): PurchaseOrderListItem {
@@ -154,6 +171,24 @@ function mapPaymentRow(row: Record<string, unknown>): PurchaseOrderDetailPayment
 		reversed_payment_id: row.reversed_payment_id ? String(row.reversed_payment_id) : null,
 		created_by: row.created_by ? String(row.created_by) : null,
 		created_at: String(row.created_at),
+	};
+}
+
+function normalizePurchaseOrderLine(item: PurchaseOrderCreateLineInput, exchangeRate: number): PurchaseOrderCreateLineInput {
+	const unitCostPurchase = item.unit_cost_purchase === undefined ? 0 : Number(item.unit_cost_purchase);
+	const unitCostBase = item.unit_cost_base === undefined ? unitCostPurchase * exchangeRate : Number(item.unit_cost_base);
+	const landedCostPerUnit = item.landed_cost_per_unit === undefined ? unitCostPurchase * exchangeRate : Number(item.landed_cost_per_unit);
+
+	return {
+		...item,
+		product_id: item.product_id.trim(),
+		qty_ordered: Number(item.qty_ordered),
+		unit_cost_purchase: unitCostPurchase,
+		unit_cost_base: unitCostBase,
+		landed_cost_per_unit: landedCostPerUnit,
+		unit_id: normalizeOptionalString(item.unit_id),
+		multiplier_to_base: item.multiplier_to_base === undefined ? 1 : Number(item.multiplier_to_base),
+		qty_base_ordered: item.qty_base_ordered === undefined ? undefined : Number(item.qty_base_ordered),
 	};
 }
 
@@ -302,54 +337,65 @@ export class PurchaseOrderInterface {
 
 		const db = DbConn.getClient();
 		const orderResult = await db.execute({
-			sql: `
-				SELECT
-					po.*,
-					COUNT(poi.id) AS item_count,
-					COALESCE(SUM(poi.qty_ordered), 0) AS total_qty_ordered,
-					COALESCE(SUM(poi.qty_received), 0) AS total_qty_received,
-					COALESCE(SUM(poi.qty_ordered * poi.unit_cost_base), 0) + po.shipping_cost + po.other_cost AS total_estimated_base
-				FROM purchase_orders po
-				LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
-				WHERE po.id = ?
-				GROUP BY po.id
-				LIMIT 1
-			`,
+			sql: "SELECT * FROM purchase_orders WHERE id = ? LIMIT 1",
 			args: [id],
 		});
 
 		const orderRow = orderResult.rows[0] as Record<string, unknown> | undefined;
 		if (!orderRow) return null;
 
-		const itemsResult = await db.execute({
-			sql: `
-				SELECT
-					poi.*,
-					p.name AS product_name,
-					p.sku AS product_sku,
-					u.name_th AS unit_name
-				FROM purchase_order_items poi
-				LEFT JOIN products p ON p.id = poi.product_id
-				LEFT JOIN units u ON u.id = poi.unit_id
-				WHERE poi.purchase_order_id = ?
-				ORDER BY poi.id ASC
-			`,
-			args: [id],
+		const [itemsResult, paymentsResult] = await Promise.all([
+			db.execute({
+				sql: `
+					SELECT
+						poi.*,
+						p.name AS product_name,
+						p.sku AS product_sku,
+						u.name_th AS unit_name
+					FROM purchase_order_items poi
+					LEFT JOIN products p ON p.id = poi.product_id
+					LEFT JOIN units u ON u.id = poi.unit_id
+					WHERE poi.purchase_order_id = ?
+					ORDER BY poi.id ASC
+				`,
+				args: [id],
+			}),
+			db.execute({
+				sql: `
+					SELECT *
+					FROM purchase_order_payments
+					WHERE purchase_order_id = ?
+					ORDER BY paid_at DESC, created_at DESC
+				`,
+				args: [id],
+			}),
+		]);
+
+		const itemRows = itemsResult.rows.map((row) => mapDetailItemRow(row as Record<string, unknown>));
+		const summary = itemRows.reduce((accumulator, item) => {
+			accumulator.itemCount += 1;
+			accumulator.totalQtyOrdered += toNumber(item.qty_ordered);
+			accumulator.totalQtyReceived += toNumber(item.qty_received);
+			accumulator.totalEstimatedBase += toNumber(item.qty_ordered) * toNumber(item.unit_cost_base);
+			return accumulator;
+		}, {
+			itemCount: 0,
+			totalQtyOrdered: 0,
+			totalQtyReceived: 0,
+			totalEstimatedBase: 0,
 		});
 
-		const paymentsResult = await db.execute({
-			sql: `
-				SELECT *
-				FROM purchase_order_payments
-				WHERE purchase_order_id = ?
-				ORDER BY paid_at DESC, created_at DESC
-			`,
-			args: [id],
+		const order = mapOrderRow({
+			...orderRow,
+			item_count: summary.itemCount,
+			total_qty_ordered: summary.totalQtyOrdered,
+			total_qty_received: summary.totalQtyReceived,
+			total_estimated_base: summary.totalEstimatedBase + toNumber(orderRow.shipping_cost) + toNumber(orderRow.other_cost),
 		});
 
 		return {
-			order: mapOrderRow(orderRow),
-			items: itemsResult.rows.map((row) => mapDetailItemRow(row as Record<string, unknown>)),
+			order,
+			items: itemRows,
 			payments: paymentsResult.rows.map((row) => mapPaymentRow(row as Record<string, unknown>)),
 		};
 	}
@@ -360,6 +406,8 @@ export class PurchaseOrderInterface {
 		const db = DbConn.getClient();
 		const id = randomUUID();
 		const createdAt = new Date().toISOString();
+		const exchangeRate = Number(payload.exchange_rate ?? 1) || 1;
+		const normalizedItems = payload.items.map((item) => normalizePurchaseOrderLine(item, exchangeRate));
 
 		await db.execute({
 			sql: `
@@ -414,7 +462,7 @@ export class PurchaseOrderInterface {
 			],
 		});
 
-		for (const item of payload.items) {
+		for (const item of normalizedItems) {
 			const multiplier = item.multiplier_to_base ?? 1;
 			const qtyOrdered = item.qty_ordered;
 			const qtyBaseOrdered = item.qty_base_ordered ?? qtyOrdered * multiplier;
@@ -450,5 +498,215 @@ export class PurchaseOrderInterface {
 		}
 
 		return created;
+	}
+
+	static async update(id: string, payload: PurchaseOrderUpdatePayload): Promise<PurchaseOrderDetail | null> {
+		await PurchaseOrderInterface.ensureTables();
+
+		const detail = await PurchaseOrderInterface.findById(id);
+		if (!detail) return null;
+		const canEditItems = detail.order.status === "draft";
+
+		const storeId = payload.store_id?.trim() || detail.order.store_id;
+		if (storeId !== detail.order.store_id) {
+			throw ApiError.BadRequestError("store_id cannot be changed");
+		}
+
+		if (!Array.isArray(payload.items) || payload.items.length === 0) {
+			throw ApiError.BadRequestError("items must have at least one line");
+		}
+
+		if (canEditItems) {
+			for (const item of payload.items) {
+				if (!item.product_id?.trim()) {
+					throw ApiError.BadRequestError("each item requires product_id");
+				}
+
+				if (!Number.isFinite(Number(item.qty_ordered)) || Number(item.qty_ordered) <= 0) {
+					throw ApiError.BadRequestError("qty_ordered must be greater than 0");
+				}
+
+				const product = await ProductInterface.findById(item.product_id);
+				if (!product || product.store_id !== detail.order.store_id) {
+					throw ApiError.CustomError(ErrorConfig.DOMAIN.PRODUCT_NOT_FOUND);
+				}
+			}
+		}
+
+		const exchangeRate = Number(payload.exchange_rate ?? detail.order.exchange_rate ?? 1) || 1;
+		const normalizedItems = payload.items.map((item) => normalizePurchaseOrderLine(item, exchangeRate));
+		const now = new Date().toISOString();
+		const db = DbConn.getClient();
+
+		await db.execute("BEGIN");
+		try {
+			await db.execute({
+				sql: `
+					UPDATE purchase_orders
+					SET store_id = ?,
+						supplier_name = ?,
+						supplier_contact = ?,
+						purchase_currency = ?,
+						exchange_rate = ?,
+						shipping_cost = ?,
+						other_cost = ?,
+						other_cost_note = ?,
+						expected_at = ?,
+						note = ?,
+						updated_by = ?,
+						updated_at = ?,
+						exchange_rate_initial = ?,
+						shipping_cost_original = ?,
+						shipping_cost_currency = ?,
+						other_cost_original = ?,
+						other_cost_currency = ?
+					WHERE id = ?
+				`,
+				args: [
+					detail.order.store_id,
+					payload.supplier_name ?? null,
+					payload.supplier_contact ?? null,
+					payload.purchase_currency ?? detail.order.purchase_currency,
+					exchangeRate,
+					payload.shipping_cost ?? 0,
+					payload.other_cost ?? 0,
+					payload.other_cost_note ?? null,
+					payload.expected_at ?? null,
+					payload.note ?? null,
+					payload.updated_by ?? null,
+					now,
+					payload.exchange_rate_initial ?? exchangeRate,
+					payload.shipping_cost_original ?? payload.shipping_cost ?? 0,
+					payload.shipping_cost_currency ?? payload.purchase_currency ?? detail.order.purchase_currency,
+					payload.other_cost_original ?? payload.other_cost ?? 0,
+					payload.other_cost_currency ?? payload.purchase_currency ?? detail.order.purchase_currency,
+					id,
+				],
+			});
+
+			if (canEditItems) {
+				await db.execute({
+					sql: "DELETE FROM purchase_order_items WHERE purchase_order_id = ?",
+					args: [id],
+				});
+
+				for (const item of normalizedItems) {
+					const multiplier = item.multiplier_to_base ?? 1;
+					const qtyOrdered = item.qty_ordered;
+					const qtyBaseOrdered = item.qty_base_ordered ?? qtyOrdered * multiplier;
+
+					await db.execute({
+						sql: `
+							INSERT INTO purchase_order_items (
+								id, purchase_order_id, product_id, qty_ordered, qty_received,
+								unit_cost_purchase, unit_cost_base, landed_cost_per_unit, unit_id,
+								multiplier_to_base, qty_base_ordered, qty_base_received
+							) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						`,
+						args: [
+							randomUUID(),
+							id,
+							item.product_id,
+							qtyOrdered,
+							0,
+							item.unit_cost_purchase ?? 0,
+							item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
+							item.landed_cost_per_unit ?? item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
+							item.unit_id ?? null,
+							multiplier,
+							qtyBaseOrdered,
+							0,
+						],
+					});
+				}
+			}
+
+			await db.execute("COMMIT");
+		} catch (error) {
+			await db.execute("ROLLBACK");
+			throw error;
+		}
+
+		return PurchaseOrderInterface.findById(id);
+	}
+
+	static async markReceived(
+		id: string,
+		receivedAt: string,
+		receivedBy: string | null,
+		lineReceipts: PurchaseOrderReceiveLineInput[] = [],
+	): Promise<PurchaseOrderDetail | null> {
+		await PurchaseOrderInterface.ensureTables();
+		const db = DbConn.getClient();
+		const detail = await PurchaseOrderInterface.findById(id);
+		if (!detail) return null;
+		const receiptMap = new Map(lineReceipts.map((line) => [line.item_id, Number(line.qty_received)]));
+		const receiveAll = lineReceipts.length === 0;
+		let hasAnyReceived = false;
+		let hasRemaining = false;
+
+		await db.execute("BEGIN");
+		try {
+			for (const item of detail.items) {
+				const remainingQty = Math.max(0, toNumber(item.qty_ordered) - toNumber(item.qty_received));
+				const requestedQty = receiveAll ? remainingQty : Number(receiptMap.get(item.id) ?? 0);
+				if (!Number.isFinite(requestedQty) || requestedQty < 0) {
+					throw ApiError.BadRequestError("qty_received must be a valid number");
+				}
+
+				if (!receiveAll && !receiptMap.has(item.id)) {
+					continue;
+				}
+
+				if (requestedQty > remainingQty) {
+					throw ApiError.BadRequestError("qty_received cannot exceed remaining quantity");
+				}
+
+				if (requestedQty <= 0) {
+					continue;
+				}
+
+				hasAnyReceived = true;
+				const nextQtyReceived = toNumber(item.qty_received) + requestedQty;
+				const nextQtyBaseReceived = toNumber(item.qty_base_received) + (requestedQty * toNumber(item.multiplier_to_base || 1));
+
+				await db.execute({
+					sql: `
+						UPDATE purchase_order_items
+						SET qty_received = ?,
+							qty_base_received = ?
+						WHERE purchase_order_id = ? AND id = ?
+					`,
+					args: [nextQtyReceived, nextQtyBaseReceived, id, item.id],
+				});
+
+				if (nextQtyReceived < toNumber(item.qty_ordered)) {
+					hasRemaining = true;
+				}
+			}
+
+			if (!hasAnyReceived) {
+				throw ApiError.BadRequestError("receive quantity must be greater than 0");
+			}
+
+			await db.execute({
+				sql: `
+					UPDATE purchase_orders
+					SET status = ?,
+						received_at = ?,
+						updated_by = ?,
+						updated_at = ?
+					WHERE id = ?
+				`,
+				args: [hasRemaining ? "partial" : "received", detail.order.received_at ?? receivedAt, receivedBy, receivedAt, id],
+			});
+
+			await db.execute("COMMIT");
+		} catch (error) {
+			await db.execute("ROLLBACK");
+			throw error;
+		}
+
+		return PurchaseOrderInterface.findById(id);
 	}
 }

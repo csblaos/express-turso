@@ -480,15 +480,15 @@ onMounted(() => {
 							</div>
 
 							<table v-else class="min-w-[1180px] w-full border-separate border-spacing-0">
-								<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-										<th class="border-b border-[#ece6dc] px-4 py-3">เวลา</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3 hidden lg:table-cell">ประเภท</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3 text-right">จำนวน</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ทำ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">หมายเหตุ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">อ้างอิง</th>
+									<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+										<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+											<th class="border-b border-[#ece6dc] px-4 py-3">เวลา</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3 whitespace-nowrap">ประเภท</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3 text-right">จำนวน</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ทำ</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3">หมายเหตุ</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3">อ้างอิง</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -497,24 +497,21 @@ onMounted(() => {
 										:key="movement.id"
 										class="bg-white text-sm text-stone-700 transition hover:bg-primary-50"
 									>
-										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
-											{{ formatDate(movement.created_at) }}
-										</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
+												{{ formatDate(movement.created_at) }}
+											</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4">
 												<div class="min-w-0">
 													<p class="truncate font-semibold text-stone-950">{{ movement.product_name }}</p>
 													<p class="mt-1 truncate text-xs text-stone-500">{{ movement.product_sku }}</p>
-													<div class="mt-2 flex flex-wrap items-center gap-2 lg:hidden">
-														<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
-													</div>
 												</div>
 											</td>
-											<td class="border-b border-[#f1ede6] px-4 py-4 hidden lg:table-cell">
+											<td class="border-b border-[#f1ede6] px-4 py-4 whitespace-nowrap">
 												<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
 											</td>
-										<td class="border-b border-[#f1ede6] px-4 py-4 text-right font-semibold tabular-nums text-stone-950 whitespace-nowrap">
-											{{ getMovementQtyLabel(movement.qty_base) }}
-										</td>
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-right font-semibold tabular-nums text-stone-950 whitespace-nowrap">
+												{{ getMovementQtyLabel(movement.qty_base) }}
+											</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
 												{{ movement.created_by_name || (movement.created_by ? "ไม่พบชื่อผู้ใช้" : "ระบบ") }}
 											</td>

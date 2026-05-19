@@ -256,44 +256,64 @@ onMounted(async () => {
 
 							<div class="space-y-4 px-4 py-4">
 								<div class="grid gap-2 sm:grid-cols-2">
-									<button
-										type="button"
-										class="rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
-										:class="[
-											!allowNegativeStock ? 'border-primary-300 bg-primary-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
-											(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
-										]"
+										<button
+											type="button"
+											class="group rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
+											:class="[
+												!allowNegativeStock ? 'border-primary-300 bg-primary-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
+												(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
+											]"
 										:disabled="!canUpdateStorePolicy || storePending"
 										@click="allowNegativeStock = false"
-									>
-										<div class="flex items-start justify-between gap-3">
-											<div>
-												<p class="text-sm font-semibold text-stone-950">ห้ามสต็อกติดลบ</p>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ค่าแนะนำ ระบบจะบล็อกทันทีถ้าปรับแล้วจะติดลบ</p>
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div>
+													<p class="text-sm font-semibold text-stone-950">ห้ามสต็อกติดลบ</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ค่าแนะนำ ระบบจะบล็อกทันทีถ้าปรับแล้วจะติดลบ</p>
+												</div>
+												<div class="mt-0.5 flex shrink-0 items-center gap-3">
+													<span
+														class="relative inline-flex h-6 w-6 items-center justify-center rounded-full border transition"
+														:class="!allowNegativeStock
+															? 'border-primary-400 bg-primary-600'
+															: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
+													>
+														<span v-if="!allowNegativeStock" class="h-3.5 w-3.5 text-white i-heroicons-check-20-solid" />
+													</span>
+													<UIcon name="i-heroicons-lock-closed-20-solid" class="h-5 w-5 text-stone-500" />
+												</div>
 											</div>
-											<UIcon name="i-heroicons-lock-closed-20-solid" class="h-5 w-5 text-stone-500" />
-										</div>
-									</button>
+										</button>
 
-									<button
-										type="button"
-										class="rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
-										:class="[
-											allowNegativeStock ? 'border-amber-300 bg-amber-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
-											(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
-										]"
+										<button
+											type="button"
+											class="group rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
+											:class="[
+												allowNegativeStock ? 'border-amber-300 bg-amber-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
+												(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
+											]"
 										:disabled="!canUpdateStorePolicy || storePending"
 										@click="allowNegativeStock = true"
-									>
-										<div class="flex items-start justify-between gap-3">
-											<div>
-												<p class="text-sm font-semibold text-stone-950">อนุญาตให้ติดลบ</p>
-												<p class="mt-1 text-xs leading-5 text-stone-500">เหมาะกับร้านที่ต้องทำงานต่อแม้ยอดยังไม่อัปเดต</p>
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div>
+													<p class="text-sm font-semibold text-stone-950">อนุญาตให้ติดลบ</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">เหมาะกับร้านที่ต้องทำงานต่อแม้ยอดยังไม่อัปเดต</p>
+												</div>
+												<div class="mt-0.5 flex shrink-0 items-center gap-3">
+													<span
+														class="relative inline-flex h-6 w-6 items-center justify-center rounded-full border transition"
+														:class="allowNegativeStock
+															? 'border-amber-500 bg-amber-500'
+															: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
+													>
+														<span v-if="allowNegativeStock" class="h-3.5 w-3.5 text-white i-heroicons-check-20-solid" />
+													</span>
+													<UIcon name="i-heroicons-exclamation-triangle-20-solid" class="h-5 w-5 text-amber-700" />
+												</div>
 											</div>
-											<UIcon name="i-heroicons-exclamation-triangle-20-solid" class="h-5 w-5 text-amber-700" />
-										</div>
-									</button>
-								</div>
+										</button>
+									</div>
 
 								<div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
 									<p class="font-semibold">คำแนะนำ</p>

@@ -1079,7 +1079,7 @@ onMounted(() => {
 				>
 					<template #default>
 						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
 									<div class="flex items-start gap-3">
 										<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedBalance.accent }">
@@ -1294,7 +1294,7 @@ onMounted(() => {
 					@close="stopCameraScanner"
 				>
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-4 py-4">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="overflow-hidden rounded-md bg-stone-950 ring-1 ring-stone-900/10">
 								<div class="relative aspect-[4/3] w-full bg-stone-950">
 									<video
