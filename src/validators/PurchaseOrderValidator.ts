@@ -24,6 +24,16 @@ const positiveNumber = z.preprocess((value) => {
 	return value;
 }, z.number().finite("must be a number").positive("must be greater than 0"));
 
+const nonNegativeNumber = z.preprocess((value) => {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (trimmed === "") return value;
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : value;
+	}
+	return value;
+}, z.number().finite("must be a number").min(0, "must be at least 0"));
+
 const optionalString = z.string().trim().nullish();
 const optionalNumber = finiteNumber.nullish();
 
@@ -84,6 +94,14 @@ export default class PurchaseOrderValidator extends ValidatorMiddleware {
 		items: z.array(PurchaseOrderValidator.createLineSchema).min(1, "items must have at least one line"),
 	});
 
+	private static readonly receiveBodySchema = z.object({
+		note: optionalString,
+		items: z.array(z.object({
+			item_id: nonEmptyString,
+			qty_received: nonNegativeNumber,
+		})).optional(),
+	});
+
 	public static readonly list = PurchaseOrderValidator.init({
 		query: PurchaseOrderValidator.listQuerySchema,
 	});
@@ -96,5 +114,19 @@ export default class PurchaseOrderValidator extends ValidatorMiddleware {
 
 	public static readonly create = PurchaseOrderValidator.init({
 		body: PurchaseOrderValidator.createBodySchema,
+	});
+
+	public static readonly update = PurchaseOrderValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: PurchaseOrderValidator.createBodySchema,
+	});
+
+	public static readonly receive = PurchaseOrderValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: PurchaseOrderValidator.receiveBodySchema,
 	});
 }

@@ -3470,7 +3470,7 @@ onBeforeUnmount(() => {
 						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					>
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 						<input
 							ref="productImageInputRef"
 							type="file"
@@ -3867,10 +3867,10 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</AppResponsivePanel>
-			<AppResponsivePanel
-				v-if="selectedProduct"
-				v-model="productDetailOpen"
-				title="ข้อมูลสินค้า"
+				<AppResponsivePanel
+					v-if="selectedProduct"
+					v-model="productDetailOpen"
+					title="ข้อมูลสินค้า"
 				description="ดูราคา ต้นทุน หมวดสินค้า และจัดการสถานะการขาย"
 				desktop-width="680px"
 				close-button-size="md"
@@ -3879,12 +3879,12 @@ onBeforeUnmount(() => {
 				content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 				@close="closeProductDetail"
 			>
-				<template #default>
-					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
-								<div class="flex items-start gap-3">
-									<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
+					<template #default>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+									<div class="flex items-start gap-3">
+										<div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md text-2xl font-semibold text-white" :style="{ background: selectedProduct.accent }">
 										<img
 											v-if="selectedProduct.imageUrl"
 											:src="selectedProduct.imageUrl"
@@ -4212,11 +4212,11 @@ onBeforeUnmount(() => {
 				full-bleed-header
 				content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 				@close="closeEditProduct"
-			>
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
-						<input
-							ref="productEditImageInputRef"
+				>
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+							<input
+								ref="productEditImageInputRef"
 							type="file"
 							accept="image/*"
 							class="hidden"
@@ -4464,7 +4464,7 @@ onBeforeUnmount(() => {
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 			>
 				<div class="flex h-full min-h-0 flex-col">
-					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
+						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 						<div class="space-y-4 pb-6">
 							<div class="rounded-md border border-amber-200 bg-amber-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">สินค้าจะไม่แสดงใน POS</p>
@@ -4522,11 +4522,11 @@ onBeforeUnmount(() => {
 				compact-header
 				full-bleed-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
-				<div class="flex h-full min-h-0 flex-col">
-					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
-						<div class="space-y-4 pb-6">
-							<div class="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+				>
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+							<div class="space-y-4 pb-6">
+								<div class="rounded-md border border-emerald-200 bg-emerald-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">สินค้าจะกลับมาแสดงใน POS</p>
 								<p class="mt-1 text-xs leading-5 text-stone-600">
 									เหมาะสำหรับเปิดขายกลับหลังหยุดขายชั่วคราว
@@ -4584,7 +4584,7 @@ onBeforeUnmount(() => {
 						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					>
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ต้นทุนปัจจุบัน</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
@@ -4710,7 +4710,7 @@ onBeforeUnmount(() => {
 						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					>
 						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
@@ -4954,9 +4954,9 @@ onBeforeUnmount(() => {
 						full-bleed-header
 						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					>
-						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
-							<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+							<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+								<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Base unit</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.unitLabel }}</p>
 								<p class="mt-1 text-xs text-stone-500">ตัวอย่าง conversion: {{ productUnitSummary }}</p>
@@ -5052,11 +5052,11 @@ onBeforeUnmount(() => {
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
-				<div class="flex h-full min-h-0 flex-col">
-					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
-						<div class="space-y-4 pb-6">
-							<div class="rounded-md border border-error-200 bg-error-50 p-4">
+				>
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+							<div class="space-y-4 pb-6">
+								<div class="rounded-md border border-error-200 bg-error-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">ลบแบบถาวร</p>
 								<p class="mt-1 text-xs leading-5 text-stone-600">ถ้าลบแล้ว conversion นี้จะหายจากสินค้า และต้องสร้างใหม่ถ้าต้องการใช้หน่วยขายนี้อีกครั้ง</p>
 							</div>
@@ -5099,11 +5099,11 @@ onBeforeUnmount(() => {
 				compact-header
 				full-bleed-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
-			>
-				<div class="flex h-full min-h-0 flex-col">
-					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
-						<div class="space-y-4 pb-6">
-							<div class="rounded-md border border-error-200 bg-error-50 p-4">
+				>
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+							<div class="space-y-4 pb-6">
+								<div class="rounded-md border border-error-200 bg-error-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">ลบแบบซ่อน (Soft delete)</p>
 								<p class="mt-1 text-xs leading-5 text-stone-600">
 									สินค้าจะถูกซ่อนจากหน้า “สินค้า” แต่ข้อมูลเก่าที่อ้างอิง (เช่น ประวัติการขาย/เอกสาร) ยังอยู่เพื่อการตรวจสอบย้อนหลัง
@@ -5155,7 +5155,7 @@ onBeforeUnmount(() => {
 					@close="stopCameraScanner"
 				>
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-4 py-4">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div
 								v-if="cameraPermissionState !== 'granted'"
 								class="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-stone-700"
@@ -5316,26 +5316,44 @@ onBeforeUnmount(() => {
 	</AppSidebarShell>
 </template>
 
-<style>
-@media print {
-	@page {
-		/* POS sticker label (thermal) */
-		size: 58mm 40mm;
-		margin: 0;
-	}
+	<style>
+	@media print {
+		@page {
+			/* POS sticker label (thermal) */
+			size: 58mm 40mm;
+			margin: 0;
+		}
 
-	body * {
-		visibility: hidden !important;
-	}
+		html,
+		body {
+			width: 58mm;
+			height: 40mm;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			background: #fff;
+			-webkit-text-size-adjust: 100%;
+			text-size-adjust: 100%;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 
-	.barcode-print-root.barcode-print-open,
-	.barcode-print-root.barcode-print-open * {
-		visibility: visible !important;
-	}
+		body * {
+			visibility: hidden !important;
+		}
 
-	.barcode-print-root.barcode-print-open {
-		position: fixed;
-		inset: 0;
+		.barcode-print-root.barcode-print-open,
+		.barcode-print-root.barcode-print-open * {
+			visibility: visible !important;
+			-webkit-text-size-adjust: 100%;
+			text-size-adjust: 100%;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
+
+		.barcode-print-root.barcode-print-open {
+			position: fixed;
+			inset: 0;
 		display: flex !important;
 		align-items: center;
 		justify-content: center;
@@ -5349,14 +5367,16 @@ onBeforeUnmount(() => {
 		height: 40mm;
 	}
 
-	.barcode-print-label {
-		width: 58mm;
-		height: 40mm;
-		padding: 4mm;
-		border: none;
-		border-radius: 0;
+		.barcode-print-label {
+			width: 58mm;
+			height: 40mm;
+			padding: 4mm;
+			border: none;
+			border-radius: 0;
+			box-sizing: border-box;
+			overflow: hidden;
+		}
 	}
-}
 
 .barcode-print-root {
 	display: none;

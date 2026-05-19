@@ -262,3 +262,16 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 - หน้า legacy บางหน้าอาจยังมีโครงเฉพาะของตัวเองอยู่ แต่ทิศทางที่ถูกต้องคือค่อย ๆ ย้ายมาใช้ shared components
 - ถ้า AI จะสร้างหน้าใหม่ อย่าอิงจาก pattern เก่าที่เขียน shell ซ้ำในแต่ละหน้า ให้ยึด shared components ด้านบนเป็นมาตรฐานล่าสุด
+
+## 13) Current product + PO context
+
+- สไตล์ฐานที่ต้องยึดตอนนี้คือ `/products`, `/inventory`, และหน้า PO ที่ปรับแล้วให้ใกล้เคียงกัน
+- modal หลักของสินค้า/PO ใช้ `desktop-width="680px"` เป็นค่าเริ่มต้น และใช้ header/footer แบบเต็มขอบ
+- ตัวเลขเงินทั้งระบบแสดงเป็น `100₭ / 100฿ / 100$` ไม่แสดง `LAK / THB / USD` ต่อท้ายจำนวนเงิน
+- PO flow:
+	- `Draft` แก้ได้เต็ม
+	- `Ordered` แก้ได้เฉพาะต้นทุน / rate / shipping / other cost
+	- `Received` ล็อกข้อมูล
+	- รองรับ `receive now / partial / later`
+- PO detail ควรเปิดเร็วที่สุด และใช้ inline loading bar ใต้ header card เท่านั้น
+- ถ้าผู้ใช้บอกว่า `same style` โดยไม่ระบุหน้าอื่น ให้ยึด layout จาก `/products` และ `/inventory` เป็นหลัก

@@ -283,7 +283,10 @@ export class InventoryInterface {
 		return result.rows.map((row) => row as unknown as InventoryMovementListItem);
 	}
 
-	static async adjustStock(input: InventoryAdjustmentInput): Promise<InventoryAdjustmentResult> {
+	static async adjustStock(
+		input: InventoryAdjustmentInput,
+		options: { refType?: string; refId?: string | null } = {},
+	): Promise<InventoryAdjustmentResult> {
 		const db = DbConn.getClient();
 		const current = await db.execute({
 			sql: `
@@ -309,6 +312,7 @@ export class InventoryInterface {
 		const delta = input.mode === "set" ? nextOnHand - currentOnHand : input.mode === "increment" ? qty : -qty;
 		const now = new Date().toISOString();
 		const movementId = randomUUID();
+		const refType = options.refType || "manual_adjustment";
 		const movementType = input.mode === "set"
 			? "ADJUSTMENT_SET"
 			: input.mode === "increment"
@@ -362,8 +366,8 @@ export class InventoryInterface {
 				input.product_id,
 				movementType,
 				delta,
-				"manual_adjustment",
-				null,
+				refType,
+				options.refId ?? null,
 				input.note ?? null,
 				input.created_by ?? null,
 				now,

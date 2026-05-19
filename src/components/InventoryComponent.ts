@@ -44,7 +44,7 @@ export class InventoryComponent {
 	static async adjust(
 		requestId: string,
 		payload: InventoryAdjustmentInput,
-		options: { allowNegativeStock?: boolean } = {},
+		options: { allowNegativeStock?: boolean; refType?: string; refId?: string | null } = {},
 	): Promise<InventoryAdjustmentResult> {
 		void requestId;
 		const input = normalizeAdjustmentInput(payload);
@@ -86,6 +86,9 @@ export class InventoryComponent {
 			}
 		}
 
-		return InventoryInterface.adjustStock(input);
+		return InventoryInterface.adjustStock(input, {
+			refType: options.refType,
+			refId: options.refId,
+		});
 	}
 }
