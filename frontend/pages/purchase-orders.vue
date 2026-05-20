@@ -145,6 +145,7 @@ const detailError = ref<string | null>(null);
 const detailOpen = ref(false);
 const receiveOpen = ref(false);
 const receiveSaving = ref(false);
+const purchaseOrderOrderedSaving = ref(false);
 const receiveMode = ref<"now" | "partial" | "later">("now");
 const receiveLines = ref<ReceiveLineForm[]>([]);
 const createOpen = ref(false);
@@ -175,6 +176,7 @@ const createForm = reactive({
 });
 
 const numberFormatter = new Intl.NumberFormat("th-TH");
+const receiveQtyFormatter = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
 	dateStyle: "medium",
 	timeStyle: "short",
@@ -197,6 +199,7 @@ const paginatedOrders = computed(() => {
 	const startIndex = (currentPage.value - 1) * pageSize.value;
 	return orders.value.slice(startIndex, startIndex + pageSize.value);
 });
+const showReceiveLaterOption = computed(() => selectedOrderDetail.value?.order.status !== "arrived");
 const effectiveStoreId = computed(() => (
 	currentStoreId.value?.trim()
 	|| createForm.storeId?.trim()
@@ -270,6 +273,22 @@ function showToast(message: string) {
 	appToast.info({ title: message });
 }
 
+async function copyToClipboard(text: string, toastTitle: string) {
+	const value = String(text || "").trim();
+	if (!value) return;
+	try {
+		await navigator.clipboard.writeText(value);
+		showToast(toastTitle);
+	} catch {
+		showToast("คัดลอกไม่สำเร็จ");
+	}
+}
+
+async function copySupplierContact() {
+	if (!selectedOrderDetail.value?.order.supplier_contact) return;
+	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, "คัดลอก Supplier contact แล้ว");
+}
+
 async function ensurePurchaseOrderAuthPermissionReady() {
 	hydrateAuthState();
 	if (!accessToken.value) {
@@ -323,8 +342,20 @@ function toDatetimeLocalInput(value?: string | null) {
 function statusColor(status: string) {
 	if (status === "received") return "success";
 	if (status === "ordered" || status === "shipped") return "info";
+	if (status === "arrived") return "warning";
 	if (status === "cancelled") return "error";
 	return "warning";
+}
+
+function statusLabel(status: string) {
+	if (status === "draft") return "ร่าง";
+	if (status === "ordered") return "สั่งซื้อแล้ว";
+	if (status === "shipped") return "ส่งแล้ว";
+	if (status === "arrived") return "รอรับสต็อก";
+	if (status === "partial") return "รับบางส่วน";
+	if (status === "received") return "รับครบแล้ว";
+	if (status === "cancelled") return "ยกเลิก";
+	return status;
 }
 
 function paymentStatusColor(status: string) {
@@ -496,7 +527,7 @@ function openReceiveFlow() {
 			orderedQty,
 			receivedQty,
 			remainingQty,
-			receiveQty: String(remainingQty),
+			receiveQty: receiveQtyFormatter.format(remainingQty),
 		};
 	});
 	receiveOpen.value = true;
@@ -505,7 +536,7 @@ function openReceiveFlow() {
 function fillAllReceiveNow() {
 	receiveLines.value = receiveLines.value.map((line) => ({
 		...line,
-		receiveQty: String(line.remainingQty),
+		receiveQty: receiveQtyFormatter.format(line.remainingQty),
 	}));
 }
 
@@ -518,9 +549,30 @@ function selectReceiveMode(mode: typeof receiveMode.value) {
 	if (mode === "partial") {
 		receiveLines.value = receiveLines.value.map((line) => ({
 			...line,
-			receiveQty: String(Math.max(0, Math.min(Number(line.receiveQty || 0), line.remainingQty))),
+			receiveQty: receiveQtyFormatter.format(Math.max(0, Math.min(parseReceiveQty(line.receiveQty), line.remainingQty))),
 		}));
 	}
+}
+
+function parseReceiveQty(value: string | number | null | undefined) {
+	const rawValue = String(value ?? "").replace(/\s+/g, "").replace(/,/g, "");
+	const normalized = rawValue.replace(/\D/g, "");
+	return Number(normalized || 0);
+}
+
+function formatReceiveQty(value: string | number | null | undefined) {
+	return receiveQtyFormatter.format(Math.max(0, parseReceiveQty(value)));
+}
+
+function handleReceiveQtyInput(line: ReceiveLineForm, value: string | number) {
+	const nextValue = formatReceiveQty(value);
+	if (line.receiveQty !== nextValue) {
+		line.receiveQty = nextValue;
+	}
+}
+
+function setReceiveQtyToMax(line: ReceiveLineForm) {
+	line.receiveQty = receiveQtyFormatter.format(line.remainingQty);
 }
 
 async function confirmReceiveAllNow() {
@@ -532,8 +584,7 @@ async function confirmReceiveAllNow() {
 async function confirmReceiveSelectedOrder() {
 	if (!selectedOrderDetail.value) return;
 	if (receiveMode.value === "later") {
-		receiveOpen.value = false;
-		showToast("ยังไม่รับเข้าสต็อกตอนนี้");
+		await confirmMarkPurchaseOrderArrived();
 		return;
 	}
 	if (receiveMode.value === "now") {
@@ -543,7 +594,7 @@ async function confirmReceiveSelectedOrder() {
 	const payloadItems = receiveLines.value
 		.map((line) => ({
 			item_id: line.itemId,
-			qty_received: Number(line.receiveQty || 0),
+			qty_received: parseReceiveQty(line.receiveQty),
 		}))
 		.filter((line) => Number.isFinite(line.qty_received) && line.qty_received > 0);
 	if (!payloadItems.length) {
@@ -565,6 +616,43 @@ async function confirmReceiveSelectedOrder() {
 		showToast(err instanceof Error ? err.message : "รับสินค้าไม่สำเร็จ");
 	} finally {
 		receiveSaving.value = false;
+	}
+}
+
+async function confirmMarkPurchaseOrderArrived() {
+	if (!selectedOrderDetail.value) return;
+	receiveSaving.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${selectedOrderDetail.value.order.id}/arrived`, {
+			method: "POST",
+		});
+		selectedOrderDetail.value = response.data;
+		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
+		showToast("บันทึกเป็นรอรับสต็อกแล้ว");
+		receiveOpen.value = false;
+		await loadOrders();
+	} catch (err) {
+		showToast(err instanceof Error ? err.message : "บันทึกสถานะรอรับสต็อกไม่สำเร็จ");
+	} finally {
+		receiveSaving.value = false;
+	}
+}
+
+async function confirmMarkPurchaseOrderOrdered() {
+	if (!selectedOrderDetail.value || selectedOrderDetail.value.order.status !== "draft") return;
+	purchaseOrderOrderedSaving.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${selectedOrderDetail.value.order.id}/ordered`, {
+			method: "POST",
+		});
+		selectedOrderDetail.value = response.data;
+		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
+		showToast("ยืนยันสั่งซื้อแล้ว");
+		await loadOrders();
+	} catch (err) {
+		showToast(err instanceof Error ? err.message : "ยืนยันสั่งซื้อไม่สำเร็จ");
+	} finally {
+		purchaseOrderOrderedSaving.value = false;
 	}
 }
 
@@ -922,11 +1010,12 @@ async function submitEditPurchaseOrder() {
 													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 												>
 													<option value="all">ทุกสถานะ</option>
-													<option value="draft">Draft</option>
-													<option value="ordered">Ordered</option>
-													<option value="shipped">Shipped</option>
-													<option value="received">Received</option>
-													<option value="cancelled">Cancelled</option>
+													<option value="draft">ร่าง</option>
+													<option value="ordered">สั่งซื้อแล้ว</option>
+													<option value="shipped">ส่งแล้ว</option>
+													<option value="arrived">รอรับสต็อก</option>
+													<option value="received">รับครบแล้ว</option>
+													<option value="cancelled">ยกเลิก</option>
 												</select>
 												<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 											</div>
@@ -1005,7 +1094,7 @@ async function submitEditPurchaseOrder() {
 													<p v-if="order.supplier_contact" class="mt-1 text-xs text-stone-500">{{ order.supplier_contact }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
-													<UBadge :color="statusColor(order.status)" variant="soft" :label="order.status" />
+													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
 													<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />
@@ -1114,12 +1203,13 @@ async function submitEditPurchaseOrder() {
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
-					content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+					full-bleed-header
+					content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
 					@close="closeDetail"
 				>
 					<template #default>
-						<div class="flex h-full min-h-0 flex-col">
-							<div class="scrollbar-soft min-h-0 flex-1 space-y-3 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div v-if="selectedOrder" class="relative rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-start gap-3">
 								<div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
@@ -1132,7 +1222,7 @@ async function submitEditPurchaseOrder() {
 											<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.supplier_name || "ไม่ระบุ supplier" }}</p>
 										</div>
 										<div class="flex shrink-0 flex-wrap items-center gap-2">
-											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="selectedOrder.status" />
+											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="statusLabel(selectedOrder.status)" />
 											<AppButton
 												v-if="selectedOrder.status !== 'received' && selectedOrder.status !== 'cancelled'"
 												color="neutral"
@@ -1151,20 +1241,6 @@ async function submitEditPurchaseOrder() {
 										<UBadge :color="paymentStatusColor(selectedOrder.payment_status)" variant="soft" :label="selectedOrder.payment_status" />
 										<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrder.purchase_currency) || selectedOrder.purchase_currency" />
 										<UBadge color="neutral" variant="soft" :label="`${selectedOrder.item_count} รายการ`" />
-									</div>
-									<div class="mt-4 flex flex-wrap gap-2">
-										<AppButton
-											v-if="selectedOrder.status !== 'draft' && selectedOrder.status !== 'received' && selectedOrder.status !== 'cancelled'"
-											color="primary"
-											variant="soft"
-											size="md"
-											icon="i-heroicons-arrow-down-tray-20-solid"
-											class="rounded-md"
-											:disabled="!canReceivePurchaseOrder"
-											@click="openReceiveFlow"
-										>
-											รับของเข้าสต็อก
-										</AppButton>
 									</div>
 									<div v-if="detailPending" class="pointer-events-none absolute inset-x-0 bottom-0">
 										<AppInlineLoadingBar minimal container-class="bg-transparent" />
@@ -1226,7 +1302,24 @@ async function submitEditPurchaseOrder() {
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 											<dt class="text-stone-500">Supplier</dt>
-											<dd class="text-right font-medium text-stone-900">{{ selectedOrderDetail.order.supplier_name || "-" }}</dd>
+											<dd class="text-right font-medium text-stone-900">
+												{{ selectedOrderDetail.order.supplier_name || "-" }}
+												<div v-if="selectedOrderDetail.order.supplier_contact" class="mt-2 flex items-center justify-end gap-2">
+													<span class="text-xs font-normal text-stone-500">{{ selectedOrderDetail.order.supplier_contact }}</span>
+													<AppButton
+														color="neutral"
+														variant="soft"
+														size="xs"
+														icon="i-heroicons-clipboard-document-20-solid"
+														class="rounded-md"
+														type="button"
+														title="คัดลอก contact supplier"
+														@click="copySupplierContact"
+													>
+														คัดลอก
+													</AppButton>
+												</div>
+											</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 											<dt class="text-stone-500">คาดรับ</dt>
@@ -1288,6 +1381,56 @@ async function submitEditPurchaseOrder() {
 								</div>
 								</template>
 							</div>
+
+									<div
+										class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+										:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+									>
+										<div
+											class="grid w-full gap-2"
+											:class="selectedOrderDetail && selectedOrderDetail.order.status !== 'received' && selectedOrderDetail.order.status !== 'cancelled'
+												? 'grid-cols-2'
+												: 'grid-cols-1'"
+										>
+											<AppButton
+												color="neutral"
+												variant="soft"
+											size="md"
+											:block="true"
+												@click="closeDetail"
+											>
+												ปิด
+											</AppButton>
+											<AppButton
+												v-if="selectedOrderDetail && selectedOrderDetail.order.status === 'draft'"
+												color="primary"
+												variant="solid"
+												size="md"
+												icon="i-heroicons-check-badge-20-solid"
+												class="rounded-md"
+												:loading="purchaseOrderOrderedSaving"
+												:spin-icon-on-loading="true"
+												:disabled="purchaseOrderOrderedSaving || !authPermissionReady || !canUpdatePurchaseOrder"
+												:block="true"
+												@click="confirmMarkPurchaseOrderOrdered"
+											>
+												ยืนยันสั่งซื้อ
+											</AppButton>
+											<AppButton
+												v-else-if="selectedOrderDetail && selectedOrderDetail.order.status !== 'received' && selectedOrderDetail.order.status !== 'cancelled'"
+												color="primary"
+												variant="solid"
+												size="md"
+												icon="i-heroicons-arrow-down-tray-20-solid"
+												class="rounded-md"
+												:disabled="!canReceivePurchaseOrder"
+												:block="true"
+												@click="openReceiveFlow"
+											>
+												รับของเข้าสต็อก
+											</AppButton>
+										</div>
+									</div>
 						</div>
 					</template>
 					</AppResponsivePanel>
@@ -1305,7 +1448,7 @@ async function submitEditPurchaseOrder() {
 					>
 						<template #default>
 							<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
-								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-1 sm:py-2">
+								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
@@ -1320,10 +1463,10 @@ async function submitEditPurchaseOrder() {
 											<UBadge
 												color="neutral"
 												variant="soft"
-												:label="receiveMode === 'now' ? 'รับครบ' : receiveMode === 'partial' ? 'รับบางส่วน' : 'ยังไม่รับ'"
+												:label="receiveMode === 'now' ? 'รับครบ' : receiveMode === 'partial' ? 'รับบางส่วน' : 'รอรับสต็อก'"
 											/>
 										</div>
-										<div class="mt-4 grid gap-2 md:grid-cols-3">
+										<div class="mt-4 grid gap-2" :class="showReceiveLaterOption ? 'md:grid-cols-3' : 'md:grid-cols-2'">
 											<button
 												type="button"
 												class="group rounded-md border px-4 py-3 text-left transition"
@@ -1363,6 +1506,7 @@ async function submitEditPurchaseOrder() {
 												</div>
 											</button>
 											<button
+												v-if="showReceiveLaterOption"
 												type="button"
 												class="group rounded-md border px-4 py-3 text-left transition"
 												:class="receiveMode === 'later'
@@ -1373,7 +1517,7 @@ async function submitEditPurchaseOrder() {
 												<div class="flex items-start justify-between gap-3">
 													<div class="min-w-0">
 														<p class="text-sm font-semibold text-stone-950">ยังไม่รับตอนนี้</p>
-														<p class="mt-1 text-xs leading-5 text-stone-600">เก็บ PO ไว้ก่อน ยังไม่ตัด stock ตอนนี้</p>
+														<p class="mt-1 text-xs leading-5 text-stone-600">เก็บ PO ไว้ก่อน แล้วบันทึกเป็นรอรับสต็อก</p>
 													</div>
 													<div
 														class="mt-0.5 h-4 w-4 shrink-0 rounded-full border"
@@ -1385,7 +1529,7 @@ async function submitEditPurchaseOrder() {
 										<div class="mt-3 rounded-md border border-dashed border-neutral-200 bg-white px-4 py-3 text-xs leading-5 text-stone-600">
 											<span v-if="receiveMode === 'now'">ระบบจะรับจำนวนที่ค้างทั้งหมดเข้าสต็อกทันที</span>
 											<span v-else-if="receiveMode === 'partial'">กรอกจำนวนรับจริงในแต่ละรายการ แล้วระบบจะรับเข้า stock ตามจำนวนที่ใส่</span>
-											<span v-else>PO จะยังไม่ตัด stock ตอนนี้ คุณกลับมารับภายหลังได้จาก modal เดิม</span>
+											<span v-else>PO จะถูกบันทึกเป็นรอรับสต็อก และกลับมารับภายหลังได้จาก modal เดิม</span>
 										</div>
 									</div>
 
@@ -1428,14 +1572,28 @@ async function submitEditPurchaseOrder() {
 												<div class="mt-3">
 													<label class="mb-2 block text-xs font-medium text-stone-500">รับจำนวน</label>
 													<UInput
-														v-model="line.receiveQty"
-														type="number"
-														min="0"
-														step="1"
+														:model-value="line.receiveQty"
+														type="text"
+														inputmode="numeric"
+														autocomplete="off"
 														size="lg"
 														color="neutral"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
-													/>
+														@update:model-value="(value) => handleReceiveQtyInput(line, value)"
+													>
+														<template #trailing>
+															<AppButton
+																color="neutral"
+																variant="soft"
+																size="xs"
+																class="rounded-md px-2.5 text-[11px] font-medium leading-none"
+																:disabled="line.remainingQty <= 0"
+																@click="setReceiveQtyToMax(line)"
+															>
+																Max
+															</AppButton>
+														</template>
+													</UInput>
 												</div>
 											</div>
 										</div>
@@ -1461,8 +1619,11 @@ async function submitEditPurchaseOrder() {
 									</div>
 								</div>
 
-								<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-									<div class="grid w-full grid-cols-2 gap-2">
+									<div
+										class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+										:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+									>
+										<div class="grid w-full grid-cols-2 gap-2">
 										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="receiveOpen = false">ยกเลิก</AppButton>
 										<AppButton
 											color="primary"
@@ -1475,7 +1636,7 @@ async function submitEditPurchaseOrder() {
 											:block="true"
 											@click="confirmReceiveSelectedOrder"
 										>
-											{{ receiveMode === 'now' ? 'ยืนยันรับเข้าสต็อก' : receiveMode === 'partial' ? 'ยืนยันรับบางส่วน' : 'ยืนยันเพื่อปิด' }}
+											{{ receiveMode === 'now' ? 'ยืนยันรับเข้าสต็อก' : receiveMode === 'partial' ? 'ยืนยันรับบางส่วน' : 'บันทึกเป็นรอรับสต็อก' }}
 										</AppButton>
 									</div>
 								</div>

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 
 import { StoreComponent } from "@components/StoreComponent";
+import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateStoreInput } from "@models/Store";
@@ -65,6 +66,14 @@ export class StoreController {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
 		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static getCostMethodHistory = SyncFunction.handler(async (req: Request, res: Response) => {
+		const limitRaw = req.query.limit;
+		const parsed = typeof limitRaw === "string" ? Number(limitRaw) : Number.NaN;
+		const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 50) : 10;
+		const data = await StoreCostMethodHistoryInterface.findByStoreId(req.params.id as string, { limit });
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 

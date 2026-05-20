@@ -104,11 +104,12 @@ const storeCurrency = computed(() => {
 
 const typeOptions: Array<{ id: typeof statusFilter.value; label: string }> = [
 	{ id: "all", label: "ทุกสถานะ" },
-	{ id: "draft", label: "Draft" },
-	{ id: "ordered", label: "Ordered" },
-	{ id: "shipped", label: "Shipped" },
-	{ id: "received", label: "Received" },
-	{ id: "cancelled", label: "Cancelled" },
+	{ id: "draft", label: "ร่าง" },
+	{ id: "ordered", label: "สั่งซื้อแล้ว" },
+	{ id: "shipped", label: "ส่งแล้ว" },
+	{ id: "arrived", label: "รอรับสต็อก" },
+	{ id: "received", label: "รับครบแล้ว" },
+	{ id: "cancelled", label: "ยกเลิก" },
 ];
 
 const paymentOptions: Array<{ id: typeof paymentFilter.value; label: string }> = [
@@ -199,8 +200,20 @@ function statusColor(status: string) {
 	if (status === "received") return "success";
 	if (status === "shipped") return "info";
 	if (status === "ordered") return "primary";
+	if (status === "arrived") return "warning";
 	if (status === "cancelled") return "error";
 	return "neutral";
+}
+
+function statusLabel(status: string) {
+	if (status === "draft") return "ร่าง";
+	if (status === "ordered") return "สั่งซื้อแล้ว";
+	if (status === "shipped") return "ส่งแล้ว";
+	if (status === "arrived") return "รอรับสต็อก";
+	if (status === "partial") return "รับบางส่วน";
+	if (status === "received") return "รับครบแล้ว";
+	if (status === "cancelled") return "ยกเลิก";
+	return status;
 }
 
 function paymentStatusColor(status: string) {
@@ -483,7 +496,7 @@ onMounted(() => {
 											<p v-if="order.supplier_contact" class="mt-1 text-xs text-stone-500">{{ order.supplier_contact }}</p>
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<UBadge :color="statusColor(order.status)" variant="soft" :label="order.status" />
+											<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
 											<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />

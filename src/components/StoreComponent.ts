@@ -1,8 +1,10 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { DbConn } from "@connections/DbConn";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { StoreInterface } from "@interfaces/StoreInterface";
+import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { CreateStoreInput, Store } from "@models/Store";
 
@@ -18,6 +20,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"vat_enabled",
 	"vat_rate",
 	"vat_mode",
+	"cost_method",
 	"out_stock_threshold",
 	"low_stock_threshold",
 	"allow_negative_stock",
@@ -36,6 +39,8 @@ type StoreActor = {
 	userId: string;
 	systemRole: string;
 };
+
+const ALLOWED_COST_METHODS = new Set([ "average", "fifo" ]);
 
 function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
 	const result: Partial<Record<UpdatableStoreKey, Store[UpdatableStoreKey]>> = {};
@@ -136,10 +141,39 @@ export class StoreComponent {
 		await StoreComponent.assertAccess(existing, actor);
 
 		const updateData = pickUpdateFields(data || {});
+		if (typeof updateData.cost_method === "string" && !ALLOWED_COST_METHODS.has(updateData.cost_method)) {
+			throw ApiError.BadRequestError("Invalid cost method");
+		}
 		if (actor.systemRole !== "system_admin") {
 			delete (updateData as Partial<Store>).owner_user_id;
 		}
-		return StoreInterface.update(id, updateData);
+
+		const costMethodChanged = typeof updateData.cost_method === "string" && updateData.cost_method !== existing.cost_method;
+		const db = DbConn.getClient();
+		const transaction = await db.transaction("write");
+		try {
+			const updated = await StoreInterface.update(id, updateData, transaction);
+			if (costMethodChanged) {
+				await StoreCostMethodHistoryInterface.insert({
+					store_id: id,
+					cost_method: updated.cost_method,
+					actor_user_id: actor.userId,
+				}, transaction);
+			}
+			await transaction.commit();
+			return updated;
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
 	}
 
 	static async delete(requestId: string, id: string, actor: StoreActor): Promise<void> {

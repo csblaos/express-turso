@@ -33,6 +33,9 @@ It replaces the previous context docs:
 - Observability:
 	- request-id request/response log per request
 	- (optional) tracer can be added later if needed
+- Transaction rule:
+	- multi-step writes that must stay atomic should use a single libSQL write transaction (`db.transaction("write")`) with `COMMIT` / `ROLLBACK`
+	- use this for flows that touch more than one table or do `DELETE + INSERT` in the same action
 
 ---
 
@@ -381,5 +384,7 @@ Rule:
 	- `Ordered` = cost-only edit allowed
 	- `Received` = locked
 	- receive options = `now / partial / later`
+	- `later` maps to `arrived` so the PO waits for stock receiving without stock movement
+- Store finance now includes `cost_method` (`average` / `fifo`) with a small change history; POS price stays unchanged
 - PO detail should prioritize fast open state with inline loading under the header card, not a separate loading section.
 - If a future task says `same style` for product, inventory, or PO pages, treat these as the current shared baseline first before inventing a new pattern.

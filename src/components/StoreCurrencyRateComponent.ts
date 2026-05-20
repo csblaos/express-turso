@@ -1,3 +1,4 @@
+import { DbConn } from "@connections/DbConn";
 import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreCurrencyRateHistoryInterface } from "@interfaces/StoreCurrencyRateHistoryInterface";
 import { ApiError } from "@middlewares/ApiError";
@@ -84,19 +85,35 @@ export class StoreCurrencyRateComponent {
 		const previousRows = await StoreCurrencyRateInterface.findByStoreId(storeId);
 		const previousMap = new Map(previousRows.map((row) => [ row.currency, row.rate_to_base ]));
 
-		await StoreCurrencyRateInterface.replaceRates(storeId, nextRates);
+		const db = DbConn.getClient();
+		const transaction = await db.transaction("write");
+		try {
+			await StoreCurrencyRateInterface.replaceRates(storeId, nextRates, transaction);
 
-		const historyItems = nextRates
-			.filter((row) => row.currency !== baseCurrency)
-			.filter((row) => previousMap.get(row.currency) !== row.rate_to_base)
-			.map((row) => ({
-				store_id: storeId,
-				base_currency: baseCurrency,
-				currency: row.currency,
-				rate_to_base: row.rate_to_base,
-				actor_user_id: actor.userId || null,
-			}));
-		await StoreCurrencyRateHistoryInterface.insertMany(historyItems);
+			const historyItems = nextRates
+				.filter((row) => row.currency !== baseCurrency)
+				.filter((row) => previousMap.get(row.currency) !== row.rate_to_base)
+				.map((row) => ({
+					store_id: storeId,
+					base_currency: baseCurrency,
+					currency: row.currency,
+					rate_to_base: row.rate_to_base,
+					actor_user_id: actor.userId || null,
+				}));
+			await StoreCurrencyRateHistoryInterface.insertMany(historyItems, transaction);
+			await transaction.commit();
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
 
 		return Object.fromEntries(nextRates.map((row) => [ row.currency, row.rate_to_base ]));
 	}

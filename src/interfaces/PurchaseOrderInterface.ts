@@ -4,6 +4,7 @@ import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { InventoryInterface } from "@interfaces/InventoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreatePurchaseOrderInput, PurchaseOrder } from "@models/PurchaseOrder";
@@ -83,6 +84,8 @@ export type PurchaseOrderCreatePayload = Omit<CreatePurchaseOrderInput, "id" | "
 export type PurchaseOrderUpdatePayload = PurchaseOrderCreatePayload & {
 	updated_by?: string | null;
 };
+
+type SqlExecutor = Pick<ReturnType<typeof DbConn.getClient>, "execute">;
 
 function toNumber(value: unknown): number {
 	return Number(value ?? 0);
@@ -332,10 +335,10 @@ export class PurchaseOrderInterface {
 		return result.rows.map((row) => mapOrderRow(row as Record<string, unknown>));
 	}
 
-	static async findById(id: string): Promise<PurchaseOrderDetail | null> {
+	static async findById(id: string, executor?: SqlExecutor): Promise<PurchaseOrderDetail | null> {
 		await PurchaseOrderInterface.ensureTables();
 
-		const db = DbConn.getClient();
+		const db = executor || DbConn.getClient();
 		const orderResult = await db.execute({
 			sql: "SELECT * FROM purchase_orders WHERE id = ? LIMIT 1",
 			args: [id],
@@ -409,87 +412,103 @@ export class PurchaseOrderInterface {
 		const exchangeRate = Number(payload.exchange_rate ?? 1) || 1;
 		const normalizedItems = payload.items.map((item) => normalizePurchaseOrderLine(item, exchangeRate));
 
-		await db.execute({
-			sql: `
-				INSERT INTO purchase_orders (
-					id, store_id, po_number, supplier_name, supplier_contact, purchase_currency,
-					exchange_rate, shipping_cost, other_cost, other_cost_note, status,
-					ordered_at, expected_at, shipped_at, received_at, tracking_info, note,
-					created_by, created_at, cancelled_at, updated_by, updated_at,
-					exchange_rate_locked_at, exchange_rate_locked_by, exchange_rate_lock_note,
-					exchange_rate_initial, payment_status, paid_at, paid_by, payment_reference,
-					payment_note, due_date, shipping_cost_original, shipping_cost_currency,
-					other_cost_original, other_cost_currency
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`,
-			args: [
-				id,
-				payload.store_id,
-				payload.po_number,
-				payload.supplier_name ?? null,
-				payload.supplier_contact ?? null,
-				payload.purchase_currency ?? "LAK",
-				payload.exchange_rate ?? 1,
-				payload.shipping_cost ?? 0,
-				payload.other_cost ?? 0,
-				payload.other_cost_note ?? null,
-				payload.status ?? "draft",
-				payload.ordered_at ?? null,
-				payload.expected_at ?? null,
-				payload.shipped_at ?? null,
-				payload.received_at ?? null,
-				payload.tracking_info ?? null,
-				payload.note ?? null,
-				payload.created_by ?? null,
-				createdAt,
-				payload.cancelled_at ?? null,
-				payload.updated_by ?? null,
-				payload.updated_at ?? null,
-				payload.exchange_rate_locked_at ?? null,
-				payload.exchange_rate_locked_by ?? null,
-				payload.exchange_rate_lock_note ?? null,
-				payload.exchange_rate_initial ?? payload.exchange_rate ?? 1,
-				payload.payment_status ?? "unpaid",
-				payload.paid_at ?? null,
-				payload.paid_by ?? null,
-				payload.payment_reference ?? null,
-				payload.payment_note ?? null,
-				payload.due_date ?? null,
-				payload.shipping_cost_original ?? payload.shipping_cost ?? 0,
-				payload.shipping_cost_currency ?? payload.purchase_currency ?? "LAK",
-				payload.other_cost_original ?? payload.other_cost ?? 0,
-				payload.other_cost_currency ?? payload.purchase_currency ?? "LAK",
-			],
-		});
-
-		for (const item of normalizedItems) {
-			const multiplier = item.multiplier_to_base ?? 1;
-			const qtyOrdered = item.qty_ordered;
-			const qtyBaseOrdered = item.qty_base_ordered ?? qtyOrdered * multiplier;
-
-			await db.execute({
+		const transaction = await db.transaction("write");
+		try {
+			await transaction.execute({
 				sql: `
-					INSERT INTO purchase_order_items (
-						id, purchase_order_id, product_id, qty_ordered, qty_received,
-						unit_cost_purchase, unit_cost_base, landed_cost_per_unit, unit_id,
-						multiplier_to_base, qty_base_ordered, qty_base_received
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					INSERT INTO purchase_orders (
+						id, store_id, po_number, supplier_name, supplier_contact, purchase_currency,
+						exchange_rate, shipping_cost, other_cost, other_cost_note, status,
+						ordered_at, expected_at, shipped_at, received_at, tracking_info, note,
+						created_by, created_at, cancelled_at, updated_by, updated_at,
+						exchange_rate_locked_at, exchange_rate_locked_by, exchange_rate_lock_note,
+						exchange_rate_initial, payment_status, paid_at, paid_by, payment_reference,
+						payment_note, due_date, shipping_cost_original, shipping_cost_currency,
+						other_cost_original, other_cost_currency
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 				args: [
-					randomUUID(),
 					id,
-					item.product_id,
-					qtyOrdered,
-					0,
-					item.unit_cost_purchase ?? 0,
-					item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
-					item.landed_cost_per_unit ?? item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
-					item.unit_id ?? null,
-					multiplier,
-					qtyBaseOrdered,
-					0,
+					payload.store_id,
+					payload.po_number,
+					payload.supplier_name ?? null,
+					payload.supplier_contact ?? null,
+					payload.purchase_currency ?? "LAK",
+					payload.exchange_rate ?? 1,
+					payload.shipping_cost ?? 0,
+					payload.other_cost ?? 0,
+					payload.other_cost_note ?? null,
+					payload.status ?? "draft",
+					payload.ordered_at ?? null,
+					payload.expected_at ?? null,
+					payload.shipped_at ?? null,
+					payload.received_at ?? null,
+					payload.tracking_info ?? null,
+					payload.note ?? null,
+					payload.created_by ?? null,
+					createdAt,
+					payload.cancelled_at ?? null,
+					payload.updated_by ?? null,
+					payload.updated_at ?? null,
+					payload.exchange_rate_locked_at ?? null,
+					payload.exchange_rate_locked_by ?? null,
+					payload.exchange_rate_lock_note ?? null,
+					payload.exchange_rate_initial ?? payload.exchange_rate ?? 1,
+					payload.payment_status ?? "unpaid",
+					payload.paid_at ?? null,
+					payload.paid_by ?? null,
+					payload.payment_reference ?? null,
+					payload.payment_note ?? null,
+					payload.due_date ?? null,
+					payload.shipping_cost_original ?? payload.shipping_cost ?? 0,
+					payload.shipping_cost_currency ?? payload.purchase_currency ?? "LAK",
+					payload.other_cost_original ?? payload.other_cost ?? 0,
+					payload.other_cost_currency ?? payload.purchase_currency ?? "LAK",
 				],
 			});
+
+			for (const item of normalizedItems) {
+				const multiplier = item.multiplier_to_base ?? 1;
+				const qtyOrdered = item.qty_ordered;
+				const qtyBaseOrdered = item.qty_base_ordered ?? qtyOrdered * multiplier;
+
+				await transaction.execute({
+					sql: `
+						INSERT INTO purchase_order_items (
+							id, purchase_order_id, product_id, qty_ordered, qty_received,
+							unit_cost_purchase, unit_cost_base, landed_cost_per_unit, unit_id,
+							multiplier_to_base, qty_base_ordered, qty_base_received
+						) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					`,
+					args: [
+						randomUUID(),
+						id,
+						item.product_id,
+						qtyOrdered,
+						0,
+						item.unit_cost_purchase ?? 0,
+						item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
+						item.landed_cost_per_unit ?? item.unit_cost_base ?? item.unit_cost_purchase ?? 0,
+						item.unit_id ?? null,
+						multiplier,
+						qtyBaseOrdered,
+						0,
+					],
+				});
+			}
+
+			await transaction.commit();
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
 		}
 
 		const created = await PurchaseOrderInterface.findById(id);
@@ -537,10 +556,9 @@ export class PurchaseOrderInterface {
 		const normalizedItems = payload.items.map((item) => normalizePurchaseOrderLine(item, exchangeRate));
 		const now = new Date().toISOString();
 		const db = DbConn.getClient();
-
-		await db.execute("BEGIN");
+		const transaction = await db.transaction("write");
 		try {
-			await db.execute({
+			await transaction.execute({
 				sql: `
 					UPDATE purchase_orders
 					SET store_id = ?,
@@ -585,19 +603,19 @@ export class PurchaseOrderInterface {
 			});
 
 			if (canEditItems) {
-				await db.execute({
-					sql: "DELETE FROM purchase_order_items WHERE purchase_order_id = ?",
-					args: [id],
-				});
+					await transaction.execute({
+						sql: "DELETE FROM purchase_order_items WHERE purchase_order_id = ?",
+						args: [id],
+					});
 
 				for (const item of normalizedItems) {
 					const multiplier = item.multiplier_to_base ?? 1;
 					const qtyOrdered = item.qty_ordered;
 					const qtyBaseOrdered = item.qty_base_ordered ?? qtyOrdered * multiplier;
 
-					await db.execute({
-						sql: `
-							INSERT INTO purchase_order_items (
+						await transaction.execute({
+							sql: `
+								INSERT INTO purchase_order_items (
 								id, purchase_order_id, product_id, qty_ordered, qty_received,
 								unit_cost_purchase, unit_cost_base, landed_cost_per_unit, unit_id,
 								multiplier_to_base, qty_base_ordered, qty_base_received
@@ -621,13 +639,125 @@ export class PurchaseOrderInterface {
 				}
 			}
 
-			await db.execute("COMMIT");
+			await transaction.commit();
 		} catch (error) {
-			await db.execute("ROLLBACK");
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
 			throw error;
+		} finally {
+			transaction.close();
 		}
 
 		return PurchaseOrderInterface.findById(id);
+	}
+
+	static async markOrdered(
+		id: string,
+		orderedBy: string | null,
+		orderedAt?: string | null,
+	): Promise<PurchaseOrderDetail | null> {
+		await PurchaseOrderInterface.ensureTables();
+
+		const db = DbConn.getClient();
+		const now = new Date().toISOString();
+		const transaction = await db.transaction("write");
+
+		try {
+			const detail = await PurchaseOrderInterface.findById(id, transaction);
+			if (!detail) {
+				return null;
+			}
+			if (detail.order.status !== "draft") {
+				throw ApiError.BadRequestError("only draft purchase order can be marked as ordered");
+			}
+
+			await transaction.execute({
+				sql: `
+					UPDATE purchase_orders
+					SET status = ?,
+						ordered_at = ?,
+						updated_by = ?,
+						updated_at = ?
+					WHERE id = ?
+				`,
+				args: [ "ordered", orderedAt || detail.order.ordered_at || now, orderedBy, now, id ],
+			});
+
+			await transaction.commit();
+			return PurchaseOrderInterface.findById(id);
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
+	}
+
+	static async markArrived(
+		id: string,
+		arrivedBy: string | null,
+		arrivedAt?: string | null,
+	): Promise<PurchaseOrderDetail | null> {
+		await PurchaseOrderInterface.ensureTables();
+
+		const db = DbConn.getClient();
+		const now = new Date().toISOString();
+		const transaction = await db.transaction("write");
+
+		try {
+			const detail = await PurchaseOrderInterface.findById(id, transaction);
+			if (!detail) {
+				return null;
+			}
+			if (detail.order.status === "received" || detail.order.status === "partial") {
+				throw ApiError.BadRequestError("purchase order that already received cannot be marked as arrived");
+			}
+			if (detail.order.status === "cancelled") {
+				throw ApiError.BadRequestError("cancelled purchase order cannot be marked as arrived");
+			}
+			if (detail.order.status === "draft") {
+				throw ApiError.BadRequestError("draft purchase order cannot be marked as arrived");
+			}
+			if (detail.order.status === "arrived") {
+				return detail;
+			}
+
+			await transaction.execute({
+				sql: `
+					UPDATE purchase_orders
+					SET status = ?,
+						updated_by = ?,
+						updated_at = ?
+					WHERE id = ?
+				`,
+				args: [ "arrived", arrivedBy, arrivedAt || now, id ],
+			});
+
+			await transaction.commit();
+			return PurchaseOrderInterface.findById(id);
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
 	}
 
 	static async markReceived(
@@ -638,15 +768,17 @@ export class PurchaseOrderInterface {
 	): Promise<PurchaseOrderDetail | null> {
 		await PurchaseOrderInterface.ensureTables();
 		const db = DbConn.getClient();
-		const detail = await PurchaseOrderInterface.findById(id);
-		if (!detail) return null;
-		const receiptMap = new Map(lineReceipts.map((line) => [line.item_id, Number(line.qty_received)]));
-		const receiveAll = lineReceipts.length === 0;
-		let hasAnyReceived = false;
-		let hasRemaining = false;
-
-		await db.execute("BEGIN");
+		const transaction = await db.transaction("write");
 		try {
+			const detail = await PurchaseOrderInterface.findById(id, transaction);
+			if (!detail) {
+				throw ApiError.NotFoundError("Purchase order not found");
+			}
+			const receiptMap = new Map(lineReceipts.map((line) => [line.item_id, Number(line.qty_received)]));
+			const receiveAll = lineReceipts.length === 0;
+			let hasAnyReceived = false;
+			let hasRemaining = false;
+
 			for (const item of detail.items) {
 				const remainingQty = Math.max(0, toNumber(item.qty_ordered) - toNumber(item.qty_received));
 				const requestedQty = receiveAll ? remainingQty : Number(receiptMap.get(item.id) ?? 0);
@@ -655,6 +787,9 @@ export class PurchaseOrderInterface {
 				}
 
 				if (!receiveAll && !receiptMap.has(item.id)) {
+					if (remainingQty > 0) {
+						hasRemaining = true;
+					}
 					continue;
 				}
 
@@ -670,10 +805,22 @@ export class PurchaseOrderInterface {
 				const nextQtyReceived = toNumber(item.qty_received) + requestedQty;
 				const nextQtyBaseReceived = toNumber(item.qty_base_received) + (requestedQty * toNumber(item.multiplier_to_base || 1));
 
-				await db.execute({
-					sql: `
-						UPDATE purchase_order_items
-						SET qty_received = ?,
+					await InventoryInterface.adjustStockWithinTransaction(transaction, {
+						store_id: detail.order.store_id,
+						product_id: item.product_id,
+						mode: "increment",
+					qty_base: requestedQty * toNumber(item.multiplier_to_base || 1),
+					note: `รับสินค้า PO ${detail.order.po_number}`,
+					created_by: receivedBy,
+				}, {
+					refType: "purchase_order",
+					refId: detail.order.id,
+				});
+
+					await transaction.execute({
+						sql: `
+							UPDATE purchase_order_items
+							SET qty_received = ?,
 							qty_base_received = ?
 						WHERE purchase_order_id = ? AND id = ?
 					`,
@@ -689,7 +836,7 @@ export class PurchaseOrderInterface {
 				throw ApiError.BadRequestError("receive quantity must be greater than 0");
 			}
 
-			await db.execute({
+			await transaction.execute({
 				sql: `
 					UPDATE purchase_orders
 					SET status = ?,
@@ -701,12 +848,19 @@ export class PurchaseOrderInterface {
 				args: [hasRemaining ? "partial" : "received", detail.order.received_at ?? receivedAt, receivedBy, receivedAt, id],
 			});
 
-			await db.execute("COMMIT");
+			await transaction.commit();
+			return PurchaseOrderInterface.findById(id);
 		} catch (error) {
-			await db.execute("ROLLBACK");
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
 			throw error;
+		} finally {
+			transaction.close();
 		}
-
-		return PurchaseOrderInterface.findById(id);
 	}
 }

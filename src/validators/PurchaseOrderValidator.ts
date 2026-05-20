@@ -112,6 +112,18 @@ export default class PurchaseOrderValidator extends ValidatorMiddleware {
 		}),
 	});
 
+	public static readonly markOrdered = PurchaseOrderValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+	});
+
+	public static readonly markArrived = PurchaseOrderValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+	});
+
 	public static readonly create = PurchaseOrderValidator.init({
 		body: PurchaseOrderValidator.createBodySchema,
 	});

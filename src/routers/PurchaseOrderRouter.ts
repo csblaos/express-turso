@@ -16,6 +16,8 @@ export class PurchaseOrderRouter {
 		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
 		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.create"), PurchaseOrderValidator.create, PurchaseOrderController.create);
 		this.router.patch("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.update, PurchaseOrderController.update);
+		this.router.post("/:id/ordered", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.markOrdered, PurchaseOrderController.markOrdered);
+		this.router.post("/:id/arrived", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.markArrived, PurchaseOrderController.markArrived);
 		this.router.post("/:id/receive", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.receive"), PurchaseOrderValidator.receive, PurchaseOrderController.receive);
 	}
 

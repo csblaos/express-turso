@@ -14,6 +14,7 @@ export class StoreRouter {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getAll);
 			this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getById);
+			this.router.get("/:id/cost-method/history", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCostMethodHistory);
 			this.router.get("/:id/currency-rates", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRates);
 			this.router.get("/:id/currency-rates/history", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);
 			this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.create"), StoreController.create);

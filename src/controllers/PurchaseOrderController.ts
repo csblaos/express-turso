@@ -45,6 +45,24 @@ export class PurchaseOrderController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static markOrdered = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await PurchaseOrderComponent.markOrdered(
+			req.requestId,
+			req.params.id as string,
+			req.auth?.userId || null,
+		);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static markArrived = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await PurchaseOrderComponent.markArrived(
+			req.requestId,
+			req.params.id as string,
+			req.auth?.userId || null,
+		);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static receive = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await PurchaseOrderComponent.receive(
 			req.requestId,

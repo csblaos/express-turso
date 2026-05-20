@@ -267,11 +267,19 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 - สไตล์ฐานที่ต้องยึดตอนนี้คือ `/products`, `/inventory`, และหน้า PO ที่ปรับแล้วให้ใกล้เคียงกัน
 - modal หลักของสินค้า/PO ใช้ `desktop-width="680px"` เป็นค่าเริ่มต้น และใช้ header/footer แบบเต็มขอบ
+- pattern ของ modal/drawer ด้วย `AppResponsivePanel.vue` (สำคัญ):
+	- ใส่ `content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"` แล้วสร้าง layout ภายในเป็น `grid-rows-[minmax(0,1fr)_auto]`
+	- body scroll ใช้ `scrollbar-soft min-h-0 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2`
+	- footer ใช้ full-width bar + ยกขึ้นเหนือคีย์บอร์ดด้วย `:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"`
 - ตัวเลขเงินทั้งระบบแสดงเป็น `100₭ / 100฿ / 100$` ไม่แสดง `LAK / THB / USD` ต่อท้ายจำนวนเงิน
 - PO flow:
 	- `Draft` แก้ได้เต็ม
+	- `Draft` ใน modal รายละเอียดมี action `ยืนยันสั่งซื้อ` ที่ footer
 	- `Ordered` แก้ได้เฉพาะต้นทุน / rate / shipping / other cost
 	- `Received` ล็อกข้อมูล
 	- รองรับ `receive now / partial / later`
+- `ยังไม่รับตอนนี้` ตอนนี้เปลี่ยนสถานะเป็น `arrived` เพื่อบอกว่า PO มาถึงแล้วแต่ยังไม่ตัด stock
+- Store finance now has `cost_method` (`average` / `fifo`) and keeps change history; POS selling stays unchanged
 - PO detail ควรเปิดเร็วที่สุด และใช้ inline loading bar ใต้ header card เท่านั้น
+- sensitive multi-step writes ต้องใช้ libSQL write transaction เดียว (`db.transaction("write")`) เสมอ เช่น `PO create`, `PO receive`, `inventory adjust`, และ `store currency rate update`
 - ถ้าผู้ใช้บอกว่า `same style` โดยไม่ระบุหน้าอื่น ให้ยึด layout จาก `/products` และ `/inventory` เป็นหลัก

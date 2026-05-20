@@ -13,9 +13,18 @@ type StoreRecord = {
 	name: string;
 	currency: string;
 	supported_currencies: string;
+	cost_method: string;
 	vat_enabled: number;
 	vat_rate: number;
 	vat_mode: string;
+};
+
+type StoreCostMethodHistoryItem = {
+	id: string;
+	store_id: string;
+	cost_method: string;
+	actor_user_id: string | null;
+	occurred_at: string;
 };
 
 const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string; hint: string }> = [
@@ -23,6 +32,11 @@ const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string; hint: string 
 	{ code: "THB", label: "THB", hint: "บาท (Thai Baht)" },
 	{ code: "USD", label: "USD", hint: "ดอลลาร์ (US Dollar)" },
 ];
+
+const COST_METHOD_OPTIONS = [
+	{ id: "average", label: "ต้นทุนเฉลี่ย", hint: "เรียบง่าย เหมาะกับ POS และรายงานทั่วไป" },
+	{ id: "fifo", label: "FIFO", hint: "ตัดตามรอบซื้อก่อน-หลัง เหมาะกับการควบคุมต้นทุนละเอียด" },
+] as const;
 
 const { apiFetch } = useApiClient();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
@@ -37,6 +51,7 @@ const stores = ref<StoreRecord[]>([]);
 const selectedStoreId = ref("");
 const authPermissionReady = ref(false);
 const reloading = computed(() => storesPending.value || storePending.value);
+const dateTimeFormatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
 
 const lockedStoreId = computed(() => (
 	currentStoreId.value
@@ -62,15 +77,18 @@ const isElevatedStoreManager = computed(() => (
 const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
 
 const baseCurrency = ref<CurrencyCode>("LAK");
+const costMethod = ref<(typeof COST_METHOD_OPTIONS)[number]["id"]>("average");
 const supportedCurrencies = reactive<Record<CurrencyCode, boolean>>({
 	LAK: true,
 	THB: false,
 	USD: false,
 });
+const costMethodHistory = ref<StoreCostMethodHistoryItem[]>([]);
 
 const initialSnapshot = ref<{
 	storeId: string;
 	baseCurrency: CurrencyCode;
+	costMethod: (typeof COST_METHOD_OPTIONS)[number]["id"];
 	supported: Record<CurrencyCode, boolean>;
 } | null>(null);
 
@@ -120,6 +138,7 @@ const hasChanges = computed(() => {
 	if (!initialSnapshot.value) return false;
 	if (initialSnapshot.value.storeId !== effectiveStoreId.value) return true;
 	if (initialSnapshot.value.baseCurrency !== baseCurrency.value) return true;
+	if (initialSnapshot.value.costMethod !== costMethod.value) return true;
 	for (const option of CURRENCY_OPTIONS) {
 		const code = option.code;
 		if (initialSnapshot.value.supported[code] !== supportedCurrencies[code]) return true;
@@ -156,10 +175,14 @@ async function hydrateFromStore() {
 	if (!effectiveStoreId.value) return;
 	storePending.value = true;
 	error.value = null;
-		try {
-			const storeResponse = await apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
-			const store = storeResponse.data;
-			baseCurrency.value = normalizeCurrencyCode(store.currency) || "LAK";
+	try {
+		const [ storeResponse, historyResponse ] = await Promise.all([
+			apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`),
+			apiFetch<ApiEnvelope<StoreCostMethodHistoryItem[]>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}/cost-method/history?limit=10`).catch(() => null),
+		]);
+		const store = storeResponse.data;
+		baseCurrency.value = normalizeCurrencyCode(store.currency) || "LAK";
+		costMethod.value = store.cost_method === "fifo" ? "fifo" : "average";
 
 		const supported = parseSupportedCurrencies(store.supported_currencies);
 		for (const option of CURRENCY_OPTIONS) {
@@ -167,9 +190,12 @@ async function hydrateFromStore() {
 		}
 		ensureBaseCurrencySelected();
 
+		costMethodHistory.value = historyResponse?.data && Array.isArray(historyResponse.data) ? historyResponse.data : [];
+
 		initialSnapshot.value = {
 			storeId: effectiveStoreId.value,
 			baseCurrency: baseCurrency.value,
+			costMethod: costMethod.value,
 			supported: { ...supportedCurrencies },
 		};
 	} catch (err) {
@@ -190,6 +216,10 @@ function selectBaseCurrency(code: CurrencyCode) {
 	ensureBaseCurrencySelected();
 }
 
+function selectCostMethod(method: (typeof COST_METHOD_OPTIONS)[number]["id"]) {
+	costMethod.value = method;
+}
+
 async function saveStoreFinance() {
 	if (!selectedStore.value || !canSave.value || saving.value) return;
 	saving.value = true;
@@ -202,6 +232,7 @@ async function saveStoreFinance() {
 			method: "PUT",
 			body: {
 				currency: baseCurrency.value,
+				cost_method: costMethod.value,
 				supported_currencies: supportedCsv,
 			},
 		});
@@ -308,8 +339,10 @@ onMounted(async () => {
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ enabledCurrencies.length }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Rates</p>
-								<p class="mt-1 truncate text-base font-semibold text-stone-950" title="แยกหน้า">แยกหน้า</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ต้นทุน</p>
+								<p class="mt-1 truncate text-base font-semibold text-stone-950" :title="costMethod === 'fifo' ? 'FIFO' : 'ต้นทุนเฉลี่ย'">
+									{{ costMethod === 'fifo' ? 'FIFO' : 'เฉลี่ย' }}
+								</p>
 							</div>
 						</div>
 					</UCard>
@@ -341,13 +374,77 @@ onMounted(async () => {
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
 									ไปหน้า “จัดการเรท” เพื่อกำหนดอัตราแลกเปลี่ยนของสกุลเงินที่เปิดใช้งานไว้
 								</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="flex flex-col">
+						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+							<div>
+								<p class="text-sm font-semibold text-stone-950">วิธีคำนวณต้นทุน</p>
+								<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือกวิธีที่ใช้คำนวณต้นทุนเพื่อรายงานกำไรและมูลค่าสต็อก</p>
+							</div>
+							<UBadge color="neutral" variant="soft" :label="costMethod === 'fifo' ? 'FIFO' : 'Average'" />
+						</div>
+
+						<div class="space-y-3 px-4 py-4">
+							<div class="grid gap-2 sm:grid-cols-2">
+								<button
+									v-for="option in COST_METHOD_OPTIONS"
+									:key="option.id"
+									type="button"
+									class="group rounded-md border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70"
+									:class="costMethod === option.id
+										? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
+										: 'border-neutral-200 bg-neutral-50 hover:border-neutral-300 hover:bg-neutral-100/70'"
+									:disabled="!canUpdateStoreFinance || storePending || storesPending"
+									@click="selectCostMethod(option.id)"
+								>
+									<div class="flex items-start justify-between gap-4">
+										<div class="min-w-0">
+											<p class="text-sm font-semibold text-stone-900">{{ option.label }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ option.hint }}</p>
+										</div>
+										<div
+											class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition"
+											:class="costMethod === option.id
+												? 'border-primary-500 bg-primary-600 text-white'
+												: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
+										>
+											<UIcon v-if="costMethod === option.id" name="i-heroicons-check-20-solid" class="h-3.5 w-3.5" />
+										</div>
+									</div>
+								</button>
+							</div>
+							<p class="text-xs leading-5 text-stone-500">
+								แนะนำให้ใช้ต้นทุนเฉลี่ยเป็นค่าเริ่มต้น ถ้าต้องการแม่นตามรอบซื้อและตรวจล็อตค่อยเปลี่ยนเป็น FIFO
+							</p>
+
+							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
+								<div class="flex items-center justify-between gap-2">
+									<h4 class="text-sm font-semibold text-stone-950">ประวัติการเปลี่ยน</h4>
+									<UBadge color="neutral" variant="soft" :label="`${costMethodHistory.length} รายการ`" />
+								</div>
+								<div v-if="costMethodHistory.length" class="mt-3 space-y-2">
+									<div v-for="item in costMethodHistory" :key="item.id" class="rounded-md bg-white px-3 py-2 ring-1 ring-neutral-200">
+										<div class="flex items-center justify-between gap-3">
+											<div>
+												<p class="text-sm font-medium text-stone-900">{{ item.cost_method === 'fifo' ? 'FIFO' : 'ต้นทุนเฉลี่ย' }}</p>
+												<p class="mt-0.5 text-xs text-stone-500">{{ item.actor_user_id || 'system' }} · {{ dateTimeFormatter.format(new Date(item.occurred_at)) }}</p>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div v-else class="mt-3 text-sm text-stone-500">ยังไม่มีประวัติการเปลี่ยนต้นทุน</div>
 							</div>
 						</div>
 					</div>
+				</div>
 
-						<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-							<div class="flex flex-col">
-								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
 										<p class="text-sm font-semibold text-stone-950">สกุลเงินหลัก (Base currency)</p>
 										<p class="mt-1 hidden text-xs text-stone-500 lg:block">ใช้เป็นสกุลเงินหลักในการคิดยอดขายและรายงาน</p>

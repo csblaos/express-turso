@@ -25,6 +25,10 @@ export class StoreInterface {
 		if (!existingColumns.has("allow_negative_stock")) {
 			await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
 		}
+
+		if (!existingColumns.has("cost_method")) {
+			await db.execute("ALTER TABLE stores ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'average'");
+		}
 	}
 
 	static async findAll(ownerUserId?: string): Promise<Store[]> {
@@ -39,9 +43,9 @@ export class StoreInterface {
 		return result.rows.map(StoreInterface.mapRow);
 	}
 
-	static async findById(id: string): Promise<Store | null> {
+	static async findById(id: string, executor?: Pick<ReturnType<typeof DbConn.getClient>, "execute">): Promise<Store | null> {
 		await StoreInterface.ensureColumns();
-		const db = DbConn.getClient();
+		const db = executor || DbConn.getClient();
 		const result = await db.execute({
 			sql: "SELECT * FROM stores WHERE id = ? LIMIT 1",
 			args: [ id ],
@@ -92,7 +96,11 @@ export class StoreInterface {
 		return created;
 	}
 
-	static async update(id: string, data: Partial<Store>): Promise<Store> {
+	static async update(
+		id: string,
+		data: Partial<Store>,
+		executor?: Pick<ReturnType<typeof DbConn.getClient>, "execute">,
+	): Promise<Store> {
 		await StoreInterface.ensureColumns();
 		const keys = Object.keys(data);
 		const values = Object.values(data);
@@ -103,13 +111,13 @@ export class StoreInterface {
 
 		const setClause = keys.map((key) => `${key} = ?`).join(", ");
 
-		const db = DbConn.getClient();
+		const db = executor || DbConn.getClient();
 		await db.execute({
 			sql: `UPDATE stores SET ${setClause} WHERE id = ?`,
 			args: [ ...values, id ],
 		});
 
-		const updated = await StoreInterface.findById(id);
+		const updated = await StoreInterface.findById(id, executor);
 		if (!updated) throw new Error("Store not found");
 
 		return updated;

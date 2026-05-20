@@ -1,5 +1,4 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
-import { InventoryComponent } from "@components/InventoryComponent";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import {
 	PurchaseOrderCreatePayload,
@@ -184,6 +183,51 @@ export class PurchaseOrderComponent {
 		return updated;
 	}
 
+	static async markOrdered(requestId: string, id: string, orderedBy: string | null): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const existing = await PurchaseOrderInterface.findById(id);
+		if (!existing) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+		if (existing.order.status !== "draft") {
+			throw ApiError.BadRequestError("only draft purchase order can be marked as ordered");
+		}
+
+		const updated = await PurchaseOrderInterface.markOrdered(id, orderedBy);
+		if (!updated) {
+			throw new Error("Failed to mark purchase order as ordered");
+		}
+
+		return updated;
+	}
+
+	static async markArrived(requestId: string, id: string, arrivedBy: string | null): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const existing = await PurchaseOrderInterface.findById(id);
+		if (!existing) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+		if (existing.order.status === "received" || existing.order.status === "partial") {
+			throw ApiError.BadRequestError("purchase order that already received cannot be marked as arrived");
+		}
+		if (existing.order.status === "cancelled") {
+			throw ApiError.BadRequestError("cancelled purchase order cannot be marked as arrived");
+		}
+		if (existing.order.status === "draft") {
+			throw ApiError.BadRequestError("draft purchase order cannot be marked as arrived");
+		}
+		if (existing.order.status === "arrived") {
+			return existing;
+		}
+
+		const updated = await PurchaseOrderInterface.markArrived(id, arrivedBy);
+		if (!updated) {
+			throw new Error("Failed to mark purchase order as arrived");
+		}
+
+		return updated;
+	}
+
 	static async receive(
 		requestId: string,
 		id: string,
@@ -234,22 +278,6 @@ export class PurchaseOrderComponent {
 		}
 
 		const receivedAt = new Date().toISOString();
-		for (const line of normalizedReceipts) {
-			const item = detail.items.find((entry) => entry.id === line.item_id);
-			if (!item) continue;
-			await InventoryComponent.adjust(requestId, {
-				store_id: detail.order.store_id,
-				product_id: item.product_id,
-				mode: "increment",
-				qty_base: Number(line.qty_received || 0) * Number(item.multiplier_to_base || 1),
-				note: `รับสินค้า PO ${detail.order.po_number}`,
-				created_by: receivedBy,
-			}, {
-				refType: "purchase_order",
-				refId: detail.order.id,
-			});
-		}
-
 		const updated = await PurchaseOrderInterface.markReceived(detail.order.id, receivedAt, receivedBy, normalizedReceipts);
 		if (!updated) {
 			throw new Error("Failed to mark purchase order as received");

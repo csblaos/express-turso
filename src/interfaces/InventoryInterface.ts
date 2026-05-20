@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 
-import { InValue } from "@libsql/client";
+import { Client, InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
 import { ProductInterface } from "@interfaces/ProductInterface";
@@ -91,6 +91,114 @@ function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 }
 
 export class InventoryInterface {
+	static async adjustStockWithinTransaction(
+		db: Pick<Client, "execute">,
+		input: InventoryAdjustmentInput,
+		options: { refType?: string; refId?: string | null } = {},
+	): Promise<InventoryAdjustmentResult> {
+		const current = await db.execute({
+			sql: `
+				SELECT store_id, product_id, on_hand_base, reserved_base, available_base, updated_at
+				FROM inventory_balances
+				WHERE store_id = ? AND product_id = ?
+				LIMIT 1
+			`,
+			args: [input.store_id, input.product_id],
+		});
+
+		const currentRow = current.rows[0] as Record<string, unknown> | undefined;
+		const currentOnHand = Number(currentRow?.on_hand_base ?? 0);
+		const currentReserved = Number(currentRow?.reserved_base ?? 0);
+		const qty = Number(input.qty_base);
+
+		const nextOnHand = input.mode === "set"
+			? qty
+			: input.mode === "increment"
+				? currentOnHand + qty
+				: currentOnHand - qty;
+		const nextAvailable = nextOnHand - currentReserved;
+		const delta = input.mode === "set" ? nextOnHand - currentOnHand : input.mode === "increment" ? qty : -qty;
+		const now = new Date().toISOString();
+		const movementId = randomUUID();
+		const refType = options.refType || "manual_adjustment";
+		const movementType = input.mode === "set"
+			? "ADJUSTMENT_SET"
+			: input.mode === "increment"
+				? "ADJUSTMENT_IN"
+				: "ADJUSTMENT_OUT";
+
+		await db.execute({
+			sql: `
+				INSERT INTO inventory_balances (
+					store_id,
+					product_id,
+					on_hand_base,
+					reserved_base,
+					available_base,
+					updated_at
+				) VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT(store_id, product_id) DO UPDATE SET
+					on_hand_base = excluded.on_hand_base,
+					reserved_base = excluded.reserved_base,
+					available_base = excluded.available_base,
+					updated_at = excluded.updated_at
+			`,
+			args: [
+				input.store_id,
+				input.product_id,
+				nextOnHand,
+				currentReserved,
+				nextAvailable,
+				now,
+			],
+		});
+
+		await db.execute({
+			sql: `
+				INSERT INTO inventory_movements (
+					id,
+					store_id,
+					product_id,
+					type,
+					qty_base,
+					ref_type,
+					ref_id,
+					note,
+					created_by,
+					created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+			args: [
+				movementId,
+				input.store_id,
+				input.product_id,
+				movementType,
+				delta,
+				refType,
+				options.refId ?? null,
+				input.note ?? null,
+				input.created_by ?? null,
+				now,
+			],
+		});
+
+		const balance = await InventoryInterface.findBalanceByProductId(input.store_id, input.product_id);
+		const movementRows = await InventoryInterface.findMovements({
+			storeId: input.store_id,
+			productId: input.product_id,
+			limit: 1,
+		});
+
+		if (!balance || movementRows.length === 0) {
+			throw new Error("Failed to adjust inventory");
+		}
+
+		return {
+			balance,
+			movement: movementRows[0],
+		};
+	}
+
 	static async getBalanceNumbers(storeId: string, productId: string): Promise<InventoryBalanceNumbers> {
 		const db = DbConn.getClient();
 		const result = await db.execute({
@@ -288,106 +396,22 @@ export class InventoryInterface {
 		options: { refType?: string; refId?: string | null } = {},
 	): Promise<InventoryAdjustmentResult> {
 		const db = DbConn.getClient();
-		const current = await db.execute({
-			sql: `
-				SELECT store_id, product_id, on_hand_base, reserved_base, available_base, updated_at
-				FROM inventory_balances
-				WHERE store_id = ? AND product_id = ?
-				LIMIT 1
-			`,
-			args: [input.store_id, input.product_id],
-		});
-
-		const currentRow = current.rows[0] as Record<string, unknown> | undefined;
-		const currentOnHand = Number(currentRow?.on_hand_base ?? 0);
-		const currentReserved = Number(currentRow?.reserved_base ?? 0);
-		const qty = Number(input.qty_base);
-
-		const nextOnHand = input.mode === "set"
-			? qty
-			: input.mode === "increment"
-				? currentOnHand + qty
-				: currentOnHand - qty;
-		const nextAvailable = nextOnHand - currentReserved;
-		const delta = input.mode === "set" ? nextOnHand - currentOnHand : input.mode === "increment" ? qty : -qty;
-		const now = new Date().toISOString();
-		const movementId = randomUUID();
-		const refType = options.refType || "manual_adjustment";
-		const movementType = input.mode === "set"
-			? "ADJUSTMENT_SET"
-			: input.mode === "increment"
-				? "ADJUSTMENT_IN"
-				: "ADJUSTMENT_OUT";
-
-		await db.execute({
-			sql: `
-				INSERT INTO inventory_balances (
-					store_id,
-					product_id,
-					on_hand_base,
-					reserved_base,
-					available_base,
-					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?)
-				ON CONFLICT(store_id, product_id) DO UPDATE SET
-					on_hand_base = excluded.on_hand_base,
-					reserved_base = excluded.reserved_base,
-					available_base = excluded.available_base,
-					updated_at = excluded.updated_at
-			`,
-			args: [
-				input.store_id,
-				input.product_id,
-				nextOnHand,
-				currentReserved,
-				nextAvailable,
-				now,
-			],
-		});
-
-		await db.execute({
-			sql: `
-				INSERT INTO inventory_movements (
-					id,
-					store_id,
-					product_id,
-					type,
-					qty_base,
-					ref_type,
-					ref_id,
-					note,
-					created_by,
-					created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`,
-			args: [
-				movementId,
-				input.store_id,
-				input.product_id,
-				movementType,
-				delta,
-				refType,
-				options.refId ?? null,
-				input.note ?? null,
-				input.created_by ?? null,
-				now,
-			],
-		});
-
-		const balance = await InventoryInterface.findBalanceByProductId(input.store_id, input.product_id);
-		const movementRows = await InventoryInterface.findMovements({
-			storeId: input.store_id,
-			productId: input.product_id,
-			limit: 1,
-		});
-
-		if (!balance || movementRows.length === 0) {
-			throw new Error("Failed to adjust inventory");
+		const transaction = await db.transaction("write");
+		try {
+			const result = await InventoryInterface.adjustStockWithinTransaction(transaction, input, options);
+			await transaction.commit();
+			return result;
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// ignore rollback errors; original error is more important
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
 		}
-
-		return {
-			balance,
-			movement: movementRows[0],
-		};
 	}
 }
