@@ -36,6 +36,7 @@ const props = withDefaults(defineProps<{
 const attrs = useAttrs();
 const slots = useSlots();
 const hasDefaultSlot = computed(() => Boolean(slots.default));
+const isIconOnly = computed(() => Boolean(props.icon || props.trailingIcon) && !hasDefaultSlot.value && !props.label);
 
 const resolvedSize = computed(() => {
 	return props.size === "md" ? "lg" : props.size;
@@ -79,6 +80,7 @@ const buttonClass = computed(() => {
 
 	return [
 		"rounded-md",
+		isIconOnly.value ? "justify-center" : "",
 		props.block ? "w-full justify-center" : "",
 	];
 });

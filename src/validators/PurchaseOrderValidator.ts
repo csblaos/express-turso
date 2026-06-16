@@ -102,6 +102,15 @@ export default class PurchaseOrderValidator extends ValidatorMiddleware {
 		})).optional(),
 	});
 
+	private static readonly settleBodySchema = z.object({
+		exchange_rate: optionalNumber,
+		shipping_cost: optionalNumber,
+		other_cost: optionalNumber,
+		payment_reference: optionalString,
+		payment_note: optionalString,
+		paid_at: optionalString,
+	});
+
 	public static readonly list = PurchaseOrderValidator.init({
 		query: PurchaseOrderValidator.listQuerySchema,
 	});
@@ -140,5 +149,12 @@ export default class PurchaseOrderValidator extends ValidatorMiddleware {
 			id: nonEmptyString,
 		}),
 		body: PurchaseOrderValidator.receiveBodySchema,
+	});
+
+	public static readonly settle = PurchaseOrderValidator.init({
+		params: z.object({
+			id: nonEmptyString,
+		}),
+		body: PurchaseOrderValidator.settleBodySchema,
 	});
 }

@@ -671,8 +671,8 @@ onMounted(loadUsers);
 </script>
 
 <template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
+		<AppSidebarShell
+			:nav-items="appNavItems"
 		:active-ids="['superadmin']"
 		sidebar-eyebrow="Superadmin"
 		sidebar-title="Superadmin"
@@ -680,25 +680,57 @@ onMounted(loadUsers);
 		sidebar-description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title="Superadmin Users"
-					description="ข้อมูลผู้ใช้ภายใต้ client ปัจจุบันจาก API /superadmin/users"
+					description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadUsers">
-								รีโหลด
-							</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-user-plus-20-solid" @click="openCreateModal">
-								เพิ่มผู้ใช้
-							</AppButton>
+					<template #default>
+						<div class="flex w-full flex-wrap items-center gap-2 pt-1">
+							<UInput
+								v-model="searchQuery"
+								icon="i-heroicons-magnifying-glass-20-solid"
+								size="lg"
+								color="neutral"
+								placeholder="ค้นหาชื่อผู้ใช้หรืออีเมล"
+								class="min-w-0 flex-1 [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+								@keydown.enter="applyFilters"
+							/>
+							<div class="flex shrink-0 gap-2">
+								<AppButton
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-arrow-path-20-solid"
+									class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+									:loading="pending"
+									:disabled="pending"
+									:spin-icon-on-loading="true"
+									aria-label="รีโหลด"
+									title="รีโหลด"
+									@click="reloadUsers"
+								>
+									<span class="hidden sm:inline">รีโหลด</span>
+								</AppButton>
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									icon="i-heroicons-user-plus-20-solid"
+									class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+									aria-label="เพิ่มผู้ใช้"
+									title="เพิ่มผู้ใช้"
+									@click="openCreateModal"
+								>
+									<span class="hidden sm:inline">เพิ่มผู้ใช้</span>
+								</AppButton>
+							</div>
 						</div>
 					</template>
 				</AppPageHeader>
 
-				<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+				<div class="grid gap-3 lg:pr-1">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 							<div
@@ -712,7 +744,7 @@ onMounted(loadUsers);
 						</div>
 					</UCard>
 
-					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
@@ -725,17 +757,7 @@ onMounted(loadUsers);
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
-									<div class="relative">
-										<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-stone-400" />
-										<input
-											v-model="searchQuery"
-											type="search"
-											placeholder="ค้นหาชื่อหรืออีเมล"
-											class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-											@keydown.enter="applyFilters"
-										>
-									</div>
+								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
 									<select v-model="activeStatus" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 										<option value="all">ทุกสถานะ</option>
 										<option value="active">ใช้งาน</option>
@@ -747,47 +769,77 @@ onMounted(loadUsers);
 								</div>
 							</div>
 
-								<div ref="usersListScrollRef" class="scrollbar-soft min-h-0 flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+							<div class="min-h-0 flex-1 overflow-hidden">
+								<div ref="usersListScrollRef" class="scrollbar-soft min-h-0 h-full overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
 									<div v-if="pending" class="min-h-[280px]">
 										<AppInlineLoadingBar container-class="bg-neutral-100" />
 									</div>
 									<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 									<div v-else-if="!users.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีผู้ใช้</div>
-									<template v-else>
-										<button
-											v-for="user in users"
-											:key="user.id"
-											type="button"
-											:disabled="rowActionDisabled(user)"
-											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition enabled:hover:bg-primary-50 disabled:cursor-not-allowed disabled:bg-neutral-50/70"
-											@click="openDetailModal(user.id)"
-										>
-											<div class="flex items-center justify-between gap-3">
-												<div class="min-w-0">
-													<p class="truncate text-sm font-semibold text-stone-900">{{ user.name }}</p>
-													<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
-													<p class="mt-2 text-xs text-stone-500">
-														{{ roleLabel(user.system_role) }}
-														<span v-if="user.primary_store_name"> · {{ user.primary_store_name }}</span>
-														<span v-if="user.primary_role_name"> · {{ user.primary_role_name }}</span>
-														· สร้างเมื่อ {{ formatDateTime(user.created_at) }}
-													</p>
-												</div>
-												<div class="flex items-center gap-2">
-													<UBadge :color="statusTone(user.status)" variant="soft" :label="statusLabel(user.status)" />
-													<AppButton
-														color="neutral"
-														variant="soft"
-														size="md"
-														icon="i-heroicons-chevron-right-20-solid"
-														:disabled="rowActionDisabled(user)"
-													>
-														{{ rowActionLabel(user) }}
-													</AppButton>
-												</div>
-											</div>
-										</button>
-									</template>
+									<div v-else class="overflow-x-auto">
+										<table class="min-w-[1080px] w-full border-separate border-spacing-0">
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+													<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ใช้</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">บทบาท</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">System role</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">ร้าน</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">เพิ่มเมื่อ</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="user in users"
+													:key="user.id"
+													class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50"
+													:class="(detailOpen || memberDetailOpen) && selectedUserId === user.id ? 'bg-primary-50' : 'bg-white'"
+													@click="openDetailModal(user.id)"
+												>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<div class="min-w-0">
+															<p class="truncate font-semibold text-stone-950">{{ user.name }}</p>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
+															<p class="mt-2 text-xs text-stone-500">
+																{{ roleLabel(user.system_role) }}
+																<span v-if="user.primary_store_name"> · {{ user.primary_store_name }}</span>
+																<span v-if="user.primary_role_name"> · {{ user.primary_role_name }}</span>
+															</p>
+														</div>
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<UBadge color="neutral" variant="soft" :label="user.primary_role_name || '-'" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<UBadge :color="statusTone(user.status)" variant="soft" :label="statusLabel(user.status)" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<UBadge color="neutral" variant="soft" :label="roleLabel(user.system_role)" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+														{{ user.membership_count }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 whitespace-nowrap text-stone-600">
+														{{ formatDateTime(user.created_at) }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+														<AppButton
+															color="neutral"
+															variant="soft"
+															size="md"
+															class="rounded-md"
+															icon="i-heroicons-chevron-right-20-solid"
+															:disabled="rowActionDisabled(user)"
+															@click.stop="openDetailModal(user.id)"
+														>
+															{{ rowActionLabel(user) }}
+														</AppButton>
+													</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
 									</div>
 								</div>
 
@@ -851,12 +903,13 @@ onMounted(loadUsers);
 						</div>
 					</div>
 				</div>
+			</div>
 
 			<AppResponsivePanel
 				v-model="createOpen"
 				title="Create Employee"
 				description="เพิ่มพนักงานใหม่และกำหนดสิทธิ์เข้าถึงร้านทันที"
-				desktop-width="560px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -995,7 +1048,7 @@ onMounted(loadUsers);
 				v-model="detailOpen"
 				title="User Detail"
 				description="แก้ไขข้อมูลผู้ใช้บนฐานข้อมูลจริง"
-				desktop-width="560px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -1069,7 +1122,7 @@ onMounted(loadUsers);
 				v-model="memberDetailOpen"
 				title="Member Detail"
 				description="จัดการบทบาท สถานะ และรีเซ็ตรหัสผ่านของพนักงานในร้าน"
-				desktop-width="560px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"

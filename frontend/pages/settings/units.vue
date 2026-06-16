@@ -250,6 +250,14 @@ function openUnitDetail(unitId: string) {
 	detailOpen.value = true;
 }
 
+function scopeLabel(scope: string) {
+	return scope === "global" ? "Global" : "Store";
+}
+
+function scopeTone(scope: string) {
+	return scope === "global" ? "neutral" : "success";
+}
+
 async function fetchStores() {
 	storesPending.value = true;
 	try {
@@ -430,55 +438,64 @@ onMounted(async () => {
 		sidebar-description="จัดการหน่วยสินค้าและหน่วยขายของร้านที่กำลังใช้งาน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title="หน่วยสินค้า"
 					description="จัดการหน่วยสินค้าและรหัสย่อที่ใช้กับสินค้าและ POS"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full gap-3 pt-2 lg:w-auto lg:grid-cols-[minmax(280px,1fr)_auto_auto_auto] lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(280px,1fr)_auto_auto_auto] lg:gap-3 lg:justify-end">
 						<UInput
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
 							size="lg"
 							color="neutral"
 							placeholder="ค้นหา code, ชื่อหน่วย หรือ unit id"
-							class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+							class="min-w-0 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 						/>
 						<AppButton
 							color="neutral"
 							variant="soft"
 							size="md"
-							class="justify-center rounded-md"
+							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
 							icon="i-heroicons-arrow-path-20-solid"
-							label="รีเฟรช"
+							aria-label="รีเฟรช"
+							title="รีเฟรช"
 							@click="fetchUnits"
-						/>
+						>
+							<span class="hidden sm:inline">รีเฟรช</span>
+						</AppButton>
 						<AppButton
 							color="neutral"
 							variant="soft"
 							size="md"
-							class="justify-center rounded-md"
+							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
 							icon="i-heroicons-squares-plus-20-solid"
 							:loading="presetPending"
 							:spin-icon-on-loading="true"
 							:disabled="!canCreateUnits || !effectiveStoreId || presetPending"
-							label="โหลด preset"
+							aria-label="โหลด preset"
+							title="โหลด preset"
 							@click="importDefaultUnits"
-						/>
+						>
+							<span class="hidden sm:inline">โหลด preset</span>
+						</AppButton>
 						<AppButton
 							color="primary"
 							size="md"
-							class="justify-center rounded-md"
+							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
 							icon="i-heroicons-plus-20-solid"
-							label="เพิ่มหน่วย"
+							aria-label="เพิ่มหน่วย"
+							title="เพิ่มหน่วย"
 							:disabled="!canCreateUnits || !effectiveStoreId"
 							@click="createOpen = true"
-						/>
+						>
+							<span class="hidden sm:inline">เพิ่มหน่วย</span>
+						</AppButton>
 					</div>
 				</AppPageHeader>
 
-				<div class="grid min-h-0 gap-3 overflow-hidden lg:grid-rows-[auto_minmax(0,1fr)] lg:pr-1">
+				<div class="grid gap-3 lg:pr-1">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
 							<div
@@ -492,7 +509,7 @@ onMounted(async () => {
 						</div>
 					</UCard>
 
-					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
@@ -504,43 +521,66 @@ onMounted(async () => {
 								</div>
 							</div>
 
-							<div ref="unitsListScrollRef" class="scrollbar-soft min-h-0 flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-								<div v-if="unitsPending" class="min-h-[280px]">
-									<AppInlineLoadingBar container-class="bg-neutral-100" />
-								</div>
-								<div v-else-if="unitsError" class="p-5 text-center text-sm text-error">{{ unitsError }}</div>
-								<div v-else-if="!filteredUnits.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีหน่วยสินค้า</div>
-								<template v-else>
-									<button
-										v-for="unit in paginatedUnits"
-										:key="unit.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										@click="openUnitDetail(unit.id)"
-									>
-										<div class="flex items-center justify-between gap-3">
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ unit.name_th }}</p>
-												<p class="mt-1 truncate text-xs text-stone-500">{{ unit.id }}</p>
-												<p class="mt-2 text-xs text-stone-500">
-													code {{ unit.code }}
-													· {{ unit.scope === 'global' ? 'global unit' : 'store unit' }}
-												</p>
-											</div>
-											<div class="flex items-center gap-2">
-												<UBadge color="neutral" variant="soft" :label="unit.code" />
-												<AppButton
-													color="neutral"
-													variant="soft"
-													size="md"
-													icon="i-heroicons-chevron-right-20-solid"
-												>
-													จัดการ
-												</AppButton>
-											</div>
+							<div class="min-h-0 flex-1 overflow-hidden">
+								<div ref="unitsListScrollRef" class="scrollbar-soft min-h-0 h-full overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+									<div v-if="unitsPending" class="min-h-[280px]">
+										<AppInlineLoadingBar container-class="bg-neutral-100" />
+									</div>
+									<div v-else-if="unitsError" class="p-5 text-center text-sm text-error">{{ unitsError }}</div>
+									<div v-else-if="!filteredUnits.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีหน่วยสินค้า</div>
+									<template v-else>
+										<div class="overflow-x-auto">
+											<table class="min-w-[880px] w-full border-separate border-spacing-0">
+												<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+														<th class="border-b border-[#ece6dc] px-4 py-3">หน่วยสินค้า</th>
+														<th class="border-b border-[#ece6dc] px-4 py-3">Code</th>
+														<th class="border-b border-[#ece6dc] px-4 py-3">Scope</th>
+														<th class="border-b border-[#ece6dc] px-4 py-3">Store</th>
+														<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+													</tr>
+												</thead>
+												<tbody>
+													<tr
+														v-for="unit in paginatedUnits"
+														:key="unit.id"
+														class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50"
+														:class="detailOpen && selectedUnitId === unit.id ? 'bg-primary-50' : 'bg-white'"
+														@click="openUnitDetail(unit.id)"
+													>
+														<td class="border-b border-[#f1ede6] px-4 py-4">
+															<div class="min-w-0">
+																<p class="truncate font-semibold text-stone-950">{{ unit.name_th }}</p>
+																<p class="mt-1 truncate text-xs text-stone-500">{{ unit.id }}</p>
+															</div>
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-4">
+															<UBadge color="neutral" variant="soft" :label="unit.code" />
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-4">
+															<UBadge :color="scopeTone(unit.scope)" variant="soft" :label="scopeLabel(unit.scope)" />
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+															{{ unit.scope === "global" ? "Global" : selectedStoreLabel }}
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+															<AppButton
+																color="neutral"
+																variant="soft"
+																size="md"
+																class="rounded-md"
+																icon="i-heroicons-chevron-right-20-solid"
+																@click.stop="openUnitDetail(unit.id)"
+															>
+																จัดการ
+															</AppButton>
+														</td>
+													</tr>
+												</tbody>
+											</table>
 										</div>
-									</button>
-								</template>
+									</template>
+								</div>
 							</div>
 
 							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
@@ -609,7 +649,7 @@ onMounted(async () => {
 				v-model="detailOpen"
 				:title="selectedUnit ? selectedUnit.name_th : 'รายละเอียดหน่วยสินค้า'"
 				description="แก้ชื่อหน่วยสินค้าและรหัสย่อของหน่วยนี้"
-				desktop-width="420px"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
@@ -657,7 +697,7 @@ onMounted(async () => {
 				v-model="deleteOpen"
 				title="ลบหน่วยสินค้า"
 				description="ยืนยันการลบหน่วยสินค้าแบบถาวรจากร้านที่กำลังใช้งาน"
-				desktop-width="420px"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
@@ -707,7 +747,7 @@ onMounted(async () => {
 				v-model="createOpen"
 				title="เพิ่มหน่วยสินค้า"
 				description="สร้างหน่วยสินค้าใหม่สำหรับร้านที่กำลังใช้งาน"
-				desktop-width="420px"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"

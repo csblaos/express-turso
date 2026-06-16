@@ -16,9 +16,9 @@ const props = withDefaults(defineProps<{
 	panelZClass?: string;
 	panelClass?: string;
 	contentClass?: string;
-}>(), {
-	desktopWidth: "420px",
-	mobileMaxHeight: "88vh",
+	}>(), {
+		desktopWidth: "680px",
+		mobileMaxHeight: "88vh",
 	fillMobileHeight: false,
 	showHandle: true,
 	showCloseButton: true,

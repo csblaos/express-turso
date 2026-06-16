@@ -77,4 +77,18 @@ export class PurchaseOrderController {
 		);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
+
+	static settle = SyncFunction.handler(async (req: Request, res: Response) => {
+		const body = (req.body as Record<string, unknown>) || {};
+		const data = await PurchaseOrderComponent.settle(req.requestId, req.params.id as string, {
+			exchange_rate: typeof body.exchange_rate === "number" ? body.exchange_rate : typeof body.exchange_rate === "string" ? Number(body.exchange_rate) : undefined,
+			shipping_cost: typeof body.shipping_cost === "number" ? body.shipping_cost : typeof body.shipping_cost === "string" ? Number(body.shipping_cost) : undefined,
+			other_cost: typeof body.other_cost === "number" ? body.other_cost : typeof body.other_cost === "string" ? Number(body.other_cost) : undefined,
+			payment_reference: typeof body.payment_reference === "string" ? String(body.payment_reference) : null,
+			payment_note: typeof body.payment_note === "string" ? String(body.payment_note) : null,
+			paid_at: typeof body.paid_at === "string" ? String(body.paid_at) : undefined,
+			settled_by: req.auth?.userId || null,
+		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
 }

@@ -5048,7 +5048,7 @@ onBeforeUnmount(() => {
 				v-model="productUnitDeleteOpen"
 				title="ลบหน่วยขาย"
 				description="ยืนยันการลบ conversion ของหน่วยขายนี้ออกจากสินค้า"
-				desktop-width="420px"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"

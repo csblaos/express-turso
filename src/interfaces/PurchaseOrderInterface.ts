@@ -4,8 +4,10 @@ import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
 import { InventoryInterface } from "@interfaces/InventoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
+import { StoreInterface } from "@interfaces/StoreInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreatePurchaseOrderInput, PurchaseOrder } from "@models/PurchaseOrder";
 
@@ -46,7 +48,9 @@ export type PurchaseOrderDetailPayment = {
 	purchase_order_id: string;
 	store_id: string;
 	entry_type: string;
+	estimated_amount_base: number;
 	amount_base: number;
+	variance_base: number;
 	paid_at: string;
 	reference: string | null;
 	note: string | null;
@@ -58,6 +62,16 @@ export type PurchaseOrderDetailPayment = {
 export type PurchaseOrderReceiveLineInput = {
 	item_id: string;
 	qty_received: number;
+};
+
+export type PurchaseOrderSettlementInput = {
+	exchange_rate?: number;
+	shipping_cost?: number;
+	other_cost?: number;
+	payment_reference?: string | null;
+	payment_note?: string | null;
+	paid_at?: string | null;
+	settled_by?: string | null;
 };
 
 export type PurchaseOrderDetail = {
@@ -167,7 +181,9 @@ function mapPaymentRow(row: Record<string, unknown>): PurchaseOrderDetailPayment
 		purchase_order_id: String(row.purchase_order_id),
 		store_id: String(row.store_id),
 		entry_type: String(row.entry_type),
+		estimated_amount_base: toNumber(row.estimated_amount_base),
 		amount_base: toNumber(row.amount_base),
+		variance_base: toNumber(row.variance_base),
 		paid_at: String(row.paid_at),
 		reference: row.reference ? String(row.reference) : null,
 		note: row.note ? String(row.note) : null,
@@ -261,29 +277,39 @@ export class PurchaseOrderInterface {
 			)
 		`);
 
-		await db.execute(`
-			CREATE TABLE IF NOT EXISTS purchase_order_payments (
-				id TEXT PRIMARY KEY,
-				purchase_order_id TEXT NOT NULL,
-				store_id TEXT NOT NULL,
-				entry_type TEXT NOT NULL DEFAULT 'payment',
-				amount_base REAL NOT NULL,
-				paid_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-				reference TEXT,
-				note TEXT,
-				reversed_payment_id TEXT,
-				created_by TEXT,
-				created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-			)
-		`);
+			await db.execute(`
+				CREATE TABLE IF NOT EXISTS purchase_order_payments (
+					id TEXT PRIMARY KEY,
+					purchase_order_id TEXT NOT NULL,
+					store_id TEXT NOT NULL,
+					entry_type TEXT NOT NULL DEFAULT 'payment',
+					estimated_amount_base REAL NOT NULL DEFAULT 0,
+					amount_base REAL NOT NULL,
+					variance_base REAL NOT NULL DEFAULT 0,
+					paid_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+					reference TEXT,
+					note TEXT,
+					reversed_payment_id TEXT,
+					created_by TEXT,
+					created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+				)
+			`);
 
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_orders_store_created ON purchase_orders (store_id, created_at DESC)");
-		await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders (status)");
-		await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_items_po ON purchase_order_items (purchase_order_id)");
-		await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_payments_po ON purchase_order_payments (purchase_order_id)");
+			await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders (status)");
+			await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_items_po ON purchase_order_items (purchase_order_id)");
+			await db.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_payments_po ON purchase_order_payments (purchase_order_id)");
+			const paymentTableInfo = await db.execute("PRAGMA table_info(purchase_order_payments)");
+			const paymentColumns = new Set(paymentTableInfo.rows.map((row) => String((row as Record<string, unknown>).name || "")));
+			if (!paymentColumns.has("estimated_amount_base")) {
+				await db.execute("ALTER TABLE purchase_order_payments ADD COLUMN estimated_amount_base REAL NOT NULL DEFAULT 0");
+			}
+			if (!paymentColumns.has("variance_base")) {
+				await db.execute("ALTER TABLE purchase_order_payments ADD COLUMN variance_base REAL NOT NULL DEFAULT 0");
+			}
 
-		PurchaseOrderInterface.initialized = true;
-	}
+			PurchaseOrderInterface.initialized = true;
+		}
 
 	static async findMany(filters: PurchaseOrderListFilters = {}): Promise<PurchaseOrderListItem[]> {
 		await PurchaseOrderInterface.ensureTables();
@@ -774,6 +800,8 @@ export class PurchaseOrderInterface {
 			if (!detail) {
 				throw ApiError.NotFoundError("Purchase order not found");
 			}
+			const store = await StoreInterface.findById(detail.order.store_id, transaction);
+			const storeCostMethod = store?.cost_method === "fifo" ? "fifo" : "average";
 			const receiptMap = new Map(lineReceipts.map((line) => [line.item_id, Number(line.qty_received)]));
 			const receiveAll = lineReceipts.length === 0;
 			let hasAnyReceived = false;
@@ -802,20 +830,44 @@ export class PurchaseOrderInterface {
 				}
 
 				hasAnyReceived = true;
+				const receiptQtyBase = requestedQty * toNumber(item.multiplier_to_base || 1);
+				const receiptUnitCostBase = toNumber(item.landed_cost_per_unit || item.unit_cost_base || item.unit_cost_purchase || 0);
 				const nextQtyReceived = toNumber(item.qty_received) + requestedQty;
-				const nextQtyBaseReceived = toNumber(item.qty_base_received) + (requestedQty * toNumber(item.multiplier_to_base || 1));
+				const nextQtyBaseReceived = toNumber(item.qty_base_received) + receiptQtyBase;
 
 					await InventoryInterface.adjustStockWithinTransaction(transaction, {
 						store_id: detail.order.store_id,
 						product_id: item.product_id,
 						mode: "increment",
-					qty_base: requestedQty * toNumber(item.multiplier_to_base || 1),
-					note: `รับสินค้า PO ${detail.order.po_number}`,
-					created_by: receivedBy,
-				}, {
-					refType: "purchase_order",
-					refId: detail.order.id,
-				});
+						qty_base: receiptQtyBase,
+						note: `รับสินค้า PO ${detail.order.po_number}`,
+						created_by: receivedBy,
+					}, {
+						refType: "purchase_order",
+						refId: detail.order.id,
+					});
+
+					await InventoryCostInterface.recordReceipt({
+						store_id: detail.order.store_id,
+						product_id: item.product_id,
+						qty_base: receiptQtyBase,
+						unit_cost_base: receiptUnitCostBase,
+						source_type: "purchase_order",
+						source_id: detail.order.id,
+						source_line_id: item.id,
+						cost_method: storeCostMethod,
+						note: `รับสินค้า PO ${detail.order.po_number}`,
+						meta: {
+							purchase_order_id: detail.order.id,
+							purchase_order_item_id: item.id,
+							po_number: detail.order.po_number,
+							qty_received: requestedQty,
+							qty_base_received: receiptQtyBase,
+							multiplier_to_base: toNumber(item.multiplier_to_base || 1),
+							cost_method: storeCostMethod,
+						},
+						received_at: receivedAt,
+					}, transaction);
 
 					await transaction.execute({
 						sql: `
@@ -846,6 +898,186 @@ export class PurchaseOrderInterface {
 					WHERE id = ?
 				`,
 				args: [hasRemaining ? "partial" : "received", detail.order.received_at ?? receivedAt, receivedBy, receivedAt, id],
+			});
+
+			await transaction.commit();
+			return PurchaseOrderInterface.findById(id);
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// keep original error
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
+	}
+
+	static async settle(
+		id: string,
+		input: PurchaseOrderSettlementInput,
+	): Promise<PurchaseOrderDetail | null> {
+		await PurchaseOrderInterface.ensureTables();
+		const db = DbConn.getClient();
+		const transaction = await db.transaction("write");
+		try {
+			const detail = await PurchaseOrderInterface.findById(id, transaction);
+			if (!detail) {
+				return null;
+			}
+			if (detail.order.status === "draft" || detail.order.status === "ordered" || detail.order.status === "arrived") {
+				throw ApiError.BadRequestError("purchase order must be received before payment can be settled");
+			}
+			if (detail.order.status === "cancelled") {
+				throw ApiError.BadRequestError("cancelled purchase order cannot be settled");
+			}
+			if (detail.order.payment_status === "paid") {
+				return detail;
+			}
+
+			const now = new Date().toISOString();
+			const exchangeRate = Number(input.exchange_rate ?? detail.order.exchange_rate ?? 1) || 1;
+			const shippingOriginal = Number(input.shipping_cost ?? detail.order.shipping_cost_original ?? 0);
+			const otherOriginal = Number(input.other_cost ?? detail.order.other_cost_original ?? 0);
+			const shippingBase = shippingOriginal * exchangeRate;
+			const otherBase = otherOriginal * exchangeRate;
+			const itemsBase = detail.items.reduce((sum, item) => sum + (toNumber(item.qty_ordered) * toNumber(item.unit_cost_base)), 0);
+			const settledAmountBase = itemsBase + shippingBase + otherBase;
+			const paidAt = input.paid_at || now;
+			const paymentReference = normalizeOptionalString(input.payment_reference);
+			const paymentNote = normalizeOptionalString(input.payment_note);
+
+			await transaction.execute({
+				sql: `
+					UPDATE purchase_orders
+					SET exchange_rate = ?,
+						shipping_cost = ?,
+						other_cost = ?,
+						shipping_cost_original = ?,
+						shipping_cost_currency = ?,
+						other_cost_original = ?,
+						other_cost_currency = ?,
+						payment_status = ?,
+						paid_at = ?,
+						paid_by = ?,
+						payment_reference = ?,
+						payment_note = ?,
+						updated_by = ?,
+						updated_at = ?
+					WHERE id = ?
+				`,
+				args: [
+					exchangeRate,
+					shippingBase,
+					otherBase,
+					shippingOriginal,
+					detail.order.purchase_currency,
+					otherOriginal,
+					detail.order.purchase_currency,
+					"paid",
+					paidAt,
+					input.settled_by ?? null,
+					paymentReference,
+					paymentNote,
+					input.settled_by ?? null,
+					now,
+					id,
+				],
+			});
+
+			await transaction.execute({
+				sql: `
+					INSERT INTO purchase_order_payments (
+						id, purchase_order_id, store_id, entry_type, estimated_amount_base, amount_base, variance_base, paid_at,
+						reference, note, reversed_payment_id, created_by, created_at
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+				args: [
+					randomUUID(),
+					id,
+					detail.order.store_id,
+					"payment",
+					detail.order.total_estimated_base,
+					settledAmountBase,
+					settledAmountBase - detail.order.total_estimated_base,
+					paidAt,
+					paymentReference,
+					paymentNote,
+					null,
+					input.settled_by ?? null,
+					now,
+				],
+			});
+
+			await transaction.execute({
+				sql: `
+					INSERT INTO audit_events (
+						id,
+						scope,
+						store_id,
+						actor_user_id,
+						actor_name,
+						actor_role,
+						action,
+						entity_type,
+						entity_id,
+						result,
+						reason_code,
+						ip_address,
+						user_agent,
+						request_id,
+						metadata,
+						"before",
+						"after",
+						occurred_at
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+				args: [
+					randomUUID(),
+					"purchase_orders",
+					detail.order.store_id,
+					input.settled_by ?? null,
+					null,
+					null,
+					"settled",
+					"purchase_order",
+					detail.order.id,
+					"success",
+					null,
+					null,
+					null,
+					null,
+					JSON.stringify({
+						exchange_rate_before: detail.order.exchange_rate,
+						exchange_rate_after: exchangeRate,
+						shipping_cost_before: detail.order.shipping_cost_original,
+						shipping_cost_after: shippingOriginal,
+						other_cost_before: detail.order.other_cost_original,
+						other_cost_after: otherOriginal,
+						settled_amount_base: settledAmountBase,
+						variance_base: settledAmountBase - detail.order.total_estimated_base,
+					}),
+					JSON.stringify({
+						payment_status: detail.order.payment_status,
+						paid_at: detail.order.paid_at,
+						paid_by: detail.order.paid_by,
+						exchange_rate: detail.order.exchange_rate,
+						shipping_cost: detail.order.shipping_cost,
+						other_cost: detail.order.other_cost,
+					}),
+					JSON.stringify({
+						payment_status: "paid",
+						paid_at: paidAt,
+						paid_by: input.settled_by ?? null,
+						exchange_rate: exchangeRate,
+						shipping_cost: shippingBase,
+						other_cost: otherBase,
+					}),
+					now,
+				],
 			});
 
 			await transaction.commit();

@@ -61,6 +61,17 @@ function shouldAutoFocusProfileModalInput() {
 	return window.matchMedia("(min-width: 1024px)").matches;
 }
 
+function formatDateTime(value?: string | null) {
+	if (!value) return "-";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+
+	return new Intl.DateTimeFormat("th-TH", {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(date);
+}
+
 watch(currentUser, (value) => {
 	profileForm.name = value?.name || "";
 }, { immediate: true });
@@ -264,7 +275,7 @@ onMounted(async () => {
 								</div>
 								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Session ID</dt>
-									<dd class="max-w-[190px] text-right font-medium break-all text-stone-900">{{ currentSession?.id || "-" }}</dd>
+									<dd class="min-w-0 max-w-[240px] truncate text-right font-mono text-xs font-medium whitespace-nowrap text-stone-900">{{ currentSession?.id || "-" }}</dd>
 								</div>
 								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
 									<dt class="text-stone-500">Remember me</dt>
@@ -272,7 +283,7 @@ onMounted(async () => {
 								</div>
 								<div class="flex items-start justify-between gap-4">
 									<dt class="text-stone-500">Refresh session ถึง</dt>
-									<dd class="text-right font-medium text-stone-900">{{ currentSession?.refreshExpiresAt || "-" }}</dd>
+									<dd class="text-right font-medium text-stone-900">{{ formatDateTime(currentSession?.refreshExpiresAt) }}</dd>
 								</div>
 							</dl>
 						</div>
@@ -351,7 +362,7 @@ onMounted(async () => {
 					:model-value="profileModalOpen"
 					title="แก้ข้อมูลบัญชี"
 					description="อัปเดตชื่อผู้ใช้ของบัญชีปัจจุบัน"
-					desktop-width="440px"
+					desktop-width="680px"
 					close-button-size="md"
 					compact-header
 					panel-class="lg:rounded-md"
@@ -397,7 +408,7 @@ onMounted(async () => {
 					:model-value="passwordModalOpen"
 					title="เปลี่ยนรหัสผ่าน"
 					description="ยืนยันรหัสผ่านเดิมก่อนตั้งรหัสผ่านใหม่"
-					desktop-width="440px"
+					desktop-width="680px"
 					close-button-size="md"
 					compact-header
 					panel-class="lg:rounded-md"

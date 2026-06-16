@@ -13,6 +13,7 @@ type StoreRecord = {
 	store_type: string;
 	currency: string;
 	owner_user_id: string | null;
+	owner_user_name: string | null;
 	address: string | null;
 	phone_number: string | null;
 	pdf_header_color: string;
@@ -70,6 +71,7 @@ const filteredStores = computed(() => stores.value.filter((store) => {
 	const matchesQuery = !query
 		|| store.name.toLowerCase().includes(query)
 		|| store.id.toLowerCase().includes(query)
+		|| (store.owner_user_name || "").toLowerCase().includes(query)
 		|| (store.owner_user_id || "").toLowerCase().includes(query);
 	const matchesType = activeType.value === "all" || store.store_type === activeType.value;
 	const matchesCurrency = activeCurrency.value === "all" || store.currency === activeCurrency.value;
@@ -115,6 +117,36 @@ function formatDateTime(value: string) {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
+}
+
+function storeTypeLabel(storeType: string) {
+	switch (storeType) {
+		case "RETAIL":
+			return "Retail";
+		case "CAFE":
+			return "Cafe";
+		case "RESTAURANT":
+			return "Restaurant";
+		case "SERVICE":
+			return "Service";
+		default:
+			return "Other";
+	}
+}
+
+function storeTypeTone(storeType: string) {
+	switch (storeType) {
+		case "RETAIL":
+			return "primary";
+		case "CAFE":
+			return "amber";
+		case "RESTAURANT":
+			return "red";
+		case "SERVICE":
+			return "neutral";
+		default:
+			return "gray";
+	}
 }
 
 function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
@@ -311,20 +343,50 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 		sidebar-description="จัดการร้านในมุม superadmin และติดตามสถานะการใช้งานแต่ละร้าน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 lg:gap-4">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title="Superadmin Stores"
-					description="ข้อมูลร้านภายใต้ superadmin ปัจจุบันจาก API /superadmin/stores"
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="reloadStores">
-								รีโหลด
-							</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-building-storefront-20-solid" @click="openCreateModal">
-								เพิ่มร้าน
-							</AppButton>
+					<template #default>
+						<div class="flex w-full flex-wrap items-center gap-2 pt-1">
+							<UInput
+								v-model="searchQuery"
+								icon="i-heroicons-magnifying-glass-20-solid"
+								size="lg"
+								color="neutral"
+								placeholder="ค้นหาชื่อร้าน, owner id หรือ store id"
+								class="min-w-0 flex-1 [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+							/>
+							<div class="flex shrink-0 gap-2">
+								<AppButton
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-arrow-path-20-solid"
+									class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+									:loading="pending"
+									:disabled="pending"
+									:spin-icon-on-loading="true"
+									aria-label="รีโหลด"
+									title="รีโหลด"
+									@click="reloadStores"
+								>
+									<span class="hidden sm:inline">รีโหลด</span>
+								</AppButton>
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									icon="i-heroicons-building-storefront-20-solid"
+									class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+									aria-label="เพิ่มร้าน"
+									title="เพิ่มร้าน"
+									@click="openCreateModal"
+								>
+									<span class="hidden sm:inline">เพิ่มร้าน</span>
+								</AppButton>
+							</div>
 						</div>
 					</template>
 				</AppPageHeader>
@@ -356,16 +418,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px_180px]">
-									<div class="relative">
-										<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-stone-400" />
-										<input
-											v-model="searchQuery"
-											type="search"
-											placeholder="ค้นหาชื่อร้าน, owner id หรือ store id"
-											class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-										>
-									</div>
+								<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
 									<select v-model="activeType" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 										<option value="all">ทุกประเภทร้าน</option>
 										<option value="RETAIL">Retail</option>
@@ -390,29 +443,66 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 								<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 								<div v-else-if="!totalFilteredStores" class="p-5 text-center text-sm text-stone-500">ไม่พบร้านตามเงื่อนไขที่เลือก</div>
 								<template v-else>
-									<button
-										v-for="store in paginatedStores"
-										:key="store.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										@click="openDetailModal(store.id)"
-									>
-										<div class="flex items-center justify-between gap-3">
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ store.name }}</p>
-												<p class="mt-1 truncate text-xs text-stone-500">{{ store.id }} · owner: {{ store.owner_user_id || '-' }}</p>
-												<p class="mt-2 text-xs text-stone-500">{{ store.store_type }} · {{ store.currency }} · สร้างเมื่อ {{ formatDateTime(store.created_at) }}</p>
-											</div>
-											<div class="flex items-center gap-2">
-												<span class="inline-block h-4 w-4 rounded-full ring-1 ring-black/10" :style="{ backgroundColor: store.pdf_header_color || '#22c55e' }" />
-												<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-chevron-right-20-solid">จัดการ</AppButton>
-											</div>
-										</div>
-									</button>
+									<div class="overflow-x-auto">
+										<table class="min-w-[1080px] w-full border-separate border-spacing-0">
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+													<th class="border-b border-[#ece6dc] px-4 py-3">Store</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Owner</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Type</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Currency</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Address</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Created</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="store in paginatedStores"
+													:key="store.id"
+													class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50 focus-within:bg-primary-50"
+													:class="detailOpen && selectedStoreId === store.id ? '!bg-primary-50' : 'bg-white'"
+													@click="openDetailModal(store.id)"
+												>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<div class="min-w-0">
+															<p class="truncate font-semibold text-stone-950">{{ store.name }}</p>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ store.id }}</p>
+														</div>
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														{{ store.owner_user_name || '-' }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														{{ storeTypeLabel(store.store_type) }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														{{ store.currency }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														<p class="truncate">{{ store.address || '-' }}</p>
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														{{ formatDateTime(store.created_at) }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+														<AppButton
+															color="neutral"
+															variant="soft"
+															size="md"
+															class="rounded-md"
+															icon="i-heroicons-chevron-right-20-solid"
+															@click.stop="openDetailModal(store.id)"
+														>
+															จัดการ
+														</AppButton>
+													</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
 								</template>
-								</div>
 							</div>
-
 							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 								<div class="flex flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
 									<div class="flex items-center justify-between gap-3 md:min-w-0 md:flex-1">
@@ -478,7 +568,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 				v-model="createOpen"
 				title="Create Store"
 				description="สร้างร้านใหม่บนฐานข้อมูลจริง"
-				desktop-width="560px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -535,11 +625,11 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 				</div>
 			</AppResponsivePanel>
 
-			<AppResponsivePanel
-				v-model="detailOpen"
-				title="Store Detail"
+				<AppResponsivePanel
+					v-model="detailOpen"
+					title="Store Detail"
 				description="แก้ไขข้อมูลร้านบนฐานข้อมูลจริง"
-				desktop-width="560px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -551,7 +641,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 						<div class="space-y-4 pb-6">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-sm font-semibold text-stone-950">{{ selectedStore.id }}</p>
-								<p class="mt-1 text-xs text-stone-500">owner: {{ selectedStore.owner_user_id || '-' }} · สร้างเมื่อ {{ formatDateTime(selectedStore.created_at) }}</p>
+								<p class="mt-1 text-xs text-stone-500">owner: {{ selectedStore.owner_user_name || '-' }} · สร้างเมื่อ {{ formatDateTime(selectedStore.created_at) }}</p>
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อร้าน</label>
@@ -598,7 +688,8 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 						</div>
 					</div>
 				</div>
-			</AppResponsivePanel>
+				</AppResponsivePanel>
+				</div>
 		</template>
 	</AppSidebarShell>
 </template>

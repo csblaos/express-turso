@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
-import { formatMoneyWithSymbol } from "~/utils/currency";
+import { getCurrencySymbol, formatMoneyWithSymbol } from "~/utils/currency";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -35,6 +35,46 @@ type ApiPurchaseOrderListItem = {
 	total_estimated_base: number;
 };
 
+type ApiPurchaseOrderDetailItem = {
+	id: string;
+	purchase_order_id: string;
+	product_id: string;
+	product_name: string | null;
+	product_sku: string | null;
+	unit_name: string | null;
+	qty_ordered: number;
+	qty_received: number;
+	unit_cost_purchase: number;
+	unit_cost_base: number;
+	landed_cost_per_unit: number;
+	unit_id: string | null;
+	multiplier_to_base: number;
+	qty_base_ordered: number;
+	qty_base_received: number;
+};
+
+type ApiPurchaseOrderDetailPayment = {
+	id: string;
+	purchase_order_id: string;
+	store_id: string;
+	entry_type: string;
+	estimated_amount_base: number;
+	amount_base: number;
+	variance_base: number;
+	paid_at: string;
+	reference: string | null;
+	note: string | null;
+	reversed_payment_id: string | null;
+	created_by: string | null;
+	created_at: string;
+};
+
+type ApiPurchaseOrderDetail = {
+	order: ApiPurchaseOrderListItem;
+	items: ApiPurchaseOrderDetailItem[];
+	payments: ApiPurchaseOrderDetailPayment[];
+};
+
 const { apiFetch } = useApiClient();
 const { currentStoreId, hydrateAuthState } = useAuthSession();
 
@@ -53,6 +93,12 @@ const orders = ref<ApiPurchaseOrderListItem[]>([]);
 const stores = ref<StoreRecord[]>([]);
 const ordersPending = ref(true);
 const ordersError = ref<string | null>(null);
+const detailOpen = ref(false);
+const detailPending = ref(false);
+const detailError = ref<string | null>(null);
+const selectedOrderId = ref("");
+const selectedOrderDetail = ref<ApiPurchaseOrderDetail | null>(null);
+const detailRequests = new Set<string>();
 
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -63,6 +109,7 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", {
 	timeStyle: "short",
 });
 const numberFormatter = new Intl.NumberFormat("th-TH");
+const appToast = useAppToast();
 
 const filteredOrders = computed(() => orders.value.filter((order) => {
 	const query = searchQuery.value.trim().toLowerCase();
@@ -100,6 +147,26 @@ const storeCurrency = computed(() => {
 	return stores.value.find((store) => store.id === currentStoreId.value)?.currency?.trim()?.toUpperCase()
 		|| stores.value[0]?.currency?.trim()?.toUpperCase()
 		|| "LAK";
+});
+const selectedOrder = computed(() =>
+	orders.value.find((order) => order.id === selectedOrderId.value) ?? null,
+);
+const selectedOrderPaymentSummary = computed(() => {
+	if (!selectedOrderDetail.value?.payments.length) return null;
+	const relevantPayments = selectedOrderDetail.value.payments.filter((payment) => payment.entry_type === "payment");
+	if (!relevantPayments.length) return null;
+	const estimatedAmountBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.estimated_amount_base || 0), 0);
+	const actualAmountBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.amount_base || 0), 0);
+	const varianceBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.variance_base || 0), 0);
+	return {
+		count: relevantPayments.length,
+		estimatedAmountBase,
+		actualAmountBase,
+		varianceBase,
+		paidAt: relevantPayments[0]?.paid_at || null,
+		reference: relevantPayments[0]?.reference || null,
+		note: relevantPayments[0]?.note || null,
+	};
 });
 
 const typeOptions: Array<{ id: typeof statusFilter.value; label: string }> = [
@@ -196,6 +263,26 @@ function formatMoney(value: number) {
 	return formatMoneyWithSymbol(value, storeCurrency.value);
 }
 
+function showToast(message: string) {
+	appToast.info({ title: message });
+}
+
+async function copyToClipboard(text: string, toastTitle: string) {
+	const value = String(text || "").trim();
+	if (!value) return;
+	try {
+		await navigator.clipboard.writeText(value);
+		showToast(toastTitle);
+	} catch {
+		showToast("คัดลอกไม่สำเร็จ");
+	}
+}
+
+async function copySupplierContact() {
+	if (!selectedOrderDetail.value?.order.supplier_contact) return;
+	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, "คัดลอก Supplier contact แล้ว");
+}
+
 function statusColor(status: string) {
 	if (status === "received") return "success";
 	if (status === "shipped") return "info";
@@ -220,6 +307,42 @@ function paymentStatusColor(status: string) {
 	if (status === "paid") return "success";
 	if (status === "partial") return "warning";
 	return "neutral";
+}
+
+function openDetail(orderId: string) {
+	selectedOrderId.value = orderId;
+	detailOpen.value = true;
+	const cached = selectedOrderDetail.value?.order.id === orderId ? selectedOrderDetail.value : null;
+	if (cached) {
+		detailError.value = null;
+		detailPending.value = false;
+		return;
+	}
+	void loadOrderDetail(orderId);
+}
+
+function closeDetail() {
+	detailOpen.value = false;
+	selectedOrderId.value = "";
+	selectedOrderDetail.value = null;
+	detailError.value = null;
+}
+
+async function loadOrderDetail(id: string) {
+	if (detailRequests.has(id)) return;
+	detailRequests.add(id);
+	detailPending.value = true;
+	detailError.value = null;
+
+	try {
+		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${id}`);
+		selectedOrderDetail.value = response.data;
+	} catch (error) {
+		detailError.value = resolveApiErrorMessage(error, "โหลดรายละเอียด PO ไม่สำเร็จ");
+	} finally {
+		detailPending.value = false;
+		detailRequests.delete(id);
+	}
 }
 
 function goToPage(page: number) {
@@ -482,7 +605,8 @@ onMounted(() => {
 									<tr
 										v-for="order in paginatedOrders"
 										:key="order.id"
-										class="bg-white text-sm text-stone-700 transition hover:bg-primary-50"
+										class="cursor-pointer bg-white text-sm text-stone-700 transition hover:bg-primary-50"
+										@click="openDetail(order.id)"
 									>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
 											{{ formatDate(order.created_at) }}
@@ -578,6 +702,326 @@ onMounted(() => {
 					</div>
 				</div>
 			</div>
+
+			<AppResponsivePanel
+				v-model="detailOpen"
+				title="รายละเอียด PO"
+				description="ดูสรุป รายการสินค้า และ payment ของ purchase order นี้"
+				desktop-width="680px"
+				close-button-size="md"
+				compact-header
+				full-bleed-header
+				content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+				@close="closeDetail"
+			>
+				<template #default>
+					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+						<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+							<template v-if="detailPending">
+								<div class="relative rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<div class="flex items-start gap-3">
+										<div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
+											<UIcon name="i-heroicons-clipboard-document-list" class="h-5 w-5" />
+										</div>
+										<div class="min-w-0 flex-1">
+											<div class="flex flex-wrap items-start justify-between gap-3">
+												<div class="min-w-0">
+													<h3 class="truncate text-base font-semibold text-stone-950">
+														{{ selectedOrder?.po_number || "PO-XXXX" }}
+													</h3>
+													<p class="mt-1 truncate text-sm text-stone-500">
+														{{ selectedOrder?.supplier_name || "ไม่ระบุ supplier" }}
+													</p>
+												</div>
+												<div class="flex shrink-0 flex-wrap items-center gap-2">
+													<UBadge :color="statusColor(selectedOrder?.status || 'draft')" variant="soft" :label="statusLabel(selectedOrder?.status || 'draft')" />
+												</div>
+											</div>
+											<div class="mt-3 flex flex-wrap gap-2">
+												<UBadge :color="paymentStatusColor(selectedOrder?.payment_status || 'unpaid')" variant="soft" :label="selectedOrder?.payment_status || 'unpaid'" />
+												<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrder?.purchase_currency || storeCurrency) || (selectedOrder?.purchase_currency || storeCurrency)" />
+												<UBadge color="neutral" variant="soft" :label="`${selectedOrder?.item_count || 0} รายการ`" />
+											</div>
+											<div class="pointer-events-none absolute inset-x-0 bottom-0">
+												<AppInlineLoadingBar minimal container-class="bg-transparent" />
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<dl class="mt-4 space-y-3 text-sm">
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">Supplier</dt>
+											<dd class="text-right font-medium text-stone-900">-</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">คาดรับ</dt>
+											<dd class="text-right font-medium text-stone-900">-</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">ต้นทุนรวม</dt>
+											<dd class="text-right font-medium text-stone-900">-</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4">
+											<dt class="text-stone-500">หมายเหตุ</dt>
+											<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
+										</div>
+									</dl>
+								</div>
+
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<div class="flex items-center justify-between gap-2">
+										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+									</div>
+									<div class="mt-4 space-y-3">
+										<div v-for="index in 2" :key="index" class="min-h-[72px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
+									</div>
+								</div>
+
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<div class="flex items-center justify-between gap-2">
+										<h3 class="text-sm font-semibold text-stone-950">Payments</h3>
+									</div>
+									<div class="mt-4 space-y-3">
+										<div v-for="index in 2" :key="index" class="min-h-[64px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
+									</div>
+								</div>
+							</template>
+
+							<div v-else-if="detailError" class="rounded-md border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
+								<div class="space-y-3 py-10 text-center">
+									<p class="text-sm text-stone-600">{{ detailError }}</p>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</AppButton>
+								</div>
+							</div>
+
+							<template v-else-if="selectedOrderDetail">
+								<div class="relative rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<div class="flex items-start gap-3">
+										<div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
+											<UIcon name="i-heroicons-clipboard-document-list" class="h-5 w-5" />
+										</div>
+										<div class="min-w-0 flex-1">
+											<div class="flex flex-wrap items-start justify-between gap-3">
+												<div class="min-w-0">
+													<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrderDetail.order.po_number }}</h3>
+													<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</p>
+												</div>
+												<div class="flex shrink-0 flex-wrap items-center gap-2">
+													<UBadge :color="statusColor(selectedOrderDetail.order.status)" variant="soft" :label="statusLabel(selectedOrderDetail.order.status)" />
+												</div>
+											</div>
+											<div class="mt-3 flex flex-wrap gap-2">
+												<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+												<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
+												<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} รายการ`" />
+											</div>
+											<div v-if="detailPending" class="pointer-events-none absolute inset-x-0 bottom-0">
+												<AppInlineLoadingBar minimal container-class="bg-transparent" />
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<template v-if="detailPending">
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+										<dl class="mt-4 space-y-3 text-sm">
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">Supplier</dt>
+												<dd class="text-right font-medium text-stone-900">-</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">คาดรับ</dt>
+												<dd class="text-right font-medium text-stone-900">-</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">ต้นทุนรวม</dt>
+												<dd class="text-right font-medium text-stone-900">-</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4">
+												<dt class="text-stone-500">หมายเหตุ</dt>
+												<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
+											</div>
+										</dl>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<div class="flex items-center justify-between gap-2">
+											<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+										</div>
+										<div class="mt-4 space-y-3">
+											<div v-for="index in 2" :key="index" class="min-h-[72px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
+										</div>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<div class="flex items-center justify-between gap-2">
+											<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
+											<UBadge color="neutral" variant="soft" label="กำลังโหลด" />
+										</div>
+										<div class="mt-4 grid gap-3 sm:grid-cols-3">
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+											</div>
+										</div>
+										<div class="mt-4 space-y-3">
+											<div v-for="index in 2" :key="index" class="min-h-[64px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
+										</div>
+									</div>
+								</template>
+								<template v-else>
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+										<dl class="mt-4 space-y-3 text-sm">
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">Supplier</dt>
+												<dd class="text-right font-medium text-stone-900">
+													{{ selectedOrderDetail.order.supplier_name || "-" }}
+													<div v-if="selectedOrderDetail.order.supplier_contact" class="mt-2 flex items-center justify-end gap-2">
+														<span class="text-xs font-normal text-stone-500">{{ selectedOrderDetail.order.supplier_contact }}</span>
+														<AppButton
+															color="neutral"
+															variant="soft"
+															size="xs"
+															icon="i-heroicons-clipboard-document-20-solid"
+															class="rounded-md"
+															type="button"
+															title="คัดลอก contact supplier"
+															@click="copySupplierContact"
+														>
+															คัดลอก
+														</AppButton>
+													</div>
+												</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">คาดรับ</dt>
+												<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrderDetail.order.expected_at) }}</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+												<dt class="text-stone-500">ต้นทุนรวม</dt>
+												<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrderDetail.order.total_estimated_base) }}</dd>
+											</div>
+											<div class="flex items-start justify-between gap-4">
+												<dt class="text-stone-500">หมายเหตุ</dt>
+												<dd class="max-w-[220px] text-right font-medium text-stone-900">{{ selectedOrderDetail.order.note || "-" }}</dd>
+											</div>
+										</dl>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<div class="flex items-center justify-between gap-2">
+											<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+											<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
+										</div>
+										<div class="mt-4 space-y-3">
+											<div v-for="item in selectedOrderDetail.items" :key="item.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
+												<div class="flex items-start justify-between gap-3">
+													<div class="min-w-0">
+														<p class="truncate text-sm font-semibold text-stone-900">{{ item.product_name || item.product_id }}</p>
+														<p class="mt-1 text-xs text-stone-500">{{ item.product_sku || "-" }} · {{ item.unit_name || "base unit" }}</p>
+													</div>
+													<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base) }}</p>
+												</div>
+												<div class="mt-3 flex flex-wrap gap-2">
+													<UBadge color="neutral" variant="soft" :label="`สั่ง ${numberFormatter.format(item.qty_ordered)}`" />
+													<UBadge color="neutral" variant="soft" :label="`รับแล้ว ${numberFormatter.format(item.qty_received)}`" />
+													<UBadge color="neutral" variant="soft" :label="`คงเหลือ ${numberFormatter.format(Math.max(0, item.qty_ordered - item.qty_received))}`" />
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<div class="flex items-center justify-between gap-2">
+											<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
+											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+										</div>
+										<div class="mt-4 grid gap-3 sm:grid-cols-3">
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderPaymentSummary?.estimatedAmountBase ?? selectedOrderDetail.order.total_estimated_base) }}</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderPaymentSummary?.actualAmountBase ?? 0) }}</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p
+													class="mt-2 text-base font-semibold"
+													:class="(selectedOrderPaymentSummary?.varianceBase || 0) === 0
+														? 'text-stone-950'
+														: (selectedOrderPaymentSummary?.varianceBase || 0) > 0
+															? 'text-amber-600'
+															: 'text-emerald-600'"
+												>
+													{{ formatMoney(Math.abs(selectedOrderPaymentSummary?.varianceBase || 0)) }}
+												</p>
+											</div>
+										</div>
+										<div v-if="selectedOrderPaymentSummary" class="mt-4 rounded-md border border-neutral-200 bg-white px-4 py-4">
+											<div class="flex flex-wrap items-center gap-2">
+												<UBadge color="neutral" variant="soft" :label="`${selectedOrderPaymentSummary.count} รายการชำระ`" />
+												<UBadge color="neutral" variant="soft" :label="`ชำระล่าสุด ${formatDate(selectedOrderPaymentSummary.paidAt)}`" />
+												<UBadge v-if="selectedOrderPaymentSummary.reference" color="neutral" variant="soft" :label="selectedOrderPaymentSummary.reference" />
+											</div>
+											<p v-if="selectedOrderPaymentSummary.note" class="mt-3 text-sm leading-6 text-stone-600">
+												{{ selectedOrderPaymentSummary.note }}
+											</p>
+										</div>
+										<div v-if="selectedOrderDetail.payments.length" class="mt-4 space-y-3">
+											<div v-for="payment in selectedOrderDetail.payments" :key="payment.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
+												<div class="flex flex-wrap items-start justify-between gap-3">
+													<div class="min-w-0">
+														<p class="text-sm font-semibold text-stone-900">{{ payment.entry_type }}</p>
+														<p class="mt-1 text-xs text-stone-500">{{ formatDate(payment.paid_at) }}</p>
+														<div class="mt-2 flex flex-wrap gap-2">
+															<UBadge color="neutral" variant="soft" :label="`ประมาณ ${formatMoney(payment.estimated_amount_base)}`" />
+															<UBadge color="neutral" variant="soft" :label="`จริง ${formatMoney(payment.amount_base)}`" />
+															<UBadge
+																:color="payment.variance_base === 0 ? 'neutral' : payment.variance_base > 0 ? 'warning' : 'success'"
+																variant="soft"
+																:label="`ส่วนต่าง ${formatMoney(Math.abs(payment.variance_base))}`"
+															/>
+														</div>
+														<div v-if="payment.reference || payment.note" class="mt-3 space-y-1 text-xs text-stone-500">
+															<p v-if="payment.reference">Reference: {{ payment.reference }}</p>
+															<p v-if="payment.note">Note: {{ payment.note }}</p>
+														</div>
+													</div>
+													<p class="text-sm font-semibold text-stone-900">{{ formatMoney(payment.amount_base) }}</p>
+												</div>
+											</div>
+										</div>
+										<div v-else class="mt-4 rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
+											ยังไม่มี payment entry
+										</div>
+									</div>
+								</template>
+							</template>
+						</div>
+
+						<div class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+							<div class="grid w-full grid-cols-1 gap-2">
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
+							</div>
+						</div>
+					</div>
+				</template>
+			</AppResponsivePanel>
 		</template>
 	</AppSidebarShell>
 </template>

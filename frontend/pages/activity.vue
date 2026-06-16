@@ -106,6 +106,8 @@ const pageSummaryText = computed(() => (
 		: `${pageStart.value}-${pageEnd.value} จาก ${totalEvents.value} events`
 ));
 
+const eventsListScrollRef = ref<HTMLElement | null>(null);
+
 watch(events, (value) => {
 	if (!value.length) {
 		selectedEventId.value = "";
@@ -123,6 +125,7 @@ watch([searchQuery, activeScope, activeResult, activeEntityType], () => {
 	if (loadTimer) clearTimeout(loadTimer);
 	loadTimer = setTimeout(() => {
 		currentPage.value = 1;
+		scrollEventsListToTop();
 		void loadEvents();
 	}, 180);
 });
@@ -162,6 +165,8 @@ async function loadEvents() {
 			void loadEvents();
 			return;
 		}
+		await nextTick();
+		scrollEventsListToTop();
 	} catch (err) {
 		error.value = err instanceof Error ? err.message : "โหลดกิจกรรมไม่สำเร็จ";
 	} finally {
@@ -173,6 +178,7 @@ function goToPage(page: number) {
 	const normalizedPage = Math.max(1, Math.min(page, totalPages.value));
 	if (normalizedPage === currentPage.value || pending.value) return;
 	currentPage.value = normalizedPage;
+	scrollEventsListToTop();
 	void loadEvents();
 }
 
@@ -181,6 +187,7 @@ function updatePageSize(value: string) {
 	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
 	pageSize.value = normalizedSize;
 	currentPage.value = 1;
+	scrollEventsListToTop();
 	void loadEvents();
 }
 
@@ -224,6 +231,13 @@ function stringifyBlock(value: unknown) {
 	} catch {
 		return String(value);
 	}
+}
+
+function scrollEventsListToTop() {
+	eventsListScrollRef.value?.scrollTo({
+		top: 0,
+		behavior: "auto",
+	});
 }
 </script>
 
@@ -327,7 +341,7 @@ function stringifyBlock(value: unknown) {
 								</div>
 							</div>
 
-							<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+							<div ref="eventsListScrollRef" class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
 								<div v-if="pending" class="min-h-[280px]">
 									<div class="overflow-hidden bg-neutral-100">
 										<div class="activity-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
@@ -440,7 +454,7 @@ function stringifyBlock(value: unknown) {
 				v-model="detailOpen"
 				title="รายละเอียดกิจกรรม"
 				description="ตรวจข้อมูลก่อน-หลัง และ metadata ของเหตุการณ์นี้"
-				desktop-width="460px"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
 				panel-z-class="z-[59]"

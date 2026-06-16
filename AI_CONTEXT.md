@@ -283,3 +283,21 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 - PO detail ควรเปิดเร็วที่สุด และใช้ inline loading bar ใต้ header card เท่านั้น
 - sensitive multi-step writes ต้องใช้ libSQL write transaction เดียว (`db.transaction("write")`) เสมอ เช่น `PO create`, `PO receive`, `inventory adjust`, และ `store currency rate update`
 - ถ้าผู้ใช้บอกว่า `same style` โดยไม่ระบุหน้าอื่น ให้ยึด layout จาก `/products` และ `/inventory` เป็นหลัก
+
+## 14) งานที่ทำเสร็จวันนี้
+
+- ปรับ PO payment flow และหน้าประวัติ payment แล้ว
+	- เพิ่ม payment settlement summary
+	- เพิ่ม variance / estimated base amount
+	- ทำ history UI ให้ดูรายละเอียดการชำระเงินได้
+- ปรับ logic รองรับต้นทุนสินค้าในตอนรับ PO
+	- เพิ่ม cost layer / cost summary สำหรับต่อยอด FIFO และต้นทุนเฉลี่ย
+	- ปรับ helper stock ให้คืนค่าจาก transaction โดยตรง
+- ตรวจสอบ migration และ build แล้ว
+	- build ผ่าน
+	- migration script รันผ่าน
+- ตรวจสอบ DB live แล้ว
+	- ตาราง cost มีอยู่จริง
+	- insert ทดสอบใน `inventory_cost_summaries` ผ่าน
+- จุดที่ยังต้องตามต่อ
+	- ถ้า PO receive ยัง error อยู่ ให้ตามที่ `InventoryCostInterface.recordReceipt(...)` และรีสตาร์ต API runtime ให้โหลดโค้ดล่าสุด

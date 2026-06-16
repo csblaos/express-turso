@@ -388,3 +388,29 @@ Rule:
 - Store finance now includes `cost_method` (`average` / `fifo`) with a small change history; POS price stays unchanged
 - PO detail should prioritize fast open state with inline loading under the header card, not a separate loading section.
 - If a future task says `same style` for product, inventory, or PO pages, treat these as the current shared baseline first before inventing a new pattern.
+
+## 16) Work completed today
+
+- Updated PO payment flow and history UI:
+	- `frontend/pages/purchase-orders.vue`
+	- `frontend/pages/purchase-orders/history.vue`
+	- added payment settlement summary, variance fields, and payment history details
+- Extended PO payment persistence:
+	- `src/interfaces/PurchaseOrderInterface.ts`
+	- `src/models/PurchaseOrderPayment.ts`
+	- added support for `estimated_amount_base` and `variance_base`
+- Added inventory cost layering support for PO receipt:
+	- `src/interfaces/InventoryCostInterface.ts`
+	- receipt flow now records cost layer / summary data for future FIFO and average-cost work
+- Updated inventory stock helpers:
+	- `src/interfaces/InventoryInterface.ts`
+	- removed the old read-back verification path and now returns computed balance/movement data directly from the transaction
+- Build / migration status verified:
+	- `npm run build` passed
+	- `npm run build:web` passed
+	- `node dist/scripts/Migrate.js` ran successfully
+- Live DB verification:
+	- confirmed cost tables exist in Turso
+	- confirmed direct insert into `inventory_cost_summaries` works
+- Current follow-up area:
+	- PO receive path still needs one more runtime/debug pass around `InventoryCostInterface.recordReceipt(...)` if the live API continues to show the old 404 stack

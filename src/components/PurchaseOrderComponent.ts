@@ -7,6 +7,7 @@ import {
 	PurchaseOrderListFilters,
 	PurchaseOrderListItem,
 	PurchaseOrderReceiveLineInput,
+	PurchaseOrderSettlementInput,
 	PurchaseOrderUpdatePayload,
 } from "@interfaces/PurchaseOrderInterface";
 import { ApiError } from "@middlewares/ApiError";
@@ -281,6 +282,33 @@ export class PurchaseOrderComponent {
 		const updated = await PurchaseOrderInterface.markReceived(detail.order.id, receivedAt, receivedBy, normalizedReceipts);
 		if (!updated) {
 			throw new Error("Failed to mark purchase order as received");
+		}
+
+		return updated;
+	}
+
+	static async settle(
+		requestId: string,
+		id: string,
+		payload: PurchaseOrderSettlementInput,
+	): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const detail = await PurchaseOrderInterface.findById(id);
+		if (!detail) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+
+		if (detail.order.status === "draft" || detail.order.status === "ordered" || detail.order.status === "arrived") {
+			throw ApiError.BadRequestError("purchase order must be received before payment can be settled");
+		}
+
+		if (detail.order.status === "cancelled") {
+			throw ApiError.BadRequestError("cancelled purchase order cannot be settled");
+		}
+
+		const updated = await PurchaseOrderInterface.settle(id, payload);
+		if (!updated) {
+			throw new Error("Failed to settle purchase order payment");
 		}
 
 		return updated;

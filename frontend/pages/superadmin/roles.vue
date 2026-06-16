@@ -71,6 +71,7 @@ const createMetaPending = ref(false);
 const applyTargetRolesPending = ref(false);
 const suppressStoreWatch = ref(false);
 const rolesListScrollRef = ref<HTMLElement | null>(null);
+const searchQuery = ref("");
 const error = ref<string | null>(null);
 const createError = ref<string | null>(null);
 const applyError = ref<string | null>(null);
@@ -154,6 +155,18 @@ const selectedRolePermissionCount = computed(() => (
 	selectedRoleDetail.value?.permissions.length ?? selectedRole.value?.permissions_count ?? 0
 ));
 const isSelectedSystemRole = computed(() => Number(selectedRole.value?.is_system || 0) === 1);
+const filteredRoles = computed(() => {
+	const keyword = searchQuery.value.trim().toLowerCase();
+	if (!keyword) return roles.value;
+
+	return roles.value.filter((role) => (
+		role.name.toLowerCase().includes(keyword)
+		|| role.id.toLowerCase().includes(keyword)
+		|| getStoreName(role.store_id).toLowerCase().includes(keyword)
+		|| roleLabel(role).toLowerCase().includes(keyword)
+		|| String(role.permissions_count).includes(keyword)
+	));
+});
 const roleDetailHasChanges = computed(() => {
 	const roleDetail = selectedRoleDetail.value;
 	if (!roleDetail) return false;
@@ -169,7 +182,7 @@ const roleDetailHasChanges = computed(() => {
 	return currentPermissions.some((key, index) => key !== originalPermissions[index]);
 });
 const listPending = computed(() => loading.value || reloading.value);
-const totalRoles = computed(() => roles.value.length);
+const totalRoles = computed(() => filteredRoles.value.length);
 const totalPages = computed(() => Math.max(1, Math.ceil(totalRoles.value / pageSize.value)));
 const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
 const pageStart = computed(() => (
@@ -186,7 +199,7 @@ const pageSummaryText = computed(() => (
 const paginatedRoles = computed(() => {
 	const start = (currentPage.value - 1) * pageSize.value;
 	const end = start + pageSize.value;
-	return roles.value.slice(start, end);
+	return filteredRoles.value.slice(start, end);
 });
 
 const editorForm = reactive({
@@ -320,6 +333,10 @@ watch(selectedStoreId, async (value, previousValue) => {
 	await fetchRoles();
 }, { immediate: false });
 
+watch(searchQuery, () => {
+	currentPage.value = 1;
+});
+
 function scrollRolesListToTop() {
 	rolesListScrollRef.value?.scrollTo({
 		top: 0,
@@ -369,6 +386,18 @@ function countSelectedPermissionKeys(selectedKeys: string[], permissionKeys: str
 	return permissionKeys.reduce((count, permissionKey) => (
 		selectedSet.has(permissionKey) ? count + 1 : count
 	), 0);
+}
+
+function getStoreName(storeId: string) {
+	return stores.value.find((store) => store.id === storeId)?.name || storeId || "-";
+}
+
+function roleTone(role: RoleRecord) {
+	return Number(role.is_system || 0) === 1 ? "neutral" : "primary";
+}
+
+function roleLabel(role: RoleRecord) {
+	return Number(role.is_system || 0) === 1 ? "system" : "custom";
 }
 
 function togglePermission(permissionKey: string, checked: boolean) {
@@ -727,42 +756,54 @@ onMounted(async () => {
 		sidebar-description="จัดการบทบาทระดับร้านภายใต้ client ที่คุณดูแล"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title="Role Settings"
 					description="กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้านจากมุม Superadmin"
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton
-								color="neutral"
-								variant="soft"
-								size="md"
-								icon="i-heroicons-arrow-path-20-solid"
-								:loading="listPending"
-								:spin-icon-on-loading="true"
-								:disabled="loading || saving"
-								@click="reloadRolePage"
-							>
-								รีโหลด
-							</AppButton>
-							<AppButton
-								color="primary"
-								variant="solid"
-								size="md"
-								icon="i-heroicons-plus-20-solid"
-								:disabled="isCreateRoleButtonDisabled"
-								@click="openCreateRolePanel"
-							>
-								สร้างบทบาท
-							</AppButton>
-						</div>
-					</template>
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:gap-3 lg:justify-end">
+						<UInput
+							v-model="searchQuery"
+							icon="i-heroicons-magnifying-glass-20-solid"
+							size="lg"
+							color="neutral"
+							placeholder="ค้นหา role, ร้าน, type หรือ id"
+							class="min-w-0 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
+						/>
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-path-20-solid"
+							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+							:loading="listPending"
+							:spin-icon-on-loading="true"
+							:disabled="loading || saving"
+							aria-label="รีโหลด"
+							title="รีโหลด"
+							@click="reloadRolePage"
+						>
+							<span class="hidden sm:inline">รีโหลด</span>
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-plus-20-solid"
+							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
+							:disabled="isCreateRoleButtonDisabled"
+							aria-label="สร้างบทบาท"
+							title="สร้างบทบาท"
+							@click="openCreateRolePanel"
+						>
+							<span class="hidden sm:inline">สร้างบทบาท</span>
+						</AppButton>
+					</div>
 				</AppPageHeader>
 
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+				<div class="grid gap-3 lg:pr-1">
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
@@ -775,16 +816,18 @@ onMounted(async () => {
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
-									<select
-										v-model="selectedStoreId"
-										class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									>
-										<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
-									</select>
-									<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyStoreFilter">
-										ใช้ตัวกรอง
-									</AppButton>
+								<div class="space-y-2.5">
+									<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+										<select
+											v-model="selectedStoreId"
+											class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
+										</select>
+										<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyStoreFilter">
+											ใช้ตัวกรอง
+										</AppButton>
+									</div>
 								</div>
 							</div>
 
@@ -796,28 +839,59 @@ onMounted(async () => {
 									{{ error }}
 								</div>
 								<div v-else-if="!roles.length" class="p-5 text-center text-sm text-stone-500">
-									ยังไม่มี role ในร้านนี้
+									{{ searchQuery ? "ไม่พบ role ที่ตรงกับคำค้น" : "ยังไม่มี role ในร้านนี้" }}
 								</div>
 								<template v-else>
-									<button
-										v-for="role in paginatedRoles"
-										:key="role.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										:class="selectedRoleId === role.id ? 'bg-primary-50' : ''"
-										@click="selectRole(role.id)"
-									>
-										<div class="flex items-center justify-between gap-3">
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ role.name }}</p>
-												<p class="mt-1 truncate text-xs text-stone-500">{{ role.permissions_count }} permissions</p>
-											</div>
-											<div class="flex items-center gap-2">
-												<UBadge :color="role.is_system ? 'neutral' : 'primary'" variant="soft" :label="role.is_system ? 'system' : 'custom'" />
-												<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-chevron-right-20-solid">จัดการ</AppButton>
-											</div>
-										</div>
-									</button>
+									<div class="overflow-x-auto">
+										<table class="min-w-[920px] w-full border-separate border-spacing-0">
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
+												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
+													<th class="border-b border-[#ece6dc] px-4 py-3">Role</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">ร้าน</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Permissions</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3">Type</th>
+													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="role in paginatedRoles"
+													:key="role.id"
+													class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50 focus-within:bg-primary-50"
+													:class="detailOpen && selectedRoleId === role.id ? '!bg-primary-50' : 'bg-white'"
+													@click="selectRole(role.id)"
+												>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<div class="min-w-0">
+															<p class="truncate font-semibold text-stone-950">{{ role.name }}</p>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ role.id }}</p>
+														</div>
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														{{ getStoreName(role.store_id) }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+														{{ role.permissions_count }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4">
+														<UBadge :color="roleTone(role)" variant="soft" :label="roleLabel(role)" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
+														<AppButton
+															color="neutral"
+															variant="soft"
+															size="md"
+															class="rounded-md"
+															icon="i-heroicons-chevron-right-20-solid"
+															@click.stop="selectRole(role.id)"
+														>
+															จัดการ
+														</AppButton>
+													</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
 								</template>
 							</div>
 
@@ -887,7 +961,7 @@ onMounted(async () => {
 				v-model="detailOpen"
 				:title="selectedRole ? selectedRole.name : 'Role editor'"
 				description="ปรับชื่อบทบาทและกำหนด permission ที่ role นี้สามารถใช้งานได้"
-				desktop-width="620px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -1059,7 +1133,7 @@ onMounted(async () => {
 				v-model="createOpen"
 				title="สร้างบทบาทใหม่"
 				description="เริ่มจากชื่อ role แล้วเลือกสิทธิ์ที่เหมาะกับทีมงานของร้านนี้"
-				desktop-width="520px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -1180,7 +1254,7 @@ onMounted(async () => {
 				v-model="duplicateOpen"
 				title="ทำสำเนาบทบาท"
 				description="ระบบจะคัดลอก permission จาก role ปัจจุบันไปยัง role ใหม่"
-				desktop-width="620px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -1215,7 +1289,7 @@ onMounted(async () => {
 				v-model="applyOpen"
 				title="ใช้ role นี้กับอีกร้าน"
 				description="คัดลอก permission ของ role ปัจจุบันไปยังร้านปลายทาง โดยไม่ต้อง preload roles ทุก store ตั้งแต่แรก"
-				desktop-width="620px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"
@@ -1332,7 +1406,7 @@ onMounted(async () => {
 				v-model="deleteConfirmOpen"
 				:title="isSelectedSystemRole ? 'ลบบทบาทระบบไม่ได้' : 'ยืนยันการลบบทบาท'"
 				:description="isSelectedSystemRole ? 'บทบาทนี้ถูกสร้างเป็นค่าเริ่มต้นของระบบ จึงป้องกันการลบเพื่อความปลอดภัย' : 'ระบบจะลบบทบาทแบบ soft delete และสามารถเพิ่มหน้าถังขยะเพื่อกู้คืนในอนาคตได้'"
-				desktop-width="620px"
+				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
 				close-button-size="md"

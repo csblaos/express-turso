@@ -71,7 +71,9 @@ type ApiPurchaseOrderDetailPayment = {
 	purchase_order_id: string;
 	store_id: string;
 	entry_type: string;
+	estimated_amount_base: number;
 	amount_base: number;
+	variance_base: number;
 	paid_at: string;
 	reference: string | null;
 	note: string | null;
@@ -115,7 +117,9 @@ type CreateLine = {
 	id: string;
 	productId: string;
 	qtyOrdered: string;
+	costMode: "unit" | "total";
 	unitCost: string;
+	lineTotalCost: string;
 };
 
 const { apiFetch } = useApiClient();
@@ -145,9 +149,19 @@ const detailError = ref<string | null>(null);
 const detailOpen = ref(false);
 const receiveOpen = ref(false);
 const receiveSaving = ref(false);
+const paymentOpen = ref(false);
+const paymentSaving = ref(false);
 const purchaseOrderOrderedSaving = ref(false);
 const receiveMode = ref<"now" | "partial" | "later">("now");
 const receiveLines = ref<ReceiveLineForm[]>([]);
+const paymentForm = reactive({
+	exchangeRate: "1",
+	shippingCost: "0",
+	otherCost: "0",
+	paymentReference: "",
+	paymentNote: "",
+	paidAt: "",
+});
 const createOpen = ref(false);
 const purchaseOrderEditLoading = ref(false);
 const purchaseOrderFormMode = ref<"create" | "edit">("create");
@@ -200,6 +214,18 @@ const paginatedOrders = computed(() => {
 	return orders.value.slice(startIndex, startIndex + pageSize.value);
 });
 const showReceiveLaterOption = computed(() => selectedOrderDetail.value?.order.status !== "arrived");
+const paymentSettledBase = computed(() => {
+	if (!selectedOrderDetail.value) return 0;
+	const exchangeRate = Number(paymentForm.exchangeRate || 1) || 1;
+	const shippingOriginal = parseMoneyInputValue(paymentForm.shippingCost) ?? 0;
+	const otherOriginal = parseMoneyInputValue(paymentForm.otherCost) ?? 0;
+	const itemsBase = selectedOrderDetail.value.items.reduce((sum, item) => sum + (Number(item.qty_ordered || 0) * Number(item.unit_cost_base || 0)), 0);
+	return itemsBase + (shippingOriginal * exchangeRate) + (otherOriginal * exchangeRate);
+});
+const paymentVarianceBase = computed(() => {
+	if (!selectedOrderDetail.value) return 0;
+	return paymentSettledBase.value - Number(selectedOrderDetail.value.order.total_estimated_base || 0);
+});
 const effectiveStoreId = computed(() => (
 	currentStoreId.value?.trim()
 	|| createForm.storeId?.trim()
@@ -227,6 +253,23 @@ const pageSummaryText = computed(() => (
 		? "ยังไม่มีข้อมูล"
 		: `${pageStart.value}-${pageEnd.value} จาก ${orders.value.length} PO`
 ));
+const selectedOrderPaymentSummary = computed(() => {
+	if (!selectedOrderDetail.value?.payments.length) return null;
+	const relevantPayments = selectedOrderDetail.value.payments.filter((payment) => payment.entry_type === "payment");
+	if (!relevantPayments.length) return null;
+	const estimatedAmountBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.estimated_amount_base || 0), 0);
+	const actualAmountBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.amount_base || 0), 0);
+	const varianceBase = relevantPayments.reduce((sum, payment) => sum + Number(payment.variance_base || 0), 0);
+	return {
+		count: relevantPayments.length,
+		estimatedAmountBase,
+		actualAmountBase,
+		varianceBase,
+		paidAt: relevantPayments[0]?.paid_at || null,
+		reference: relevantPayments[0]?.reference || null,
+		note: relevantPayments[0]?.note || null,
+	};
+});
 
 const validStoreIdSet = computed(() => new Set(stores.value.map((store) => store.id)));
 const isHistoryRoute = computed(() => route.path.startsWith("/purchase-orders/history"));
@@ -374,12 +417,103 @@ function unitCostPlaceholder(productId: string) {
 	return "กรอกราคาจริงจาก supplier";
 }
 
+function parseMoneyInputValue(value: string | number | null | undefined) {
+	const rawValue = String(value ?? "").trim().replace(/,/g, "");
+	if (!rawValue) return null;
+	const parsed = Number(rawValue);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoneyInputValue(value: number) {
+	if (!Number.isFinite(value)) return "";
+	return new Intl.NumberFormat("en-US", {
+		useGrouping: false,
+		maximumFractionDigits: 2,
+	}).format(value);
+}
+
+function getLineQtyValue(line: CreateLine) {
+	const parsed = Number(String(line.qtyOrdered ?? "").replace(/[^\d.-]/g, ""));
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function syncLineCostFields(line: CreateLine) {
+	const qty = getLineQtyValue(line);
+	const unitCost = parseMoneyInputValue(line.unitCost);
+	const totalCost = parseMoneyInputValue(line.lineTotalCost);
+
+	if (!qty) {
+		line.lineTotalCost = "";
+		if (line.costMode === "total") {
+			line.unitCost = "";
+		}
+		return;
+	}
+
+	if (line.costMode === "total") {
+		if (totalCost === null) {
+			line.unitCost = "";
+			return;
+		}
+		line.unitCost = formatMoneyInputValue(totalCost / qty);
+		return;
+	}
+
+	if (unitCost === null) {
+		line.lineTotalCost = "";
+		return;
+	}
+
+	line.lineTotalCost = formatMoneyInputValue(unitCost * qty);
+}
+
+function handleLineQtyInput(line: CreateLine, value: string | number) {
+	line.qtyOrdered = String(value ?? "");
+	syncLineCostFields(line);
+}
+
+function handleLineUnitCostInput(line: CreateLine, value: string | number) {
+	line.unitCost = String(value ?? "");
+	line.costMode = "unit";
+	syncLineCostFields(line);
+}
+
+function handleLineTotalCostInput(line: CreateLine, value: string | number) {
+	line.lineTotalCost = String(value ?? "");
+	line.costMode = "total";
+	syncLineCostFields(line);
+}
+
+function setLineCostMode(line: CreateLine, mode: "unit" | "total") {
+	if (line.costMode === mode) return;
+	line.costMode = mode;
+	syncLineCostFields(line);
+}
+
+function lineCostDisplayValue(line: CreateLine) {
+	const qty = getLineQtyValue(line);
+	if (!qty) return "-";
+
+	const unitCost = parseMoneyInputValue(line.unitCost);
+	const totalCost = parseMoneyInputValue(line.lineTotalCost);
+
+	if (line.costMode === "total") {
+		if (totalCost === null) return "-";
+		return formatMoneyInputValue(totalCost / qty);
+	}
+
+	if (unitCost === null) return "-";
+	return formatMoneyInputValue(unitCost * qty);
+}
+
 function addLine() {
 	createForm.items.push({
 		id: crypto.randomUUID(),
 		productId: "",
 		qtyOrdered: "1",
+		costMode: "unit",
 		unitCost: "",
+		lineTotalCost: "",
 	});
 }
 
@@ -441,7 +575,9 @@ function hydratePurchaseOrderForm(detail: ApiPurchaseOrderDetail) {
 		id: crypto.randomUUID(),
 		productId: item.product_id,
 		qtyOrdered: String(item.qty_ordered),
+		costMode: "unit",
 		unitCost: String(item.unit_cost_purchase),
+		lineTotalCost: formatMoneyInputValue(Number(item.unit_cost_purchase || 0) * Number(item.qty_ordered || 0)),
 	}));
 	if (!createForm.items.length) {
 		addLine();
@@ -508,9 +644,11 @@ function closeDetail() {
 	selectedOrderId.value = "";
 	selectedOrderDetail.value = null;
 	receiveOpen.value = false;
+	paymentOpen.value = false;
 	receiveMode.value = "now";
 	receiveLines.value = [];
 	receiveSaving.value = false;
+	paymentSaving.value = false;
 }
 
 function openReceiveFlow() {
@@ -656,6 +794,58 @@ async function confirmMarkPurchaseOrderOrdered() {
 	}
 }
 
+function resetPaymentForm() {
+	if (!selectedOrderDetail.value) return;
+	const exchangeRate = Number(selectedOrderDetail.value.order.exchange_rate || 1) || 1;
+	paymentForm.exchangeRate = String(selectedOrderDetail.value.order.exchange_rate_initial || exchangeRate || 1);
+	paymentForm.shippingCost = String(selectedOrderDetail.value.order.shipping_cost_original ?? (selectedOrderDetail.value.order.shipping_cost / exchangeRate) ?? 0);
+	paymentForm.otherCost = String(selectedOrderDetail.value.order.other_cost_original ?? (selectedOrderDetail.value.order.other_cost / exchangeRate) ?? 0);
+	paymentForm.paymentReference = selectedOrderDetail.value.order.payment_reference || "";
+	paymentForm.paymentNote = selectedOrderDetail.value.order.payment_note || "";
+	paymentForm.paidAt = toDatetimeLocalInput(new Date().toISOString());
+}
+
+function openPaymentFlow() {
+	if (!selectedOrderDetail.value) return;
+	if (selectedOrderDetail.value.order.status === "draft" || selectedOrderDetail.value.order.status === "ordered" || selectedOrderDetail.value.order.status === "arrived" || selectedOrderDetail.value.order.status === "cancelled") return;
+	resetPaymentForm();
+	paymentOpen.value = true;
+}
+
+function closePaymentFlow() {
+	paymentOpen.value = false;
+	paymentSaving.value = false;
+}
+
+async function submitPaymentSettlement() {
+	if (!selectedOrderDetail.value) return;
+	const payload = {
+		exchange_rate: Number(paymentForm.exchangeRate || 1),
+		shipping_cost: parseMoneyInputValue(paymentForm.shippingCost) ?? 0,
+		other_cost: parseMoneyInputValue(paymentForm.otherCost) ?? 0,
+		payment_reference: paymentForm.paymentReference || null,
+		payment_note: paymentForm.paymentNote || null,
+		paid_at: paymentForm.paidAt ? new Date(paymentForm.paidAt).toISOString() : null,
+	};
+
+	paymentSaving.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${selectedOrderDetail.value.order.id}/settle`, {
+			method: "POST",
+			body: payload,
+		});
+		selectedOrderDetail.value = response.data;
+		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
+		showToast("บันทึกชำระเงินแล้ว");
+		paymentOpen.value = false;
+		await loadOrders();
+	} catch (err) {
+		showToast(err instanceof Error ? err.message : "บันทึกชำระเงินไม่สำเร็จ");
+	} finally {
+		paymentSaving.value = false;
+	}
+}
+
 function goToPage(page: number) {
 	currentPage.value = Math.min(Math.max(page, 1), totalPages.value);
 }
@@ -792,12 +982,20 @@ function buildPurchaseOrderPayload(status: "draft" | "ordered", includeCreator =
 		items: createForm.items.map((line) => ({
 			product_id: line.productId,
 			qty_ordered: Number(line.qtyOrdered),
-			unit_cost_purchase: Number(line.unitCost || 0),
+			unit_cost_purchase: line.costMode === "total"
+				? (() => {
+					const qty = getLineQtyValue(line);
+					const totalCost = parseMoneyInputValue(line.lineTotalCost) ?? 0;
+					return qty > 0 ? totalCost / qty : 0;
+				})()
+				: (parseMoneyInputValue(line.unitCost) ?? 0),
 		})),
 	};
 }
 
 async function submitCreate(status: "draft" | "ordered") {
+	createForm.items.forEach((line) => syncLineCostFields(line));
+
 	if (!createForm.storeId || !validStoreIdSet.value.has(createForm.storeId)) {
 		showToast("ยังไม่มี store_id สำหรับสร้าง PO");
 		return;
@@ -837,6 +1035,8 @@ async function submitCreate(status: "draft" | "ordered") {
 
 async function submitEditPurchaseOrder() {
 	if (!editingPurchaseOrderId.value) return;
+	createForm.items.forEach((line) => syncLineCostFields(line));
+
 	if (!createForm.storeId || !validStoreIdSet.value.has(createForm.storeId)) {
 		showToast("ยังไม่มี store_id สำหรับแก้ไข PO");
 		return;
@@ -1283,7 +1483,22 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">Payments</h3>
+										<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
+										<UBadge color="neutral" variant="soft" label="กำลังโหลด" />
+									</div>
+									<div class="mt-4 grid gap-3 sm:grid-cols-3">
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
+										</div>
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="index in 2" :key="index" class="min-h-[64px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
@@ -1361,15 +1576,63 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">Payments</h3>
+										<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
 										<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+									</div>
+									<div class="mt-4 grid gap-3 sm:grid-cols-3">
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+											<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderDetail.order.total_estimated_base, storeCurrency) }}</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+											<p class="mt-2 text-base font-semibold text-stone-950">
+												{{ formatMoney(selectedOrderPaymentSummary?.actualAmountBase ?? 0, storeCurrency) }}
+											</p>
+										</div>
+										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+											<p
+												class="mt-2 text-base font-semibold"
+												:class="(selectedOrderPaymentSummary?.varianceBase || 0) === 0
+													? 'text-stone-950'
+													: (selectedOrderPaymentSummary?.varianceBase || 0) > 0
+														? 'text-amber-600'
+														: 'text-emerald-600'"
+											>
+												{{ formatMoney(Math.abs(selectedOrderPaymentSummary?.varianceBase || 0), storeCurrency) }}
+											</p>
+										</div>
+									</div>
+									<div v-if="selectedOrderPaymentSummary" class="mt-4 rounded-md border border-neutral-200 bg-white px-4 py-4">
+										<div class="flex flex-wrap items-center gap-2">
+											<UBadge color="neutral" variant="soft" :label="`${selectedOrderPaymentSummary.count} รายการชำระ`" />
+											<UBadge color="neutral" variant="soft" :label="`ชำระล่าสุด ${formatDate(selectedOrderPaymentSummary.paidAt)}`" />
+											<UBadge v-if="selectedOrderPaymentSummary.reference" color="neutral" variant="soft" :label="selectedOrderPaymentSummary.reference" />
+										</div>
+										<p v-if="selectedOrderPaymentSummary.note" class="mt-3 text-sm leading-6 text-stone-600">
+											{{ selectedOrderPaymentSummary.note }}
+										</p>
 									</div>
 									<div v-if="selectedOrderDetail.payments.length" class="mt-4 space-y-3">
 										<div v-for="payment in selectedOrderDetail.payments" :key="payment.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
-											<div class="flex items-start justify-between gap-3">
-												<div>
+											<div class="flex flex-wrap items-start justify-between gap-3">
+												<div class="min-w-0">
 													<p class="text-sm font-semibold text-stone-900">{{ payment.entry_type }}</p>
 													<p class="mt-1 text-xs text-stone-500">{{ formatDate(payment.paid_at) }}</p>
+													<div class="mt-2 flex flex-wrap gap-2">
+														<UBadge color="neutral" variant="soft" :label="`ประมาณ ${formatMoney(payment.estimated_amount_base, storeCurrency)}`" />
+														<UBadge color="neutral" variant="soft" :label="`จริง ${formatMoney(payment.amount_base, storeCurrency)}`" />
+														<UBadge
+															:color="payment.variance_base === 0 ? 'neutral' : payment.variance_base > 0 ? 'warning' : 'success'"
+															variant="soft"
+															:label="`ส่วนต่าง ${formatMoney(Math.abs(payment.variance_base), storeCurrency)}`"
+														/>
+													</div>
+													<div v-if="payment.reference || payment.note" class="mt-3 space-y-1 text-xs text-stone-500">
+														<p v-if="payment.reference">Reference: {{ payment.reference }}</p>
+														<p v-if="payment.note">Note: {{ payment.note }}</p>
+													</div>
 												</div>
 												<p class="text-sm font-semibold text-stone-900">{{ formatMoney(payment.amount_base, storeCurrency) }}</p>
 											</div>
@@ -1386,17 +1649,13 @@ async function submitEditPurchaseOrder() {
 										class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
 										:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 									>
-										<div
-											class="grid w-full gap-2"
-											:class="selectedOrderDetail && selectedOrderDetail.order.status !== 'received' && selectedOrderDetail.order.status !== 'cancelled'
-												? 'grid-cols-2'
-												: 'grid-cols-1'"
-										>
+										<div class="flex w-full gap-2">
 											<AppButton
 												color="neutral"
 												variant="soft"
-											size="md"
-											:block="true"
+												size="md"
+												:block="true"
+												class="flex-1"
 												@click="closeDetail"
 											>
 												ปิด
@@ -1407,7 +1666,7 @@ async function submitEditPurchaseOrder() {
 												variant="solid"
 												size="md"
 												icon="i-heroicons-check-badge-20-solid"
-												class="rounded-md"
+												class="flex-1 rounded-md"
 												:loading="purchaseOrderOrderedSaving"
 												:spin-icon-on-loading="true"
 												:disabled="purchaseOrderOrderedSaving || !authPermissionReady || !canUpdatePurchaseOrder"
@@ -1422,17 +1681,198 @@ async function submitEditPurchaseOrder() {
 												variant="solid"
 												size="md"
 												icon="i-heroicons-arrow-down-tray-20-solid"
-												class="rounded-md"
+												class="flex-1 rounded-md"
 												:disabled="!canReceivePurchaseOrder"
 												:block="true"
 												@click="openReceiveFlow"
 											>
 												รับของเข้าสต็อก
 											</AppButton>
+											<AppButton
+												v-else-if="selectedOrderDetail && selectedOrderDetail.order.status === 'received' && selectedOrderDetail.order.payment_status !== 'paid'"
+												color="primary"
+												variant="solid"
+												size="md"
+												icon="i-heroicons-banknotes-20-solid"
+												class="flex-1 rounded-md"
+												:block="true"
+												@click="openPaymentFlow"
+											>
+												บันทึกชำระเงิน
+											</AppButton>
 										</div>
 									</div>
 						</div>
 					</template>
+					</AppResponsivePanel>
+
+					<AppResponsivePanel
+						v-model="paymentOpen"
+						title="บันทึกชำระเงิน"
+						description="อัปเดต rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิล โดยไม่เปลี่ยนต้นทุนสินค้าใน stock"
+						desktop-width="720px"
+						close-button-size="md"
+						compact-header
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+						@close="closePaymentFlow"
+					>
+						<template #default>
+							<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
+									<div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+										ต้นทุนสินค้าใน stock จะคงเดิมหลังยืนยันรับเข้าสต็อก ส่วนที่แก้ในหน้านี้คือ rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิลเท่านั้น
+									</div>
+
+									<div v-if="selectedOrderDetail" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+										<div class="flex items-start justify-between gap-3">
+											<div class="min-w-0">
+												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrderDetail.order.po_number }}</h3>
+												<p class="mt-1 text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</p>
+											</div>
+											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+										</div>
+										<div class="mt-3 flex flex-wrap gap-2">
+											<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
+											<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} รายการ`" />
+											<UBadge color="neutral" variant="soft" :label="formatMoney(paymentSettledBase, storeCurrency)" />
+										</div>
+									</div>
+
+									<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+										<div class="space-y-4">
+											<div class="flex items-start justify-between gap-3">
+												<div>
+													<p class="text-sm font-semibold text-stone-950">ข้อมูลปิดบิล</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">แก้ rate, shipping และค่าใช้จ่ายจริงได้ก่อนบันทึกชำระเงิน</p>
+												</div>
+											</div>
+
+											<div class="grid gap-4 md:grid-cols-2">
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">อัตราแลกเปลี่ยนจริง</label>
+													<UInput
+														v-model="paymentForm.exchangeRate"
+														type="text"
+														inputmode="decimal"
+														pattern="[0-9.,-]*"
+														size="lg"
+														color="neutral"
+														placeholder="เช่น 21500"
+														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+													/>
+												</div>
+
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าขนส่งจริง</label>
+													<UInput
+														v-model="paymentForm.shippingCost"
+														type="text"
+														inputmode="decimal"
+														pattern="[0-9.,-]*"
+														size="lg"
+														color="neutral"
+														placeholder="0"
+														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+													/>
+												</div>
+
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าใช้จ่ายอื่นจริง</label>
+													<UInput
+														v-model="paymentForm.otherCost"
+														type="text"
+														inputmode="decimal"
+														pattern="[0-9.,-]*"
+														size="lg"
+														color="neutral"
+														placeholder="0"
+														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+													/>
+												</div>
+
+												<div>
+													<label class="mb-2 block text-xs font-medium text-stone-500">วันที่ชำระ</label>
+													<UInput
+														v-model="paymentForm.paidAt"
+														type="datetime-local"
+														size="lg"
+														color="neutral"
+														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+													/>
+												</div>
+
+												<div class="md:col-span-2">
+													<label class="mb-2 block text-xs font-medium text-stone-500">Reference / เลขที่เอกสาร</label>
+													<UInput
+														v-model="paymentForm.paymentReference"
+														type="text"
+														size="lg"
+														color="neutral"
+														placeholder="เลขที่บิล / reference"
+														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+													/>
+												</div>
+
+												<div class="md:col-span-2">
+													<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุชำระเงิน</label>
+													<textarea
+														v-model="paymentForm.paymentNote"
+														rows="3"
+														placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+														class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+													/>
+												</div>
+											</div>
+										</div>
+									</UCard>
+
+									<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+										<div class="grid gap-3 sm:grid-cols-3">
+											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ยอดรวมปิดบิล</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(paymentSettledBase, storeCurrency) }}</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p class="mt-2 text-base font-semibold" :class="paymentVarianceBase >= 0 ? 'text-amber-600' : 'text-emerald-600'">
+													{{ formatMoney(Math.abs(paymentVarianceBase), storeCurrency) }}
+												</p>
+											</div>
+											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">สถานะ</p>
+												<p class="mt-2 text-base font-semibold text-stone-950">
+													{{ paymentVarianceBase === 0 ? 'ตรงตามประมาณ' : 'มีส่วนต่าง' }}
+												</p>
+											</div>
+										</div>
+									</UCard>
+								</div>
+
+								<div
+									class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
+									:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
+								>
+									<div class="grid w-full grid-cols-2 gap-2">
+										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closePaymentFlow">ยกเลิก</AppButton>
+										<AppButton
+											color="primary"
+											variant="solid"
+											size="md"
+											icon="i-heroicons-banknotes-20-solid"
+											class="rounded-md"
+											:loading="paymentSaving"
+											:spin-icon-on-loading="true"
+											:disabled="paymentSaving || !selectedOrderDetail"
+											:block="true"
+											@click="submitPaymentSettlement"
+										>
+											บันทึกชำระเงิน
+										</AppButton>
+									</div>
+								</div>
+							</div>
+						</template>
 					</AppResponsivePanel>
 
 					<AppResponsivePanel
@@ -1838,27 +2278,27 @@ async function submitEditPurchaseOrder() {
 												/>
 											</div>
 
-											<div class="space-y-3">
+										<div class="space-y-3">
 												<div v-for="line in createForm.items" :key="line.id" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-													<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_120px_auto]">
-														<div>
+													<div class="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_96px_minmax(0,1.1fr)_44px] md:items-end">
+														<div class="min-w-0">
 															<label class="mb-2 block text-xs font-medium text-stone-500">สินค้า</label>
 															<div class="relative">
-														<select
-															v-model="line.productId"
-															class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-															:disabled="purchaseOrderCostOnlyEdit"
-														>
+																<select
+																	v-model="line.productId"
+																	class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+																	:disabled="purchaseOrderCostOnlyEdit"
+																>
 																	<option value="" disabled>{{ productsPending ? "กำลังโหลดสินค้า..." : "เลือกสินค้า" }}</option>
 																	<option v-for="product in products" :key="product.id" :value="product.id">{{ productLabel(product.id) }}</option>
 																</select>
 																<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 															</div>
 														</div>
-														<div>
+														<div class="min-w-0">
 															<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน</label>
-																<UInput
-																v-model="line.qtyOrdered"
+															<UInput
+																:model-value="line.qtyOrdered"
 																type="number"
 																min="1"
 																step="1"
@@ -1866,24 +2306,48 @@ async function submitEditPurchaseOrder() {
 																color="neutral"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 																:disabled="purchaseOrderCostOnlyEdit"
+																@update:model-value="(value) => handleLineQtyInput(line, value)"
 															/>
 														</div>
-														<div>
-															<label class="mb-2 block text-xs font-medium text-stone-500">ต้นทุนจริง/หน่วย</label>
+														<div class="min-w-0">
+															<div class="mb-1 flex items-center justify-between gap-2">
+																<label class="block text-xs font-medium text-stone-500">ต้นทุน</label>
+																<div class="inline-flex rounded-md bg-neutral-100 p-0.5 text-[11px] font-medium text-stone-500">
+																	<button
+																		type="button"
+																		class="rounded-md px-2 py-0.5 transition"
+																		:class="line.costMode === 'unit' ? 'bg-white text-stone-950 shadow-sm ring-1 ring-neutral-200' : 'hover:text-stone-800'"
+																		:disabled="purchaseOrderCostOnlyEdit"
+																		@click="setLineCostMode(line, 'unit')"
+																	>
+																		ต่อหน่วย
+																	</button>
+																	<button
+																		type="button"
+																		class="rounded-md px-2 py-0.5 transition"
+																		:class="line.costMode === 'total' ? 'bg-white text-stone-950 shadow-sm ring-1 ring-neutral-200' : 'hover:text-stone-800'"
+																		:disabled="purchaseOrderCostOnlyEdit"
+																		@click="setLineCostMode(line, 'total')"
+																	>
+																		รวม
+																	</button>
+																</div>
+															</div>
 															<UInput
-																v-model="line.unitCost"
-																type="number"
-																min="0"
-																step="0.01"
+																:model-value="line.costMode === 'total' ? line.lineTotalCost : line.unitCost"
+																type="text"
+																inputmode="decimal"
+																pattern="[0-9.,-]*"
 																size="lg"
 																color="neutral"
-																:placeholder="unitCostPlaceholder(line.productId)"
+																:placeholder="line.costMode === 'total' ? 'ต้นทุนรวม' : unitCostPlaceholder(line.productId)"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 																:disabled="purchaseOrderCostOnlyEdit"
+																@update:model-value="(value) => line.costMode === 'total' ? handleLineTotalCostInput(line, value) : handleLineUnitCostInput(line, value)"
 															/>
 														</div>
-														<div v-if="!purchaseOrderCostOnlyEdit" class="flex items-end self-end pb-[2px]">
-															<AppButton color="neutral" variant="soft" size="md" class="h-[42px] rounded-md" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
+														<div v-if="!purchaseOrderCostOnlyEdit" class="flex items-end justify-end">
+															<AppButton color="neutral" variant="soft" size="sm" class="h-11 w-11 rounded-md p-0" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
 														</div>
 													</div>
 												</div>

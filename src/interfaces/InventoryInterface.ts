@@ -79,6 +79,8 @@ type InventoryMovementFilters = {
 	to?: string;
 };
 
+type SqlExecutor = Pick<Client, "execute">;
+
 function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 	if (!imageUrl) return null;
 	const normalized = imageUrl.trim();
@@ -92,10 +94,44 @@ function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 
 export class InventoryInterface {
 	static async adjustStockWithinTransaction(
-		db: Pick<Client, "execute">,
+		db: SqlExecutor,
 		input: InventoryAdjustmentInput,
 		options: { refType?: string; refId?: string | null } = {},
 	): Promise<InventoryAdjustmentResult> {
+		await ProductInterface.ensureColumns();
+		const productResult = await db.execute({
+			sql: `
+				SELECT
+					p.store_id,
+					p.id AS product_id,
+					p.sku,
+					p.name,
+					p.barcode,
+					p.image_url,
+					p.location,
+					p.category_id,
+					pc.name AS category_name,
+					p.base_unit_id,
+					u.name_th AS unit_name,
+					p.active,
+					p.low_stock_threshold,
+					p.out_stock_threshold
+				FROM products p
+				LEFT JOIN product_categories pc
+					ON pc.id = p.category_id
+				LEFT JOIN units u
+					ON u.id = p.base_unit_id
+				WHERE p.store_id = ? AND p.id = ?
+				LIMIT 1
+			`,
+			args: [input.store_id, input.product_id],
+		});
+
+		const productRow = productResult.rows[0] as Record<string, unknown> | undefined;
+		if (!productRow) {
+			throw new Error("Product not found");
+		}
+
 		const current = await db.execute({
 			sql: `
 				SELECT store_id, product_id, on_hand_base, reserved_base, available_base, updated_at
@@ -182,20 +218,46 @@ export class InventoryInterface {
 			],
 		});
 
-		const balance = await InventoryInterface.findBalanceByProductId(input.store_id, input.product_id);
-		const movementRows = await InventoryInterface.findMovements({
-			storeId: input.store_id,
-			productId: input.product_id,
-			limit: 1,
-		});
-
-		if (!balance || movementRows.length === 0) {
-			throw new Error("Failed to adjust inventory");
-		}
+		const balance: InventoryBalanceListItem = {
+			store_id: String(productRow.store_id),
+			product_id: String(productRow.product_id),
+			sku: String(productRow.sku ?? ""),
+			name: String(productRow.name ?? ""),
+			barcode: productRow.barcode ? String(productRow.barcode) : null,
+			image_url: resolvePublicProductImageUrl(productRow.image_url ? String(productRow.image_url) : null),
+			location: productRow.location ? String(productRow.location) : null,
+			category_id: productRow.category_id ? String(productRow.category_id) : null,
+			category_name: productRow.category_name ? String(productRow.category_name) : null,
+			base_unit_id: String(productRow.base_unit_id ?? ""),
+			unit_name: productRow.unit_name ? String(productRow.unit_name) : null,
+			active: Number(productRow.active ?? 1),
+			low_stock_threshold: productRow.low_stock_threshold === null || productRow.low_stock_threshold === undefined ? null : Number(productRow.low_stock_threshold),
+			out_stock_threshold: productRow.out_stock_threshold === null || productRow.out_stock_threshold === undefined ? null : Number(productRow.out_stock_threshold),
+			on_hand_base: nextOnHand,
+			reserved_base: currentReserved,
+			available_base: nextAvailable,
+			updated_at: now,
+		};
+		const movement: InventoryMovementListItem = {
+			id: movementId,
+			store_id: input.store_id,
+			product_id: input.product_id,
+			product_name: String(productRow.name ?? ""),
+			product_sku: String(productRow.sku ?? ""),
+			type: movementType,
+			qty_base: delta,
+			ref_type: refType,
+			ref_id: options.refId ?? null,
+			note: input.note ?? null,
+			created_by: input.created_by ?? null,
+			created_by_name: null,
+			created_at: now,
+			unit_name: productRow.unit_name ? String(productRow.unit_name) : null,
+		};
 
 		return {
 			balance,
-			movement: movementRows[0],
+			movement,
 		};
 	}
 
@@ -300,7 +362,52 @@ export class InventoryInterface {
 		});
 	}
 
-	static async findBalanceByProductId(storeId: string, productId: string): Promise<InventoryBalanceListItem | null> {
+	static async findBalanceByProductId(storeId: string, productId: string, executor?: SqlExecutor): Promise<InventoryBalanceListItem | null> {
+		if (executor) {
+			await ProductInterface.ensureColumns();
+			const result = await executor.execute({
+				sql: `
+					SELECT
+						p.store_id,
+						p.id AS product_id,
+						p.sku,
+						p.name,
+						p.barcode,
+						p.image_url,
+						p.location,
+						p.category_id,
+						pc.name AS category_name,
+						p.base_unit_id,
+						u.name_th AS unit_name,
+						p.active,
+						p.low_stock_threshold,
+						p.out_stock_threshold,
+						COALESCE(b.on_hand_base, 0) AS on_hand_base,
+						COALESCE(b.reserved_base, 0) AS reserved_base,
+						COALESCE(b.available_base, 0) AS available_base,
+						COALESCE(b.updated_at, p.created_at) AS updated_at
+					FROM products p
+					LEFT JOIN inventory_balances b
+						ON b.product_id = p.id
+						AND b.store_id = p.store_id
+					LEFT JOIN product_categories pc
+						ON pc.id = p.category_id
+					LEFT JOIN units u
+						ON u.id = p.base_unit_id
+					WHERE p.store_id = ? AND p.id = ?
+					LIMIT 1
+				`,
+				args: [storeId, productId],
+			});
+
+			const row = result.rows[0] as unknown as InventoryBalanceListItem | undefined;
+			if (!row) return null;
+			return {
+				...row,
+				image_url: resolvePublicProductImageUrl(row.image_url),
+			};
+		}
+
 		const rows = await InventoryInterface.findBalances({
 			storeId,
 		});
@@ -308,8 +415,8 @@ export class InventoryInterface {
 		return rows.find((row) => row.product_id === productId) ?? null;
 	}
 
-	static async findMovements(filters: InventoryMovementFilters): Promise<InventoryMovementListItem[]> {
-		const db = DbConn.getClient();
+	static async findMovements(filters: InventoryMovementFilters, executor?: SqlExecutor): Promise<InventoryMovementListItem[]> {
+		const db = executor || DbConn.getClient();
 		const where: string[] = [];
 		const args: InValue[] = [];
 

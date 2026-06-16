@@ -437,7 +437,7 @@ function closeDetail() {
 				v-model="detailOpen"
 				title="รายละเอียดออเดอร์"
 				description="ดูข้อมูลบิล รายการสินค้า และช่องทางชำระเงินของออเดอร์นี้"
-				desktop-width="460px"
+				desktop-width="680px"
 				:show-handle="false"
 				close-button-size="md"
 				compact-header
