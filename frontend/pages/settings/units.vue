@@ -440,11 +440,12 @@ onMounted(async () => {
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="หน่วยสินค้า"
+					title=""
+					compact
 					description="จัดการหน่วยสินค้าและรหัสย่อที่ใช้กับสินค้าและ POS"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(280px,1fr)_auto_auto_auto] lg:gap-3 lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(280px,1fr)_auto_auto_auto] lg:gap-3 lg:justify-end">
 						<UInput
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
@@ -531,13 +532,13 @@ onMounted(async () => {
 									<template v-else>
 										<div class="overflow-x-auto">
 											<table class="min-w-[880px] w-full border-separate border-spacing-0">
-												<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-														<th class="border-b border-[#ece6dc] px-4 py-3">หน่วยสินค้า</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3">Code</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3">Scope</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3">Store</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+												<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หน่วยสินค้า</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Code</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Scope</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Store</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 													</tr>
 												</thead>
 												<tbody>

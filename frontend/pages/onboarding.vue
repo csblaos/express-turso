@@ -78,6 +78,7 @@ const storeForm = reactive({
 	pdf_header_color: "#22c55e",
 	vat_enabled: false,
 	vat_rate: "7",
+	vat_mode: "EXCLUSIVE" as "EXCLUSIVE" | "INCLUSIVE",
 });
 
 const themePresets = [
@@ -329,6 +330,29 @@ function goToReview() {
 	currentStep.value = 3;
 }
 
+function normalizeVatRateInput(raw: string) {
+	const input = String(raw ?? "").trim();
+	if (!input) return "";
+
+	let normalized = input.replace(/\s+/g, "");
+	normalized = normalized.replace(/,/g, "");
+	normalized = normalized.replace(/[^0-9.]/g, "");
+
+	const firstDot = normalized.indexOf(".");
+	if (firstDot !== -1) {
+		normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
+	}
+
+	return normalized;
+}
+
+function vatRateToNumber(raw: string) {
+	const normalized = normalizeVatRateInput(raw);
+	if (!normalized) return 0;
+	const value = Number(normalized);
+	return Number.isFinite(value) ? value : 0;
+}
+
 async function createFirstStore() {
 	createStorePending.value = true;
 	storeError.value = null;
@@ -336,20 +360,21 @@ async function createFirstStore() {
 	try {
 		const response = await apiFetch<ApiEnvelope<StoreRecord>>("/stores", {
 			method: "POST",
-			body: {
-				name: storeForm.name.trim(),
-				store_type: storeForm.store_type,
-				phone_number: storeForm.phone_number.trim() || null,
-				address: storeForm.address.trim() || null,
-				currency: storeForm.currency,
-				supported_currencies: storeForm.currency,
-				vat_enabled: storeForm.vat_enabled ? 1 : 0,
-				vat_rate: Number(storeForm.vat_rate || 0),
-				pdf_header_color: storeForm.pdf_header_color,
-				pdf_company_name: storeForm.name.trim(),
-				pdf_company_address: storeForm.address.trim() || null,
-				pdf_company_phone: storeForm.phone_number.trim() || null,
-			},
+				body: {
+					name: storeForm.name.trim(),
+					store_type: storeForm.store_type,
+					phone_number: storeForm.phone_number.trim() || null,
+					address: storeForm.address.trim() || null,
+					currency: storeForm.currency,
+					supported_currencies: storeForm.currency,
+					vat_enabled: storeForm.vat_enabled ? 1 : 0,
+					vat_rate: vatRateToNumber(storeForm.vat_rate),
+					vat_mode: storeForm.vat_mode,
+					pdf_header_color: storeForm.pdf_header_color,
+					pdf_company_name: storeForm.name.trim(),
+					pdf_company_address: storeForm.address.trim() || null,
+					pdf_company_phone: storeForm.phone_number.trim() || null,
+				},
 		});
 		await fetchMe();
 			appToast.success({
@@ -633,14 +658,85 @@ onMounted(async () => {
 												<label class="mb-2 block text-xs font-medium text-stone-500">เบอร์โทรร้าน</label>
 												<UInput v-model="storeForm.phone_number" size="lg" color="neutral" placeholder="020xxxxxxx" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
 											</div>
-											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">VAT %</label>
-												<UInput v-model="storeForm.vat_rate" size="lg" color="neutral" type="number" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
-											</div>
 										</div>
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">ที่อยู่ร้าน</label>
 											<textarea v-model="storeForm.address" rows="3" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" placeholder="ถนน / แขวง / เมือง / แขวง" />
+										</div>
+									</div>
+								</div>
+
+								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
+									<div class="flex items-center justify-between gap-3">
+										<div>
+											<p class="text-sm font-semibold text-stone-900">VAT / ภาษีมูลค่าเพิ่ม</p>
+											<p class="mt-1 text-sm leading-6 text-stone-500">ตั้งค่า VAT เริ่มต้นสำหรับร้านใหม่ เพื่อให้ POS คิดภาษีได้ทันที</p>
+										</div>
+										<UBadge color="neutral" variant="soft" :label="storeForm.vat_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'" />
+									</div>
+
+									<div class="mt-4 grid gap-3 sm:grid-cols-3">
+										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
+											<div class="flex items-center justify-between gap-4">
+												<div class="min-w-0">
+													<p class="text-sm font-semibold text-stone-900">เปิดใช้งาน VAT</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">เปิดไว้เมื่อร้านต้องออกใบเสร็จมีภาษี</p>
+												</div>
+												<button
+													type="button"
+													class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition"
+													:class="storeForm.vat_enabled ? 'bg-primary-600' : 'bg-stone-200'"
+													@click="storeForm.vat_enabled = !storeForm.vat_enabled"
+												>
+													<span
+														class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition"
+														:class="storeForm.vat_enabled ? 'translate-x-5' : 'translate-x-0.5'"
+													/>
+												</button>
+											</div>
+										</div>
+
+										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
+											<p class="text-sm font-semibold text-stone-900">อัตรา VAT</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">กรอกเป็นเปอร์เซ็นต์ เช่น 7 สำหรับ 7%</p>
+											<div class="mt-3">
+												<UInput
+													v-model="storeForm.vat_rate"
+													size="lg"
+													color="neutral"
+													type="text"
+													inputmode="decimal"
+													placeholder="7"
+													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3"
+												/>
+											</div>
+										</div>
+
+										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
+											<p class="text-sm font-semibold text-stone-900">รูปแบบ VAT</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">Exclusive = บวกเพิ่ม, Inclusive = รวมในราคาแล้ว</p>
+											<div class="mt-3 grid grid-cols-2 gap-2">
+												<button
+													type="button"
+													class="rounded-md border px-3 py-2 text-sm font-semibold transition"
+													:class="storeForm.vat_mode === 'EXCLUSIVE'
+														? 'border-primary-300 bg-primary-50 text-primary-700'
+														: 'border-neutral-200 bg-neutral-50 text-stone-600 hover:bg-neutral-100'"
+													@click="storeForm.vat_mode = 'EXCLUSIVE'"
+												>
+													Exclusive
+												</button>
+												<button
+													type="button"
+													class="rounded-md border px-3 py-2 text-sm font-semibold transition"
+													:class="storeForm.vat_mode === 'INCLUSIVE'
+														? 'border-primary-300 bg-primary-50 text-primary-700'
+														: 'border-neutral-200 bg-neutral-50 text-stone-600 hover:bg-neutral-100'"
+													@click="storeForm.vat_mode = 'INCLUSIVE'"
+												>
+													Inclusive
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -705,6 +801,12 @@ onMounted(async () => {
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 											<dt class="text-stone-500">สกุลเงิน</dt>
 											<dd class="text-right font-medium text-stone-900">{{ storeForm.currency }}</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">VAT</dt>
+											<dd class="text-right font-medium text-stone-900">
+												{{ storeForm.vat_enabled ? `${vatRateToNumber(storeForm.vat_rate)}% · ${storeForm.vat_mode}` : "ปิดใช้งาน" }}
+											</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4">
 											<dt class="text-stone-500">สีแบรนด์เริ่มต้น</dt>

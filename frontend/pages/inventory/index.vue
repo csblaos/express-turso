@@ -735,11 +735,12 @@ onMounted(() => {
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="สต็อก"
+					title=""
+					compact
 					description="ตรวจยอดคงเหลือและปรับสต็อก พร้อมดูประวัติการเคลื่อนไหว"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
 						<div class="relative min-w-0">
 							<UInput
 								ref="searchInputRef"
@@ -808,8 +809,11 @@ onMounted(() => {
 					</div>
 				</AppPageHeader>
 
-				<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-					<div class="grid grid-cols-4 gap-2 p-0">
+				<UCard
+					class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md"
+					:ui="{ body: 'p-1.5 sm:p-2 lg:p-2.5' }"
+				>
+					<div class="grid grid-cols-4 gap-1.5 p-0">
 						<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
 							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ทั้งหมด</p>
 							<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ totalSkuCount }}</p>
@@ -932,16 +936,16 @@ onMounted(() => {
 							</div>
 
 							<table v-else class="min-w-[1100px] w-full border-separate border-spacing-0">
-								<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-										<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">หมวด</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">คงเหลือ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">ในคลัง</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">จอง</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">อัปเดต</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+								<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สินค้า</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หมวด</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">คงเหลือ</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ในคลัง</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">จอง</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">อัปเดต</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 									</tr>
 								</thead>
 								<tbody>

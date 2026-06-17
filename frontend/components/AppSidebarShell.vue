@@ -414,7 +414,7 @@ onErrorCaptured((error) => {
 				</Transition>
 
 				<aside
-					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
+					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] dark:bg-[#171d16] dark:ring-[#30402f] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
 					:class="[
 						sidebarWidthClass,
 						mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -423,14 +423,14 @@ onErrorCaptured((error) => {
 				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
 					<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
-							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd]">
+							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd] dark:bg-emerald-500/10 dark:ring-emerald-500/20">
 								<img src="/icons/icon-192.png" alt="App logo" class="h-full w-full object-cover" />
 							</div>
 							<div
 								v-if="!isSidebarCompact"
 								class="min-w-0 flex-1"
 							>
-								<p class="truncate text-base font-bold tracking-[-0.01em] text-stone-950">
+								<p class="truncate text-base font-bold tracking-[-0.01em] text-stone-950 dark:text-emerald-50">
 									O KhaiDee<span class="text-primary-600">+</span>
 								</p>
 							</div>
@@ -440,7 +440,7 @@ onErrorCaptured((error) => {
 							color="neutral"
 							variant="soft"
 							size="sm"
-							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 lg:hidden"
+							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 lg:hidden"
 							aria-label="ปิดเมนู"
 							title="ปิดเมนู"
 								@click="closeMobileSidebar"
@@ -457,15 +457,15 @@ onErrorCaptured((error) => {
 								class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
 							:title="item.label"
 							:aria-label="item.label"
-							:class="[
+								:class="[
 								isSidebarCompact ? 'gap-0' : 'gap-3',
 									isNavItemActive(item)
 										? (isSidebarCompact
-											? 'text-primary-700'
-											: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200')
+											? 'text-primary-700 dark:text-emerald-300'
+											: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/20')
 										: (isSidebarCompact
-											? 'text-stone-500 hover:text-primary-700'
-											: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200')
+											? 'text-stone-500 hover:text-primary-700 dark:text-stone-400 dark:hover:text-emerald-300'
+											: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200 dark:text-stone-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300 dark:hover:ring-emerald-400/20')
 								]"
 								@click="handleNavItemClick($event, item)"
 							>
@@ -473,11 +473,11 @@ onErrorCaptured((error) => {
 								class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold transition-colors"
 								:class="isNavItemActive(item)
 									? (isSidebarCompact
-										? 'bg-primary-100 text-primary-700'
-										: 'bg-primary-100 text-primary-700 ring-1 ring-primary-200')
+										? 'bg-primary-100 text-primary-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+										: 'bg-primary-100 text-primary-700 ring-1 ring-primary-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20')
 									: (isSidebarCompact
-										? 'bg-[#f7f5f1] text-stone-600 group-hover:bg-primary-50 group-hover:text-primary-700'
-										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-primary-700 group-hover:ring-primary-200')"
+										? 'bg-[#f7f5f1] text-stone-600 group-hover:bg-primary-50 group-hover:text-primary-700 dark:bg-[#232922] dark:text-stone-400 dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-300'
+										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-primary-700 group-hover:ring-primary-200 dark:bg-[#232922] dark:text-stone-400 dark:ring-[#314132] dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-300 dark:group-hover:ring-emerald-400/20')"
 							>
 								<UIcon :name="item.icon" class="h-5 w-5" />
 							</div>
@@ -503,7 +503,7 @@ onErrorCaptured((error) => {
 							variant="ghost"
 							size="sm"
 							icon="i-heroicons-arrow-left-on-rectangle"
-							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
+							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
 							:class="isSidebarCompact ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
 							:title="isSidebarCompact ? 'ออกจากระบบ' : undefined"
 							:aria-label="'ออกจากระบบ'"
@@ -555,7 +555,7 @@ onErrorCaptured((error) => {
 												variant="soft"
 												size="sm"
 												:icon="colorModeIcon"
-												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 sm:h-10"
+												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 sm:h-10"
 												:title="colorModeLabel"
 												:aria-label="colorModeLabel"
 												@click="toggleColorMode"
@@ -567,34 +567,34 @@ onErrorCaptured((error) => {
 												v-model:open="profileMenuOpen"
 												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
 											>
-												<AppButton
-													color="neutral"
-													variant="ghost"
-													size="sm"
-													class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 sm:h-10 sm:px-2"
-													:title="profileDisplayName"
-													:aria-label="profileDisplayName"
-												>
-													<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700 sm:h-8 sm:w-8 sm:text-xs">
-														{{ profileInitials }}
-													</span>
-													<span class="hidden min-w-0 text-left md:block">
-														<span class="block truncate text-xs font-semibold text-stone-900">{{ profileDisplayName }}</span>
+											<AppButton
+												color="neutral"
+												variant="ghost"
+												size="sm"
+												class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-emerald-50 hover:text-emerald-700 sm:h-10 sm:px-2"
+												:title="profileDisplayName"
+												:aria-label="profileDisplayName"
+											>
+												<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200 sm:h-8 sm:w-8 sm:text-xs">
+													{{ profileInitials }}
+												</span>
+												<span class="hidden min-w-0 text-left md:block">
+													<span class="block truncate text-xs font-semibold text-stone-900">{{ profileDisplayName }}</span>
 														<span class="block truncate text-[10px] text-stone-500">{{ profileStoreSummary }}</span>
 													</span>
-													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700" />
+													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700 dark:group-hover:text-emerald-200" />
 												</AppButton>
 
 												<template #content>
-													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd]">
-														<div class="border-b border-[#efece4] px-4 py-4">
-															<div class="flex items-start gap-3">
-																<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700">
+													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd] dark:bg-[#171d16] dark:ring-[#30402f]">
+														<div class="border-b border-[#efece4] px-4 py-4 dark:border-[#2d382d]">
+																<div class="flex items-start gap-3">
+																<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
 																	{{ profileInitials }}
 																</div>
 																<div class="min-w-0 flex-1">
-																	<p class="truncate text-sm font-semibold text-stone-950">{{ profileDisplayName }}</p>
-																	<p class="mt-1 truncate text-xs text-stone-500">{{ profileDisplayEmail }}</p>
+																	<p class="truncate text-sm font-semibold text-stone-950 dark:text-emerald-50">{{ profileDisplayName }}</p>
+																	<p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{{ profileDisplayEmail }}</p>
 																	<div class="mt-2 flex flex-wrap gap-1.5">
 																		<UBadge color="primary" variant="soft" :label="profileDisplayRole" />
 																		<UBadge color="neutral" variant="soft" :label="profileStoreSummary" />
@@ -606,23 +606,23 @@ onErrorCaptured((error) => {
 														<div class="p-2">
 															<div
 																v-if="canShowStoreSection"
-																class="mb-2 rounded-md border border-[#efece4] bg-[#fbfbf8] px-3 py-2.5"
+																class="mb-2 rounded-md border border-[#efece4] bg-[#fbfbf8] px-3 py-2.5 dark:border-[#2d382d] dark:bg-[#1f241d]"
 															>
 																<div class="flex items-center gap-3">
-																	<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 ring-1 ring-[#e7e4dd]">
+																	<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 ring-1 ring-[#e7e4dd] dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
 																		<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4.5 w-4.5" />
 																	</div>
 																	<div class="min-w-0 flex-1">
-																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">{{ storeSectionTitle }}</p>
-																		<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
-																		<p class="mt-0.5 truncate text-[11px] text-stone-500">
+																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400 dark:text-stone-500">{{ storeSectionTitle }}</p>
+																		<p class="mt-1 truncate text-sm font-medium text-stone-900 dark:text-emerald-50">{{ currentStoreLabel }}</p>
+																		<p class="mt-0.5 truncate text-[11px] text-stone-500 dark:text-stone-400">
 																			{{ canSwitchStores ? `${currentStoreCount} stores available` : "1 store available" }}
 																		</p>
 																	</div>
 																	<button
 																		v-if="canSwitchStores"
 																		type="button"
-																		class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+																		class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
 																		@click="openStoreSwitcher"
 																	>
 																		<UIcon name="i-heroicons-arrows-right-left-20-solid" class="h-4 w-4" />
@@ -630,7 +630,7 @@ onErrorCaptured((error) => {
 																	</button>
 																	<div
 																		v-else
-																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd]"
+																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd] dark:bg-[#1f241d] dark:text-stone-400 dark:ring-[#314132]"
 																	>
 																		Current
 																	</div>
@@ -639,10 +639,10 @@ onErrorCaptured((error) => {
 
 															<button
 																type="button"
-																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700"
+																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 dark:text-stone-300 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
 																@click="navigateToProfile"
 															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700 dark:bg-[#232922] dark:text-stone-300 dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-200">
 																	<UIcon name="i-heroicons-user-circle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">
@@ -653,10 +653,10 @@ onErrorCaptured((error) => {
 
 															<button
 																type="button"
-																class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+																class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
 																@click="openLogoutConfirmFromProfile"
 															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition group-hover:bg-rose-100 group-hover:text-rose-700">
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition group-hover:bg-rose-100 group-hover:text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 dark:group-hover:bg-rose-500/20 dark:group-hover:text-rose-200">
 																	<UIcon name="i-heroicons-arrow-left-on-rectangle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">

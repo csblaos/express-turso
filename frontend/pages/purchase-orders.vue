@@ -1096,11 +1096,12 @@ async function submitEditPurchaseOrder() {
 			<template #default="{ openSidebar }">
 				<div class="grid gap-3 pb-3 lg:gap-4">
 					<AppPageHeader
-						title="สั่งซื้อ"
+						title=""
+						compact
 						description="จัดการ Purchase Orders, supplier, สถานะรับของ และการชำระเงิน"
 						@menu="openSidebar"
 					>
-						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
+						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
 							<div class="relative min-w-0">
 								<UInput
 									v-model="searchQuery"
@@ -1168,8 +1169,11 @@ async function submitEditPurchaseOrder() {
 						</div>
 					</AppPageHeader>
 
-					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="grid grid-cols-4 gap-2 p-0">
+					<UCard
+						class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md"
+						:ui="{ body: 'p-1.5 sm:p-2 lg:p-2.5' }"
+					>
+						<div class="grid grid-cols-3 gap-1.5 p-0 sm:grid-cols-4">
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">เปิดอยู่</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalOpenOrders) }}</p>
@@ -1182,7 +1186,7 @@ async function submitEditPurchaseOrder() {
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ค้างชำระ</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalPendingPayments) }}</p>
 							</div>
-							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
+							<div class="col-span-3 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">มูลค่าประมาณ</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950 tabular-nums">{{ formatMoney(totalEstimated, storeCurrency) }}</p>
 							</div>
@@ -1201,13 +1205,13 @@ async function submitEditPurchaseOrder() {
 							</div>
 
 								<div class="grid gap-2 px-4 py-3">
-									<div class="grid gap-2 md:grid-cols-2 md:items-end">
+									<div class="grid grid-cols-2 gap-2 md:items-end">
 										<div class="min-w-0">
-											<label class="mb-1 block text-[11px] font-medium text-stone-500">สถานะ PO</label>
+											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">สถานะ PO</label>
 											<div class="relative">
 												<select
 													v-model="activeStatus"
-													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-3 py-2.5 pr-8 text-xs font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4 sm:text-sm"
 												>
 													<option value="all">ทุกสถานะ</option>
 													<option value="draft">ร่าง</option>
@@ -1222,11 +1226,11 @@ async function submitEditPurchaseOrder() {
 										</div>
 
 										<div class="min-w-0">
-											<label class="mb-1 block text-[11px] font-medium text-stone-500">สถานะชำระเงิน</label>
+											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">สถานะชำระเงิน</label>
 											<div class="relative">
 												<select
 													v-model="activePaymentStatus"
-													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-3 py-2.5 pr-8 text-xs font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4 sm:text-sm"
 												>
 													<option value="all">ทุกการชำระ</option>
 													<option value="unpaid">Unpaid</option>
@@ -1263,17 +1267,17 @@ async function submitEditPurchaseOrder() {
 										ยังไม่มี purchase order
 									</div>
 									<table v-else class="min-w-[1120px] w-full border-separate border-spacing-0">
-										<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-												<th class="border-b border-[#ece6dc] px-4 py-3">PO</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">Supplier</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">ชำระ</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">รายการ</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">สั่งรวม</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">คาดรับ</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3">มูลค่า</th>
-												<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">PO</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Supplier</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ชำระ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">รายการ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สั่งรวม</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">คาดรับ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">มูลค่า</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 											</tr>
 										</thead>
 										<tbody>
@@ -1710,7 +1714,7 @@ async function submitEditPurchaseOrder() {
 						v-model="paymentOpen"
 						title="บันทึกชำระเงิน"
 						description="อัปเดต rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิล โดยไม่เปลี่ยนต้นทุนสินค้าใน stock"
-						desktop-width="720px"
+						desktop-width="680px"
 						close-button-size="md"
 						compact-header
 						full-bleed-header

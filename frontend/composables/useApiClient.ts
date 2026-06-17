@@ -9,6 +9,7 @@ export function useApiClient() {
 	const { authHeaders, hydrateAuthState, handleAuthFailure, refreshAccessToken, currentStoreId } = useAuthSession();
 
 	const STORE_SCOPED_PREFIXES = [
+		"/pos",
 		"/products",
 		"/product-categories",
 		"/units",

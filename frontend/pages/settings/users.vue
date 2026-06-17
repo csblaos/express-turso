@@ -408,11 +408,12 @@ onMounted(async () => {
 			<template #default="{ openSidebar }">
 				<div class="grid gap-3 pb-3 lg:gap-4">
 					<AppPageHeader
-						title="ผู้ใช้งานและสิทธิ์การใช้งาน"
+						title=""
+						compact
 						description="จัดการสมาชิกในร้าน กำหนดบทบาท และดู permission summary ตามร้านที่กำลังใช้งาน"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:gap-3 lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:gap-3 lg:justify-end">
 						<UInput
 							v-model="searchQuery"
 							icon="i-heroicons-magnifying-glass-20-solid"
@@ -552,15 +553,15 @@ onMounted(async () => {
 										</div>
 
 											<table v-else class="min-w-[980px] w-full border-separate border-spacing-0">
-												<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-														<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ใช้</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3">บทบาท</th>
-														<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">System role</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Permissions</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">เพิ่มเมื่อ</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+												<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ผู้ใช้</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">บทบาท</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">System role</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Permissions</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เพิ่มเมื่อ</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 												</tr>
 											</thead>
 											<tbody>

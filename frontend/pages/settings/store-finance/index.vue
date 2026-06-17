@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CircleDollarSign } from "@lucide/vue";
 import { appNavItems } from "~/utils/app-nav";
 import { getCurrencySymbol, normalizeCurrencyCode, type CurrencyCode } from "~/utils/currency";
 
@@ -34,8 +35,8 @@ const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string; hint: string 
 ];
 
 const COST_METHOD_OPTIONS = [
-	{ id: "average", label: "ต้นทุนเฉลี่ย", hint: "เรียบง่าย เหมาะกับ POS และรายงานทั่วไป" },
-	{ id: "fifo", label: "FIFO", hint: "ตัดตามรอบซื้อก่อน-หลัง เหมาะกับการควบคุมต้นทุนละเอียด" },
+	{ id: "average", label: "ต้นทุนเฉลี่ย", hint: "ใช้งานง่าย เหมาะกับ POS และรายงานทั่วไป" },
+	{ id: "fifo", label: "FIFO", hint: "ตัดสินค้าตามลำดับซื้อก่อน-หลัง เหมาะกับการคุมต้นทุนละเอียด" },
 ] as const;
 
 const { apiFetch } = useApiClient();
@@ -78,6 +79,9 @@ const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can
 
 const baseCurrency = ref<CurrencyCode>("LAK");
 const costMethod = ref<(typeof COST_METHOD_OPTIONS)[number]["id"]>("average");
+const vatEnabled = ref(false);
+const vatRate = ref("7");
+const vatMode = ref<"EXCLUSIVE" | "INCLUSIVE">("EXCLUSIVE");
 const supportedCurrencies = reactive<Record<CurrencyCode, boolean>>({
 	LAK: true,
 	THB: false,
@@ -89,6 +93,9 @@ const initialSnapshot = ref<{
 	storeId: string;
 	baseCurrency: CurrencyCode;
 	costMethod: (typeof COST_METHOD_OPTIONS)[number]["id"];
+	vatEnabled: boolean;
+	vatRate: string;
+	vatMode: "EXCLUSIVE" | "INCLUSIVE";
 	supported: Record<CurrencyCode, boolean>;
 } | null>(null);
 
@@ -129,6 +136,35 @@ function stringifySupportedCurrencies(value: Record<CurrencyCode, boolean>, base
 	return unique.join(",");
 }
 
+function normalizeVatRateInput(raw: string) {
+	const input = String(raw ?? "").trim();
+	if (!input) return "";
+
+	let normalized = input.replace(/\s+/g, "");
+	normalized = normalized.replace(/,/g, "");
+	normalized = normalized.replace(/[^0-9.]/g, "");
+
+	const firstDot = normalized.indexOf(".");
+	if (firstDot !== -1) {
+		normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
+	}
+
+	return normalized;
+}
+
+function vatRateToNumber(raw: string) {
+	const normalized = normalizeVatRateInput(raw);
+	if (!normalized) return 0;
+	const value = Number(normalized);
+	return Number.isFinite(value) ? value : 0;
+}
+
+function formatVatRateForInput(value: number) {
+	if (!Number.isFinite(value)) return "0";
+	const normalized = value > 100 ? value / 100 : value;
+	return String(normalized);
+}
+
 const enabledCurrencies = computed(() => {
 	const list = CURRENCY_OPTIONS.map((item) => item.code).filter((code) => supportedCurrencies[code] || code === baseCurrency.value);
 	return Array.from(new Set([ baseCurrency.value, ...list ])) as CurrencyCode[];
@@ -139,6 +175,9 @@ const hasChanges = computed(() => {
 	if (initialSnapshot.value.storeId !== effectiveStoreId.value) return true;
 	if (initialSnapshot.value.baseCurrency !== baseCurrency.value) return true;
 	if (initialSnapshot.value.costMethod !== costMethod.value) return true;
+	if (initialSnapshot.value.vatEnabled !== vatEnabled.value) return true;
+	if (initialSnapshot.value.vatMode !== vatMode.value) return true;
+	if (vatRateToNumber(initialSnapshot.value.vatRate) !== vatRateToNumber(vatRate.value)) return true;
 	for (const option of CURRENCY_OPTIONS) {
 		const code = option.code;
 		if (initialSnapshot.value.supported[code] !== supportedCurrencies[code]) return true;
@@ -183,6 +222,11 @@ async function hydrateFromStore() {
 		const store = storeResponse.data;
 		baseCurrency.value = normalizeCurrencyCode(store.currency) || "LAK";
 		costMethod.value = store.cost_method === "fifo" ? "fifo" : "average";
+		vatEnabled.value = Boolean(store.vat_enabled);
+		vatRate.value = formatVatRateForInput(Number(store.vat_rate || 0));
+		vatMode.value = String(store.vat_mode || "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
+			? "INCLUSIVE"
+			: "EXCLUSIVE";
 
 		const supported = parseSupportedCurrencies(store.supported_currencies);
 		for (const option of CURRENCY_OPTIONS) {
@@ -196,6 +240,9 @@ async function hydrateFromStore() {
 			storeId: effectiveStoreId.value,
 			baseCurrency: baseCurrency.value,
 			costMethod: costMethod.value,
+			vatEnabled: vatEnabled.value,
+			vatRate: vatRate.value,
+			vatMode: vatMode.value,
 			supported: { ...supportedCurrencies },
 		};
 	} catch (err) {
@@ -227,6 +274,7 @@ async function saveStoreFinance() {
 	try {
 		ensureBaseCurrencySelected();
 		const supportedCsv = stringifySupportedCurrencies(supportedCurrencies, baseCurrency.value);
+		const normalizedVatRate = vatRateToNumber(vatRate.value);
 
 		await apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(selectedStore.value.id)}`, {
 			method: "PUT",
@@ -234,12 +282,15 @@ async function saveStoreFinance() {
 				currency: baseCurrency.value,
 				cost_method: costMethod.value,
 				supported_currencies: supportedCsv,
+				vat_enabled: vatEnabled.value ? 1 : 0,
+				vat_rate: Number(normalizedVatRate || 0),
+				vat_mode: vatMode.value,
 			},
 		});
 
 		appToast.success({
-			title: "บันทึก Store Finance แล้ว",
-			description: `${selectedStore.value.name} • base ${baseCurrency.value}`,
+			title: "บันทึกการตั้งค่าร้านแล้ว",
+			description: `${selectedStore.value.name} • สกุลเงินหลัก ${baseCurrency.value}`,
 		});
 
 		await hydrateFromStore();
@@ -280,36 +331,37 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
-		sidebar-eyebrow="Settings"
-		sidebar-title="Store Finance"
+		sidebar-eyebrow="ตั้งค่า"
+		sidebar-title="การเงินร้าน"
 		sidebar-compact-title="FIN"
-		sidebar-description="ตั้งค่า base currency และสกุลเงินที่รองรับสำหรับ POS"
+		sidebar-description="ตั้งค่าสกุลเงินหลัก ภาษีมูลค่าเพิ่ม และสกุลเงินที่รองรับสำหรับ POS"
 	>
-		<template #default="{ openSidebar }">
+	<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
-					<AppPageHeader
-						title="Store Finance"
-						description="กำหนดสกุลเงินหลักของร้าน และเปิดรับเงินหลายสกุลใน POS"
-						@menu="openSidebar"
-					>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 pt-2 md:w-auto">
-								<AppButton
-									color="neutral"
-									variant="soft"
-									size="md"
-									icon="i-heroicons-arrow-path-20-solid"
-									:loading="reloading"
-									:spin-icon-on-loading="true"
-									:disabled="saving || reloading"
-									@click="hydrateFromStore"
-								>
-									{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
-								</AppButton>
-							<AppButton
-								color="primary"
-								variant="solid"
-								size="md"
-								icon="i-heroicons-check-20-solid"
+				<AppPageHeader
+					title="การเงินร้าน"
+					description="กำหนดสกุลเงินหลัก ภาษีมูลค่าเพิ่ม และสกุลเงินที่เปิดรับใน POS"
+					title-tone="success"
+					@menu="openSidebar"
+				>
+					<template #actions>
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-path-20-solid"
+							:loading="reloading"
+							:spin-icon-on-loading="true"
+							:disabled="saving || reloading"
+							@click="hydrateFromStore"
+						>
+							{{ reloading ? "กำลังโหลด" : "รีเฟรช" }}
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-check-20-solid"
 							class="rounded-md"
 							:loading="saving"
 							:spin-icon-on-loading="true"
@@ -318,7 +370,7 @@ onMounted(async () => {
 						>
 							บันทึก
 						</AppButton>
-					</div>
+					</template>
 				</AppPageHeader>
 
 				<div class="grid gap-3 lg:pr-1">
@@ -353,40 +405,143 @@ onMounted(async () => {
 
 					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">อัตราแลกเปลี่ยน</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">แยกหน้าเพื่ออัปเดตเรทรายวันได้สะดวก และลดความสับสนในหน้าตั้งค่าร้าน</p>
+							<div class="flex shrink-0 flex-col gap-3 border-b border-[#ece6dc] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+								<div class="flex items-start gap-3">
+									<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+										<CircleDollarSign class="h-5 w-5" />
 									</div>
-									<AppButton
-										color="neutral"
-										variant="soft"
-										size="md"
-										icon="i-heroicons-arrows-right-left-20-solid"
-										class="rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100 hover:text-emerald-800"
-										:disabled="!effectiveStoreId"
-										to="/settings/store-finance/rates"
-									>
-										จัดการเรท
-									</AppButton>
+									<div>
+										<p class="text-sm font-semibold text-stone-950 dark:text-stone-50">อัตราแลกเปลี่ยน</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">
+											ตั้งค่าเรท THB และ USD สำหรับร้านนี้ได้จากหน้าถัดไป
+										</p>
+									</div>
+								</div>
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									class="rounded-md"
+									:disabled="!effectiveStoreId"
+									to="/settings/store-finance/rates"
+								>
+									<span class="inline-flex items-center gap-2">
+										<CircleDollarSign class="h-4 w-4" />
+										<span>จัดการอัตราแลกเปลี่ยน</span>
+									</span>
+								</AppButton>
 							</div>
 							<div class="space-y-3 px-4 py-4">
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
-									ไปหน้า “จัดการเรท” เพื่อกำหนดอัตราแลกเปลี่ยนของสกุลเงินที่เปิดใช้งานไว้
+								<div class="rounded-md border border-dashed border-emerald-200 bg-emerald-50/60 px-4 py-3 text-sm text-stone-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-stone-200">
+									ปุ่มนี้จะพาไปหน้าแก้เรทโดยตรง เหมาะสำหรับอัปเดตอัตราแลกเปลี่ยนประจำวัน
 								</div>
+							</div>
 						</div>
 					</div>
-				</div>
 
-				<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-					<div class="flex flex-col">
-						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-							<div>
-								<p class="text-sm font-semibold text-stone-950">วิธีคำนวณต้นทุน</p>
-								<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือกวิธีที่ใช้คำนวณต้นทุนเพื่อรายงานกำไรและมูลค่าสต็อก</p>
+					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">VAT / ภาษีมูลค่าเพิ่ม</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ตั้งค่า VAT ให้ใช้กับ POS และเอกสารการขายของร้านนี้</p>
+								</div>
+								<UBadge color="neutral" variant="soft" :label="vatEnabled ? 'เปิดใช้งาน' : 'ปิด'" />
 							</div>
-							<UBadge color="neutral" variant="soft" :label="costMethod === 'fifo' ? 'FIFO' : 'Average'" />
+
+							<div class="space-y-4 px-4 py-4">
+								<div class="grid gap-3 lg:grid-cols-3">
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 lg:col-span-1">
+										<div class="flex items-center justify-between gap-4">
+										<div class="min-w-0">
+											<p class="text-sm font-semibold text-stone-900">เปิดใช้งาน VAT</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">เปิดเมื่อร้านต้องคิดภาษีมูลค่าเพิ่ม</p>
+										</div>
+											<button
+												type="button"
+												class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition"
+												:class="vatEnabled ? 'bg-primary-600' : 'bg-stone-200'"
+												:disabled="!canUpdateStoreFinance || storePending || storesPending"
+												@click="vatEnabled = !vatEnabled"
+											>
+												<span
+													class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition"
+													:class="vatEnabled ? 'translate-x-5' : 'translate-x-0.5'"
+												/>
+											</button>
+										</div>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 lg:col-span-1">
+										<div class="flex items-start justify-between gap-4">
+											<div class="min-w-0">
+												<p class="text-sm font-semibold text-stone-900">อัตรา VAT</p>
+												<p class="mt-1 text-xs leading-5 text-stone-500">กรอกเป็นเปอร์เซ็นต์ เช่น 7 เท่ากับ 7%</p>
+											</div>
+										</div>
+										<div class="mt-3">
+											<UInput
+												v-model="vatRate"
+												size="lg"
+												color="neutral"
+												type="text"
+												inputmode="decimal"
+												placeholder="7"
+												class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+											/>
+										</div>
+									</div>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 lg:col-span-1">
+										<div class="flex items-start justify-between gap-4">
+											<div class="min-w-0">
+												<p class="text-sm font-semibold text-stone-900">รูปแบบ VAT</p>
+												<p class="mt-1 text-xs leading-5 text-stone-500">เลือกแบบบวกเพิ่ม หรือรวม VAT ไว้ในราคาสินค้า</p>
+											</div>
+										</div>
+										<div class="mt-3 grid grid-cols-2 gap-2">
+											<button
+												type="button"
+												class="rounded-md border px-3 py-2 text-sm font-semibold transition"
+												:class="vatMode === 'EXCLUSIVE'
+													? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100'
+													: 'border-neutral-200 bg-white text-stone-600 hover:bg-neutral-50'"
+												:disabled="!canUpdateStoreFinance || storePending || storesPending"
+												@click="vatMode = 'EXCLUSIVE'"
+											>
+												แยกภาษี
+											</button>
+											<button
+												type="button"
+												class="rounded-md border px-3 py-2 text-sm font-semibold transition"
+												:class="vatMode === 'INCLUSIVE'
+													? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100'
+													: 'border-neutral-200 bg-white text-stone-600 hover:bg-neutral-50'"
+												:disabled="!canUpdateStoreFinance || storePending || storesPending"
+												@click="vatMode = 'INCLUSIVE'"
+											>
+												รวมภาษี
+											</button>
+										</div>
+									</div>
+								</div>
+
+								<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3 text-xs leading-5 text-stone-500">
+									<b class="text-stone-700">หมายเหตุ:</b> POS จะอ่านค่าจากร้านนี้โดยตรง ถ้าค่าเดิมในฐานข้อมูลเป็น 700 ระบบจะแสดงเป็น 7% ให้อัตโนมัติ
+								</div>
+							</div>
 						</div>
+					</div>
+
+					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+						<div class="flex flex-col">
+							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+								<div>
+									<p class="text-sm font-semibold text-stone-950">วิธีคำนวณต้นทุน</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือกวิธีคำนวณต้นทุนสำหรับรายงานกำไรและมูลค่าสต็อก</p>
+								</div>
+								<UBadge color="neutral" variant="soft" :label="costMethod === 'fifo' ? 'FIFO' : 'เฉลี่ย'" />
+							</div>
 
 						<div class="space-y-3 px-4 py-4">
 							<div class="grid gap-2 sm:grid-cols-2">
@@ -396,7 +551,7 @@ onMounted(async () => {
 									type="button"
 									class="group rounded-md border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70"
 									:class="costMethod === option.id
-										? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
+										? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:ring-emerald-400/30'
 										: 'border-neutral-200 bg-neutral-50 hover:border-neutral-300 hover:bg-neutral-100/70'"
 									:disabled="!canUpdateStoreFinance || storePending || storesPending"
 									@click="selectCostMethod(option.id)"
@@ -409,7 +564,7 @@ onMounted(async () => {
 										<div
 											class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition"
 											:class="costMethod === option.id
-												? 'border-primary-500 bg-primary-600 text-white'
+												? 'border-primary-500 bg-primary-600 text-white dark:border-emerald-400 dark:bg-emerald-500 dark:text-emerald-950'
 												: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
 										>
 											<UIcon v-if="costMethod === option.id" name="i-heroicons-check-20-solid" class="h-3.5 w-3.5" />
@@ -418,7 +573,7 @@ onMounted(async () => {
 								</button>
 							</div>
 							<p class="text-xs leading-5 text-stone-500">
-								แนะนำให้ใช้ต้นทุนเฉลี่ยเป็นค่าเริ่มต้น ถ้าต้องการแม่นตามรอบซื้อและตรวจล็อตค่อยเปลี่ยนเป็น FIFO
+								แนะนำให้ใช้ต้นทุนเฉลี่ยเป็นค่าเริ่มต้น ถ้าต้องการคุมล็อตสินค้าแม่นขึ้นค่อยเปลี่ยนเป็น FIFO
 							</p>
 
 							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
@@ -436,7 +591,7 @@ onMounted(async () => {
 										</div>
 									</div>
 								</div>
-								<div v-else class="mt-3 text-sm text-stone-500">ยังไม่มีประวัติการเปลี่ยนต้นทุน</div>
+								<div v-else class="mt-3 text-sm text-stone-500">ยังไม่มีประวัติการเปลี่ยนวิธีต้นทุน</div>
 							</div>
 						</div>
 					</div>
@@ -445,12 +600,12 @@ onMounted(async () => {
 					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-									<div>
-										<p class="text-sm font-semibold text-stone-950">สกุลเงินหลัก (Base currency)</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">ใช้เป็นสกุลเงินหลักในการคิดยอดขายและรายงาน</p>
-									</div>
-									<UBadge color="neutral" variant="soft" label="เลือกได้ 1" />
+								<div>
+									<p class="text-sm font-semibold text-stone-950">สกุลเงินหลัก (Base currency)</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ใช้เป็นสกุลเงินหลักในการคิดยอดขายและสรุปรายงาน</p>
 								</div>
+								<UBadge color="neutral" variant="soft" label="เลือก 1 สกุล" />
+							</div>
 
 									<div class="space-y-4 px-4 py-4">
 										<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -460,7 +615,7 @@ onMounted(async () => {
 											type="button"
 											class="group flex w-full items-start justify-between gap-4 rounded-md border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70"
 											:class="baseCurrency === option.code
-												? 'border-primary-300 bg-primary-50'
+												? 'border-primary-300 bg-primary-50 dark:border-emerald-400/40 dark:bg-emerald-500/15'
 												: 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70'"
 											:disabled="!canUpdateStoreFinance || storePending || storesPending"
 											@click="selectBaseCurrency(option.code)"
@@ -473,21 +628,21 @@ onMounted(async () => {
 													<p class="mt-1 text-xs leading-5 text-stone-500">{{ option.hint }}</p>
 												</div>
 
-											<div class="mt-0.5 flex shrink-0 items-center gap-2">
-												<span class="text-xs font-semibold text-stone-500 tabular-nums">Base</span>
-												<span
-													class="relative inline-flex h-6 w-6 items-center justify-center rounded-full border transition"
-													:class="baseCurrency === option.code
-														? 'border-primary-400 bg-primary-600'
-														: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
-												>
+										<div class="mt-0.5 flex shrink-0 items-center gap-2">
+											<span class="text-xs font-semibold text-stone-500 tabular-nums">หลัก</span>
+											<span
+												class="relative inline-flex h-6 w-6 items-center justify-center rounded-full border transition"
+												:class="baseCurrency === option.code
+													? 'border-primary-400 bg-primary-600 dark:border-emerald-400 dark:bg-emerald-500'
+													: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
+											>
 													<span v-if="baseCurrency === option.code" class="h-3.5 w-3.5 text-white i-heroicons-check-20-solid" />
 												</span>
 											</div>
 										</button>
 									</div>
 									<p class="text-xs leading-5 text-stone-500">
-										แนะนำให้ตั้ง Base เป็นสกุลเงินที่ใช้ทำบัญชีหลักของร้าน (เช่น LAK สำหรับร้านในลาว)
+										แนะนำให้ตั้งสกุลเงินหลักเป็นสกุลที่ใช้ทำบัญชีหลักของร้าน เช่น LAK สำหรับร้านในลาว
 									</p>
 								</div>
 							</div>
@@ -498,7 +653,7 @@ onMounted(async () => {
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
 									<p class="text-sm font-semibold text-stone-950">รองรับหลายสกุลเงิน</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เปิด/ปิดสกุลเงินที่อนุญาตให้รับเงินใน POS</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เปิดหรือปิดสกุลเงินที่รับชำระได้ใน POS</p>
 								</div>
 							</div>
 
@@ -516,21 +671,27 @@ onMounted(async () => {
 												</p>
 												<p class="mt-1 text-xs leading-5 text-stone-500">{{ option.hint }}</p>
 											</div>
-										<label class="relative inline-flex shrink-0 cursor-pointer items-center">
-											<input
-												:checked="supportedCurrencies[option.code] || option.code === baseCurrency"
-												type="checkbox"
-												class="peer sr-only"
-												:disabled="option.code === baseCurrency || !canUpdateStoreFinance"
-												@change="toggleSupportedCurrency(option.code)"
-											>
-											<span class="h-6 w-11 rounded-full bg-stone-200 transition peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-200 peer-checked:bg-primary-600 peer-disabled:opacity-70" />
-											<span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5 peer-disabled:opacity-80" />
-										</label>
+										<button
+											type="button"
+											class="relative inline-flex shrink-0 items-center"
+											:class="option.code === baseCurrency || !canUpdateStoreFinance || storePending || storesPending ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'"
+											:disabled="option.code === baseCurrency || !canUpdateStoreFinance || storePending || storesPending"
+											:aria-pressed="supportedCurrencies[option.code] || option.code === baseCurrency"
+											@click="toggleSupportedCurrency(option.code)"
+										>
+											<span
+												class="h-6 w-11 rounded-full bg-stone-200 transition"
+												:class="supportedCurrencies[option.code] || option.code === baseCurrency ? 'bg-primary-600 dark:bg-emerald-500' : 'bg-stone-200'"
+											/>
+											<span
+												class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition"
+												:class="supportedCurrencies[option.code] || option.code === baseCurrency ? 'translate-x-5' : 'translate-x-0'"
+											/>
+										</button>
 									</div>
 								</div>
 								<p class="text-xs leading-5 text-stone-500">
-									หมายเหตุ: Base currency จะถูกเปิดไว้เสมอ และไม่สามารถปิดได้
+									หมายเหตุ: สกุลเงินหลักจะเปิดไว้เสมอ และไม่สามารถปิดได้
 								</p>
 							</div>
 						</div>

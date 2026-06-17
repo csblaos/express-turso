@@ -345,11 +345,12 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="Superadmin Stores"
+					title=""
+					compact
 					@menu="openSidebar"
 				>
 					<template #default>
-						<div class="flex w-full flex-wrap items-center gap-2 pt-1">
+						<div class="flex w-full flex-wrap items-center gap-2 pt-0.5 sm:pt-1">
 							<UInput
 								v-model="searchQuery"
 								icon="i-heroicons-magnifying-glass-20-solid"
@@ -445,17 +446,17 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 								<template v-else>
 									<div class="overflow-x-auto">
 										<table class="min-w-[1080px] w-full border-separate border-spacing-0">
-											<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-													<th class="border-b border-[#ece6dc] px-4 py-3">Store</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Owner</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Type</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Currency</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Address</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">Created</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
-												</tr>
-											</thead>
+										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Store</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Owner</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Type</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Currency</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Address</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Created</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
+											</tr>
+										</thead>
 											<tbody>
 												<tr
 													v-for="store in paginatedStores"

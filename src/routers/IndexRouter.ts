@@ -7,6 +7,7 @@ import { ProductCategoryRouter } from "@routers/ProductCategoryRouter";
 import { ProductRouter } from "@routers/ProductRouter";
 import { ProductUnitRouter } from "@routers/ProductUnitRouter";
 import { PurchaseOrderRouter } from "@routers/PurchaseOrderRouter";
+import { PosRouter } from "@routers/PosRouter";
 import { RbacRouter } from "@routers/RbacRouter";
 import { StoreRouter } from "@routers/StoreRouter";
 import { SuperadminUserRouter } from "@routers/SuperadminUserRouter";
@@ -28,6 +29,7 @@ export class IndexRouter {
 		this.router.use("/auth", AuthRouter.getInstance().getRouter());
 		this.router.use("/rbac", RbacRouter.getInstance().getRouter());
 		this.router.use("/products", ProductRouter.getInstance().getRouter());
+		this.router.use("/pos", PosRouter.getInstance().getRouter());
 		this.router.use("/audit-events", AuditEventRouter.getInstance().getRouter());
 		this.router.use("/inventory", InventoryRouter.getInstance().getRouter());
 		this.router.use("/purchase-orders", PurchaseOrderRouter.getInstance().getRouter());

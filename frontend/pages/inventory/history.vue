@@ -76,6 +76,21 @@ const typeOptions: Array<{ id: typeof movementType.value; label: string }> = [
 	{ id: "ADJUSTMENT_SET", label: "ตั้งค่าใหม่" },
 ];
 
+type DatePickerField = "from" | "to";
+type CalendarDay = {
+	date: string;
+	day: number;
+	isCurrentMonth: boolean;
+	isToday: boolean;
+	isSelected: boolean;
+	isInRange: boolean;
+};
+
+const datePickerOpen = ref(false);
+const datePickerField = ref<DatePickerField>("from");
+const datePickerMonth = ref(startOfMonth(new Date()));
+const weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
 	dateStyle: "medium",
 	timeStyle: "short",
@@ -103,6 +118,129 @@ function getMovementLabel(type: string) {
 	if (type.startsWith("ADJUSTMENT")) return "ปรับสต็อก";
 	return type;
 	}
+
+function formatReferenceType(refType: string) {
+	if (refType === "purchase_order") return "PO สั่งซื้อ";
+	if (refType === "manual_adjustment") return "ปรับสต็อกด้วยมือ";
+	if (!refType) return "-";
+	return refType
+		.replace(/_/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function parseDateInputValue(value: string) {
+	if (!value) return null;
+	const parsed = new Date(`${value}T00:00:00`);
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfMonth(date: Date) {
+	return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function formatPickerDate(value: string | null) {
+	const parsed = parseDateInputValue(value || "");
+	if (!parsed) return "เลือกวันที่";
+	return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(parsed);
+}
+
+function setDateRangeValue(field: DatePickerField, value: string) {
+	if (field === "from") {
+		fromDate.value = value;
+		if (toDate.value && toDate.value < value) {
+			toDate.value = value;
+		}
+		return;
+	}
+
+	toDate.value = value;
+	if (fromDate.value && fromDate.value > value) {
+		fromDate.value = value;
+	}
+}
+
+function openDatePicker(field: DatePickerField) {
+	datePickerField.value = field;
+	const baseValue = field === "from" ? fromDate.value : toDate.value;
+	const parsed = parseDateInputValue(baseValue);
+	datePickerMonth.value = startOfMonth(parsed || new Date());
+	datePickerOpen.value = true;
+}
+
+function closeDatePicker() {
+	datePickerOpen.value = false;
+}
+
+function moveDatePickerMonth(offset: number) {
+	const nextMonth = new Date(datePickerMonth.value);
+	nextMonth.setMonth(nextMonth.getMonth() + offset);
+	datePickerMonth.value = startOfMonth(nextMonth);
+}
+
+function pickDate(day: CalendarDay) {
+	if (!day.isCurrentMonth) return;
+	setDateRangeValue(datePickerField.value, day.date);
+	closeDatePicker();
+}
+
+function pickToday() {
+	const value = toDateInputValue(new Date());
+	setDateRangeValue(datePickerField.value, value);
+	datePickerMonth.value = startOfMonth(new Date(value));
+	closeDatePicker();
+}
+
+function clearCurrentDate() {
+	if (datePickerField.value === "from") {
+		fromDate.value = "";
+	} else {
+		toDate.value = "";
+	}
+	closeDatePicker();
+}
+
+const datePickerMonthLabel = computed(() => new Intl.DateTimeFormat("th-TH", {
+	month: "long",
+	year: "numeric",
+}).format(datePickerMonth.value));
+
+const datePickerCurrentValue = computed(() => (
+	datePickerField.value === "from" ? fromDate.value : toDate.value
+));
+
+const datePickerCalendarDays = computed<CalendarDay[]>(() => {
+	const start = startOfMonth(datePickerMonth.value);
+	const startOffset = start.getDay();
+	const gridStart = new Date(start);
+	gridStart.setDate(gridStart.getDate() - startOffset);
+	const selectedDate = datePickerCurrentValue.value || "";
+	const fromValue = fromDate.value;
+	const toValue = toDate.value;
+
+	return Array.from({ length: 42 }, (_, index) => {
+		const current = new Date(gridStart);
+		current.setDate(gridStart.getDate() + index);
+		const date = toDateInputValue(current);
+		const isInRange = !!fromValue && !!toValue && date >= fromValue && date <= toValue;
+		return {
+			date,
+			day: current.getDate(),
+			isCurrentMonth: current.getMonth() === start.getMonth() && current.getFullYear() === start.getFullYear(),
+			isToday: date === toDateInputValue(new Date()),
+			isSelected: date === selectedDate,
+			isInRange,
+		};
+	});
+});
+
+const datePickerCalendarWeeks = computed(() => {
+	const weeks: CalendarDay[][] = [];
+	for (let index = 0; index < datePickerCalendarDays.value.length; index += 7) {
+		weeks.push(datePickerCalendarDays.value.slice(index, index + 7));
+	}
+	return weeks;
+});
 
 	type DatePresetId = "today" | "this_week" | "last_week" | "this_month" | "last_month";
 
@@ -274,13 +412,14 @@ onMounted(() => {
 		sidebar-description="ดูรายการเคลื่อนไหวสต็อกแบบละเอียดสำหรับตรวจสอบย้อนหลัง"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid gap-3 pb-3 lg:gap-4">
+			<div class="grid gap-2 pb-2 lg:gap-3">
 				<AppPageHeader
-					title="ประวัติสต็อก"
+					compact
+					title=""
 					description="ค้นหาและดูรายการเคลื่อนไหวสต็อกย้อนหลัง (audit trail)"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto] lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto] lg:justify-end">
 						<div class="relative min-w-0">
 							<UInput
 								v-model="searchQuery"
@@ -368,7 +507,7 @@ onMounted(() => {
 									</div>
 								</div>
 
-								<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)_minmax(180px,0.5fr)] md:items-end">
+								<div class="grid w-full gap-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] lg:items-end">
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="movement-type-select">
 											ประเภท
@@ -390,24 +529,32 @@ onMounted(() => {
 									</div>
 								</div>
 
-								<div class="min-w-0">
-									<label class="mb-1 block text-[11px] font-medium text-stone-500">จากวันที่</label>
-									<input
-										v-model="fromDate"
-										type="date"
-										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									>
-								</div>
+									<div class="grid grid-cols-2 gap-2 lg:contents">
+										<div class="min-w-0">
+											<label class="mb-1 block text-[11px] font-medium text-stone-500">จากวันที่</label>
+											<button
+												type="button"
+												class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												@click="openDatePicker('from')"
+											>
+												<span class="truncate">{{ fromDate ? formatPickerDate(fromDate) : 'เลือกวันที่' }}</span>
+												<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
+											</button>
+										</div>
 
-								<div class="min-w-0">
-									<label class="mb-1 block text-[11px] font-medium text-stone-500">ถึงวันที่</label>
-									<input
-										v-model="toDate"
-										type="date"
-										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									>
+										<div class="min-w-0">
+											<label class="mb-1 block text-[11px] font-medium text-stone-500">ถึงวันที่</label>
+											<button
+												type="button"
+												class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+												@click="openDatePicker('to')"
+											>
+												<span class="truncate">{{ toDate ? formatPickerDate(toDate) : 'เลือกวันที่' }}</span>
+												<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
+											</button>
+										</div>
+									</div>
 								</div>
-							</div>
 
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<div class="text-xs text-stone-500">
@@ -450,6 +597,101 @@ onMounted(() => {
 					</div>
 				</div>
 
+				<AppResponsivePanel
+					v-model="datePickerOpen"
+					:title="datePickerField === 'from' ? 'เลือกเริ่มวันที่' : 'เลือกสิ้นวันที่'"
+					:description="datePickerCurrentValue ? formatPickerDate(datePickerCurrentValue) : 'แตะวันที่ที่ต้องการเลือก'"
+					desktop-width="420px"
+					close-button-size="md"
+					compact-header
+					full-bleed-header
+					content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+					@close="closeDatePicker"
+				>
+					<template #default>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="min-h-0 overflow-y-auto px-0 py-2">
+								<div class="rounded-none border border-neutral-200 bg-neutral-50 p-4 shadow-[0_8px_24px_rgba(31,28,24,0.04)] sm:rounded-md">
+									<div class="flex items-center justify-between gap-2">
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" icon="i-heroicons-chevron-left-20-solid" @click="moveDatePickerMonth(-1)" />
+										<div class="text-sm font-semibold text-stone-950">
+											{{ datePickerMonthLabel }}
+										</div>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" icon="i-heroicons-chevron-right-20-solid" @click="moveDatePickerMonth(1)" />
+									</div>
+
+									<div class="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">
+										<div v-for="label in weekdayLabels" :key="label" class="py-1">
+											{{ label }}
+										</div>
+									</div>
+
+									<div class="mt-2 space-y-1">
+										<div v-for="week in datePickerCalendarWeeks" :key="week[0]?.date" class="grid grid-cols-7 gap-1">
+											<button
+												v-for="day in week"
+												:key="day.date"
+												type="button"
+												class="flex h-11 items-center justify-center rounded-md text-sm font-medium transition"
+												:class="day.isCurrentMonth
+													? day.isSelected
+														? 'bg-primary-600 text-white shadow-sm'
+														: day.isInRange
+															? 'bg-primary-50 text-primary-700'
+															: day.isToday
+																? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+																: 'bg-white text-stone-800 ring-1 ring-neutral-200 hover:border-primary-300 hover:bg-primary-50/50'
+													: 'bg-transparent text-stone-300 ring-1 ring-transparent'"
+												:disabled="!day.isCurrentMonth"
+												@click="pickDate(day)"
+											>
+												{{ day.day }}
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="grid grid-cols-3 gap-2">
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-calendar-days-20-solid"
+										class="w-full justify-center rounded-md text-center"
+										@click="pickToday"
+									>
+										วันนี้
+									</AppButton>
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										class="w-full justify-center rounded-md text-center"
+										@click="clearCurrentDate"
+									>
+										<span class="inline-flex items-center justify-center gap-1.5">
+											<Eraser class="h-4 w-4 shrink-0" />
+											<span>ล้าง</span>
+										</span>
+									</AppButton>
+									<AppButton
+										color="primary"
+										variant="solid"
+										size="md"
+										icon="i-heroicons-x-mark-20-solid"
+										class="w-full justify-center rounded-md text-center"
+										@click="closeDatePicker"
+									>
+										ปิด
+									</AppButton>
+								</div>
+							</div>
+						</div>
+					</template>
+				</AppResponsivePanel>
+
 				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
@@ -480,15 +722,15 @@ onMounted(() => {
 							</div>
 
 							<table v-else class="min-w-[1180px] w-full border-separate border-spacing-0">
-									<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-										<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-											<th class="border-b border-[#ece6dc] px-4 py-3">เวลา</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3 whitespace-nowrap">ประเภท</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3 text-right">จำนวน</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ทำ</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3">หมายเหตุ</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3">อ้างอิง</th>
+									<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+										<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เวลา</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สินค้า</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">ประเภทการเคลื่อนไหว</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">จำนวน</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ผู้ทำ</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หมายเหตุ</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เอกสารอ้างอิง</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -519,9 +761,14 @@ onMounted(() => {
 											{{ movement.note || "-" }}
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
-											<span class="rounded-md bg-white px-2.5 py-1 ring-1 ring-neutral-200">
-												{{ movement.ref_type }}
-											</span>
+											<div class="inline-flex flex-col gap-1">
+												<span class="inline-flex w-fit items-center rounded-md bg-white px-2.5 py-1 text-xs font-medium text-stone-700 ring-1 ring-neutral-200">
+													{{ formatReferenceType(movement.ref_type) }}
+												</span>
+												<span v-if="movement.ref_id" class="text-[11px] text-stone-400">
+													ID: {{ movement.ref_id }}
+												</span>
+											</div>
 										</td>
 									</tr>
 								</tbody>

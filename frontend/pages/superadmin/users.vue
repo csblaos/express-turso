@@ -682,12 +682,13 @@ onMounted(loadUsers);
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="Superadmin Users"
+					title=""
+					compact
 					description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
 					@menu="openSidebar"
 				>
 					<template #default>
-						<div class="flex w-full flex-wrap items-center gap-2 pt-1">
+						<div class="flex w-full flex-wrap items-center gap-2 pt-0.5 sm:pt-1">
 							<UInput
 								v-model="searchQuery"
 								icon="i-heroicons-magnifying-glass-20-solid"
@@ -778,15 +779,15 @@ onMounted(loadUsers);
 									<div v-else-if="!users.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีผู้ใช้</div>
 									<div v-else class="overflow-x-auto">
 										<table class="min-w-[1080px] w-full border-separate border-spacing-0">
-											<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-													<th class="border-b border-[#ece6dc] px-4 py-3">ผู้ใช้</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">บทบาท</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">System role</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">ร้าน</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3">เพิ่มเมื่อ</th>
-													<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ผู้ใช้</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">บทบาท</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">System role</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ร้าน</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เพิ่มเมื่อ</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 												</tr>
 											</thead>
 											<tbody>
