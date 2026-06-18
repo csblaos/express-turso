@@ -251,95 +251,148 @@ function scrollEventsListToTop() {
 		sidebar-description="ดู audit events, ประวัติการเปลี่ยนแปลง และผลลัพธ์ของ action สำคัญในระบบ"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="กิจกรรมระบบ"
-					description=""
-					:tablet-layout="true"
+					class="block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadEvents">
-								รีโหลด
-							</AppButton>
-						</div>
-					</template>
-
 					<template #default>
-						<div class="space-y-2">
-							<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-								<div class="relative min-w-0">
-									<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-									<input
-										v-model="searchQuery"
-										type="text"
-										placeholder="ค้นหา actor, action, entity, request id"
-										class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									>
-									<button
-										v-if="searchQuery"
-										type="button"
-										class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
-										@click="searchQuery = ''"
-									>
-										<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
-									</button>
-								</div>
-
-								<select v-model="activeScope" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option v-for="option in scopeOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-								</select>
-
-								<select v-model="activeEntityType" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option v-for="option in entityTypeOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-								</select>
-							</div>
-
-							<div class="flex w-full flex-wrap items-center justify-end gap-2">
-								<AppButton
-									v-for="option in resultOptions"
-									:key="option.id"
-									:color="activeResult === option.id ? 'primary' : 'neutral'"
-									:variant="activeResult === option.id ? 'solid' : 'soft'"
-									size="md"
-									class="rounded-md"
-									@click="activeResult = option.id"
+						<div class="pt-0.5 sm:pt-1">
+							<div class="relative w-full min-w-0">
+								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+								<input
+									v-model="searchQuery"
+									type="text"
+									placeholder="ค้นหา actor, action, entity, request id"
+									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
-									{{ option.label }}
-								</AppButton>
-							</div>
-
-								<div class="grid gap-2 sm:grid-cols-3">
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ทั้งหมด</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalEvents) }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สำเร็จในหน้า</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(successCount) }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Failed ในหน้า</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(failedCount) }}</p>
-								</div>
+								<button
+									v-if="searchQuery"
+									type="button"
+									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+									@click="searchQuery = ''"
+								>
+									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
+								</button>
 							</div>
 						</div>
 					</template>
 				</AppPageHeader>
 
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-						<div class="flex h-full min-h-0 flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">Audit events</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ไล่ดูเหตุการณ์ล่าสุดเพื่อเช็กการเปลี่ยนแปลงและผลลัพธ์จาก action สำคัญ</p>
-								</div>
-								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ pageSummaryText }}
+				<div class="grid grid-cols-3 gap-2 lg:pr-1">
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ทั้งหมด</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalEvents) }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สำเร็จในหน้า</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(successCount) }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Failed ในหน้า</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(failedCount) }}</p>
+					</div>
+				</div>
+
+				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+						<div>
+							<p class="text-sm font-semibold text-stone-950">ตัวกรองกิจกรรม</p>
+						</div>
+						<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+							{{ numberFormatter.format(totalEvents) }} รายการ
+						</div>
+					</div>
+
+					<div class="grid gap-2 px-4 py-3">
+						<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
+							<div class="min-w-0">
+								<label class="mb-1 block text-[11px] font-medium text-stone-500" for="activity-scope-select">
+									Scope
+								</label>
+								<div class="relative">
+									<select
+										id="activity-scope-select"
+										v-model="activeScope"
+										class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option v-for="option in scopeOptions" :key="option.id" :value="option.id">
+											{{ option.label }}
+										</option>
+									</select>
+									<UIcon
+										name="i-heroicons-chevron-up-down"
+										class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+									/>
 								</div>
 							</div>
+
+							<div class="min-w-0">
+								<label class="mb-1 block text-[11px] font-medium text-stone-500" for="activity-entity-select">
+									Entity
+								</label>
+								<div class="relative">
+									<select
+										id="activity-entity-select"
+										v-model="activeEntityType"
+										class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option v-for="option in entityTypeOptions" :key="option.id" :value="option.id">
+											{{ option.label }}
+										</option>
+									</select>
+									<UIcon
+										name="i-heroicons-arrows-up-down"
+										class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<div class="scrollbar-hidden md:scrollbar-soft flex flex-nowrap gap-2 overflow-x-auto pb-1">
+							<AppButton
+								v-for="option in resultOptions"
+								:key="option.id"
+								:color="activeResult === option.id ? 'primary' : 'neutral'"
+								:variant="activeResult === option.id ? 'solid' : 'soft'"
+								size="md"
+								class="shrink-0 whitespace-nowrap rounded-md"
+								@click="activeResult = option.id"
+							>
+								{{ option.label }}
+							</AppButton>
+						</div>
+					</div>
+				</div>
+
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+							<div class="flex h-full min-h-0 flex-col">
+								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+									<div>
+										<p class="text-sm font-semibold text-stone-950">Audit events</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">ไล่ดูเหตุการณ์ล่าสุดเพื่อเช็กการเปลี่ยนแปลงและผลลัพธ์จาก action สำคัญ</p>
+									</div>
+									<div class="flex items-center gap-2">
+										<AppButton
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-arrow-path-20-solid"
+											class="w-10 justify-center rounded-md px-0 sm:w-auto sm:px-3"
+											:loading="pending"
+											:disabled="pending"
+											:spin-icon-on-loading="true"
+											@click="loadEvents"
+										>
+											<span class="hidden sm:inline">รีโหลด</span>
+										</AppButton>
+										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											{{ pageSummaryText }}
+										</div>
+									</div>
+								</div>
 
 							<div ref="eventsListScrollRef" class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
 								<div v-if="pending" class="min-h-[280px]">
@@ -357,34 +410,50 @@ function scrollEventsListToTop() {
 									ยังไม่มี audit event
 								</div>
 								<div v-else>
-									<button
-										v-for="event in events"
-										:key="event.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										:class="selectedEvent?.id === event.id ? 'bg-primary-50' : 'bg-white'"
-										@click="openEvent(event.id)"
-									>
-										<div class="flex flex-wrap items-start justify-between gap-3">
-											<div class="min-w-0">
-												<div class="flex flex-wrap items-center gap-2">
-													<UBadge :color="getScopeColor(event.scope)" variant="soft" :label="event.scope" />
-													<UBadge :color="getResultColor(event.result)" variant="soft" :label="event.result" />
-													<span class="text-xs text-stone-400">{{ formatDate(event.occurred_at) }}</span>
-												</div>
-												<p class="mt-2 text-sm font-semibold text-stone-900">
-													{{ event.action }}
-													<span class="font-normal text-stone-500">· {{ event.entity_type }}</span>
-												</p>
-												<p class="mt-1 text-sm text-stone-500">
-													{{ event.actor_name || event.actor_user_id || "ไม่ระบุผู้กระทำ" }}
-													<span v-if="event.entity_id">· {{ event.entity_id }}</span>
-													<span v-if="event.request_id">· {{ event.request_id }}</span>
-												</p>
-											</div>
-											<UIcon name="i-heroicons-chevron-right-20-solid" class="h-5 w-5 shrink-0 text-stone-300" />
-										</div>
-									</button>
+									<div class="overflow-x-auto">
+										<table class="min-w-[1120px] w-full border-separate border-spacing-0">
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+												<tr>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">เวลา</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">scope</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">ผลลัพธ์</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">action / entity</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">actor</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">request / id</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="event in events"
+													:key="event.id"
+													class="cursor-pointer bg-white transition hover:bg-primary-50"
+													:class="selectedEvent?.id === event.id ? 'bg-primary-50' : ''"
+													@click="openEvent(event.id)"
+												>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+														{{ formatDate(event.occurred_at) }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+														<UBadge :color="getScopeColor(event.scope)" variant="soft" :label="event.scope" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+														<UBadge :color="getResultColor(event.result)" variant="soft" :label="event.result" />
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+														<p class="text-sm font-semibold text-stone-900">{{ event.action }}</p>
+														<p class="mt-1 text-sm text-stone-500">{{ event.entity_type }}</p>
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+														{{ event.actor_name || event.actor_user_id || "ไม่ระบุผู้กระทำ" }}
+													</td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+														<p>{{ event.entity_id || "-" }}</p>
+														<p class="mt-1 text-xs text-stone-400">{{ event.request_id || "-" }}</p>
+													</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
 								</div>
 							</div>
 
@@ -446,7 +515,6 @@ function scrollEventsListToTop() {
 								</div>
 							</div>
 						</div>
-					</div>
 				</div>
 			</div>
 

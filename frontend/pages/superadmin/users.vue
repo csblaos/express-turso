@@ -733,7 +733,7 @@ onMounted(loadUsers);
 
 				<div class="grid gap-3 lg:pr-1">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+						<div class="grid grid-cols-2 gap-2.5 md:grid-cols-4">
 							<div
 								v-for="item in overviewStats"
 								:key="item.label"

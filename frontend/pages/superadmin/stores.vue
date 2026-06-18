@@ -394,7 +394,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 
 				<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+						<div class="grid grid-cols-2 gap-2.5 md:grid-cols-4">
 							<div
 								v-for="item in overviewStats"
 								:key="item.label"
@@ -419,7 +419,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
+								<div class="grid grid-cols-2 gap-2.5">
 									<select v-model="activeType" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 										<option value="all">ทุกประเภทร้าน</option>
 										<option value="RETAIL">Retail</option>

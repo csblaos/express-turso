@@ -388,6 +388,13 @@ Rule:
 - Store finance now includes `cost_method` (`average` / `fifo`) with a small change history; POS price stays unchanged
 - PO detail should prioritize fast open state with inline loading under the header card, not a separate loading section.
 - If a future task says `same style` for product, inventory, or PO pages, treat these as the current shared baseline first before inventing a new pattern.
+- POS checkout flow baseline:
+	- ใช้ modal กลางจอแบบ 2 step แทน drawer ด้านขวา
+	- step 1 = เลือก `เงินสด` หรือ `QR / โอน`
+	- step 2 = preview รายการสินค้า + bill summary
+	- step header เป็นแบบ compact line/dot และคลิกกลับ step ได้
+	- step 2 ต้อง disabled จนกว่าจะเลือกวิธีชำระ
+	- confirm ตอนนี้ยังเป็น preview/toast flow ก่อนผูก backend payment จริง
 
 ## 16) Work completed today
 
@@ -412,5 +419,13 @@ Rule:
 - Live DB verification:
 	- confirmed cost tables exist in Turso
 	- confirmed direct insert into `inventory_cost_summaries` works
+- Updated POS checkout modal/stepper in `frontend/pages/index.vue`:
+	- moved the payment flow into a centered modal
+	- added compact line/dot step navigation in the modal header
+	- step 2 stays disabled until a payment method is selected
+	- step 2 shows cart item preview and bill summary
+	- confirm action is preview/toast only for now
+- Frontend build verified:
+	- `npm --prefix frontend run build` passed
 - Current follow-up area:
 	- PO receive path still needs one more runtime/debug pass around `InventoryCostInterface.recordReceipt(...)` if the live API continues to show the old 404 stack

@@ -452,17 +452,17 @@ onMounted(async () => {
 
 					<div class="grid gap-3 lg:pr-1">
 						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
-							<div
-								v-for="stat in overviewStats"
-								:key="stat.label"
-								class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3"
-							>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ stat.label }}</p>
-								<p class="mt-2 text-2xl font-semibold text-stone-950">{{ stat.value }}</p>
+							<div class="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+								<div
+									v-for="stat in overviewStats"
+									:key="stat.label"
+									class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 sm:px-4 sm:py-3"
+								>
+									<p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400 sm:text-[11px] sm:tracking-[0.18em]">{{ stat.label }}</p>
+									<p class="mt-1 text-lg font-semibold text-stone-950 sm:mt-2 sm:text-2xl">{{ stat.value }}</p>
+								</div>
 							</div>
-						</div>
-					</UCard>
+						</UCard>
 
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="space-y-3">
@@ -481,7 +481,7 @@ onMounted(async () => {
 								</div>
 							</div>
 
-							<div class="grid gap-3 md:grid-cols-3">
+							<div class="grid gap-3">
 								<div class="space-y-2">
 									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้านที่กำลังใช้งาน</label>
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm font-medium text-stone-700">
@@ -492,26 +492,28 @@ onMounted(async () => {
 									</p>
 								</div>
 
-								<div class="space-y-2">
-									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">สถานะ</label>
-									<select
-										v-model="activeStatus"
-										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-										@change="fetchMembers"
-									>
-										<option v-for="status in statusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
-									</select>
-								</div>
+								<div class="grid grid-cols-2 gap-3">
+									<div class="space-y-2 min-w-0">
+										<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">สถานะ</label>
+										<select
+											v-model="activeStatus"
+											class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4"
+											@change="fetchMembers"
+										>
+											<option v-for="status in statusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
+										</select>
+									</div>
 
-								<div class="space-y-2">
-									<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาท</label>
-									<select
-										v-model="activeRoleId"
-										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-										@change="fetchMembers"
-									>
-										<option v-for="role in roleOptions" :key="role.id" :value="role.id">{{ role.label }}</option>
-									</select>
+									<div class="space-y-2 min-w-0">
+										<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">บทบาท</label>
+										<select
+											v-model="activeRoleId"
+											class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4"
+											@change="fetchMembers"
+										>
+											<option v-for="role in roleOptions" :key="role.id" :value="role.id">{{ role.label }}</option>
+										</select>
+									</div>
 								</div>
 							</div>
 						</div>

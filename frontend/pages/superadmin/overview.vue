@@ -18,14 +18,8 @@ const overviewBlocks = [
 		sidebar-compact-title="SUP"
 		sidebar-description="overview, global config, users, stores, quotas และ security summary"
 	>
-		<template #default="{ openSidebar }">
+		<template #default>
 			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
-				<AppPageHeader
-					title="Superadmin Overview"
-					description="starter dashboard สำหรับภาพรวมของ superadmin เช่น users, stores, quotas และ security summary"
-					@menu="openSidebar"
-				/>
-
 				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
 					<div class="min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex h-full min-h-0 flex-col">
@@ -40,7 +34,7 @@ const overviewBlocks = [
 							</div>
 
 							<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto p-4">
-								<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+								<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
 									<div
 										v-for="block in overviewBlocks"
 										:key="block.title"

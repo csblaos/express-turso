@@ -9,7 +9,6 @@ const entries: Entry[] = [
 	{ title: "Users", description: "จัดการพนักงานและผู้ใช้ภายใต้ร้านที่คุณดูแล", icon: "i-heroicons-users", to: "/superadmin/users", badge: "พร้อมใช้งาน" },
 	{ title: "Role Settings", description: "กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้าน", icon: "i-heroicons-shield-check", to: "/superadmin/roles", badge: "พร้อมใช้งาน" },
 	{ title: "Stores", description: "ดูและจัดการร้านในระดับ superadmin", icon: "i-heroicons-building-storefront", to: "/superadmin/stores", badge: "พร้อมใช้งาน" },
-	{ title: "กิจกรรม", description: "ดูประวัติการเปลี่ยนแปลงและกิจกรรมสำคัญ", icon: "i-heroicons-clipboard-document-check", to: "/activity", badge: "พร้อมใช้งาน" },
 	{ title: "Security", description: "ดู snapshot ของบัญชี ร้าน และทีม ภายใต้ superadmin นี้", icon: "i-heroicons-shield-check", to: "/superadmin/security", badge: "พร้อมใช้งาน" },
 	{ title: "Quotas", description: "ดู quota ร้านและสาขาของบัญชีภายใต้ superadmin นี้", icon: "i-heroicons-swatch", to: "/superadmin/quotas", badge: "พร้อมใช้งาน" },
 	{ title: "Integrations", description: "workspace สำหรับ social, commerce และ shipping integrations", icon: "i-heroicons-link", to: "/superadmin/integrations", badge: "พร้อมใช้งาน" },

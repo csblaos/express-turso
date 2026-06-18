@@ -136,36 +136,46 @@ function saveLanguage() {
 		sidebar-description="ตั้งค่าภาษา UI และตัวอย่างรูปแบบตัวเลข/วันที่"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid gap-3 pb-3 lg:gap-4">
-					<AppPageHeader title="ภาษา" description="เลือกภาษา UI และตรวจตัวอย่างรูปแบบการแสดงผล" @menu="openSidebar">
-						<div class="ml-auto flex w-full items-center justify-end gap-2 pt-2 lg:w-auto">
-							<AppButton
-								color="neutral"
-								variant="soft"
-								size="md"
-							icon="i-heroicons-arrow-path-20-solid"
-							class="rounded-md"
-							aria-label="รีโหลด"
-							title="รีโหลด"
-							@click="reloadFromSaved"
-						>
-							<span class="hidden sm:inline">รีโหลด</span>
-						</AppButton>
-						<AppButton
-							color="primary"
-							variant="solid"
-							size="md"
-							icon="i-heroicons-check-20-solid"
-							class="rounded-md"
-							:disabled="!hasChanges"
-							aria-label="บันทึก"
-							title="บันทึก"
-							@click="saveLanguage"
-						>
-							บันทึก
-						</AppButton>
-					</div>
-				</AppPageHeader>
+			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
+				<div class="hidden md:block">
+					<AppPageHeader
+						title=""
+						description="เลือกภาษา UI และตรวจตัวอย่างรูปแบบการแสดงผล"
+						:title-badge="false"
+						compact
+						@menu="openSidebar"
+					>
+						<template #actions>
+							<div class="ml-auto hidden w-full items-center justify-end gap-2 pt-0 md:flex lg:w-auto">
+								<AppButton
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-arrow-path-20-solid"
+									class="rounded-md"
+									aria-label="รีโหลด"
+									title="รีโหลด"
+									@click="reloadFromSaved"
+								>
+									<span class="hidden sm:inline">รีโหลด</span>
+								</AppButton>
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									icon="i-heroicons-check-20-solid"
+									class="rounded-md"
+									:disabled="!hasChanges"
+									aria-label="บันทึก"
+									title="บันทึก"
+									@click="saveLanguage"
+								>
+									บันทึก
+								</AppButton>
+							</div>
+						</template>
+					</AppPageHeader>
+				</div>
 
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid grid-cols-3 gap-2 p-0">
@@ -263,6 +273,33 @@ function saveLanguage() {
 								</div>
 							</div>
 						</div>
+					</div>
+				</div>
+
+				<div class="fixed inset-x-0 bottom-0 z-[70] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm md:hidden">
+					<div class="mx-auto grid max-w-3xl grid-cols-2 gap-2">
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-path-20-solid"
+							:disabled="!hasChanges"
+							:block="true"
+							@click="reloadFromSaved"
+						>
+							รีโหลด
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-check-20-solid"
+							:disabled="!hasChanges"
+							:block="true"
+							@click="saveLanguage"
+						>
+							บันทึก
+						</AppButton>
 					</div>
 				</div>
 			</div>

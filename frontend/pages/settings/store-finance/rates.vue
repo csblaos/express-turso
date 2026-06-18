@@ -392,39 +392,52 @@ onMounted(async () => {
 	<template>
 		<AppSidebarShell
 			:nav-items="appNavItems"
-			:active-ids="['settings']"
+		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
 		sidebar-title="Exchange Rates"
 		sidebar-compact-title="RATE"
 		sidebar-description="จัดการอัตราแลกเปลี่ยนสำหรับร้านที่กำลังใช้งาน"
 	>
 			<template #default="{ openSidebar }">
-				<div class="grid gap-3 pb-3 lg:gap-4">
-					<AppPageHeader title="อัตราแลกเปลี่ยน" description="อัปเดตเรทสำหรับ POS (แยกจากหน้าตั้งค่า Store Finance)" @menu="openSidebar">
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 pt-2 md:w-auto">
-							<AppButton
-								color="neutral"
-								variant="soft"
-								size="md"
-								icon="i-heroicons-arrow-left-20-solid"
-								to="/settings/store-finance"
-							>
-								กลับ
-							</AppButton>
-								<AppButton
-									color="neutral"
-									variant="soft"
-									size="md"
-									icon="i-heroicons-arrow-path-20-solid"
-									:loading="reloading"
-									:spin-icon-on-loading="true"
-									:disabled="saving || reloading"
-									@click="hydrateFromStore"
-								>
-									{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
-								</AppButton>
-						</div>
-					</AppPageHeader>
+				<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
+					<div class="hidden md:block">
+						<AppPageHeader
+							title=""
+							description="อัปเดตเรทสำหรับ POS (แยกจากหน้าตั้งค่า Store Finance)"
+							:title-badge="false"
+							compact
+							tablet-layout
+							@menu="openSidebar"
+						>
+							<template #actions>
+								<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-arrow-left-20-solid"
+										class="rounded-md justify-center"
+										to="/settings/store-finance"
+									>
+										กลับ
+									</AppButton>
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-arrow-path-20-solid"
+										class="rounded-md justify-center"
+										:loading="reloading"
+										:spin-icon-on-loading="true"
+										:disabled="saving || reloading"
+										@click="hydrateFromStore"
+									>
+										{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
+									</AppButton>
+								</div>
+							</template>
+						</AppPageHeader>
+					</div>
 
 					<div class="grid gap-3 lg:pr-1">
 						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
@@ -462,7 +475,7 @@ onMounted(async () => {
 												<p class="text-sm font-semibold text-stone-950">กำหนดอัตราแลกเปลี่ยน</p>
 												<p class="mt-1 hidden text-xs text-stone-500 lg:block">ระบบจะใช้เรทนี้ตอนรับเงินต่างสกุล แล้วบันทึกยอดเป็น Base currency</p>
 											</div>
-											<div class="flex flex-wrap items-center justify-end gap-2">
+											<div class="hidden flex-wrap items-center justify-end gap-2 md:flex">
 												<UBadge color="neutral" variant="soft" :label="`${rateFields.length} สกุล`" />
 												<AppButton
 													color="neutral"
@@ -594,6 +607,51 @@ onMounted(async () => {
 								</div>
 							</div>
 						</div>
+					</div>
+				</div>
+
+				<div class="fixed inset-x-0 bottom-0 z-[70] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm md:hidden">
+					<div class="mx-auto grid max-w-3xl grid-cols-3 gap-2">
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-path-20-solid"
+							class="justify-center"
+							:loading="reloading"
+							:spin-icon-on-loading="true"
+							:disabled="saving || reloading"
+							:block="true"
+							@click="hydrateFromStore"
+						>
+							{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
+						</AppButton>
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-uturn-left-20-solid"
+							class="justify-center"
+							:disabled="saving || !hasChanges"
+							:block="true"
+							@click="hydrateFromStore"
+						>
+							รีเซ็ต
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-check-20-solid"
+							class="justify-center"
+							:loading="saving"
+							:spin-icon-on-loading="true"
+							:disabled="!canSave"
+							:block="true"
+							@click="saveRates"
+						>
+							บันทึก
+						</AppButton>
 					</div>
 				</div>
 			</template>

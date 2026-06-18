@@ -145,8 +145,9 @@ function barHeight(value: number) {
 			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
 				<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
 					<AppPageHeader
-						title="แดชบอร์ดรายงาน"
-						description="สรุปยอดขาย สินค้าขายดี วิธีชำระเงิน และสัญญาณเชิงปฏิบัติการ"
+						class="hidden md:block"
+						:title-badge="false"
+						compact
 						@menu="openSidebar"
 					>
 						<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">

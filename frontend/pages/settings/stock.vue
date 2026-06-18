@@ -168,13 +168,15 @@ onMounted(async () => {
 		sidebar-description="ตั้งค่านโยบายสต็อกระดับร้าน"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid gap-3 pb-3 lg:gap-4">
+			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
 				<AppPageHeader
-					title="Stock policy"
+					class="hidden md:block"
 					description="กำหนดว่าร้านนี้อนุญาตให้สต็อกติดลบได้หรือไม่ (มีผลกับการปรับสต็อก)"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
-					<div class="ml-auto flex w-full flex-wrap justify-end gap-2 pt-2 md:w-auto">
+					<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:w-auto md:flex">
 						<AppButton
 							color="neutral"
 							variant="soft"
@@ -216,7 +218,6 @@ onMounted(async () => {
 								</p>
 							</div>
 							<div class="col-span-2 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">นโยบาย</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">
 									{{ allowNegativeStock ? "อนุญาต" : "ห้าม" }}
 								</p>
@@ -326,6 +327,37 @@ onMounted(async () => {
 							</div>
 						</div>
 					</div>
+				</div>
+			</div>
+
+			<div class="fixed inset-x-0 bottom-0 z-[70] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm md:hidden">
+				<div class="mx-auto grid max-w-3xl grid-cols-2 gap-2">
+					<AppButton
+						color="neutral"
+						variant="soft"
+						size="md"
+						icon="i-heroicons-arrow-path-20-solid"
+						:loading="reloading"
+						:disabled="saving || reloading"
+						:spin-icon-on-loading="true"
+						:block="true"
+						@click="reloadAll"
+					>
+						{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
+					</AppButton>
+					<AppButton
+						color="primary"
+						variant="solid"
+						size="md"
+						icon="i-heroicons-check-20-solid"
+						:loading="saving"
+						:disabled="!canSave"
+						:spin-icon-on-loading="true"
+						:block="true"
+						@click="savePolicy"
+					>
+						บันทึก
+					</AppButton>
 				</div>
 			</div>
 		</template>

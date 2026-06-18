@@ -2,13 +2,14 @@
 import { formatMoneyWithSymbol } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
-import { Banknote, BadgeCheck, Eraser, QrCode, SlidersHorizontal, Trash2 } from "@lucide/vue";
+import { BadgeCheck, Eraser, SlidersHorizontal, Trash2 } from "@lucide/vue";
 
 type ServiceMode = "หน้าร้าน" | "รับกลับ" | "เดลิเวอรี";
 type QuickView = "all" | "ready" | "low-stock" | "out" | "inactive";
 type ProductSort = "best-selling" | "name" | "stock" | "price";
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type CameraPermissionState = "unknown" | "prompt" | "granted" | "denied";
+type PaymentMethod = "cash" | "qr_transfer";
 
 type Category = {
 	id: string;
@@ -297,6 +298,10 @@ const cameraScannerOpen = ref(false);
 const cameraScannerStarting = ref(false);
 const cameraScannerError = ref<string | null>(null);
 const cameraPermissionState = ref<CameraPermissionState>("unknown");
+const paymentModalOpen = ref(false);
+const paymentCheckoutStep = ref<1 | 2>(1);
+const selectedPaymentMethod = ref<PaymentMethod | null>(null);
+const paymentModalBodyOverflowSnapshot = ref<string | null>(null);
 const cameraDevices = ref<Array<{ deviceId: string; label: string }>>([]);
 const selectedCameraDeviceId = ref("");
 const cameraUserSelected = ref(false);
@@ -459,6 +464,72 @@ const vatLabel = computed(() => {
 	const formattedRate = Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, "");
 	return `ภาษีมูลค่าเพิ่ม ${rate > 0 ? formattedRate : 0}%`;
 });
+const paymentMethodOptions: Array<{
+	id: PaymentMethod;
+	label: string;
+	hint: string;
+	icon: string;
+}> = [
+	{
+		id: "cash",
+		label: "เงินสด",
+		hint: "รับเงินสดหน้าเคาน์เตอร์และปิดบิลได้ทันที",
+		icon: "i-heroicons-banknotes-20-solid",
+	},
+	{
+		id: "qr_transfer",
+		label: "QR / โอน",
+		hint: "ใช้สลิปหรือ QR สำหรับรับชำระแบบโอน",
+		icon: "i-heroicons-qr-code-20-solid",
+	},
+];
+const selectedPaymentMethodOption = computed(() => (
+	selectedPaymentMethod.value
+		? paymentMethodOptions.find((option) => option.id === selectedPaymentMethod.value) || null
+		: null
+));
+const selectedPaymentMethodLabel = computed(() => selectedPaymentMethodOption.value?.label || "");
+const paymentModalWidthClass = computed(() => (
+	paymentCheckoutStep.value === 1 ? "max-w-[620px]" : "max-w-[1040px]"
+));
+const paymentModalEyebrow = computed(() => (
+	paymentCheckoutStep.value === 1 ? "Checkout preview" : "Bill preview"
+));
+const paymentModalTitle = computed(() => (
+	paymentCheckoutStep.value === 1
+		? "เลือกวิธีชำระเงินก่อนดำเนินการ"
+		: "ตรวจสอบรายการสินค้าและสรุปบิล"
+));
+const paymentModalDescription = computed(() => (
+	paymentCheckoutStep.value === 1
+		? "กรุณาเลือก เงินสด หรือ QR / โอน แล้วค่อยไปต่อ"
+		: "ทบทวนรายการสินค้า ยอดรวม และวิธีชำระก่อนยืนยัน"
+));
+const paymentModalProgressLabel = computed(() => (
+	paymentCheckoutStep.value === 1 ? "ขั้นตอน 1 จาก 2" : "ขั้นตอน 2 จาก 2"
+));
+const paymentModalSecondaryAction = computed(() => (
+	paymentCheckoutStep.value === 1
+		? {
+			label: "ปิด",
+			icon: "i-heroicons-x-mark-20-solid",
+		}
+		: {
+			label: "ย้อนกลับ",
+			icon: "i-heroicons-arrow-left-20-solid",
+		}
+));
+const paymentModalPrimaryAction = computed(() => (
+	paymentCheckoutStep.value === 1
+		? {
+			label: "ดำเนินการต่อ",
+			icon: "i-heroicons-arrow-right-20-solid",
+		}
+		: {
+			label: "ยืนยันชำระเงิน",
+			icon: "i-heroicons-check-20-solid",
+		}
+));
 
 function formatMoney(value: number) {
 	return formatMoneyWithSymbol(value || 0, catalogCurrency.value, { locale: "th-TH", maximumFractionDigits: 0 });
@@ -899,6 +970,60 @@ function submitSearchInput() {
 	selectProductFromScan(normalized, "scanner");
 }
 
+function lockPaymentModalScroll() {
+	if (!import.meta.client) return;
+	if (paymentModalBodyOverflowSnapshot.value !== null) return;
+	paymentModalBodyOverflowSnapshot.value = document.body.style.overflow;
+	document.body.style.overflow = "hidden";
+}
+
+function unlockPaymentModalScroll() {
+	if (!import.meta.client) return;
+	if (paymentModalBodyOverflowSnapshot.value === null) return;
+	document.body.style.overflow = paymentModalBodyOverflowSnapshot.value;
+	paymentModalBodyOverflowSnapshot.value = null;
+}
+
+function openPaymentModal() {
+	selectedPaymentMethod.value = null;
+	paymentCheckoutStep.value = 1;
+	paymentModalOpen.value = true;
+	lockPaymentModalScroll();
+}
+
+function closePaymentModal() {
+	paymentModalOpen.value = false;
+	selectedPaymentMethod.value = null;
+	paymentCheckoutStep.value = 1;
+	unlockPaymentModalScroll();
+}
+
+function choosePaymentMethod(method: PaymentMethod) {
+	selectedPaymentMethod.value = method;
+}
+
+function goBackPaymentCheckout() {
+	if (paymentCheckoutStep.value > 1) {
+		paymentCheckoutStep.value = 1;
+		return;
+	}
+	closePaymentModal();
+}
+
+function continuePaymentCheckout() {
+	if (!selectedPaymentMethod.value) return;
+	if (paymentCheckoutStep.value === 1) {
+		paymentCheckoutStep.value = 2;
+		return;
+	}
+	appToast.success({
+		title: "ยืนยันการชำระเงินแล้ว",
+		description: `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}`,
+	});
+	mobileTicketOpen.value = false;
+	closePaymentModal();
+}
+
 function simulateScan() {
 	const sellableProducts = products.value.filter((product) => product.stockState !== "inactive");
 	if (!sellableProducts.length) return;
@@ -951,12 +1076,22 @@ watch(cameraScannerOpen, (isOpen, wasOpen) => {
 	}
 });
 
+watch(paymentModalOpen, (isOpen, wasOpen) => {
+	if (isOpen === wasOpen) return;
+	if (isOpen) {
+		lockPaymentModalScroll();
+		return;
+	}
+	unlockPaymentModalScroll();
+});
+
 onMounted(() => {
 	window.addEventListener("keydown", handleGlobalScannerKeydown);
 });
 
 onBeforeUnmount(() => {
 	stopCameraScanner();
+	unlockPaymentModalScroll();
 	if (scannerBufferTimer) {
 		clearTimeout(scannerBufferTimer);
 	}
@@ -1107,20 +1242,20 @@ onBeforeUnmount(() => {
 												</AppButton>
 
 												<template #content>
-													<div class="w-[220px] overflow-hidden rounded-md border border-[#e7e4dd] bg-white p-1.5 shadow-2xl">
+													<div class="w-[220px] overflow-hidden rounded-md border border-[#e7e4dd] bg-white p-1.5 shadow-2xl dark:border-[#3b342c] dark:bg-[#1d1a16]">
 														<button
 															v-for="option in sortOptions"
 															:key="option.value"
 															type="button"
-															class="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700"
-															:class="activeProductSort === option.value ? 'bg-primary-50 text-primary-700' : ''"
+															class="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 dark:text-stone-300 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+															:class="activeProductSort === option.value ? 'bg-primary-50 text-primary-700 dark:bg-emerald-500/15 dark:text-emerald-200' : ''"
 															@click="activeProductSort = option.value; sortMenuOpen = false"
 														>
 															<span class="font-medium">{{ option.label }}</span>
 															<UIcon
 																v-if="activeProductSort === option.value"
 																name="i-heroicons-check-20-solid"
-																class="h-4 w-4 text-primary-600"
+																class="h-4 w-4 text-primary-600 dark:text-emerald-300"
 															/>
 														</button>
 													</div>
@@ -1345,23 +1480,21 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 
-							<div class="grid grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
-									<Banknote class="h-4 w-4 shrink-0" />
-									<span>เงินสด</span>
-														</AppButton>
-														<AppButton color="neutral" variant="soft" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
-															<QrCode class="h-4 w-4 shrink-0" />
-															<span>QR / โอน</span>
-														</AppButton>
-													</div>
-
-													<AppButton color="primary" variant="solid" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
-														<BadgeCheck class="h-4 w-4 shrink-0" />
-														<span>รับชำระเงิน</span>
-													</AppButton>
-												</div>
-											</div>
+							<div class="grid gap-2">
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									class="w-full justify-center gap-2 rounded-md"
+									:block="true"
+									@click="openPaymentModal"
+								>
+									<BadgeCheck class="h-4 w-4 shrink-0" />
+									<span>รับชำระเงิน</span>
+								</AppButton>
+							</div>
+						</div>
+					</div>
 								</div>
 							</aside>
 			</div>
@@ -1503,28 +1636,312 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 
-							<div class="grid grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
-									<Banknote class="h-4 w-4 shrink-0" />
-									<span>เงินสด</span>
-								</AppButton>
-								<AppButton color="neutral" variant="soft" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
-									<QrCode class="h-4 w-4 shrink-0" />
-									<span>QR / โอน</span>
-								</AppButton>
-							</div>
-
 							<div class="grid gap-2">
-								<AppButton color="primary" variant="solid" size="md" class="w-full justify-center gap-2 rounded-md" :block="true">
+								<AppButton
+									color="primary"
+									variant="solid"
+									size="md"
+									class="w-full justify-center gap-2 rounded-md"
+									:block="true"
+									@click="openPaymentModal"
+								>
 									<BadgeCheck class="h-4 w-4 shrink-0" />
 									<span>รับชำระเงิน</span>
 								</AppButton>
 								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
 							</div>
 						</div>
-					</template>
+				</template>
 			</UCard>
 		</div>
+
+		<Teleport to="body">
+			<Transition
+				enter-active-class="transition duration-180 ease-out"
+				enter-from-class="opacity-0"
+				enter-to-class="opacity-100"
+				leave-active-class="transition duration-140 ease-in"
+				leave-from-class="opacity-100"
+				leave-to-class="opacity-0"
+			>
+				<div
+					v-if="paymentModalOpen"
+					class="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
+				>
+					<Transition
+						enter-active-class="transition duration-180 ease-out"
+						enter-from-class="translate-y-2 scale-[0.98] opacity-0"
+						enter-to-class="translate-y-0 scale-100 opacity-100"
+						leave-active-class="transition duration-140 ease-in"
+						leave-from-class="translate-y-0 scale-100 opacity-100"
+						leave-to-class="translate-y-2 scale-[0.98] opacity-0"
+					>
+						<div
+							v-if="paymentModalOpen"
+							:class="[
+								'w-full overflow-hidden rounded-2xl border border-[#e8e1d7] bg-[#fffefd] shadow-[0_24px_72px_rgba(31,28,24,0.26)] ring-1 ring-black/5 dark:border-[#3b342c] dark:bg-[#15120f] dark:shadow-[0_24px_72px_rgba(0,0,0,0.4)]',
+								paymentModalWidthClass,
+							]"
+						>
+							<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] px-5 py-4 dark:border-[#3b342c]">
+								<div class="min-w-0">
+									<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400 dark:text-stone-500">{{ paymentModalEyebrow }}</p>
+									<h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-stone-950 dark:text-stone-50">
+										{{ paymentModalTitle }}
+									</h2>
+									<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
+										{{ paymentModalDescription }}
+									</p>
+									<div class="mt-3 flex flex-wrap items-center gap-2">
+										<UBadge color="neutral" variant="soft" :label="paymentModalProgressLabel" />
+										<UBadge
+											v-if="selectedPaymentMethodOption"
+											color="success"
+											variant="soft"
+											:label="selectedPaymentMethodOption.label"
+										/>
+									</div>
+								</div>
+
+								<AppButton
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-x-mark-20-solid"
+									class="shrink-0 rounded-md"
+									aria-label="ปิด"
+									title="ปิด"
+									@click="closePaymentModal"
+								/>
+							</div>
+
+							<div class="space-y-4 px-5 py-5">
+								<div class="grid gap-3 sm:grid-cols-3">
+									<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">รายการ</p>
+										<p class="mt-2 text-lg font-semibold text-stone-950 dark:text-stone-50">{{ itemCount }}</p>
+									</div>
+									<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">โหมด</p>
+										<p class="mt-2 text-lg font-semibold text-stone-950 dark:text-stone-50">{{ activeMode }}</p>
+									</div>
+									<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">ยอดรวม</p>
+										<p class="mt-2 text-lg font-semibold text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(total) }}</p>
+									</div>
+								</div>
+
+								<template v-if="paymentCheckoutStep === 1">
+									<div class="grid gap-3 sm:grid-cols-2">
+										<button
+											v-for="option in paymentMethodOptions"
+											:key="option.id"
+											type="button"
+											class="flex min-h-[118px] flex-col justify-between rounded-xl border px-4 py-4 text-left transition"
+											:class="selectedPaymentMethod === option.id
+												? 'border-primary-500 bg-primary-50 shadow-sm dark:border-emerald-400/70 dark:bg-emerald-500/10'
+												: 'border-neutral-200 bg-white hover:border-primary-300 hover:bg-primary-50/60 dark:border-[#3b342c] dark:bg-[#1d1a16] dark:hover:border-emerald-500/40 dark:hover:bg-[#162017]'"
+											@click="choosePaymentMethod(option.id)"
+										>
+											<div class="flex items-start justify-between gap-3">
+												<div class="flex min-w-0 items-start gap-3">
+													<div
+														class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition"
+														:class="selectedPaymentMethod === option.id
+															? 'bg-primary-100 text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200'
+															: 'bg-stone-100 text-stone-600 dark:bg-[#2a241d] dark:text-stone-300'"
+													>
+														<UIcon :name="option.icon" class="h-5 w-5" />
+													</div>
+													<div class="min-w-0">
+														<p class="text-sm font-semibold text-stone-950 dark:text-stone-50">{{ option.label }}</p>
+														<p class="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">{{ option.hint }}</p>
+													</div>
+												</div>
+												<UIcon
+													v-if="selectedPaymentMethod === option.id"
+													name="i-heroicons-check-circle-20-solid"
+													class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-emerald-300"
+												/>
+											</div>
+											<div class="mt-4 flex items-center justify-between gap-3 text-xs">
+												<span class="text-stone-400 dark:text-stone-500">แตะเพื่อเลือก</span>
+												<span
+													class="rounded-full px-2.5 py-1 font-medium transition"
+													:class="selectedPaymentMethod === option.id
+														? 'bg-primary-100 text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200'
+														: 'bg-stone-100 text-stone-500 dark:bg-[#2a241d] dark:text-stone-400'"
+												>
+													{{ selectedPaymentMethod === option.id ? "เลือกแล้ว" : "ยังไม่เลือก" }}
+												</span>
+											</div>
+										</button>
+									</div>
+
+									<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">ตัวอย่างขั้นตอน</p>
+
+										<div v-if="selectedPaymentMethodOption" class="mt-3 space-y-3">
+											<div class="flex items-center justify-between gap-3">
+												<div class="min-w-0">
+													<p class="text-base font-semibold text-stone-950 dark:text-stone-50">{{ selectedPaymentMethodOption.label }}</p>
+													<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
+														{{ selectedPaymentMethodOption.id === "cash"
+															? "รับเงินสดแล้วกดยืนยันเพื่อปิดขั้นตอนนี้"
+															: "ใช้ QR / โอน เป็นช่องทางรับเงินของบิลนี้" }}
+													</p>
+												</div>
+												<div class="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+													{{ formatMoney(total) }}
+												</div>
+											</div>
+											<div class="grid gap-2 sm:grid-cols-2">
+												<div class="rounded-lg bg-white px-3 py-3 ring-1 ring-neutral-200 dark:bg-[#15120f] dark:ring-[#3b342c]">
+													<p class="text-[11px] uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">รายการในบิล</p>
+													<p class="mt-1 text-sm font-semibold text-stone-950 dark:text-stone-50">{{ itemCount }} รายการ</p>
+												</div>
+												<div class="rounded-lg bg-white px-3 py-3 ring-1 ring-neutral-200 dark:bg-[#15120f] dark:ring-[#3b342c]">
+													<p class="text-[11px] uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">วิธีที่เลือก</p>
+													<p class="mt-1 text-sm font-semibold text-stone-950 dark:text-stone-50">{{ selectedPaymentMethodOption.label }}</p>
+												</div>
+											</div>
+										</div>
+
+										<div v-else class="mt-3 rounded-lg border border-dashed border-neutral-200 bg-white px-4 py-4 text-sm leading-6 text-stone-500 dark:border-[#3b342c] dark:bg-[#15120f] dark:text-stone-400">
+											เลือกวิธีชำระเงินก่อน ระบบจะโชว์ preview ของขั้นตอนถัดไปตรงนี้
+										</div>
+									</div>
+								</template>
+
+								<template v-else>
+									<div class="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
+										<div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-[#3b342c] dark:bg-[#1d1a16]">
+											<div class="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-[#3b342c]">
+												<div>
+													<p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">รายการสินค้า</p>
+													<p class="mt-1 text-sm font-semibold text-stone-950 dark:text-stone-50">พรีวิวสินค้าที่อยู่ในบิลนี้</p>
+												</div>
+												<UBadge color="neutral" variant="soft" :label="`${itemCount} รายการ`" />
+											</div>
+											<div class="scrollbar-soft max-h-[48vh] space-y-2 overflow-y-auto p-4">
+												<div
+													v-for="item in cartItems"
+													:key="item.id"
+													class="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-[#3b342c] dark:bg-[#171410]"
+												>
+													<div class="flex items-start justify-between gap-3">
+														<div class="min-w-0">
+															<p class="truncate text-sm font-semibold text-stone-950 dark:text-stone-50">{{ item.name }}</p>
+															<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ item.unitLabel }} • {{ item.sku }}</p>
+														</div>
+														<p class="shrink-0 text-sm font-semibold tabular-nums text-stone-950 dark:text-stone-50">{{ formatMoney(item.lineTotal) }}</p>
+													</div>
+													<div class="mt-2 flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
+														<span>จำนวน {{ item.qty }}</span>
+														<span>{{ formatMoney(item.price) }} × {{ item.qty }}</span>
+													</div>
+												</div>
+
+												<div
+													v-if="cartItems.length === 0"
+													class="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-stone-500 dark:border-[#3b342c] dark:bg-[#171410] dark:text-stone-400"
+												>
+													ยังไม่มีสินค้าในบิลนี้
+												</div>
+											</div>
+										</div>
+
+										<div class="space-y-4">
+											<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+												<div class="flex items-start justify-between gap-3">
+													<div class="min-w-0">
+														<p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">วิธีชำระที่เลือก</p>
+														<p class="mt-1 text-base font-semibold text-stone-950 dark:text-stone-50">{{ selectedPaymentMethodOption?.label || "-" }}</p>
+														<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
+															{{ selectedPaymentMethodOption?.hint || "ยังไม่เลือกวิธีชำระ" }}
+														</p>
+													</div>
+													<div class="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+														{{ paymentModalProgressLabel }}
+													</div>
+												</div>
+											</div>
+
+											<div class="rounded-xl border border-neutral-200 bg-white px-4 py-4 dark:border-[#3b342c] dark:bg-[#15120f]">
+												<p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">สรุปบิล</p>
+												<div class="mt-3 space-y-2.5">
+													<div class="flex items-center justify-between gap-3 text-sm">
+														<span class="text-stone-500 dark:text-stone-400">Subtotal</span>
+														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(subtotal) }}</span>
+													</div>
+													<div class="flex items-center justify-between gap-3 text-sm">
+														<span class="text-stone-500 dark:text-stone-400">ส่วนลด</span>
+														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">
+															{{ discount > 0 ? `-${formatMoney(discount)}` : formatMoney(discount) }}
+														</span>
+													</div>
+													<div class="flex items-center justify-between gap-3 text-sm">
+														<span class="text-stone-500 dark:text-stone-400">{{ vatLabel }}</span>
+														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(tax) }}</span>
+													</div>
+													<div class="flex items-center justify-between gap-3 text-sm">
+														<span class="text-stone-500 dark:text-stone-400">Service</span>
+														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(serviceCharge) }}</span>
+													</div>
+													<div class="h-px bg-neutral-200 dark:bg-[#3b342c]" />
+													<div class="flex items-center justify-between gap-3">
+														<div>
+															<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">ยอดชำระ</p>
+															<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ itemCount }} รายการ . {{ activeMode }}</p>
+														</div>
+														<p class="text-[1.6rem] font-semibold tracking-[-0.04em] text-stone-950 tabular-nums dark:text-stone-50">
+															{{ formatMoney(total) }}
+														</p>
+													</div>
+												</div>
+											</div>
+
+											<div class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-sm leading-6 text-stone-500 dark:border-[#3b342c] dark:bg-[#1d1a16] dark:text-stone-400">
+												<p class="font-semibold text-stone-900 dark:text-stone-50">พร้อมยืนยัน</p>
+												<p class="mt-1">ถ้าทุกอย่างถูกต้องแล้วกดปุ่มยืนยันชำระเงินด้านล่าง ระบบจะปิดบิลและจบ flow นี้</p>
+											</div>
+										</div>
+									</div>
+								</template>
+							</div>
+
+							<div class="border-t border-[#ece6dc] px-5 py-4 dark:border-[#3b342c]">
+								<div class="grid grid-cols-2 gap-2">
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										class="justify-center gap-2 rounded-md"
+										:block="true"
+										:icon="paymentModalSecondaryAction.icon"
+										@click="goBackPaymentCheckout"
+									>
+										{{ paymentModalSecondaryAction.label }}
+									</AppButton>
+									<AppButton
+										color="primary"
+										variant="solid"
+										size="md"
+										class="justify-center gap-2 rounded-md"
+										:block="true"
+										:icon="paymentModalPrimaryAction.icon"
+										:disabled="paymentCheckoutStep === 1 ? !selectedPaymentMethod : false"
+										@click="continuePaymentCheckout"
+									>
+										{{ paymentModalPrimaryAction.label }}
+									</AppButton>
+								</div>
+							</div>
+						</div>
+					</Transition>
+				</div>
+			</Transition>
+		</Teleport>
 
 		<AppResponsivePanel
 			v-model="cameraScannerOpen"

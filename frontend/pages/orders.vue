@@ -264,168 +264,185 @@ function closeDetail() {
 		sidebar-description="ภาพรวมออเดอร์, สถานะการขาย, ช่องทางรับสินค้า และคิวที่ต้องติดตาม"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="จัดการออเดอร์"
-					description=""
-					:tablet-layout="true"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
+					<div class="pt-0.5 sm:pt-1">
+						<div class="relative w-full min-w-0">
+							<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+							<input
+								v-model="searchQuery"
+								type="text"
+								placeholder="ค้นหาเลขออเดอร์, ลูกค้า, เบอร์โทร หรือแคชเชียร์"
+								class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+							>
+							<button
+								v-if="searchQuery"
+								type="button"
+								class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+								@click="searchQuery = ''"
+							>
+								<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
+							</button>
+						</div>
+					</div>
+				</AppPageHeader>
 
-					<div class="space-y-3">
-						<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-							<div class="relative min-w-0">
-								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-								<input
-									v-model="searchQuery"
-									type="text"
-									placeholder="ค้นหาเลขออเดอร์, ลูกค้า, เบอร์โทร หรือแคชเชียร์"
-									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-								>
-								<button
-									v-if="searchQuery"
-									type="button"
-									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
-									@click="searchQuery = ''"
-								>
-									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
-								</button>
-							</div>
+				<div class="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:pr-1">
+					<div class="rounded-md border border-neutral-200 bg-white p-3">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ออเดอร์ทั้งหมด</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ totalOrders }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">คิวเปิดอยู่</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ openOrders }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เดลิเวอรี</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">บิลเฉลี่ย</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
+					</div>
+				</div>
 
-							<div class="grid gap-2 sm:grid-cols-3 xl:grid-cols-3 xl:justify-end xl:pl-4">
-								<select v-model="activeStatus" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="all">ทุกสถานะ</option>
-									<option value="pending">รอรับออเดอร์</option>
-									<option value="confirmed">ยืนยันแล้ว</option>
-									<option value="preparing">กำลังเตรียม</option>
-									<option value="ready">พร้อมส่งมอบ</option>
-									<option value="completed">เสร็จสิ้น</option>
-									<option value="cancelled">ยกเลิก</option>
-								</select>
+				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+						<div>
+							<p class="text-sm font-semibold text-stone-950">ตัวกรองออเดอร์</p>
+						</div>
+						<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+							{{ filteredOrders.length }} รายการ
+						</div>
+					</div>
 
-								<select v-model="activeChannel" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="all">ทุกช่องทาง</option>
-									<option value="walk-in">หน้าร้าน</option>
-									<option value="pickup">รับกลับ</option>
-									<option value="delivery">เดลิเวอรี</option>
-								</select>
+					<div class="grid gap-2 px-4 py-3">
+						<div class="grid grid-cols-2 gap-2 md:grid-cols-3 md:items-end">
+							<select v-model="activeStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option value="all">ทุกสถานะ</option>
+								<option value="pending">รอรับออเดอร์</option>
+								<option value="confirmed">ยืนยันแล้ว</option>
+								<option value="preparing">กำลังเตรียม</option>
+								<option value="ready">พร้อมส่งมอบ</option>
+								<option value="completed">เสร็จสิ้น</option>
+								<option value="cancelled">ยกเลิก</option>
+							</select>
 
-								<select v-model="activePaymentStatus" class="min-w-[9.5rem] rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="all">ทุกการชำระ</option>
-									<option value="unpaid">ยังไม่ชำระ</option>
-									<option value="partial">ชำระบางส่วน</option>
+							<select v-model="activeChannel" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option value="all">ทุกช่องทาง</option>
+								<option value="walk-in">หน้าร้าน</option>
+								<option value="pickup">รับกลับ</option>
+								<option value="delivery">เดลิเวอรี</option>
+							</select>
+
+							<select v-model="activePaymentStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option value="all">ทุกการชำระ</option>
+								<option value="unpaid">ยังไม่ชำระ</option>
+								<option value="partial">ชำระบางส่วน</option>
 									<option value="paid">ชำระแล้ว</option>
 									<option value="refunded">คืนเงินแล้ว</option>
 								</select>
+						</div>
+
+						<div class="flex flex-wrap gap-2 overflow-x-auto pb-1 md:justify-end">
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
+						</div>
+					</div>
+				</div>
+
+				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="flex h-full min-h-0 flex-col">
+						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+							<div>
+								<p class="text-sm font-semibold text-stone-950">Orders list</p>
+								<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกออเดอร์เพื่อเปิดรายละเอียดและดูรายการสินค้าในบิล</p>
+							</div>
+							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+								{{ filteredOrders.length }} รายการ
 							</div>
 						</div>
 
-						<div class="flex flex-wrap gap-2 pt-1 xl:justify-end">
-								<AppButton size="md" class="rounded-md" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
-								<AppButton size="md" class="rounded-md" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
-								<AppButton size="md" class="rounded-md" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
-							</div>
-
-						<div class="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-4">
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ออเดอร์ทั้งหมด</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ totalOrders }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">คิวเปิดอยู่</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ openOrders }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เดลิเวอรี</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">บิลเฉลี่ย</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
-								</div>
-							</div>
-						</div>
-				</AppPageHeader>
-
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-						<div class="flex h-full min-h-0 flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">Orders list</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกออเดอร์เพื่อเปิดรายละเอียดและดูรายการสินค้าในบิล</p>
-								</div>
-								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ filteredOrders.length }} รายการ
-								</div>
-							</div>
-
-							<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-								<div v-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-									<div class="space-y-3">
-										<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
-											<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
-										</div>
-										<div>
-											<p class="text-sm font-medium text-stone-900">ไม่พบออเดอร์ที่ตรงกับเงื่อนไข</p>
-											<p class="mt-1 text-sm text-stone-500">ลองล้างคำค้นหรือเปลี่ยน filter ด้านบน</p>
-										</div>
+						<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+							<div v-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+								<div class="space-y-3">
+									<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
+										<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
+									</div>
+									<div>
+										<p class="text-sm font-medium text-stone-900">ไม่พบออเดอร์ที่ตรงกับเงื่อนไข</p>
+										<p class="mt-1 text-sm text-stone-500">ลองล้างคำค้นหรือเปลี่ยน filter ด้านบน</p>
 									</div>
 								</div>
-
-								<div v-else>
-									<button
-										v-for="order in filteredOrders"
-										:key="order.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										:class="selectedOrderId === order.id ? 'bg-primary-50' : 'bg-white'"
-										@click="openDetail(order.id)"
-									>
-										<div class="flex flex-wrap items-start justify-between gap-4">
-											<div class="min-w-0">
-												<div class="flex flex-wrap items-center gap-2">
-													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
-													<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
-													<UBadge color="neutral" variant="soft" :label="channelLabel(order.channel)" />
-												</div>
-												<p class="mt-2 text-sm font-semibold text-stone-950">{{ order.orderNumber }} · {{ order.customerName }}</p>
-												<p class="mt-1 text-sm text-stone-500">
-													{{ order.cashier }}
-													<span v-if="order.phone">· {{ order.phone }}</span>
-													<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
-												</p>
-												<p v-if="order.note" class="mt-1 text-xs text-stone-400">{{ order.note }}</p>
-											</div>
-
-											<div class="grid gap-3 text-right sm:grid-cols-4 sm:text-left">
-												<div>
-													<p class="text-xs text-stone-400">จำนวนสินค้า</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ order.itemCount }}</p>
-												</div>
-												<div>
-													<p class="text-xs text-stone-400">ยอดรวม</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
-												</div>
-												<div>
-													<p class="text-xs text-stone-400">สร้างเมื่อ</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.createdAt) }}</p>
-												</div>
-												<div>
-													<p class="text-xs text-stone-400">อัปเดตล่าสุด</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatDate(order.updatedAt) }}</p>
-												</div>
-											</div>
-										</div>
-									</button>
-								</div>
 							</div>
 
-							<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-								<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
-									<div>{{ openOrders }} คิวเปิดอยู่</div>
-									<div>{{ deliveryOrders }} เดลิเวอรี • บิลเฉลี่ย {{ formatMoney(avgTicket) }}</div>
+							<div v-else>
+								<div class="overflow-x-auto">
+									<table class="min-w-[1120px] w-full border-separate border-spacing-0">
+										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เวลา</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ออเดอร์</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ช่องทาง</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">การชำระ</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">จำนวน / ยอดรวม</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">อัปเดต</th>
+											</tr>
+										</thead>
+										<tbody>
+											<tr
+												v-for="order in filteredOrders"
+												:key="order.id"
+												class="cursor-pointer bg-white transition hover:bg-primary-50"
+												:class="selectedOrderId === order.id ? 'bg-primary-50' : ''"
+												@click="openDetail(order.id)"
+											>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+													{{ formatDate(order.createdAt) }}
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+													<p class="text-sm font-semibold text-stone-950">{{ order.orderNumber }}</p>
+													<p class="mt-1 text-sm text-stone-500">{{ order.customerName }}</p>
+													<p v-if="order.note" class="mt-1 text-xs text-stone-400">{{ order.note }}</p>
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+													<p>{{ channelLabel(order.channel) }}</p>
+													<p class="mt-1 text-xs text-stone-400">
+														{{ order.cashier }}
+														<span v-if="order.phone">· {{ order.phone }}</span>
+														<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
+													</p>
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+													<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+													<p class="text-sm font-semibold text-stone-900">{{ order.itemCount }} รายการ</p>
+													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
+												</td>
+												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+													{{ formatDate(order.updatedAt) }}
+												</td>
+											</tr>
+										</tbody>
+									</table>
 								</div>
+							</div>
+						</div>
+
+						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+							<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
+								<div>{{ openOrders }} คิวเปิดอยู่</div>
+								<div>{{ deliveryOrders }} เดลิเวอรี • บิลเฉลี่ย {{ formatMoney(avgTicket) }}</div>
 							</div>
 						</div>
 					</div>

@@ -170,18 +170,19 @@ onMounted(async () => {
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
 				<AppPageHeader
-					title="Security"
-					description="ดูความพร้อมของบัญชี ร้าน และทีมในขอบเขต superadmin นี้ โดยไม่รวม security กลางของแพลตฟอร์ม"
-					:tablet-layout="true"
+					class="hidden md:block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
 					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
 							<AppButton
 								color="neutral"
 								variant="soft"
 								size="md"
 								icon="i-heroicons-arrow-path-20-solid"
+								class="rounded-md"
 								:loading="pending"
 								:disabled="pending"
 								:spin-icon-on-loading="true"
@@ -216,7 +217,7 @@ onMounted(async () => {
 								</div>
 
 								<div v-else-if="!pending && snapshot" class="grid gap-4">
-									<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+									<div class="grid grid-cols-2 gap-3 md:grid-cols-4">
 										<div
 											v-for="stat in overviewStats"
 											:key="stat.label"
@@ -236,7 +237,7 @@ onMounted(async () => {
 													<p class="mt-1 text-xs leading-5 text-stone-500">สรุปสถานะบัญชีและการครอบคลุมของทีมในร้านภายใต้ superadmin นี้</p>
 												</div>
 
-												<div class="grid gap-3 sm:grid-cols-2">
+												<div class="grid grid-cols-2 gap-3">
 													<div class="rounded-md bg-neutral-50 px-3 py-3.5">
 														<p class="text-xs text-stone-500">บัญชีที่ยังใช้งาน</p>
 														<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.users_active }}</p>

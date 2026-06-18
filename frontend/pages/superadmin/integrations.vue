@@ -117,14 +117,17 @@ function toneClasses(tone: IntegrationCard["tone"]) {
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
 				<AppPageHeader
-					title="Integrations"
-					description="พื้นที่เตรียมเชื่อม social commerce และ shipping partners ของ superadmin นี้ โดยรอบนี้ยังเป็น sample UI เท่านั้น"
-					:tablet-layout="true"
+					class="hidden md:block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="neutral" variant="soft" label="Sample UI only" />
-						<UBadge color="warning" variant="soft" label="No live integration" />
+					<template #actions>
+						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" class="rounded-md" disabled>
+								รีโหลด
+							</AppButton>
+						</div>
 					</template>
 				</AppPageHeader>
 
@@ -142,7 +145,7 @@ function toneClasses(tone: IntegrationCard["tone"]) {
 									</div>
 								</div>
 
-								<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+								<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
 									<div
 										v-for="block in summaryBlocks"
 										:key="block.label"
@@ -164,7 +167,7 @@ function toneClasses(tone: IntegrationCard["tone"]) {
 									<p class="mt-1 text-sm leading-6 text-stone-500">ใช้เป็นพื้นที่วาง flow ของ WhatsApp, Facebook และ TikTok ก่อนเชื่อมจริง</p>
 								</div>
 
-								<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+								<div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
 									<div
 										v-for="item in commerceChannels"
 										:key="item.id"
@@ -198,7 +201,7 @@ function toneClasses(tone: IntegrationCard["tone"]) {
 									<p class="mt-1 text-sm leading-6 text-stone-500">ใช้เป็น placeholder สำหรับเตรียม label, tracking และ dispatch integrations</p>
 								</div>
 
-								<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+								<div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
 									<div
 										v-for="item in shippingPartners"
 										:key="item.id"

@@ -217,20 +217,8 @@ onMounted(async () => {
 		sidebar-compact-title="ME"
 		sidebar-description="แก้ไขชื่อผู้ใช้ เปลี่ยนรหัสผ่าน และดูข้อมูลบัญชีปัจจุบัน"
 	>
-		<template #default="{ openSidebar }">
+		<template #default>
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-5 lg:space-y-0">
-				<div class="space-y-4 lg:min-h-0 lg:overflow-hidden lg:col-span-2">
-					<AppPageHeader
-						title="ตั้งค่าโปรไฟล์"
-						description="ใช้หน้านี้สำหรับจัดการชื่อผู้ใช้ รหัสผ่าน และดูรายละเอียดบัญชีที่ล็อกอินอยู่ตอนนี้"
-						@menu="openSidebar"
-					>
-						<template #actions>
-							<UBadge color="neutral" variant="soft" :label="primaryMembership?.role_name || 'ไม่มี role ร้าน'" />
-						</template>
-					</AppPageHeader>
-				</div>
-
 				<div class="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
 					<UCard class="border-0 rounded-none bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="space-y-5">

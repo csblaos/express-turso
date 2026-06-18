@@ -7,6 +7,7 @@ const props = withDefaults(defineProps<{
 	compact?: boolean;
 	titleBadge?: boolean;
 	titleTone?: "primary" | "success";
+	bodyClass?: string;
 }>(), {
 	description: "",
 	sticky: true,
@@ -14,6 +15,7 @@ const props = withDefaults(defineProps<{
 	compact: false,
 	titleBadge: true,
 	titleTone: "primary",
+	bodyClass: "",
 });
 
 const slots = useSlots();
@@ -31,7 +33,10 @@ const headerLayoutClass = computed(() => {
 const actionsLayoutClass = computed(() => (
 	props.tabletLayout ? "md:justify-end" : "lg:justify-end"
 ));
-const cardBodyClass = computed(() => (props.compact ? "p-0.5 sm:p-1 lg:p-1.5" : "p-3 sm:p-4 lg:p-5"));
+const cardBodyClass = computed(() => (
+	props.bodyClass
+		|| (props.compact ? "p-0.5 sm:p-1 lg:p-1.5" : "p-3 sm:p-4 lg:p-5")
+));
 const spacingClass = computed(() => (props.compact ? "space-y-1 lg:space-y-1.5" : "space-y-2.5 lg:space-y-3"));
 const headerGapClass = computed(() => (props.compact ? "gap-1 lg:gap-1.5" : "gap-2.5 lg:gap-3"));
 const titleClass = computed(() => (

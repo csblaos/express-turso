@@ -229,18 +229,19 @@ onMounted(async () => {
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
 				<AppPageHeader
-					title="Quotas"
-					description="ดูข้อจำกัดการสร้างร้านและสาขาของบัญชีใน scope ของ superadmin นี้ โดยไม่แตะ quota กลางของทั้งระบบ"
-					:tablet-layout="true"
+					class="hidden md:block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
 					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
 							<AppButton
 								color="neutral"
 								variant="soft"
 								size="md"
 								icon="i-heroicons-arrow-path-20-solid"
+								class="rounded-md"
 								:loading="pending"
 								:disabled="pending"
 								:spin-icon-on-loading="true"
@@ -266,7 +267,7 @@ onMounted(async () => {
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
+								<div class="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_180px_auto]">
 									<div class="relative">
 										<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-stone-400" />
 										<input
@@ -277,16 +278,18 @@ onMounted(async () => {
 											@keydown.enter="applyFilters"
 										>
 									</div>
-									<select v-model="activeMode" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="all">ทุก quota</option>
-										<option value="store-enabled">สร้างร้านได้</option>
-										<option value="limited">แบบจำกัด</option>
-										<option value="unlimited">ไม่จำกัด</option>
-										<option value="attention">ชน limit</option>
-									</select>
-									<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyFilters">
-										ใช้ตัวกรอง
-									</AppButton>
+									<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 md:contents">
+										<select v-model="activeMode" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+											<option value="all">ทุก quota</option>
+											<option value="store-enabled">สร้างร้านได้</option>
+											<option value="limited">แบบจำกัด</option>
+											<option value="unlimited">ไม่จำกัด</option>
+											<option value="attention">ชน limit</option>
+										</select>
+										<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-funnel-20-solid" class="whitespace-nowrap rounded-md" @click="applyFilters">
+											ใช้ตัวกรอง
+										</AppButton>
+									</div>
 								</div>
 							</div>
 
@@ -296,7 +299,7 @@ onMounted(async () => {
 								</div>
 								<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 								<div v-else>
-									<div class="grid gap-3 border-b border-[#f1ede6] p-4 md:grid-cols-2 xl:grid-cols-4">
+									<div class="grid grid-cols-2 gap-3 border-b border-[#f1ede6] p-4 lg:grid-cols-4">
 										<div
 											v-for="stat in overviewStats"
 											:key="stat.label"

@@ -50,6 +50,11 @@ export const ErrorConfig = {
 			message: "Store owner is required",
 			httpStatusCode: 400,
 		},
+		STORE_PAYMENT_ACCOUNT_REQUIRED_FIELDS: {
+			code: 400_011,
+			message: "Store payment account requires display_name, account_name, and one payment identifier",
+			httpStatusCode: 400,
+		},
 		STORE_LIMIT_REACHED: {
 			code: 403_002,
 			message: "Store creation quota has been reached",
@@ -158,6 +163,11 @@ export const ErrorConfig = {
 		STORE_MEMBER_NOT_FOUND: {
 			code: 404_008,
 			message: "Store member not found",
+			httpStatusCode: 404,
+		},
+		STORE_PAYMENT_ACCOUNT_NOT_FOUND: {
+			code: 404_010,
+			message: "Store payment account not found",
 			httpStatusCode: 404,
 		},
 		CLIENT_ACCOUNT_NOT_FOUND: {

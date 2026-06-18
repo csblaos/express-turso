@@ -336,42 +336,47 @@ onMounted(async () => {
 		sidebar-compact-title="FIN"
 		sidebar-description="ตั้งค่าสกุลเงินหลัก ภาษีมูลค่าเพิ่ม และสกุลเงินที่รองรับสำหรับ POS"
 	>
-	<template #default="{ openSidebar }">
-			<div class="grid gap-3 pb-3 lg:gap-4">
-				<AppPageHeader
-					title="การเงินร้าน"
-					description="กำหนดสกุลเงินหลัก ภาษีมูลค่าเพิ่ม และสกุลเงินที่เปิดรับใน POS"
-					title-tone="success"
-					@menu="openSidebar"
-				>
-					<template #actions>
-						<AppButton
-							color="neutral"
-							variant="soft"
-							size="md"
-							icon="i-heroicons-arrow-path-20-solid"
-							:loading="reloading"
-							:spin-icon-on-loading="true"
-							:disabled="saving || reloading"
-							@click="hydrateFromStore"
+		<template #default="{ openSidebar }">
+			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
+				<div class="hidden md:block">
+					<AppPageHeader
+						title=""
+						description="กำหนดสกุลเงินหลัก ภาษีมูลค่าเพิ่ม และสกุลเงินที่เปิดรับใน POS"
+						:title-badge="false"
+						compact
+						@menu="openSidebar"
 						>
-							{{ reloading ? "กำลังโหลด" : "รีเฟรช" }}
-						</AppButton>
-						<AppButton
-							color="primary"
-							variant="solid"
-							size="md"
-							icon="i-heroicons-check-20-solid"
-							class="rounded-md"
-							:loading="saving"
-							:spin-icon-on-loading="true"
-							:disabled="!canSave"
-							@click="saveStoreFinance"
-						>
-							บันทึก
-						</AppButton>
-					</template>
-				</AppPageHeader>
+							<template #actions>
+								<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-arrow-path-20-solid"
+										:loading="reloading"
+										:spin-icon-on-loading="true"
+										:disabled="saving || reloading"
+										@click="hydrateFromStore"
+									>
+										{{ reloading ? "กำลังโหลด" : "รีเฟรช" }}
+									</AppButton>
+									<AppButton
+										color="primary"
+										variant="solid"
+										size="md"
+										icon="i-heroicons-check-20-solid"
+										class="rounded-md"
+										:loading="saving"
+										:spin-icon-on-loading="true"
+										:disabled="!canSave"
+										@click="saveStoreFinance"
+									>
+										บันทึก
+									</AppButton>
+								</div>
+							</template>
+						</AppPageHeader>
+				</div>
 
 				<div class="grid gap-3 lg:pr-1">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
@@ -405,7 +410,7 @@ onMounted(async () => {
 
 					<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 						<div class="flex flex-col">
-							<div class="flex shrink-0 flex-col gap-3 border-b border-[#ece6dc] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+							<div class="flex shrink-0 flex-col gap-3 border-b border-[#ece6dc] px-4 py-3 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
 								<div class="flex items-start gap-3">
 									<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
 										<CircleDollarSign class="h-5 w-5" />
@@ -421,11 +426,11 @@ onMounted(async () => {
 									color="primary"
 									variant="solid"
 									size="md"
-									class="rounded-md"
+									class="rounded-md justify-center"
 									:disabled="!effectiveStoreId"
 									to="/settings/store-finance/rates"
 								>
-									<span class="inline-flex items-center gap-2">
+									<span class="inline-flex items-center justify-center gap-2">
 										<CircleDollarSign class="h-4 w-4" />
 										<span>จัดการอัตราแลกเปลี่ยน</span>
 									</span>
@@ -696,6 +701,37 @@ onMounted(async () => {
 							</div>
 						</div>
 					</div>
+				</div>
+			</div>
+
+			<div class="fixed inset-x-0 bottom-0 z-[70] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm md:hidden">
+				<div class="mx-auto grid max-w-3xl grid-cols-2 gap-2">
+					<AppButton
+						color="neutral"
+						variant="soft"
+						size="md"
+						icon="i-heroicons-arrow-path-20-solid"
+						:loading="reloading"
+						:spin-icon-on-loading="true"
+						:disabled="saving || reloading"
+						:block="true"
+						@click="hydrateFromStore"
+					>
+						{{ reloading ? "กำลังโหลด" : "รีเฟรช" }}
+					</AppButton>
+					<AppButton
+						color="primary"
+						variant="solid"
+						size="md"
+						icon="i-heroicons-check-20-solid"
+						:loading="saving"
+						:spin-icon-on-loading="true"
+						:disabled="!canSave"
+						:block="true"
+						@click="saveStoreFinance"
+					>
+						บันทึก
+					</AppButton>
 				</div>
 			</div>
 		</template>

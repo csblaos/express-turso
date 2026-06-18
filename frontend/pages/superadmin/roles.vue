@@ -818,14 +818,14 @@ onMounted(async () => {
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
 								<div class="space-y-2.5">
-									<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+									<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
 										<select
 											v-model="selectedStoreId"
 											class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										>
 											<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
 										</select>
-										<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyStoreFilter">
+										<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-funnel-20-solid" class="whitespace-nowrap rounded-md sm:self-stretch" @click="applyStoreFilter">
 											ใช้ตัวกรอง
 										</AppButton>
 									</div>

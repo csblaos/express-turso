@@ -144,7 +144,7 @@ onMounted(() => {
 						variant="soft"
 						size="sm"
 						icon="i-heroicons-arrow-left-on-rectangle-20-solid"
-						class="shrink-0 whitespace-nowrap rounded-md"
+						class="shrink-0 whitespace-nowrap rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 text-stone-600 shadow-sm transition-colors hover:border-[#d8d2c6] hover:bg-white hover:text-stone-900"
 						@click="handleLogout"
 					>
 						ออกจากระบบ
@@ -178,10 +178,10 @@ onMounted(() => {
 							</div>
 						</div>
 
-						<div class="rounded-md border border-dashed border-[#ddd7cb] bg-[#f9f7f2] px-5 py-4 text-sm text-stone-500">
+						<div class="rounded-md border border-dashed border-[#ddd7cb] bg-[#f9f7f2] px-5 py-4 text-sm text-stone-500 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-400">
 							<div class="flex items-center justify-between gap-3">
 								<span>Available stores</span>
-								<span class="font-semibold text-stone-700">{{ availableStoreCount }}</span>
+								<span class="font-semibold text-stone-700 dark:text-stone-300">{{ availableStoreCount }}</span>
 							</div>
 						</div>
 					</section>
@@ -227,7 +227,9 @@ onMounted(() => {
 										:key="store.id"
 										type="button"
 										class="flex w-full items-start justify-between gap-4 rounded-md border px-4 py-4 text-left transition"
-										:class="store.id === selectedStoreId ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-[#e7e4dd] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50/60 hover:text-primary-700'"
+										:class="store.id === selectedStoreId
+											? 'border-emerald-300 bg-emerald-50 text-emerald-800 shadow-[0_0_0_1px_rgba(16,185,129,0.08)] dark:border-emerald-700/40 dark:bg-emerald-950/25 dark:text-emerald-100'
+											: 'border-[#e7e4dd] bg-white text-stone-700 hover:border-emerald-200 hover:bg-emerald-50/70 hover:text-emerald-800 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-200 dark:hover:border-emerald-700/40 dark:hover:bg-emerald-950/20 dark:hover:text-emerald-100'"
 										@click="selectedStoreId = store.id"
 									>
 										<div class="min-w-0">
@@ -241,10 +243,11 @@ onMounted(() => {
 											</div>
 										</div>
 										<div class="flex shrink-0 items-center gap-2">
-											<span v-if="store.id === selectedStoreId" class="hidden text-xs font-semibold text-primary-600 sm:inline">Selected</span>
+											<span v-if="store.id === selectedStoreId" class="hidden text-xs font-semibold text-emerald-700 sm:inline dark:text-emerald-300">Selected</span>
 											<UIcon
 												:name="store.id === selectedStoreId ? 'i-heroicons-check-circle-20-solid' : 'i-heroicons-building-storefront-20-solid'"
 												class="mt-1 h-5 w-5"
+												:class="store.id === selectedStoreId ? 'text-emerald-600 dark:text-emerald-300' : 'text-stone-400 dark:text-stone-500'"
 											/>
 										</div>
 									</button>

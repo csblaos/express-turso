@@ -18,7 +18,6 @@ const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 	default: () => true,
 });
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
-const logoutConfirmOpen = ref(false);
 const profileMenuOpen = ref(false);
 const storeSwitcherOpen = ref(false);
 const shellError = ref<string | null>(null);
@@ -29,7 +28,7 @@ const isDesktopViewport = ref(import.meta.server
 	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
-const { logout, currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
+const { currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
 const { apiFetch } = useApiClient();
 const appToast = useAppToast();
 const colorMode = useColorMode();
@@ -256,16 +255,6 @@ function toggleColorMode() {
 	}
 }
 
-function openLogoutConfirm() {
-	logoutConfirmOpen.value = true;
-}
-
-async function openLogoutConfirmFromProfile() {
-	profileMenuOpen.value = false;
-	await nextTick();
-	logoutConfirmOpen.value = true;
-}
-
 async function navigateToProfile() {
 	profileMenuOpen.value = false;
 	await navigateTo("/profile");
@@ -317,12 +306,6 @@ async function handleSwitchStore(storeId: string) {
 	} finally {
 		switchStorePending.value = false;
 	}
-}
-
-async function confirmLogout() {
-	logoutConfirmOpen.value = false;
-	await logout();
-	return navigateTo("/login");
 }
 
 function extractShellErrorMessage(error: unknown) {
@@ -497,27 +480,6 @@ onErrorCaptured((error) => {
 							</NuxtLink>
 						</nav>
 
-					<div class="px-3 pt-1">
-						<AppButton
-							color="neutral"
-							variant="ghost"
-							size="sm"
-							icon="i-heroicons-arrow-left-on-rectangle"
-							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
-							:class="isSidebarCompact ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
-							:title="isSidebarCompact ? 'ออกจากระบบ' : undefined"
-							:aria-label="'ออกจากระบบ'"
-							@click="openLogoutConfirm"
-						>
-							<span
-								class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
-								:class="isSidebarCompact ? 'w-0 opacity-0' : 'w-auto opacity-100'"
-								aria-hidden="true"
-							>
-								ออกจากระบบ
-							</span>
-						</AppButton>
-					</div>
 				</div>
 			</aside>
 
@@ -571,11 +533,11 @@ onErrorCaptured((error) => {
 												color="neutral"
 												variant="ghost"
 												size="sm"
-												class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-emerald-50 hover:text-emerald-700 sm:h-10 sm:px-2"
+												class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-[#232922] sm:h-10 sm:px-2"
 												:title="profileDisplayName"
 												:aria-label="profileDisplayName"
 											>
-												<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200 sm:h-8 sm:w-8 sm:text-xs">
+												<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200 dark:group-hover:bg-[#2a3028] sm:h-8 sm:w-8 sm:text-xs">
 													{{ profileInitials }}
 												</span>
 												<span class="hidden min-w-0 text-left md:block">
@@ -650,20 +612,6 @@ onErrorCaptured((error) => {
 																	<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">จัดการข้อมูลผู้ใช้และ session ของคุณ</span>
 																</span>
 															</button>
-
-															<button
-																type="button"
-																class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-																@click="openLogoutConfirmFromProfile"
-															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition group-hover:bg-rose-100 group-hover:text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 dark:group-hover:bg-rose-500/20 dark:group-hover:text-rose-200">
-																	<UIcon name="i-heroicons-arrow-left-on-rectangle-20-solid" class="h-5 w-5" />
-																</span>
-																<span class="min-w-0 flex-1">
-																	<span class="block font-medium">ออกจากระบบ</span>
-																	<span class="block truncate text-xs text-rose-400 transition group-hover:text-rose-500">จบ session ปัจจุบันและกลับไปหน้า login</span>
-																</span>
-															</button>
 														</div>
 													</div>
 												</template>
@@ -709,11 +657,6 @@ onErrorCaptured((error) => {
 			</div>
 		</div>
 
-		<LogoutConfirmModal
-			:open="logoutConfirmOpen"
-			@close="logoutConfirmOpen = false"
-			@confirm="confirmLogout"
-		/>
 		<AppResponsivePanel
 			v-model="storeSwitcherOpen"
 			title="เปลี่ยนร้าน"
