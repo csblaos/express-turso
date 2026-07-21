@@ -33,6 +33,19 @@ type ApiProduct = {
 	variant_options_json: string | null;
 	variant_sort_order: number;
 	allow_base_unit_sale: number;
+	category_name?: string | null;
+	base_unit_name?: string | null;
+	extra_sale_unit_count?: number;
+};
+
+type ApiProductList = {
+	items: ApiProduct[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+	stats: { total: number; active: number; inactive: number; lowStock: number };
+	categoryCounts: Record<string, number>;
 };
 
 type ApiProductCategory = {
@@ -147,18 +160,20 @@ type ProductRecord = {
 	const appToast = useAppToast();
 	const route = useRoute();
 	const router = useRouter();
+	const { t } = useI18n();
+	const { intlLocale } = useAppLocale();
 
-const statusOptions: Array<{ id: ProductStatus; label: string }> = [
-	{ id: "all", label: "ทุกสถานะ" },
-	{ id: "active", label: "พร้อมขาย" },
-	{ id: "inactive", label: "ปิดขาย" },
-];
+const statusOptions = computed<Array<{ id: ProductStatus; label: string }>>(() => [
+	{ id: "all", label: t("products.allStatuses") },
+	{ id: "active", label: t("products.readyForSale") },
+	{ id: "inactive", label: t("products.inactive") },
+]);
 
-const sortOptions: Array<{ id: SortKey; label: string }> = [
-	{ id: "updated", label: "ล่าสุด" },
-	{ id: "name", label: "ชื่อสินค้า" },
-	{ id: "price", label: "ราคาขาย" },
-];
+const sortOptions = computed<Array<{ id: SortKey; label: string }>>(() => [
+	{ id: "updated", label: t("products.latest") },
+	{ id: "name", label: t("products.productName") },
+	{ id: "price", label: t("products.salePrice") },
+]);
 
 const accentPalette = [
 	"linear-gradient(135deg, #fed7aa 0%, #ea580c 100%)",
@@ -187,6 +202,9 @@ const productSkuAutogenPaused = ref(false);
 	const searchInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 	const productEditLocationInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 const products = ref<ProductRecord[]>([]);
+const productsTotal = ref(0);
+const productStats = ref({ total: 0, active: 0, inactive: 0, lowStock: 0 });
+const serverCategoryCounts = ref<Record<string, number>>({});
 const categories = ref<ApiProductCategory[]>([]);
 const stores = ref<StoreRecord[]>([]);
 const units = ref<ApiUnit[]>([]);
@@ -290,6 +308,8 @@ let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 	let scannerBuffer = "";
 let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
 let lastScannerKeyAt = 0;
+let productSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let productLoadSequence = 0;
 let cameraScannerMode: "search" | "create-barcode" | "variant-barcode" = "search";
 const variantBarcodeScanTargetRowId = ref("");
 
@@ -313,10 +333,10 @@ const currentStoreName = computed(() => (
 	|| "ยังไม่พบร้านที่กำลังใช้งาน"
 ));
 
-const numberFormatter = new Intl.NumberFormat("th-TH", {
+const numberFormatter = computed(() => new Intl.NumberFormat(intlLocale.value, {
 	style: "decimal",
 	maximumFractionDigits: 0,
-});
+}));
 
 	const storeCurrency = computed(() => (
 		normalizeCurrencyCode(stores.value.find((store) => store.id === effectiveStoreId.value)?.currency)
@@ -363,17 +383,17 @@ const canSaveProductEdit = computed(() => {
 	return true;
 });
 
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
+const dateFormatter = computed(() => new Intl.DateTimeFormat(intlLocale.value, {
 	dateStyle: "medium",
 	timeStyle: "short",
-});
+}));
 
 const unitLabelMap = computed(() => (
 	Object.fromEntries(units.value.map((unit) => [ unit.id, unit.name_th || unit.code ]))
 ));
 
 const categoryOptions = computed(() => [
-	{ id: "all", label: "ทั้งหมด" },
+	{ id: "all", label: t("common.all") },
 	...Array.from(
 		new Map(
 			[
@@ -391,30 +411,11 @@ const categoryFormOptions = computed(() => categories.value.map((category) => ({
 })));
 
 const filteredProducts = computed(() => {
-	const query = searchQuery.value.trim().toLowerCase();
-	let result = products.value.filter((product) => {
-		const matchesQuery = !query || [product.name, product.sku, product.barcode].some((value) => value.toLowerCase().includes(query));
-		const matchesCategory = activeCategory.value === "all" || product.categoryId === activeCategory.value;
-		const matchesStatus = activeStatus.value === "all" || product.status === activeStatus.value;
-		return matchesQuery && matchesCategory && matchesStatus;
-	});
-
-	if (activeSort.value === "name") {
-		result = [...result].sort((a, b) => a.name.localeCompare(b.name, "th"));
-	} else if (activeSort.value === "price") {
-		result = [...result].sort((a, b) => b.price - a.price);
-	} else {
-		result = [...result].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, "th"));
-	}
-
-	return result;
+	return products.value;
 });
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / pageSize.value)));
-const paginatedProducts = computed(() => {
-	const startIndex = (currentPage.value - 1) * pageSize.value;
-	return filteredProducts.value.slice(startIndex, startIndex + pageSize.value);
-});
+const totalPages = computed(() => Math.max(1, Math.ceil(productsTotal.value / pageSize.value)));
+const paginatedProducts = computed(() => products.value);
 
 	const selectedProduct = computed(() => {
 		return paginatedProducts.value.find((product) => product.id === selectedProductId.value)
@@ -489,8 +490,8 @@ const productUnitSummary = computed(() => {
 const categoryCounts = computed(() =>
 	categoryOptions.value.reduce<Record<string, number>>((result, category) => {
 		result[category.id] = category.id === "all"
-			? products.value.length
-			: products.value.filter((product) => product.categoryId === category.id).length;
+			? productStats.value.total
+			: (serverCategoryCounts.value[category.id] || 0);
 		return result;
 	}, {}),
 );
@@ -501,27 +502,27 @@ const namedCategoryCount = computed(() =>
 
 const hasManyCategories = computed(() => categoryOptions.value.length > 5);
 
-const totalProducts = computed(() => products.value.length);
-const activeProductsCount = computed(() => products.value.filter((product) => product.status === "active").length);
-const lowStockCount = computed(() => products.value.filter((product) => product.stockState === "low").length);
-const inactiveCount = computed(() => products.value.filter((product) => product.status === "inactive").length);
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const totalProducts = computed(() => productStats.value.total);
+const activeProductsCount = computed(() => productStats.value.active);
+const lowStockCount = computed(() => productStats.value.lowStock);
+const inactiveCount = computed(() => productStats.value.inactive);
+const pageLabel = computed(() => t("products.pageOf", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	filteredProducts.value.length === 0
 		? 0
 		: ((currentPage.value - 1) * pageSize.value) + 1
 ));
-const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredProducts.value.length));
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, productsTotal.value));
 const pageSummaryText = computed(() => (
-	filteredProducts.value.length === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${filteredProducts.value.length} สินค้า`
+	productsTotal.value === 0
+		? t("common.noData")
+		: t("products.rangeSummary", { start: pageStart.value, end: pageEnd.value, total: productsTotal.value })
 ));
 const overviewStats = computed(() => ([
-	{ label: "สินค้าทั้งหมด", value: totalProducts.value },
-	{ label: "พร้อมขาย", value: activeProductsCount.value },
-	{ label: "สต็อกต่ำ", value: lowStockCount.value },
-	{ label: "หมวดสินค้า", value: namedCategoryCount.value },
+	{ label: t("products.allProducts"), value: totalProducts.value },
+	{ label: t("products.readyForSale"), value: activeProductsCount.value },
+	{ label: t("products.lowStock"), value: lowStockCount.value },
+	{ label: t("products.productCategory"), value: namedCategoryCount.value },
 ]));
 const canOpenCreateProduct = computed(() => (
 	!authPermissionReady.value || canCreateProduct.value
@@ -559,7 +560,7 @@ const canSaveProductUnit = computed(() => {
 });
 
 watch(filteredProducts, (value) => {
-	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
+	const maxPage = totalPages.value;
 	if (currentPage.value > maxPage) {
 		currentPage.value = maxPage;
 	}
@@ -570,11 +571,20 @@ watch(filteredProducts, (value) => {
 }, { immediate: true });
 
 watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
-	currentPage.value = 1;
+	if (productSearchTimer) clearTimeout(productSearchTimer);
+	productSearchTimer = setTimeout(() => {
+		if (currentPage.value !== 1) currentPage.value = 1;
+		else void loadProducts();
+	}, 280);
 });
 
 watch(pageSize, () => {
-	currentPage.value = 1;
+	if (currentPage.value !== 1) currentPage.value = 1;
+	else void loadProducts();
+});
+
+watch(currentPage, () => {
+	void loadProducts();
 });
 
 	watch(
@@ -767,7 +777,7 @@ watch(() => productForm.sku, (value) => {
 	});
 
 function formatMoney(value: number) {
-	return `${numberFormatter.format(value)}${getCurrencySymbol(storeCurrency.value)}`;
+	return `${numberFormatter.value.format(value)}${getCurrencySymbol(storeCurrency.value)}`;
 }
 
 function escapeCsvValue(value: unknown) {
@@ -844,7 +854,7 @@ function exportFilteredProductsCsv() {
 }
 
 function getCategoryLabel(categoryId: string) {
-	return categoryOptions.value.find((category) => category.id === categoryId)?.label ?? "ไม่ระบุหมวด";
+	return categoryOptions.value.find((category) => category.id === categoryId)?.label ?? t("products.uncategorized");
 }
 
 function getStockTone(state: StockState) {
@@ -854,11 +864,11 @@ function getStockTone(state: StockState) {
 }
 
 function getStockLabel(product: ProductRecord) {
-	if (product.status === "inactive") return "ปิดขาย";
+	if (product.status === "inactive") return t("products.inactive");
 	if (product.stockState === "low" && product.lowStockThreshold !== null) {
-		return `เตือนต่ำ ${product.lowStockThreshold}`;
+		return t("products.lowStockAlert", { count: product.lowStockThreshold });
 	}
-	return "พร้อมขาย";
+	return t("products.readyForSale");
 }
 
 function getInitials(name: string) {
@@ -889,7 +899,7 @@ function getVariantCount(raw: string | null) {
 
 	function formatApiDate(value: string) {
 		try {
-			return dateFormatter.format(new Date(value));
+			return dateFormatter.value.format(new Date(value));
 		} catch {
 			return value;
 		}
@@ -1044,15 +1054,14 @@ function resolveImageUrl(imageUrl: string | null) {
 
 function mapApiProduct(
 	product: ApiProduct,
-	categoryMap: Record<string, string>,
-	unitMap: Record<string, string>,
-	productUnitsByProductId: Record<string, string[]>,
+	categoryMap: Record<string, string> = {},
+	unitMap: Record<string, string> = {},
 ): ProductRecord {
 	const status = product.active ? "active" : "inactive";
 	const variantCount = getVariantCount(product.variant_options_json);
-	const unitLabel = unitMap[product.base_unit_id] || product.base_unit_id || "หน่วยหลัก";
+	const unitLabel = product.base_unit_name || unitMap[product.base_unit_id] || product.base_unit_id || "หน่วยหลัก";
 	const categoryId = product.category_id || "uncategorized";
-	const categoryLabel = categoryMap[categoryId] || "ไม่ระบุหมวด";
+	const categoryLabel = product.category_name || categoryMap[categoryId] || "ไม่ระบุหมวด";
 	const lowStockThreshold = product.low_stock_threshold ?? null;
 	const stockState: StockState = status === "inactive"
 		? "inactive"
@@ -1060,11 +1069,7 @@ function mapApiProduct(
 			? "low"
 			: "ready";
 
-	const extraUnitIds = productUnitsByProductId[product.id] || [];
-	const extraUnitLabels = extraUnitIds
-		.map((unitId) => unitMap[unitId] || unitId)
-		.filter((label) => Boolean(label) && label !== unitLabel);
-	const uniqueExtraUnitLabels = Array.from(new Set(extraUnitLabels));
+	const extraSaleUnitCount = Number(product.extra_sale_unit_count || 0);
 
 	return {
 		id: product.id,
@@ -1082,8 +1087,8 @@ function mapApiProduct(
 		status,
 		variantCount,
 		allowBaseUnitSale: product.allow_base_unit_sale === 1,
-		saleUnits: [unitLabel, ...uniqueExtraUnitLabels],
-		extraSaleUnitCount: uniqueExtraUnitLabels.length,
+		saleUnits: [unitLabel],
+		extraSaleUnitCount,
 		imageKey: getInitials(product.name),
 		imageUrl: resolveImageUrl(product.image_url),
 		accent: getAccent(product.id),
@@ -1095,57 +1100,50 @@ function mapApiProduct(
 }
 
 async function loadProducts() {
+	const loadSequence = ++productLoadSequence;
 	productsPending.value = true;
 	productsError.value = null;
 
 	try {
-		const [productsResult, categoriesResult, unitsResult, storesResult, productUnitsResult] = await Promise.allSettled([
-			apiFetch<ApiEnvelope<ApiProduct[]>>("/products"),
-			apiFetch<ApiEnvelope<ApiProductCategory[]>>("/product-categories"),
-			apiFetch<ApiEnvelope<ApiUnit[]>>("/units"),
-			apiFetch<ApiEnvelope<StoreRecord[]>>("/stores"),
-			apiFetch<ApiEnvelope<ApiProductUnit[]>>("/product-units"),
-		]);
-
-		if (productsResult.status !== "fulfilled") {
-			throw productsResult.reason;
-		}
-
-		const categoryMap = categoriesResult.status === "fulfilled"
-			? Object.fromEntries(categoriesResult.value.data.map((category) => [category.id, category.name]))
-			: {};
-		categories.value = categoriesResult.status === "fulfilled" ? categoriesResult.value.data : [];
-
-		const unitMap = unitsResult.status === "fulfilled"
-			? Object.fromEntries(unitsResult.value.data.map((unit) => [unit.id, unit.name_th || unit.code]))
-			: {};
-		units.value = unitsResult.status === "fulfilled" ? unitsResult.value.data : [];
-		stores.value = storesResult.status === "fulfilled" ? storesResult.value.data : [];
-
-		const productUnitsByProductId = (productUnitsResult.status === "fulfilled" ? productUnitsResult.value.data : [])
-			.reduce<Record<string, Set<string>>>((result, row) => {
-				if (!row?.product_id || !row?.unit_id) return result;
-				if (!result[row.product_id]) {
-					result[row.product_id] = new Set<string>();
-				}
-				result[row.product_id].add(row.unit_id);
-				return result;
-			}, {});
-
-		const productUnitsByProductIdArray = Object.fromEntries(
-			Object.entries(productUnitsByProductId).map(([productId, unitIds]) => [productId, Array.from(unitIds)]),
-		) as Record<string, string[]>;
-
-		products.value = productsResult.value.data.map((product) => mapApiProduct(product, categoryMap, unitMap, productUnitsByProductIdArray));
+		const response = await apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+			query: {
+				page: currentPage.value,
+				limit: pageSize.value,
+				search: searchQuery.value.trim() || undefined,
+				category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+				status: activeStatus.value,
+				sort: activeSort.value,
+			},
+		});
+		if (loadSequence !== productLoadSequence) return;
+		const categoryMap = Object.fromEntries(categories.value.map((category) => [category.id, category.name]));
+		const unitMap = Object.fromEntries(units.value.map((unit) => [unit.id, unit.name_th || unit.code]));
+		productsTotal.value = response.data.total;
+		productStats.value = response.data.stats;
+		serverCategoryCounts.value = response.data.categoryCounts;
+		products.value = response.data.items.map((product) => mapApiProduct(product, categoryMap, unitMap));
 		if (products.value.length) {
 			selectedProductId.value = products.value[0].id;
 		}
 	} catch (error) {
+		if (loadSequence !== productLoadSequence) return;
 		productsError.value = error instanceof Error ? error.message : "โหลดรายการสินค้าไม่สำเร็จ";
 		products.value = [];
+		productsTotal.value = 0;
 	} finally {
-		productsPending.value = false;
+		if (loadSequence === productLoadSequence) productsPending.value = false;
 	}
+}
+
+async function loadProductReferenceData() {
+	const [categoriesResult, unitsResult, storesResult] = await Promise.allSettled([
+		apiFetch<ApiEnvelope<ApiProductCategory[]>>("/product-categories"),
+		apiFetch<ApiEnvelope<ApiUnit[]>>("/units"),
+		apiFetch<ApiEnvelope<StoreRecord[]>>("/stores"),
+	]);
+	categories.value = categoriesResult.status === "fulfilled" ? categoriesResult.value.data : [];
+	units.value = unitsResult.status === "fulfilled" ? unitsResult.value.data : [];
+	stores.value = storesResult.status === "fulfilled" ? storesResult.value.data : [];
 }
 
 	function resetProductForm() {
@@ -3007,7 +3005,8 @@ function submitSearchInput() {
 
 	onMounted(() => {
 		void ensureProductAuthPermissionReady();
-		loadProducts();
+		void loadProductReferenceData();
+		void loadProducts();
 		window.addEventListener("keydown", handleGlobalScannerKeydown);
 	});
 
@@ -3019,6 +3018,9 @@ onBeforeUnmount(() => {
 	if (scanToastTimer) {
 		clearTimeout(scanToastTimer);
 	}
+	if (productSearchTimer) {
+		clearTimeout(productSearchTimer);
+	}
 	window.removeEventListener("keydown", handleGlobalScannerKeydown);
 });
 </script>
@@ -3028,16 +3030,16 @@ onBeforeUnmount(() => {
 		:nav-items="appNavItems"
 		:active-ids="['products']"
 		sidebar-eyebrow="Products"
-		sidebar-title="สินค้า"
+		:sidebar-title="$t('products.title')"
 		sidebar-compact-title="PRD"
-		sidebar-description="จัดการ SKU, barcode, ราคา และสถานะขาย"
+		:sidebar-description="$t('products.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title=""
 					compact
-					description="จัดการ SKU, barcode, ราคา และสถานะขายด้วย list view และ panel style เดียวกับหน้าตั้งค่า"
+					:description="$t('products.pageDescription')"
 					@menu="openSidebar"
 					>
 						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
@@ -3047,7 +3049,7 @@ onBeforeUnmount(() => {
 									v-model="searchQuery"
 									size="lg"
 								icon="i-heroicons-magnifying-glass-20-solid"
-								placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+								:placeholder="$t('products.searchPlaceholder')"
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								@keydown.enter.prevent="submitSearchInput"
@@ -3059,8 +3061,8 @@ onBeforeUnmount(() => {
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"
 								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-								aria-label="ล้างคำค้น"
-								title="ล้างคำค้น"
+								:aria-label="$t('products.clearSearch')"
+								:title="$t('products.clearSearch')"
 									@click="searchQuery = ''"
 								/>
 							</div>
@@ -3070,11 +3072,11 @@ onBeforeUnmount(() => {
 								size="md"
 							icon="i-heroicons-qr-code-20-solid"
 							class="justify-center rounded-md"
-							aria-label="สแกนบาร์โค้ด"
-								title="สแกนบาร์โค้ด"
+							:aria-label="$t('products.scanBarcode')"
+								:title="$t('products.scanBarcode')"
 								@click="openCameraScanner"
 							>
-								<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
+								<span class="hidden sm:inline">{{ $t('products.scanBarcode') }}</span>
 							</AppButton>
 						<AppButton
 							color="neutral"
@@ -3082,14 +3084,14 @@ onBeforeUnmount(() => {
 							size="md"
 							icon="i-heroicons-arrow-path-20-solid"
 							class="justify-center rounded-md"
-							aria-label="รีโหลดสินค้า"
-							title="รีโหลดสินค้า"
+							:aria-label="$t('products.reloadProducts')"
+							:title="$t('products.reloadProducts')"
 							:loading="productsPending"
 							:disabled="productsPending"
 							:spin-icon-on-loading="true"
 							@click="loadProducts"
 						>
-							<span class="hidden sm:inline">รีโหลด</span>
+							<span class="hidden sm:inline">{{ $t('common.reload') }}</span>
 						</AppButton>
 						<AppButton
 							color="primary"
@@ -3097,12 +3099,12 @@ onBeforeUnmount(() => {
 							size="md"
 							icon="i-heroicons-plus-20-solid"
 							class="justify-center rounded-md"
-							aria-label="เพิ่มสินค้า"
-							title="เพิ่มสินค้า"
+							:aria-label="$t('products.addProduct')"
+							:title="$t('products.addProduct')"
 							:disabled="!canOpenCreateProduct"
 							@click="openCreateProduct"
 						>
-							<span class="hidden sm:inline">เพิ่มสินค้า</span>
+							<span class="hidden sm:inline">{{ $t('products.addProduct') }}</span>
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -3114,19 +3116,19 @@ onBeforeUnmount(() => {
 								>
 									<div class="grid grid-cols-4 gap-1.5 p-0">
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ทั้งหมด</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('common.all') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ totalProducts }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ขาย</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.onSale') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ activeProductsCount }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ต่ำ</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.low') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ lowStockCount }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">หมวด</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.categories') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ namedCategoryCount }}</p>
 										</div>
 									</div>
@@ -3136,10 +3138,10 @@ onBeforeUnmount(() => {
 						<div class="flex h-full min-h-0 flex-col">
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
-										<p class="text-sm font-semibold text-stone-950">ตัวกรองสินค้า</p>
+										<p class="text-sm font-semibold text-stone-950">{{ $t('products.filters') }}</p>
 									</div>
 									<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-										{{ filteredProducts.length }} รายการ
+										{{ $t('common.itemCount', { count: productsTotal }) }}
 									</div>
 								</div>
 
@@ -3147,7 +3149,7 @@ onBeforeUnmount(() => {
 								<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-category-select">
-											หมวดสินค้า
+											{{ $t('products.productCategory') }}
 										</label>
 										<div class="relative">
 											<select
@@ -3172,7 +3174,7 @@ onBeforeUnmount(() => {
 
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-sort-select">
-											เรียงลำดับ
+											{{ $t('products.sort') }}
 										</label>
 										<div class="relative">
 											<select
@@ -3214,7 +3216,7 @@ onBeforeUnmount(() => {
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
 										<p class="text-sm font-semibold text-stone-950">Products</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูราคา ต้นทุน และสถานะขาย</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('products.listHint') }}</p>
 									</div>
 									<div class="flex items-center gap-2">
 										<div class="hidden items-center gap-2 sm:flex">
@@ -3225,11 +3227,11 @@ onBeforeUnmount(() => {
 												icon="i-heroicons-arrow-up-tray-20-solid"
 												class="rounded-md"
 												:disabled="!canCreateProduct"
-												aria-label="นำเข้า"
-												title="นำเข้า"
+												:aria-label="$t('products.import')"
+												:title="$t('products.import')"
 												@click="appToast.info({ title: 'นำเข้า (กำลังพัฒนา)', description: 'ตอนนี้ยังไม่มี flow นำเข้าไฟล์ในหน้านี้' })"
 											>
-												นำเข้า
+												{{ $t('products.import') }}
 											</AppButton>
 
 											<AppButton
@@ -3239,11 +3241,11 @@ onBeforeUnmount(() => {
 												icon="i-heroicons-arrow-down-tray-20-solid"
 												class="rounded-md"
 												:disabled="productsPending"
-												aria-label="ส่งออก"
-												title="ส่งออก"
+												:aria-label="$t('products.export')"
+												:title="$t('products.export')"
 												@click="exportFilteredProductsCsv"
 											>
-												ส่งออก
+												{{ $t('products.export') }}
 											</AppButton>
 										</div>
 
@@ -3261,8 +3263,8 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-ellipsis-vertical-20-solid"
 												class="rounded-md sm:hidden"
-												aria-label="เพิ่มเติม"
-												title="เพิ่มเติม"
+												:aria-label="$t('products.more')"
+												:title="$t('products.more')"
 											/>
 
 											<template #content>
@@ -3278,8 +3280,8 @@ onBeforeUnmount(() => {
 																<UIcon name="i-heroicons-arrow-up-tray-20-solid" class="h-5 w-5" />
 															</span>
 															<span class="min-w-0 flex-1">
-																<span class="block font-medium">นำเข้า</span>
-																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">เพิ่ม/อัปเดตสินค้าจากไฟล์</span>
+																<span class="block font-medium">{{ $t('products.import') }}</span>
+																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('products.importHint') }}</span>
 															</span>
 														</button>
 
@@ -3293,8 +3295,8 @@ onBeforeUnmount(() => {
 																<UIcon name="i-heroicons-arrow-down-tray-20-solid" class="h-5 w-5" />
 															</span>
 															<span class="min-w-0 flex-1">
-																<span class="block font-medium">ส่งออก</span>
-																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">ดาวน์โหลดสินค้าตามตัวกรอง</span>
+																<span class="block font-medium">{{ $t('products.export') }}</span>
+																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('products.exportHint') }}</span>
 															</span>
 														</button>
 													</div>
@@ -3311,25 +3313,25 @@ onBeforeUnmount(() => {
 									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ productsError }}</p>
-										<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
+										<AppButton color="primary" variant="soft" size="md" class="rounded-md" :label="$t('common.retry')" @click="loadProducts" />
 									</div>
 									</div>
 									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 										<div class="space-y-3">
-											<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-											<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
+											<p class="text-sm font-medium text-stone-900">{{ $t('products.empty') }}</p>
+											<p class="text-sm text-stone-500">{{ $t('products.emptyHint') }}</p>
 										</div>
 									</div>
 										<table v-else class="min-w-[980px] w-full border-separate border-spacing-0">
 											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สินค้า</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หมวด</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ราคาขาย</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ต้นทุน</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สต็อก</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หน่วย</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">หน่วยเพิ่ม</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.product') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.category') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.salePrice') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.cost') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.stock') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.unit') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.extraUnits') }}</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Variants</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 												</tr>
@@ -3347,9 +3349,13 @@ onBeforeUnmount(() => {
 														<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md text-base font-semibold text-white" :style="{ background: product.accent }">
 															<img
 																v-if="product.imageUrl"
-																:src="product.imageUrl"
-																:alt="product.name"
-																class="h-full w-full object-cover"
+														:src="product.imageUrl"
+														:alt="product.name"
+														loading="lazy"
+														decoding="async"
+														width="48"
+														height="48"
+														class="h-full w-full object-cover"
 															>
 															<UIcon v-else name="i-heroicons-cube" class="h-5 w-5 text-white/95" />
 														</div>
@@ -3361,7 +3367,7 @@ onBeforeUnmount(() => {
 																<p class="mt-1 truncate text-xs text-stone-500">
 																	{{ product.sku }} · {{ product.barcode }}<template v-if="product.location !== '-'"> · {{ product.location }}</template>
 																</p>
-															<p class="mt-1 hidden text-[11px] text-stone-400 lg:block">อัปเดต {{ product.updatedAt }}</p>
+															<p class="mt-1 hidden text-[11px] text-stone-400 lg:block">{{ $t('products.updatedAt', { date: product.updatedAt }) }}</p>
 														</div>
 													</div>
 												</td>
@@ -3381,7 +3387,7 @@ onBeforeUnmount(() => {
 														{{ product.unitLabel }}
 													</td>
 														<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums whitespace-nowrap">
-															{{ product.extraSaleUnitCount ? `${product.extraSaleUnitCount} แบบ` : "-" }}
+																	{{ product.extraSaleUnitCount ? $t('products.unitTypes', { count: product.extraSaleUnitCount }) : "-" }}
 														</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
 														{{ product.variantCount }}
@@ -3395,7 +3401,7 @@ onBeforeUnmount(() => {
 														icon="i-heroicons-chevron-right-20-solid"
 														@click.stop="openProductDetail(product.id)"
 													>
-														จัดการ
+														{{ $t('products.manage') }}
 													</AppButton>
 												</td>
 											</tr>
@@ -3417,7 +3423,7 @@ onBeforeUnmount(() => {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t('products.perPage') }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -3437,11 +3443,11 @@ onBeforeUnmount(() => {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || productsPending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="$t('products.previousPage')"
+												:title="$t('products.previousPage')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ $t('products.previous') }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -3450,11 +3456,11 @@ onBeforeUnmount(() => {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || productsPending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="$t('products.nextPage')"
+												:title="$t('products.nextPage')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ $t('products.next') }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -3466,7 +3472,7 @@ onBeforeUnmount(() => {
 			</div>
 					<AppResponsivePanel
 						v-model="productCreateOpen"
-						title="เพิ่มสินค้า"
+						:title="$t('products.addProduct')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header

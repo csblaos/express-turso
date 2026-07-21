@@ -1,7 +1,7 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { ProductModelInterface } from "@interfaces/ProductModelInterface";
-import { ProductInterface } from "@interfaces/ProductInterface";
+import { ProductInterface, ProductListResult } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreateProductInput, Product, UpdateProductInput } from "@models/Product";
 import { R2Storage } from "@storage/R2Storage";
@@ -53,6 +53,19 @@ export class ProductComponent {
 	static async getAll(requestId: string, storeId?: string): Promise<Product[]> {
 		void requestId;
 		return ProductInterface.findAll(storeId);
+	}
+
+	static async getPage(requestId: string, input: {
+		storeId?: string;
+		page: number;
+		limit: number;
+		search?: string;
+		categoryId?: string;
+		status?: "all" | "active" | "inactive";
+		sort?: "updated" | "name" | "price";
+	}): Promise<ProductListResult> {
+		void requestId;
+		return ProductInterface.findPage(input);
 	}
 
 	static async getById(requestId: string, id: string): Promise<Product> {

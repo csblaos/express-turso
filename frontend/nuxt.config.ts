@@ -2,7 +2,7 @@ export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
 	telemetry: false,
-	modules: [ "@nuxt/ui", "@vite-pwa/nuxt" ],
+	modules: [ "@nuxt/ui", "@vite-pwa/nuxt", "@nuxtjs/i18n" ],
 	css: [ "~/assets/css/main.css" ],
 	nitro: {
 		compatibilityDate: "2026-05-04",
@@ -11,6 +11,23 @@ export default defineNuxtConfig({
 		preference: "light",
 		fallback: "light",
 		classSuffix: "",
+	},
+	i18n: {
+		strategy: "no_prefix",
+		defaultLocale: "th",
+		lazy: true,
+		langDir: "locales",
+		locales: [
+			{ code: "th", language: "th-TH", name: "ไทย", file: "th.ts" },
+			{ code: "lo", language: "lo-LA", name: "ລາວ", file: "lo.ts" },
+			{ code: "en", language: "en-US", name: "English", file: "en.ts" },
+		],
+		detectBrowserLanguage: {
+			useCookie: true,
+			cookieKey: "pos.ui.language",
+			fallbackLocale: "th",
+		},
+		vueI18n: "i18n.config.ts",
 	},
 	runtimeConfig: {
 		public: {

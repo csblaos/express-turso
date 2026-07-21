@@ -8,6 +8,19 @@ import { SuccessHandler } from "@utils/SuccessHandler";
 export class ProductController {
 	static getAll = SyncFunction.handler(async (req: Request, res: Response) => {
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
+		if (req.query.page !== undefined || req.query.limit !== undefined) {
+			const data = await ProductComponent.getPage(req.requestId, {
+				storeId,
+				page: Number(req.query.page || 1),
+				limit: Number(req.query.limit || 20),
+				search: typeof req.query.search === "string" ? req.query.search : undefined,
+				categoryId: typeof req.query.category_id === "string" ? req.query.category_id : undefined,
+				status: typeof req.query.status === "string" ? req.query.status as "all" | "active" | "inactive" : undefined,
+				sort: typeof req.query.sort === "string" ? req.query.sort as "updated" | "name" | "price" : undefined,
+			});
+			SuccessHandler.send(res, req.requestId, { data });
+			return;
+		}
 		const data = await ProductComponent.getAll(req.requestId, storeId);
 		SuccessHandler.send(res, req.requestId, { data });
 	});

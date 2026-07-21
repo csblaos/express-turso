@@ -9,7 +9,9 @@ type QuickView = "all" | "ready" | "low-stock" | "out" | "inactive";
 type ProductSort = "best-selling" | "name" | "stock" | "price";
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type CameraPermissionState = "unknown" | "prompt" | "granted" | "denied";
-type PaymentMethod = "cash" | "qr_transfer";
+type PaymentMethod = "cash" | "qr_transfer" | "credit_card";
+
+type PaymentAccount = { id: string; display_name: string; bank_name: string | null; account_number: string | null; qr_id: string | null; is_active: number };
 
 type Category = {
 	id: string;
@@ -301,6 +303,14 @@ const cameraPermissionState = ref<CameraPermissionState>("unknown");
 const paymentModalOpen = ref(false);
 const paymentCheckoutStep = ref<1 | 2>(1);
 const selectedPaymentMethod = ref<PaymentMethod | null>(null);
+const checkoutSaving = ref(false);
+const checkoutError = ref<string | null>(null);
+const cashTendered = ref("");
+const paymentAccountId = ref("");
+const paymentReference = ref("");
+const paymentSlipUrl = ref("");
+const paymentAccounts = ref<PaymentAccount[]>([]);
+const checkoutIdempotencyKey = ref("");
 const paymentModalBodyOverflowSnapshot = ref<string | null>(null);
 const cameraDevices = ref<Array<{ deviceId: string; label: string }>>([]);
 const selectedCameraDeviceId = ref("");
@@ -312,13 +322,11 @@ const catalogCurrency = ref("THB");
 const vatEnabled = ref(false);
 const vatRate = ref(0);
 const vatMode = ref<"EXCLUSIVE" | "INCLUSIVE">("EXCLUSIVE");
-const cart = ref<CartEntry[]>([
-	{ productId: "iced-latte", qty: 2 },
-	{ productId: "croffle", qty: 1 },
-	{ productId: "sparkling-yuzu", qty: 1 },
-]);
+const cart = ref<CartEntry[]>([]);
 
 const runtimeConfig = useRuntimeConfig();
+const { t } = useI18n();
+const { intlLocale } = useAppLocale();
 const { apiFetch } = useApiClient();
 const { currentStoreId, currentAccess } = useAuthSession();
 const appToast = useAppToast();
@@ -464,28 +472,34 @@ const vatLabel = computed(() => {
 	const formattedRate = Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, "");
 	return `ภาษีมูลค่าเพิ่ม ${rate > 0 ? formattedRate : 0}%`;
 });
-const paymentMethodOptions: Array<{
+const paymentMethodOptions = computed<Array<{
 	id: PaymentMethod;
 	label: string;
 	hint: string;
 	icon: string;
-}> = [
+}>>(() => [
 	{
 		id: "cash",
-		label: "เงินสด",
-		hint: "รับเงินสดหน้าเคาน์เตอร์และปิดบิลได้ทันที",
+		label: t("pos.cash"),
+		hint: t("pos.cashHint"),
 		icon: "i-heroicons-banknotes-20-solid",
 	},
 	{
 		id: "qr_transfer",
-		label: "QR / โอน",
-		hint: "ใช้สลิปหรือ QR สำหรับรับชำระแบบโอน",
+		label: t("pos.qr"),
+		hint: t("pos.qrHint"),
 		icon: "i-heroicons-qr-code-20-solid",
 	},
-];
+	{
+		id: "credit_card",
+		label: t("pos.card"),
+		hint: t("pos.cardHint"),
+		icon: "i-heroicons-credit-card-20-solid",
+	},
+]);
 const selectedPaymentMethodOption = computed(() => (
 	selectedPaymentMethod.value
-		? paymentMethodOptions.find((option) => option.id === selectedPaymentMethod.value) || null
+		? paymentMethodOptions.value.find((option) => option.id === selectedPaymentMethod.value) || null
 		: null
 ));
 const selectedPaymentMethodLabel = computed(() => selectedPaymentMethodOption.value?.label || "");
@@ -502,7 +516,7 @@ const paymentModalTitle = computed(() => (
 ));
 const paymentModalDescription = computed(() => (
 	paymentCheckoutStep.value === 1
-		? "กรุณาเลือก เงินสด หรือ QR / โอน แล้วค่อยไปต่อ"
+		? "กรุณาเลือก เงินสด, QR / โอน หรือบัตรเครดิต แล้วค่อยไปต่อ"
 		: "ทบทวนรายการสินค้า ยอดรวม และวิธีชำระก่อนยืนยัน"
 ));
 const paymentModalProgressLabel = computed(() => (
@@ -532,7 +546,7 @@ const paymentModalPrimaryAction = computed(() => (
 ));
 
 function formatMoney(value: number) {
-	return formatMoneyWithSymbol(value || 0, catalogCurrency.value, { locale: "th-TH", maximumFractionDigits: 0 });
+	return formatMoneyWithSymbol(value || 0, catalogCurrency.value, { locale: intlLocale.value, maximumFractionDigits: 0 });
 }
 
 function getInitials(name: string) {
@@ -985,13 +999,20 @@ function unlockPaymentModalScroll() {
 }
 
 function openPaymentModal() {
+	if (!cartItems.value.length) return;
 	selectedPaymentMethod.value = null;
+	checkoutError.value = null;
+	cashTendered.value = String(total.value);
+	paymentReference.value = "";
+	paymentSlipUrl.value = "";
+	checkoutIdempotencyKey.value = crypto.randomUUID();
 	paymentCheckoutStep.value = 1;
 	paymentModalOpen.value = true;
 	lockPaymentModalScroll();
 }
 
 function closePaymentModal() {
+	if (checkoutSaving.value) return;
 	paymentModalOpen.value = false;
 	selectedPaymentMethod.value = null;
 	paymentCheckoutStep.value = 1;
@@ -1010,18 +1031,50 @@ function goBackPaymentCheckout() {
 	closePaymentModal();
 }
 
-function continuePaymentCheckout() {
+async function continuePaymentCheckout() {
 	if (!selectedPaymentMethod.value) return;
 	if (paymentCheckoutStep.value === 1) {
 		paymentCheckoutStep.value = 2;
 		return;
 	}
-	appToast.success({
-		title: "ยืนยันการชำระเงินแล้ว",
-		description: `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}`,
-	});
-	mobileTicketOpen.value = false;
-	closePaymentModal();
+	checkoutSaving.value = true;
+	checkoutError.value = null;
+	try {
+		const response = await apiFetch<ApiEnvelope<{ order_no: string; change_amount: number }>>("/pos/checkout", {
+			method: "POST",
+			headers: { "Idempotency-Key": checkoutIdempotencyKey.value },
+			body: {
+				store_id: effectiveStoreId.value,
+				service_mode: activeMode.value === "หน้าร้าน" ? "walk-in" : activeMode.value === "รับกลับ" ? "pickup" : "delivery",
+				payment_method: selectedPaymentMethod.value,
+				items: cart.value.map((item) => ({ product_id: item.productId, qty: item.qty })),
+				amount_tendered: selectedPaymentMethod.value === "cash" ? Number(cashTendered.value) : null,
+				payment_account_id: selectedPaymentMethod.value === "qr_transfer" ? paymentAccountId.value : null,
+				payment_reference: paymentReference.value || null,
+				payment_slip_url: paymentSlipUrl.value || null,
+				note: orderNote.value || null,
+			},
+		});
+		appToast.success({ title: `ชำระเงินสำเร็จ ${response.data.order_no}`, description: response.data.change_amount > 0 ? `เงินทอน ${formatMoney(response.data.change_amount)}` : `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}` });
+		cart.value = [];
+		mobileTicketOpen.value = false;
+		checkoutSaving.value = false;
+		closePaymentModal();
+		await loadPosProducts();
+	} catch (error) {
+		checkoutError.value = resolveApiErrorMessage(error, "บันทึกการขายไม่สำเร็จ");
+	} finally {
+		checkoutSaving.value = false;
+	}
+}
+
+async function loadPaymentAccounts() {
+	if (!effectiveStoreId.value) return;
+	try {
+		const response = await apiFetch<ApiEnvelope<PaymentAccount[]>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts`);
+		paymentAccounts.value = response.data.filter((account) => Boolean(account.is_active));
+		paymentAccountId.value = paymentAccounts.value[0]?.id || "";
+	} catch { paymentAccounts.value = []; }
 }
 
 function simulateScan() {
@@ -1068,6 +1121,7 @@ async function loadPosProducts() {
 
 watch(effectiveStoreId, () => {
 	void loadPosProducts();
+	void loadPaymentAccounts();
 }, { immediate: true });
 
 watch(cameraScannerOpen, (isOpen, wasOpen) => {
@@ -1108,9 +1162,9 @@ onBeforeUnmount(() => {
 		:nav-items="appNavItems"
 		:active-ids="['pos']"
 		sidebar-eyebrow="POS"
-		sidebar-title="ขายหน้าร้าน"
+		:sidebar-title="$t('pos.title')"
 		sidebar-compact-title="POS"
-		sidebar-description="จุดขายหลักและบิลปัจจุบัน"
+		:sidebar-description="$t('pos.productList')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-1.5 pb-1.5 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-stretch lg:gap-2 lg:overflow-hidden">
@@ -1689,8 +1743,8 @@ onBeforeUnmount(() => {
 									<h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-stone-950 dark:text-stone-50">
 										{{ paymentModalTitle }}
 									</h2>
-									<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
-										{{ paymentModalDescription }}
+											<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
+													{{ paymentCheckoutStep === 1 ? $t('pos.selectPaymentHint') : paymentModalDescription }}
 									</p>
 									<div class="mt-3 flex flex-wrap items-center gap-2">
 										<UBadge color="neutral" variant="soft" :label="paymentModalProgressLabel" />
@@ -1786,9 +1840,11 @@ onBeforeUnmount(() => {
 												<div class="min-w-0">
 													<p class="text-base font-semibold text-stone-950 dark:text-stone-50">{{ selectedPaymentMethodOption.label }}</p>
 													<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
-														{{ selectedPaymentMethodOption.id === "cash"
-															? "รับเงินสดแล้วกดยืนยันเพื่อปิดขั้นตอนนี้"
-															: "ใช้ QR / โอน เป็นช่องทางรับเงินของบิลนี้" }}
+												{{ selectedPaymentMethodOption.id === "cash"
+													? "รับเงินสดแล้วกดยืนยันเพื่อปิดขั้นตอนนี้"
+													: selectedPaymentMethodOption.id === "qr_transfer"
+														? "เลือกบัญชีร้านและบันทึกหลักฐานการโอนของบิลนี้"
+														: "รับชำระผ่านเครื่องรูดภายนอก โดยไม่เก็บข้อมูลบัตร" }}
 													</p>
 												</div>
 												<div class="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200">
@@ -1814,6 +1870,30 @@ onBeforeUnmount(() => {
 								</template>
 
 								<template v-else>
+									<div v-if="checkoutError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+										{{ checkoutError }}
+									</div>
+									<div v-if="selectedPaymentMethod === 'cash'" class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.amountReceived') }}</label>
+										<input v-model="cashTendered" type="number" min="0" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" :placeholder="String(total)">
+												<p class="mt-2 text-xs text-stone-500">{{ $t('pos.change') }} {{ formatMoney(Math.max(0, Number(cashTendered || 0) - total)) }}</p>
+									</div>
+									<div v-else-if="selectedPaymentMethod === 'qr_transfer'" class="grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16] sm:grid-cols-2">
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.paymentAccount') }}
+											<select v-model="paymentAccountId" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+												<option value="">เลือกบัญชี</option><option v-for="account in paymentAccounts" :key="account.id" :value="account.id">{{ account.display_name }}</option>
+											</select>
+										</label>
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.reference') }}
+											<input v-model="paymentReference" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" placeholder="Transaction reference">
+										</label>
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50 sm:col-span-2">{{ $t('pos.proofUrl') }}
+											<input v-model="paymentSlipUrl" type="url" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" placeholder="https://...">
+										</label>
+									</div>
+									<div v-else class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-sm text-stone-600 dark:border-[#3b342c] dark:bg-[#1d1a16] dark:text-stone-300">
+										ยืนยันว่าได้รับชำระผ่านเครื่องรูดภายนอกแล้ว ระบบจะไม่จัดเก็บเลขบัตรหรือ CVV
+									</div>
 									<div class="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
 										<div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-[#3b342c] dark:bg-[#1d1a16]">
 											<div class="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-[#3b342c]">
@@ -1930,7 +2010,8 @@ onBeforeUnmount(() => {
 										class="justify-center gap-2 rounded-md"
 										:block="true"
 										:icon="paymentModalPrimaryAction.icon"
-										:disabled="paymentCheckoutStep === 1 ? !selectedPaymentMethod : false"
+										:loading="checkoutSaving"
+										:disabled="checkoutSaving || (paymentCheckoutStep === 1 ? !selectedPaymentMethod : selectedPaymentMethod === 'cash' ? Number(cashTendered || 0) < total : selectedPaymentMethod === 'qr_transfer' ? !paymentAccountId || !paymentSlipUrl : false)"
 										@click="continuePaymentCheckout"
 									>
 										{{ paymentModalPrimaryAction.label }}

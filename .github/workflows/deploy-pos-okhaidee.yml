@@ -1,0 +1,133 @@
+name: Deploy pos-okhaidee API
+
+on:
+  push:
+    branches:
+      - pos-okhaidee
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "compose.production.yml"
+      - ".github/workflows/deploy-pos-okhaidee.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pos-okhaidee-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-api
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile API
+        run: npm run build:api
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=pos-okhaidee-latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Select immutable deployment image
+        id: image
+        run: echo "ref=${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    environment: production
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DO_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Copy Compose configuration
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_USER: ${{ secrets.DO_USER }}
+        run: |
+          ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" 'mkdir -p /opt/pos-okhaidee'
+          scp -P "${DO_PORT:-22}" compose.production.yml "$DO_USER@$DO_HOST:/opt/pos-okhaidee/compose.production.yml"
+
+      - name: Deploy immutable image
+        env:
+          API_IMAGE: ${{ needs.test-and-build.outputs.image }}
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_USER: ${{ secrets.DO_USER }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRODUCTION_ENV_B64: ${{ secrets.PRODUCTION_ENV_B64 }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          printf '%s' "$PRODUCTION_ENV_B64" | ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" 'base64 --decode > /opt/pos-okhaidee/.env.production && chmod 600 /opt/pos-okhaidee/.env.production'
+          ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "cd /opt/pos-okhaidee && API_IMAGE='$API_IMAGE' docker compose -f compose.production.yml pull && API_IMAGE='$API_IMAGE' docker compose -f compose.production.yml up -d --remove-orphans && docker image prune -f"
+
+      - name: Verify health check
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_USER: ${{ secrets.DO_USER }}
+        run: |
+          ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" 'for attempt in 1 2 3 4 5 6; do if curl --fail --silent http://127.0.0.1:3005/healthz >/dev/null; then exit 0; fi; sleep 5; done; docker logs --tail 100 pos-okhaidee-api; exit 1'

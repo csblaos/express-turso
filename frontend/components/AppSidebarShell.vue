@@ -38,6 +38,12 @@ const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	default: () => null,
 });
 const route = useRoute();
+const { t } = useI18n();
+const navLabel = (item: AppNavItem) => item.labelKey ? t(item.labelKey) : item.label;
+const translatedSidebarTitle = computed(() => {
+	const active = props.navItems.find((item) => props.activeIds.includes(item.id));
+	return active?.labelKey ? t(active.labelKey) : props.sidebarTitle;
+});
 type AccessibleStoreRecord = {
 	id: string;
 	name: string;
@@ -124,8 +130,8 @@ async function handleNavItemClick(event: MouseEvent, item: AppNavItem) {
 
 const topbarMenuTitle = computed(() => (
 	isDesktopViewport.value
-		? (sidebarCollapsed.value ? "ขยายเมนู" : "ย่อเมนู")
-		: "เปิดเมนู"
+		? (sidebarCollapsed.value ? t("shell.expandMenu") : t("shell.collapseMenu"))
+		: t("shell.openMenu")
 ));
 
 const topbarMenuIcon = computed(() => {
@@ -142,8 +148,8 @@ const roleLabelMap: Record<string, string> = {
 	manager: "Manager",
 };
 
-const profileDisplayName = computed(() => currentUser.value?.name || "ทีมงานร้าน");
-const profileDisplayEmail = computed(() => currentUser.value?.email || "ไม่ได้ระบุอีเมล");
+const profileDisplayName = computed(() => currentUser.value?.name || t("shell.storeStaff"));
+const profileDisplayEmail = computed(() => currentUser.value?.email || t("shell.noEmail"));
 const inferredWorkspaceRole = computed(() => {
 	if (route.path === "/system-admin" || route.path.startsWith("/system-admin/")) return "system_admin";
 	if (route.path === "/superadmin" || route.path.startsWith("/superadmin/")) return "superadmin";
@@ -162,8 +168,8 @@ const profileDisplayRole = computed(() => {
 });
 const profileStoreSummary = computed(() => {
 	const membershipCount = currentAccess.value?.memberships?.length || 0;
-	if (!membershipCount) return "ยังไม่ได้ผูกกับร้าน";
-	return membershipCount === 1 ? "ดูแล 1 store" : `ดูแล ${membershipCount} stores`;
+	if (!membershipCount) return t("shell.noStores");
+	return t("shell.managedStores", { count: membershipCount });
 });
 const canShowStoreSection = computed(() => (
 	resolvedSystemRole.value !== "system_admin"
@@ -175,11 +181,11 @@ const canSwitchStores = computed(() => (
 ));
 const currentStoreCount = computed(() => visibleSwitchableStores.value.length);
 const storeSectionTitle = computed(() => (
-	canSwitchStores.value ? "เปลี่ยนร้าน" : "ร้านปัจจุบัน"
+	canSwitchStores.value ? t("shell.switchStore") : t("shell.currentStore")
 ));
 const currentStoreLabel = computed(() => (
 	accessibleStores.value.find((store) => store.id === currentStoreId.value)?.name
-	|| (currentStoreId.value ? "ร้านที่กำลังใช้งาน" : "ยังไม่ได้เลือกร้าน")
+	|| (currentStoreId.value ? t("shell.activeStore") : t("shell.noStoreSelected"))
 ));
 const visibleSwitchableStores = computed(() => {
 	if (!canShowStoreSection.value) return [];
@@ -191,7 +197,7 @@ const visibleSwitchableStores = computed(() => {
 	);
 	return Array.from(membershipIds).map((storeId) => ({
 		id: storeId,
-		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : "ร้านที่ไม่ทราบชื่อ"),
+		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : t("shell.unknownStore")),
 		currency: storesById.get(storeId)?.currency,
 	}));
 });
@@ -424,8 +430,8 @@ onErrorCaptured((error) => {
 							variant="soft"
 							size="sm"
 							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 lg:hidden"
-							aria-label="ปิดเมนู"
-							title="ปิดเมนู"
+							:aria-label="$t('shell.closeMenu')"
+							:title="$t('shell.closeMenu')"
 								@click="closeMobileSidebar"
 							>
 							<UIcon name="i-heroicons-x-mark-20-solid" class="h-5.5 w-5.5" />
@@ -438,8 +444,8 @@ onErrorCaptured((error) => {
 									:key="item.id"
 								:to="item.to"
 								class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
-							:title="item.label"
-							:aria-label="item.label"
+							:title="navLabel(item)"
+							:aria-label="navLabel(item)"
 								:class="[
 								isSidebarCompact ? 'gap-0' : 'gap-3',
 									isNavItemActive(item)
@@ -469,12 +475,12 @@ onErrorCaptured((error) => {
 								:class="isSidebarCompact ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
 								aria-hidden="true"
 							>
-								<p class="truncate text-sm font-medium whitespace-nowrap">{{ item.label }}</p>
+								<p class="truncate text-sm font-medium whitespace-nowrap">{{ navLabel(item) }}</p>
 								<p
 									v-if="!isDesktopViewport"
 									class="mt-0.5 truncate text-xs text-stone-400"
 								>
-									{{ item.to === '/' ? 'หน้าเริ่มต้น' : 'เปิดหน้าจัดการ' }}
+									{{ item.to === '/' ? $t('shell.home') : $t('shell.openManagement') }}
 									</p>
 								</div>
 							</NuxtLink>
@@ -494,7 +500,7 @@ onErrorCaptured((error) => {
 							<div class="sticky top-0 z-40 shrink-0 overflow-hidden border-b border-[#e7e4dd] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
 								<div>
 									<AppTopNavbar
-										:title="currentNavItem?.label || sidebarTitle"
+									:title="currentNavItem ? navLabel(currentNavItem) : translatedSidebarTitle"
 										:eyebrow="sidebarEyebrow"
 										:icon="currentNavItem?.icon"
 										:menu-title="topbarMenuTitle"
@@ -578,7 +584,7 @@ onErrorCaptured((error) => {
 																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400 dark:text-stone-500">{{ storeSectionTitle }}</p>
 																		<p class="mt-1 truncate text-sm font-medium text-stone-900 dark:text-emerald-50">{{ currentStoreLabel }}</p>
 																		<p class="mt-0.5 truncate text-[11px] text-stone-500 dark:text-stone-400">
-																			{{ canSwitchStores ? `${currentStoreCount} stores available` : "1 store available" }}
+													{{ $t('shell.availableStores', { count: currentStoreCount }) }}
 																		</p>
 																	</div>
 																	<button
@@ -588,7 +594,7 @@ onErrorCaptured((error) => {
 																		@click="openStoreSwitcher"
 																	>
 																		<UIcon name="i-heroicons-arrows-right-left-20-solid" class="h-4 w-4" />
-																		<span>เปลี่ยนร้าน</span>
+																				<span>{{ $t('shell.switchStore') }}</span>
 																	</button>
 																	<div
 																		v-else
@@ -608,8 +614,8 @@ onErrorCaptured((error) => {
 																	<UIcon name="i-heroicons-user-circle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">
-																	<span class="block font-medium">ตั้งค่าโปรไฟล์</span>
-																	<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">จัดการข้อมูลผู้ใช้และ session ของคุณ</span>
+																			<span class="block font-medium">{{ $t('shell.profileSettings') }}</span>
+																			<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('shell.profileSettingsHint') }}</span>
 																</span>
 															</button>
 														</div>
@@ -634,7 +640,7 @@ onErrorCaptured((error) => {
 									class="flex h-full min-h-[260px] items-center justify-center"
 								>
 									<div class="w-full max-w-xl rounded-2xl border border-[#f1d6cc] bg-[#fff8f5] p-6 text-center ring-1 ring-[#f7e7df]">
-										<p class="text-sm font-semibold text-stone-900">โหลดหน้านี้ไม่สำเร็จ</p>
+										<p class="text-sm font-semibold text-stone-900">{{ $t('shell.pageLoadFailed') }}</p>
 										<p class="mt-2 text-sm text-stone-500">{{ shellError }}</p>
 										<div class="mt-4 flex justify-center gap-2">
 											<AppButton
@@ -644,7 +650,7 @@ onErrorCaptured((error) => {
 												class="rounded-md"
 												@click="reloadCurrentView"
 											>
-												รีโหลดหน้า
+												{{ $t('shell.reloadPage') }}
 											</AppButton>
 										</div>
 									</div>
@@ -659,8 +665,8 @@ onErrorCaptured((error) => {
 
 		<AppResponsivePanel
 			v-model="storeSwitcherOpen"
-			title="เปลี่ยนร้าน"
-			description="เลือกร้านที่ต้องการใช้เป็น workspace ปัจจุบัน"
+			:title="$t('shell.switchStore')"
+			:description="$t('shell.switchStoreHint')"
 			desktop-width="680px"
 			mobile-max-height="82dvh"
 			close-button-size="md"
@@ -672,7 +678,7 @@ onErrorCaptured((error) => {
 				<div class="border-b border-[#efece4] bg-[#fbfbf8] px-5 py-4">
 					<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">Current store</p>
 					<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
-					<p class="mt-1 text-xs text-stone-500">{{ currentStoreCount }} stores available</p>
+					<p class="mt-1 text-xs text-stone-500">{{ $t('shell.availableStores', { count: currentStoreCount }) }}</p>
 				</div>
 
 				<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -682,14 +688,16 @@ onErrorCaptured((error) => {
 							:key="store.id"
 							type="button"
 							class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3 text-left transition"
-							:class="store.id === currentStoreId ? 'border-primary-200 bg-primary-50 text-primary-700' : 'border-[#efece4] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
+							:class="store.id === currentStoreId
+								? 'border-primary-200 bg-primary-50 text-primary-700 ring-1 ring-primary-100 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/20'
+								: 'border-[#efece4] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
 							:disabled="switchStorePending"
 							@click="handleSwitchStore(store.id)"
 						>
 							<span class="min-w-0">
 								<span class="block truncate text-sm font-medium">{{ store.name }}</span>
-								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600' : 'text-stone-400'">
-									{{ store.id === currentStoreId ? "ร้านที่กำลังใช้งาน" : "แตะเพื่อเปลี่ยนร้าน" }}
+								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600 dark:text-emerald-300' : 'text-stone-400'">
+									{{ store.id === currentStoreId ? $t('shell.activeStore') : $t('shell.tapToSwitch') }}
 								</span>
 							</span>
 							<UIcon

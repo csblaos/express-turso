@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatMoneyWithSymbol } from "~/utils/currency";
+import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "completed" | "cancelled";
 type FulfillmentType = "walk-in" | "pickup" | "delivery";
@@ -21,6 +23,7 @@ type OrderRecord = {
 	channel: FulfillmentType;
 	status: OrderStatus;
 	paymentStatus: PaymentStatus;
+	paymentMethod?: "cash" | "qr_transfer" | "credit_card" | string;
 	total: number;
 	itemCount: number;
 	createdAt: string;
@@ -36,19 +39,21 @@ const searchQuery = ref("");
 const activeStatus = ref<"all" | OrderStatus>("all");
 const activeChannel = ref<"all" | FulfillmentType>("all");
 const activePaymentStatus = ref<"all" | PaymentStatus>("all");
+const activePaymentMethod = ref<"all" | "cash" | "qr_transfer" | "credit_card">("all");
+const dateFrom = ref("");
+const dateTo = ref("");
 const activeView = ref<"all" | "attention" | "completed">("all");
 const detailOpen = ref(false);
 const selectedOrderId = ref("");
+const ordersPending = ref(false);
+const ordersError = ref<string | null>(null);
+const storeCurrency = ref("LAK");
+const { apiFetch } = useApiClient();
+const { t } = useI18n();
+const { intlLocale } = useAppLocale();
+const { currentStoreId, currentAccess } = useAuthSession();
+const effectiveStoreId = computed(() => currentStoreId.value?.trim() || currentAccess.value?.store_id?.trim() || "");
 
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
-const moneyFormatter = new Intl.NumberFormat("th-TH", {
-	style: "currency",
-	currency: "THB",
-	maximumFractionDigits: 0,
-});
 
 const orders = ref<OrderRecord[]>([
 	{
@@ -146,6 +151,34 @@ const orders = ref<OrderRecord[]>([
 	},
 ]);
 
+type ApiOrder = Record<string, unknown> & { lines?: Array<Record<string, unknown>> };
+
+function mapApiOrder(order: ApiOrder): OrderRecord {
+	return {
+		id: String(order.id), orderNumber: String(order.order_no), customerName: String(order.customer_name || t("orders.generalCustomer")),
+		channel: String(order.channel || order.service_mode || "walk-in") as FulfillmentType,
+		status: String(order.status || "completed") as OrderStatus, paymentStatus: String(order.payment_status || "paid") as PaymentStatus,
+		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), itemCount: Number(order.item_count || 0),
+		createdAt: String(order.created_at), updatedAt: String(order.created_at), cashier: String(order.cashier_name || t("orders.user")),
+		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined,
+		lines: (order.lines || []).map((line) => ({ id: String(line.id), name: String(line.name), sku: String(line.sku), qty: Number(line.qty), price: Number(line.price_base_at_sale) })),
+	};
+}
+
+async function loadOrders() {
+	if (!effectiveStoreId.value) return;
+	ordersPending.value = true; ordersError.value = null;
+	try {
+		const response = await apiFetch<{ data: ApiOrder[] }>(`/pos/orders?store_id=${encodeURIComponent(effectiveStoreId.value)}`);
+		orders.value = response.data.map(mapApiOrder);
+		const currency = response.data[0]?.payment_currency;
+		if (currency) storeCurrency.value = String(currency);
+	} catch (error) { orders.value = []; ordersError.value = resolveApiErrorMessage(error, t("orders.loadError")); }
+	finally { ordersPending.value = false; }
+}
+
+watch(effectiveStoreId, () => { void loadOrders(); }, { immediate: true });
+
 const filteredOrders = computed(() => {
 	const query = searchQuery.value.trim().toLowerCase();
 
@@ -160,13 +193,16 @@ const filteredOrders = computed(() => {
 		const matchesStatus = activeStatus.value === "all" || order.status === activeStatus.value;
 		const matchesChannel = activeChannel.value === "all" || order.channel === activeChannel.value;
 		const matchesPayment = activePaymentStatus.value === "all" || order.paymentStatus === activePaymentStatus.value;
+		const matchesPaymentMethod = activePaymentMethod.value === "all" || order.paymentMethod === activePaymentMethod.value;
+		const createdDay = order.createdAt.slice(0, 10);
+		const matchesDate = (!dateFrom.value || createdDay >= dateFrom.value) && (!dateTo.value || createdDay <= dateTo.value);
 
 		const matchesView =
 			activeView.value === "all"
 			|| (activeView.value === "attention" && ["pending", "confirmed", "preparing", "ready"].includes(order.status))
 			|| (activeView.value === "completed" && ["completed", "cancelled"].includes(order.status));
 
-		return matchesQuery && matchesStatus && matchesChannel && matchesPayment && matchesView;
+		return matchesQuery && matchesStatus && matchesChannel && matchesPayment && matchesPaymentMethod && matchesDate && matchesView;
 	});
 });
 
@@ -197,14 +233,21 @@ watch(filteredOrders, (value) => {
 
 function formatDate(value: string) {
 	try {
-		return dateFormatter.format(new Date(value));
+		return new Intl.DateTimeFormat(intlLocale.value, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 	} catch {
 		return value;
 	}
 }
 
 function formatMoney(value: number) {
-	return moneyFormatter.format(value || 0);
+	return formatMoneyWithSymbol(value || 0, storeCurrency.value, { locale: intlLocale.value, maximumFractionDigits: 0 });
+}
+
+function paymentMethodLabel(method: string) {
+	if (method === "cash") return t("pos.cash");
+	if (method === "qr_transfer") return t("pos.qr");
+	if (method === "credit_card") return t("pos.card");
+	return method || "-";
 }
 
 function statusColor(status: OrderStatus) {
@@ -223,25 +266,25 @@ function paymentColor(status: PaymentStatus) {
 }
 
 function channelLabel(channel: FulfillmentType) {
-	if (channel === "walk-in") return "หน้าร้าน";
-	if (channel === "pickup") return "รับกลับ";
-	return "เดลิเวอรี";
+	if (channel === "walk-in") return t("orders.walkIn");
+	if (channel === "pickup") return t("orders.pickup");
+	return t("orders.delivery");
 }
 
 function statusLabel(status: OrderStatus) {
-	if (status === "pending") return "รอรับออเดอร์";
-	if (status === "confirmed") return "ยืนยันแล้ว";
-	if (status === "preparing") return "กำลังเตรียม";
-	if (status === "ready") return "พร้อมส่งมอบ";
-	if (status === "completed") return "เสร็จสิ้น";
-	return "ยกเลิก";
+	if (status === "pending") return t("orders.pending");
+	if (status === "confirmed") return t("orders.confirmed");
+	if (status === "preparing") return t("orders.preparing");
+	if (status === "ready") return t("orders.ready");
+	if (status === "completed") return t("orders.completed");
+	return t("orders.cancelled");
 }
 
 function paymentLabel(status: PaymentStatus) {
-	if (status === "unpaid") return "ยังไม่ชำระ";
-	if (status === "partial") return "ชำระบางส่วน";
-	if (status === "paid") return "ชำระแล้ว";
-	return "คืนเงินแล้ว";
+	if (status === "unpaid") return t("orders.unpaid");
+	if (status === "partial") return t("orders.partial");
+	if (status === "paid") return t("orders.paid");
+	return t("orders.refunded");
 }
 
 function openDetail(orderId: string) {
@@ -259,12 +302,13 @@ function closeDetail() {
 		:nav-items="appNavItems"
 		:active-ids="['orders']"
 		sidebar-eyebrow="Orders"
-		sidebar-title="ออเดอร์"
+		:sidebar-title="$t('orders.title')"
 		sidebar-compact-title="ORD"
-		sidebar-description="ภาพรวมออเดอร์, สถานะการขาย, ช่องทางรับสินค้า และคิวที่ต้องติดตาม"
+		:sidebar-description="$t('orders.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
+				<div v-if="ordersError" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ ordersError }}</div>
 				<AppPageHeader
 					:title-badge="false"
 					compact
@@ -276,7 +320,7 @@ function closeDetail() {
 							<input
 								v-model="searchQuery"
 								type="text"
-								placeholder="ค้นหาเลขออเดอร์, ลูกค้า, เบอร์โทร หรือแคชเชียร์"
+								:placeholder="$t('orders.search')"
 								class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 							>
 							<button
@@ -293,19 +337,19 @@ function closeDetail() {
 
 				<div class="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:pr-1">
 					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ออเดอร์ทั้งหมด</p>
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.totalOrders') }}</p>
 						<p class="mt-1 text-xl font-semibold text-stone-950">{{ totalOrders }}</p>
 					</div>
 					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">คิวเปิดอยู่</p>
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.openQueue') }}</p>
 						<p class="mt-1 text-xl font-semibold text-stone-950">{{ openOrders }}</p>
 					</div>
 					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">เดลิเวอรี</p>
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.delivery') }}</p>
 						<p class="mt-1 text-xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
 					</div>
 					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">บิลเฉลี่ย</p>
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.averageBill') }}</p>
 						<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
 					</div>
 				</div>
@@ -313,45 +357,50 @@ function closeDetail() {
 				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 					<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 						<div>
-							<p class="text-sm font-semibold text-stone-950">ตัวกรองออเดอร์</p>
+							<p class="text-sm font-semibold text-stone-950">{{ $t('orders.filters') }}</p>
 						</div>
 						<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-							{{ filteredOrders.length }} รายการ
+							{{ filteredOrders.length }} {{ $t('common.items') }}
 						</div>
 					</div>
 
 					<div class="grid gap-2 px-4 py-3">
-						<div class="grid grid-cols-2 gap-2 md:grid-cols-3 md:items-end">
+						<div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 md:items-end">
 							<select v-model="activeStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-								<option value="all">ทุกสถานะ</option>
-								<option value="pending">รอรับออเดอร์</option>
-								<option value="confirmed">ยืนยันแล้ว</option>
-								<option value="preparing">กำลังเตรียม</option>
-								<option value="ready">พร้อมส่งมอบ</option>
-								<option value="completed">เสร็จสิ้น</option>
-								<option value="cancelled">ยกเลิก</option>
+								<option value="all">{{ $t('orders.allStatuses') }}</option>
+								<option value="pending">{{ $t('orders.pending') }}</option>
+								<option value="confirmed">{{ $t('orders.confirmed') }}</option>
+								<option value="preparing">{{ $t('orders.preparing') }}</option>
+								<option value="ready">{{ $t('orders.ready') }}</option>
+								<option value="completed">{{ $t('orders.completed') }}</option>
+								<option value="cancelled">{{ $t('orders.cancelled') }}</option>
 							</select>
 
 							<select v-model="activeChannel" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-								<option value="all">ทุกช่องทาง</option>
-								<option value="walk-in">หน้าร้าน</option>
-								<option value="pickup">รับกลับ</option>
-								<option value="delivery">เดลิเวอรี</option>
+								<option value="all">{{ $t('orders.allChannels') }}</option>
+								<option value="walk-in">{{ $t('orders.walkIn') }}</option>
+								<option value="pickup">{{ $t('orders.pickup') }}</option>
+								<option value="delivery">{{ $t('orders.delivery') }}</option>
 							</select>
 
 							<select v-model="activePaymentStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-								<option value="all">ทุกการชำระ</option>
-								<option value="unpaid">ยังไม่ชำระ</option>
-								<option value="partial">ชำระบางส่วน</option>
-									<option value="paid">ชำระแล้ว</option>
-									<option value="refunded">คืนเงินแล้ว</option>
+								<option value="all">{{ $t('orders.allPayments') }}</option>
+								<option value="unpaid">{{ $t('orders.unpaid') }}</option>
+								<option value="partial">{{ $t('orders.partial') }}</option>
+								<option value="paid">{{ $t('orders.paid') }}</option>
+								<option value="refunded">{{ $t('orders.refunded') }}</option>
 								</select>
+							<select v-model="activePaymentMethod" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option value="all">{{ $t('orders.allMethods') }}</option><option value="cash">{{ $t('pos.cash') }}</option><option value="qr_transfer">{{ $t('pos.qr') }}</option><option value="credit_card">{{ $t('pos.card') }}</option>
+							</select>
+							<input v-model="dateFrom" type="date" :aria-label="$t('orders.fromDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+							<input v-model="dateTo" type="date" :aria-label="$t('orders.toDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 						</div>
 
 						<div class="flex flex-wrap gap-2 overflow-x-auto pb-1 md:justify-end">
-							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" label="ทั้งหมด" @click="activeView = 'all'" />
-							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" label="ต้องติดตาม" @click="activeView = 'attention'" />
-							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" label="เสร็จสิ้น/ยกเลิก" @click="activeView = 'completed'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" :label="$t('common.all')" @click="activeView = 'all'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" :label="$t('orders.attention')" @click="activeView = 'attention'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" :label="$t('orders.completedCancelled')" @click="activeView = 'completed'" />
 						</div>
 					</div>
 				</div>
@@ -361,22 +410,23 @@ function closeDetail() {
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
 								<p class="text-sm font-semibold text-stone-950">Orders list</p>
-								<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกออเดอร์เพื่อเปิดรายละเอียดและดูรายการสินค้าในบิล</p>
+								<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('orders.listHint') }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-								{{ filteredOrders.length }} รายการ
+								{{ filteredOrders.length }} {{ $t('common.items') }}
 							</div>
 						</div>
 
 						<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-							<div v-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
+							<div v-if="ordersPending" class="flex min-h-[280px] items-center justify-center text-sm text-stone-500">{{ $t('common.loading') }}</div>
+							<div v-else-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 								<div class="space-y-3">
 									<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
 										<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
 									</div>
 									<div>
-										<p class="text-sm font-medium text-stone-900">ไม่พบออเดอร์ที่ตรงกับเงื่อนไข</p>
-										<p class="mt-1 text-sm text-stone-500">ลองล้างคำค้นหรือเปลี่ยน filter ด้านบน</p>
+										<p class="text-sm font-medium text-stone-900">{{ $t('orders.empty') }}</p>
+										<p class="mt-1 text-sm text-stone-500">{{ $t('orders.emptyHint') }}</p>
 									</div>
 								</div>
 							</div>
@@ -386,13 +436,13 @@ function closeDetail() {
 									<table class="min-w-[1120px] w-full border-separate border-spacing-0">
 										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เวลา</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ออเดอร์</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ช่องทาง</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">การชำระ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">จำนวน / ยอดรวม</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">อัปเดต</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.time') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.title') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('common.status') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.channel') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.payment') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.quantityTotal') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.updated') }}</th>
 											</tr>
 										</thead>
 										<tbody>
@@ -422,11 +472,12 @@ function closeDetail() {
 														<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
 													</p>
 												</td>
-												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
-													<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
+											<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+												<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
+												<p class="mt-1 text-xs text-stone-400">{{ paymentMethodLabel(order.paymentMethod || '') }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
-													<p class="text-sm font-semibold text-stone-900">{{ order.itemCount }} รายการ</p>
+													<p class="text-sm font-semibold text-stone-900">{{ order.itemCount }} {{ $t('common.items') }}</p>
 													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
@@ -441,8 +492,8 @@ function closeDetail() {
 
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
-								<div>{{ openOrders }} คิวเปิดอยู่</div>
-								<div>{{ deliveryOrders }} เดลิเวอรี • บิลเฉลี่ย {{ formatMoney(avgTicket) }}</div>
+								<div>{{ openOrders }} {{ $t('orders.openQueue') }}</div>
+								<div>{{ deliveryOrders }} {{ $t('orders.delivery') }} • {{ $t('orders.averageBill') }} {{ formatMoney(avgTicket) }}</div>
 							</div>
 						</div>
 					</div>
@@ -452,8 +503,8 @@ function closeDetail() {
 			<AppResponsivePanel
 				v-if="selectedOrder"
 				v-model="detailOpen"
-				title="รายละเอียดออเดอร์"
-				description="ดูข้อมูลบิล รายการสินค้า และช่องทางชำระเงินของออเดอร์นี้"
+				:title="$t('orders.details')"
+				:description="$t('orders.description')"
 				desktop-width="680px"
 				:show-handle="false"
 				close-button-size="md"
@@ -480,6 +531,7 @@ function closeDetail() {
 
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentColor(selectedOrder.paymentStatus)" variant="soft" :label="paymentLabel(selectedOrder.paymentStatus)" />
+											<UBadge color="neutral" variant="soft" :label="paymentMethodLabel(selectedOrder.paymentMethod || '')" />
 											<UBadge color="neutral" variant="soft" :label="channelLabel(selectedOrder.channel)" />
 											<UBadge color="neutral" variant="soft" :label="selectedOrder.cashier" />
 										</div>
@@ -488,22 +540,22 @@ function closeDetail() {
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+								<h3 class="text-sm font-semibold text-stone-950">{{ $t('orders.summary') }}</h3>
 								<dl class="mt-4 space-y-3 text-sm">
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">ช่องทาง</dt>
+										<dt class="text-stone-500">{{ $t('orders.channel') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ channelLabel(selectedOrder.channel) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">สร้างเมื่อ</dt>
+										<dt class="text-stone-500">{{ $t('orders.createdAt') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrder.createdAt) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">จำนวนสินค้า</dt>
+										<dt class="text-stone-500">{{ $t('orders.quantity') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ selectedOrder.itemCount }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4">
-										<dt class="text-stone-500">ยอดรวม</dt>
+										<dt class="text-stone-500">{{ $t('common.total') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrder.total) }}</dd>
 									</div>
 								</dl>
@@ -511,8 +563,8 @@ function closeDetail() {
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
-									<h3 class="text-sm font-semibold text-stone-950">รายการสินค้าในบิล</h3>
-									<UBadge color="neutral" variant="soft" :label="`${selectedOrder.lines.length} รายการ`" />
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t('orders.orderItems') }}</h3>
+									<UBadge color="neutral" variant="soft" :label="`${selectedOrder.lines.length} ${$t('common.items')}`" />
 								</div>
 
 								<div class="mt-4 space-y-3">
@@ -534,18 +586,18 @@ function closeDetail() {
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">หมายเหตุและข้อมูลติดต่อ</h3>
+								<h3 class="text-sm font-semibold text-stone-950">{{ $t('orders.notesContact') }}</h3>
 								<div class="mt-4 space-y-3 text-sm text-stone-600">
 									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
-										<p class="text-xs text-stone-400">ลูกค้า</p>
+										<p class="text-xs text-stone-400">{{ $t('orders.customer') }}</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.customerName }}</p>
 									</div>
 									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
-										<p class="text-xs text-stone-400">เบอร์โทร</p>
+										<p class="text-xs text-stone-400">{{ $t('orders.phone') }}</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.phone || "-" }}</p>
 									</div>
 									<div class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
-										<p class="text-xs text-stone-400">หมายเหตุ</p>
+										<p class="text-xs text-stone-400">{{ $t('orders.note') }}</p>
 										<p class="mt-1 font-medium text-stone-900">{{ selectedOrder.note || "-" }}</p>
 									</div>
 								</div>
@@ -554,8 +606,8 @@ function closeDetail() {
 
 						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true">พิมพ์บิล</AppButton>
-								<AppButton color="primary" variant="solid" size="md" :block="true">อัปเดตสถานะ</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true">{{ $t('orders.print') }}</AppButton>
+								<AppButton color="primary" variant="solid" size="md" :block="true">{{ $t('orders.updateStatus') }}</AppButton>
 							</div>
 						</div>
 					</div>

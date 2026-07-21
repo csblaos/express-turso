@@ -4,8 +4,8 @@ import { appNavItems } from "~/utils/app-nav";
 type LanguageOption = {
 	id: string;
 	flagSvg: string;
-	label: string;
-	description: string;
+	labelKey: string;
+	descriptionKey: string;
 	locale: string;
 };
 
@@ -21,8 +21,8 @@ const languageOptions: LanguageOption[] = [
   <path d="M27,4H5c-2.209,0-4,1.791-4,4V24c0,2.209,1.791,4,4,4H27c2.209,0,4-1.791,4-4V8c0-2.209-1.791-4-4-4Zm3,20c0,1.654-1.346,3-3,3H5c-1.654,0-3-1.346-3-3V8c0-1.654,1.346-3,3-3H27c1.654,0,3,1.346,3,3V24Z" opacity=".15"></path>
   <path d="M27,5H5c-1.657,0-3,1.343-3,3v1c0-1.657,1.343-3,3-3H27c1.657,0,3,1.343,3,3v-1c0-1.657-1.343-3-3-3Z" fill="#fff" opacity=".2"></path>
 </svg>`,
-		label: "ไทย",
-		description: "เหมาะสำหรับหน้าร้านในประเทศไทย (TH)",
+		labelKey: "language.thai",
+		descriptionKey: "language.thaiDescription",
 		locale: "th-TH",
 	},
 	{
@@ -35,8 +35,8 @@ const languageOptions: LanguageOption[] = [
   <circle cx="16" cy="16" r="4" fill="#fff"></circle>
   <path d="M27,5H5c-1.657,0-3,1.343-3,3v1c0-1.657,1.343-3,3-3H27c1.657,0,3,1.343,3,3v-1c0-1.657-1.343-3-3-3Z" fill="#fff" opacity=".2"></path>
 </svg>`,
-		label: "ລາວ",
-		description: "เหมาะสำหรับหน้าร้านในลาว (LA)",
+		labelKey: "language.lao",
+		descriptionKey: "language.laoDescription",
 		locale: "lo-LA",
 	},
 	{
@@ -72,19 +72,14 @@ const languageOptions: LanguageOption[] = [
   <path fill="#fff" d="M10.56 14.744L11.151 14.315 10.42 14.315 10.194 13.619 9.968 14.315 9.237 14.315 9.828 14.744 9.603 15.44 10.194 15.01 10.785 15.44 10.56 14.744z"></path>
   <path fill="#fff" d="M13.539 14.744L14.13 14.315 13.399 14.315 13.173 13.619 12.947 14.315 12.216 14.315 12.808 14.744 12.582 15.44 13.173 15.01 13.765 15.44 13.539 14.744z"></path>
 </svg>`,
-		label: "English",
-		description: "เหมาะสำหรับผู้ดูแลระบบ/ทีมที่ใช้ภาษาอังกฤษ",
+		labelKey: "language.english",
+		descriptionKey: "language.englishDescription",
 		locale: "en-US",
 	},
 ];
 
-const languageCookie = useCookie<string | null>("pos.ui.language", {
-	sameSite: "lax",
-	path: "/",
-	default: () => "th",
-});
-
-const currentLanguage = computed(() => languageCookie.value || "th");
+const { locale, setLocale, t } = useI18n();
+const currentLanguage = computed(() => locale.value || "th");
 const draftLanguage = ref(currentLanguage.value);
 
 watch(currentLanguage, (value) => {
@@ -96,7 +91,7 @@ const selectedOption = computed(() => (
 ));
 
 const selectedFlagSvg = computed(() => selectedOption.value.flagSvg);
-const selectedLabel = computed(() => selectedOption.value.label);
+const selectedLabel = computed(() => t(selectedOption.value.labelKey));
 
 const previewDate = computed(() => {
 	try {
@@ -120,9 +115,9 @@ function reloadFromSaved() {
 	draftLanguage.value = currentLanguage.value;
 }
 
-function saveLanguage() {
+async function saveLanguage() {
 	if (!hasChanges.value) return;
-	languageCookie.value = draftLanguage.value;
+	await setLocale(draftLanguage.value);
 }
 </script>
 
@@ -131,16 +126,16 @@ function saveLanguage() {
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
-		sidebar-title="ภาษา"
+		:sidebar-title="$t('language.title')"
 		sidebar-compact-title="LANG"
-		sidebar-description="ตั้งค่าภาษา UI และตัวอย่างรูปแบบตัวเลข/วันที่"
+		:sidebar-description="$t('language.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
 				<div class="hidden md:block">
 					<AppPageHeader
 						title=""
-						description="เลือกภาษา UI และตรวจตัวอย่างรูปแบบการแสดงผล"
+						:description="$t('language.description')"
 						:title-badge="false"
 						compact
 						@menu="openSidebar"
@@ -157,7 +152,7 @@ function saveLanguage() {
 									title="รีโหลด"
 									@click="reloadFromSaved"
 								>
-									<span class="hidden sm:inline">รีโหลด</span>
+									<span class="hidden sm:inline">{{ $t('common.reload') }}</span>
 								</AppButton>
 								<AppButton
 									color="primary"
@@ -170,7 +165,7 @@ function saveLanguage() {
 									title="บันทึก"
 									@click="saveLanguage"
 								>
-									บันทึก
+									{{ $t('common.save') }}
 								</AppButton>
 							</div>
 						</template>
@@ -180,7 +175,7 @@ function saveLanguage() {
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid grid-cols-3 gap-2 p-0">
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Current</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('common.current') }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950">{{ currentLanguage }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
@@ -189,7 +184,7 @@ function saveLanguage() {
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Status</p>
-								<p class="mt-1 truncate text-base font-semibold text-stone-950">{{ hasChanges ? "ยังไม่บันทึก" : "บันทึกแล้ว" }}</p>
+								<p class="mt-1 truncate text-base font-semibold text-stone-950">{{ hasChanges ? $t('language.unsaved') : $t('language.saved') }}</p>
 							</div>
 						</div>
 					</UCard>
@@ -199,10 +194,10 @@ function saveLanguage() {
 						<div class="flex flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">ภาษา UI</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือกภาษาเพื่อใช้กับการแสดงผล (ยังไม่เชื่อม i18n ทั้งระบบ)</p>
+									<p class="text-sm font-semibold text-stone-950">{{ $t('language.choose') }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('language.chooseHint') }}</p>
 								</div>
-								<UBadge color="neutral" variant="soft" label="เลือกได้ 1" />
+								<UBadge color="neutral" variant="soft" :label="$t('language.oneOnly')" />
 							</div>
 
 							<div class="space-y-4 px-4 py-4">
@@ -213,22 +208,22 @@ function saveLanguage() {
 										type="button"
 										class="group flex w-full items-start justify-between gap-4 rounded-md border px-4 py-3 text-left transition"
 										:class="draftLanguage === option.id
-											? 'border-primary-300 bg-primary-50'
+											? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:ring-emerald-400/30'
 											: 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70'"
 										@click="draftLanguage = option.id"
 									>
 										<div class="min-w-0">
 											<p class="text-sm font-semibold text-stone-900">
 												<span class="mr-1 inline-flex h-5 w-5 items-center justify-center" aria-hidden="true" v-html="option.flagSvg" />
-												{{ option.label }}
+												{{ $t(option.labelKey) }}
 											</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">{{ option.description }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t(option.descriptionKey) }}</p>
 										</div>
 
 										<span
 											class="mt-0.5 relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition"
 											:class="draftLanguage === option.id
-												? 'border-primary-400 bg-primary-600'
+												? 'border-primary-400 bg-primary-600 dark:border-emerald-400 dark:bg-emerald-500'
 												: 'border-neutral-300 bg-white group-hover:border-neutral-400'"
 										>
 											<span v-if="draftLanguage === option.id" class="h-3.5 w-3.5 text-white i-heroicons-check-20-solid" />
@@ -236,12 +231,6 @@ function saveLanguage() {
 									</button>
 								</div>
 
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
-									<p class="font-semibold">หมายเหตุ</p>
-									<p class="mt-1 text-xs leading-5 text-stone-600">
-										ตอนนี้เป็น UI สำหรับตั้งค่าเท่านั้น (ระบบยังไม่ได้เปลี่ยนข้อความทุกหน้าแบบ i18n)
-									</p>
-								</div>
 							</div>
 						</div>
 					</div>
@@ -250,8 +239,8 @@ function saveLanguage() {
 						<div class="flex flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">ตัวอย่างการแสดงผล</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">อิงจาก locale ของภาษาที่เลือก</p>
+									<p class="text-sm font-semibold text-stone-950">{{ $t('language.preview') }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('language.previewHint') }}</p>
 								</div>
 							</div>
 
@@ -287,7 +276,7 @@ function saveLanguage() {
 							:block="true"
 							@click="reloadFromSaved"
 						>
-							รีโหลด
+							{{ $t('common.reload') }}
 						</AppButton>
 						<AppButton
 							color="primary"
@@ -298,7 +287,7 @@ function saveLanguage() {
 							:block="true"
 							@click="saveLanguage"
 						>
-							บันทึก
+							{{ $t('common.save') }}
 						</AppButton>
 					</div>
 				</div>

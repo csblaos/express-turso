@@ -22,6 +22,12 @@ const optionalLocation = z.string().trim().max(80).nullish();
 export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
 		store_id: z.string().optional(),
+		page: z.coerce.number().int().min(1).optional(),
+		limit: z.coerce.number().int().min(1).max(100).optional(),
+		search: z.string().trim().max(120).optional(),
+		category_id: z.string().trim().max(120).optional(),
+		status: z.enum(["all", "active", "inactive"]).optional(),
+		sort: z.enum(["updated", "name", "price"]).optional(),
 	});
 
 	private static readonly createBodySchema = z.object({

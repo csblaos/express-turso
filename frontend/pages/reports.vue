@@ -3,7 +3,7 @@ import { appNavItems } from "~/utils/app-nav";
 
 type MetricCard = {
 	id: string;
-	label: string;
+	labelKey: string;
 	value: string;
 	change: string;
 	tone: "success" | "warning" | "info" | "neutral";
@@ -11,7 +11,7 @@ type MetricCard = {
 
 type PaymentMix = {
 	id: string;
-	label: string;
+	labelKey: string;
 	amount: string;
 	percent: number;
 	colorClass: string;
@@ -50,39 +50,40 @@ type StaffRank = {
 const activeRange = ref<"today" | "week" | "month">("today");
 const activeBranch = ref("all");
 const activeReportView = ref<"sales" | "products" | "operations">("sales");
+const { t } = useI18n();
 
 const metricCards = computed<MetricCard[]>(() => {
 	if (activeRange.value === "today") {
 		return [
-			{ id: "sales", label: "ยอดขายวันนี้", value: "฿48,920", change: "+12.4%", tone: "success" },
-			{ id: "orders", label: "จำนวนบิล", value: "186", change: "+8 บิล", tone: "info" },
-			{ id: "avg", label: "บิลเฉลี่ย", value: "฿263", change: "+฿14", tone: "warning" },
-			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "3 รายการ", change: "คงที่", tone: "neutral" },
+			{ id: "sales", labelKey: "reports.salesToday", value: "฿48,920", change: "+12.4%", tone: "success" },
+			{ id: "orders", labelKey: "reports.billCount", value: "186", change: t("reports.moreBills", { count: 8 }), tone: "info" },
+			{ id: "avg", labelKey: "reports.averageBill", value: "฿263", change: "+฿14", tone: "warning" },
+			{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 3 }), change: t("reports.unchanged"), tone: "neutral" },
 		];
 	}
 
 	if (activeRange.value === "week") {
 		return [
-			{ id: "sales", label: "ยอดขาย 7 วัน", value: "฿312,440", change: "+9.2%", tone: "success" },
-			{ id: "orders", label: "จำนวนบิล", value: "1,084", change: "+72 บิล", tone: "info" },
-			{ id: "avg", label: "บิลเฉลี่ย", value: "฿288", change: "+฿11", tone: "warning" },
-			{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "12 รายการ", change: "-1 รายการ", tone: "neutral" },
+			{ id: "sales", labelKey: "reports.sales7Days", value: "฿312,440", change: "+9.2%", tone: "success" },
+			{ id: "orders", labelKey: "reports.billCount", value: "1,084", change: t("reports.moreBills", { count: 72 }), tone: "info" },
+			{ id: "avg", labelKey: "reports.averageBill", value: "฿288", change: "+฿11", tone: "warning" },
+			{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 12 }), change: t("reports.fewerItems", { count: 1 }), tone: "neutral" },
 		];
 	}
 
 	return [
-		{ id: "sales", label: "ยอดขาย 30 วัน", value: "฿1,284,600", change: "+15.8%", tone: "success" },
-		{ id: "orders", label: "จำนวนบิล", value: "4,012", change: "+264 บิล", tone: "info" },
-		{ id: "avg", label: "บิลเฉลี่ย", value: "฿320", change: "+฿26", tone: "warning" },
-		{ id: "refund", label: "ยกเลิก/คืนเงิน", value: "41 รายการ", change: "+4 รายการ", tone: "neutral" },
+		{ id: "sales", labelKey: "reports.sales30Days", value: "฿1,284,600", change: "+15.8%", tone: "success" },
+		{ id: "orders", labelKey: "reports.billCount", value: "4,012", change: t("reports.moreBills", { count: 264 }), tone: "info" },
+		{ id: "avg", labelKey: "reports.averageBill", value: "฿320", change: "+฿26", tone: "warning" },
+		{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 41 }), change: t("reports.moreItems", { count: 4 }), tone: "neutral" },
 	];
 });
 
 const paymentMix: PaymentMix[] = [
-	{ id: "cash", label: "เงินสด", amount: "฿18,240", percent: 37, colorClass: "bg-[#c97745]" },
-	{ id: "qr", label: "QR / โอน", amount: "฿20,180", percent: 41, colorClass: "bg-[#73b06f]" },
-	{ id: "card", label: "บัตร", amount: "฿7,540", percent: 15, colorClass: "bg-[#729ad8]" },
-	{ id: "other", label: "อื่น ๆ", amount: "฿2,960", percent: 7, colorClass: "bg-[#b6ada1]" },
+	{ id: "cash", labelKey: "pos.cash", amount: "฿18,240", percent: 37, colorClass: "bg-[#c97745]" },
+	{ id: "qr", labelKey: "pos.qr", amount: "฿20,180", percent: 41, colorClass: "bg-[#73b06f]" },
+	{ id: "card", labelKey: "pos.card", amount: "฿7,540", percent: 15, colorClass: "bg-[#729ad8]" },
+	{ id: "other", labelKey: "reports.other", amount: "฿2,960", percent: 7, colorClass: "bg-[#b6ada1]" },
 ];
 
 const topProducts: TopProduct[] = [
@@ -137,9 +138,9 @@ function barHeight(value: number) {
 		:nav-items="appNavItems"
 		:active-ids="['reports']"
 		sidebar-eyebrow="Reports"
-		sidebar-title="รายงาน"
+		:sidebar-title="$t('reports.title')"
 		sidebar-compact-title="REP"
-		sidebar-description="ภาพรวมยอดขาย, สินค้าขายดี, วิธีชำระเงิน และสัญญาณเชิงปฏิบัติการสำหรับ owner/manager"
+		:sidebar-description="$t('reports.description')"
 	>
 		<template #default="{ openSidebar }">
 			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
@@ -152,31 +153,31 @@ function barHeight(value: number) {
 					>
 						<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
 							<div class="flex flex-wrap gap-2">
-								<AppButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" label="วันนี้" @click="activeRange = 'today'" />
-								<AppButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" label="7 วัน" @click="activeRange = 'week'" />
-								<AppButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" label="30 วัน" @click="activeRange = 'month'" />
+								<AppButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.today')" @click="activeRange = 'today'" />
+								<AppButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.sevenDays')" @click="activeRange = 'week'" />
+								<AppButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.thirtyDays')" @click="activeRange = 'month'" />
 							</div>
 
 							<div class="flex flex-wrap gap-2">
-								<AppButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ยอดขาย" @click="activeReportView = 'sales'" />
-								<AppButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" label="สินค้า" @click="activeReportView = 'products'" />
-								<AppButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" label="ปฏิบัติการ" @click="activeReportView = 'operations'" />
+								<AppButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.sales')" @click="activeReportView = 'sales'" />
+								<AppButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('nav.products')" @click="activeReportView = 'products'" />
+								<AppButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.operations')" @click="activeReportView = 'operations'" />
 							</div>
 
 							<div class="grid gap-3 sm:grid-cols-2">
 								<select v-model="activeBranch" class="rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="all">ทุกสาขา</option>
-									<option value="main">สาขาท่าเดื่อ</option>
-									<option value="mall">สาขาศูนย์การค้า</option>
+									<option value="all">{{ $t('reports.allBranches') }}</option>
+									<option value="main">{{ $t('reports.mainBranch') }}</option>
+									<option value="mall">{{ $t('reports.mallBranch') }}</option>
 								</select>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-stone-500">
-									ช่วงที่เลือก: {{ activeRange === "today" ? "วันนี้" : activeRange === "week" ? "7 วันล่าสุด" : "30 วันล่าสุด" }}
+									{{ $t('reports.selectedRange') }}: {{ activeRange === "today" ? $t('reports.today') : activeRange === "week" ? $t('reports.lastSevenDays') : $t('reports.lastThirtyDays') }}
 								</div>
 							</div>
 
 							<div class="flex flex-wrap gap-2 xl:justify-end">
-								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" label="ส่งออก PDF" />
-								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" label="ส่งออก Excel" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" :label="$t('reports.exportPdf')" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" :label="$t('reports.exportExcel')" />
 							</div>
 						</div>
 					</AppPageHeader>
@@ -190,7 +191,7 @@ function barHeight(value: number) {
 							>
 								<div class="flex items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ metric.label }}</p>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t(metric.labelKey) }}</p>
 										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{{ metric.value }}</p>
 									</div>
 									<div class="rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="metricToneClass(metric.tone)">
@@ -206,7 +207,7 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Sales trend</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">ยอดขายตามช่วงเวลา</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.salesTrend') }}</h2>
 										</div>
 										<UBadge color="neutral" variant="soft" label="Mock chart" />
 									</div>
@@ -227,9 +228,9 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Payment mix</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">สัดส่วนวิธีชำระเงิน</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.paymentMix') }}</h2>
 										</div>
-										<UBadge color="neutral" variant="soft" label="4 ช่องทาง" />
+									<UBadge color="neutral" variant="soft" :label="$t('reports.channels', { count: 4 })" />
 									</div>
 
 									<div class="space-y-3">
@@ -247,7 +248,7 @@ function barHeight(value: number) {
 												<div class="flex items-center justify-between gap-3">
 													<div class="flex items-center gap-3">
 														<div class="h-3 w-3 rounded-full" :class="item.colorClass" />
-														<p class="text-sm font-medium text-stone-900">{{ item.label }}</p>
+														<p class="text-sm font-medium text-stone-900">{{ $t(item.labelKey) }}</p>
 													</div>
 													<p class="text-sm font-semibold text-stone-900">{{ item.amount }}</p>
 												</div>
@@ -265,7 +266,7 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Top products</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">สินค้าขายดี</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.topProducts') }}</h2>
 										</div>
 										<UBadge color="primary" variant="soft" label="Top 5" />
 									</div>
@@ -279,7 +280,7 @@ function barHeight(value: number) {
 											<div class="flex items-start justify-between gap-3">
 												<div class="min-w-0">
 													<p class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</p>
-													<p class="mt-1 text-xs text-stone-500">{{ product.sku }} · ขาย {{ product.qty }} หน่วย</p>
+											<p class="mt-1 text-xs text-stone-500">{{ product.sku }} · {{ $t('reports.soldUnits', { count: product.qty }) }}</p>
 												</div>
 												<div class="text-right">
 													<p class="text-sm font-semibold text-stone-900">{{ product.revenue }}</p>
@@ -296,9 +297,9 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Staff rank</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">ผลงานพนักงานขาย</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.staffPerformance') }}</h2>
 										</div>
-										<UBadge color="neutral" variant="soft" label="ตามจำนวนบิล" />
+									<UBadge color="neutral" variant="soft" :label="$t('reports.byBillCount')" />
 									</div>
 
 									<div class="space-y-3">
@@ -309,7 +310,7 @@ function barHeight(value: number) {
 										>
 											<div class="min-w-0">
 												<p class="truncate text-sm font-semibold text-stone-900">{{ staff.name }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ staff.orders }} บิล · บิลเฉลี่ย {{ staff.avgTicket }}</p>
+												<p class="mt-1 text-xs text-stone-500">{{ $t('reports.billSummary', { count: staff.orders, average: staff.avgTicket }) }}</p>
 											</div>
 											<p class="text-sm font-semibold text-stone-900">{{ staff.sales }}</p>
 										</div>
@@ -324,26 +325,26 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operational signals</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">สัญญาณหน้างานที่ควรติดตาม</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.operationalSignals') }}</h2>
 										</div>
 										<UBadge color="primary" variant="soft" label="Mock insight" />
 									</div>
 
 									<div class="grid gap-3 md:grid-cols-3">
 										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-											<p class="text-sm font-semibold text-stone-900">ชั่วโมงพีค</p>
+										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.peakHour') }}</p>
 											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">12:00</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">ออเดอร์หนาแน่นสุดในช่วงกลางวัน ควรเตรียมพนักงานประจำจุดชำระ</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.peakHourHint') }}</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-											<p class="text-sm font-semibold text-stone-900">ช่องทางชำระหลัก</p>
+										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.primaryPayment') }}</p>
 											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">QR / โอน</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">คิดเป็น 41% ของยอดขายช่วงที่เลือก เหมาะกับการเน้น QR counter flow</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.primaryPaymentHint') }}</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-											<p class="text-sm font-semibold text-stone-900">สินค้าต้องเติมสต็อก</p>
+										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.restockNeeded') }}</p>
 											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">4 SKU</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">ควรสร้าง purchase order หรือ receive plan ก่อนรอบขายถัดไป</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.restockHint') }}</p>
 										</div>
 									</div>
 								</div>
@@ -354,9 +355,9 @@ function barHeight(value: number) {
 									<div class="flex items-center justify-between gap-3">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Low stock</p>
-											<h2 class="mt-2 text-lg font-semibold text-stone-950">รายการใกล้หมด</h2>
+										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.lowStock') }}</h2>
 										</div>
-										<UBadge color="error" variant="soft" :label="`${lowStockItems.length} รายการ`" />
+									<UBadge color="error" variant="soft" :label="$t('common.itemCount', { count: lowStockItems.length })" />
 									</div>
 
 									<div class="space-y-3">
@@ -372,7 +373,7 @@ function barHeight(value: number) {
 												</div>
 												<div class="text-right">
 													<p class="text-sm font-semibold text-stone-900">{{ item.remaining }}</p>
-													<p class="mt-1 text-xs text-stone-500">เตือนที่ {{ item.threshold }}</p>
+													<p class="mt-1 text-xs text-stone-500">{{ $t('reports.alertAt', { count: item.threshold }) }}</p>
 												</div>
 											</div>
 										</div>

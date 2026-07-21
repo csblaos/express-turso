@@ -28,6 +28,7 @@ async function bootstrap(): Promise<void> {
 		const { AuthInterface } = await import("@interfaces/AuthInterface");
 		const { SystemAdminClientInterface } = await import("@interfaces/SystemAdminClientInterface");
 		const { ProductInterface } = await import("@interfaces/ProductInterface");
+		const { OrderInterface } = await import("@interfaces/OrderInterface");
 		const { StoreCurrencyRateInterface } = await import("@interfaces/StoreCurrencyRateInterface");
 		const { StoreCurrencyRateHistoryInterface } = await import("@interfaces/StoreCurrencyRateHistoryInterface");
 		const { default: app } = await import("./App");
@@ -38,6 +39,7 @@ async function bootstrap(): Promise<void> {
 	await AuthInterface.ensureDevelopmentAccountsPersisted();
 		await SystemAdminClientInterface.ensureColumns();
 		await ProductInterface.ensureColumns();
+		await OrderInterface.ensureTables();
 		await StoreCurrencyRateInterface.warmup();
 		await StoreCurrencyRateHistoryInterface.warmup();
 

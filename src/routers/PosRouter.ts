@@ -11,6 +11,8 @@ export class PosRouter {
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/products", PosController.getCatalog);
+		this.router.get("/orders", PosController.listOrders);
+		this.router.post("/checkout", PosController.checkout);
 	}
 
 	static getInstance(): PosRouter {

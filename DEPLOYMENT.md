@@ -210,3 +210,64 @@ NUXT_PUBLIC_API_BASE=https://api.example.com/api
 - backend ปัจจุบันเป็น CommonJS TypeScript app
 - Nuxt ฝั่ง production เป็น Nitro/ESM server output
 - การรวมกันเพิ่มความซับซ้อนเรื่อง runtime และ startup มากกว่าประโยชน์
+
+## 9) DigitalOcean Droplet + GitHub Actions (branch `pos-okhaidee`)
+
+Workflow `.github/workflows/deploy-pos-okhaidee.yml` ทำงานเฉพาะเมื่อ push backend ที่เกี่ยวข้องขึ้น branch `pos-okhaidee` หรือสั่ง `workflow_dispatch` ด้วยตนเอง
+
+ลำดับการ deploy:
+
+1. GitHub Actions ติดตั้ง dependency และ compile TypeScript
+2. Build Docker image บน GitHub runner ไม่ใช่บน Droplet
+3. Push image แบบ immutable (`sha-<commit>`) ไป GitHub Container Registry
+4. ส่ง `compose.production.yml` และ production env ไป Droplet ผ่าน SSH
+5. Pull image, restart container และตรวจ `GET /healthz`
+
+### GitHub Environment และ Secrets
+
+สร้าง Environment ชื่อ `production` ใน GitHub แล้วเพิ่ม secrets:
+
+| Secret | ค่า |
+| --- | --- |
+| `DO_HOST` | Public IPv4 หรือ hostname ของ Droplet |
+| `DO_USER` | ผู้ใช้ deploy บน Droplet เช่น `deploy` |
+| `DO_SSH_PORT` | SSH port ปกติคือ `22` |
+| `DO_SSH_PRIVATE_KEY` | Private key ของ deploy key สำหรับ GitHub Actions |
+| `DO_SSH_KNOWN_HOSTS` | ผลจาก `ssh-keyscan -H <DO_HOST>` หลังตรวจ fingerprint แล้ว |
+| `PRODUCTION_ENV_B64` | เนื้อหา `.env.production` ที่ encode ด้วย Base64 แบบบรรทัดเดียว |
+
+สร้างค่า `PRODUCTION_ENV_B64` บนเครื่อง local:
+
+```bash
+base64 < .env.production | tr -d '\n'
+```
+
+ตัวอย่าง `.env.production` (ห้าม commit ไฟล์จริง):
+
+```dotenv
+TURSO_DATABASE_URL=libsql://...
+TURSO_AUTH_TOKEN=...
+REDIS_DRIVER=upstash
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
+AUTH_JWT_SECRET=...
+```
+
+`NODE_ENV`, `PORT` และ `NODE_OPTIONS` ถูกกำหนดใน Compose แล้ว
+
+### Droplet prerequisites
+
+- Docker Engine และ Docker Compose plugin
+- Caddy บน host reverse proxy ไป `127.0.0.1:3005`
+- directory `/opt/pos-okhaidee` ที่ `DO_USER` เขียนได้
+- Firewall เปิด `22`, `80`, `443`; ไม่ต้องเปิด `3005` สู่ internet
+
+ตัวอย่าง Caddyfile:
+
+```caddy
+api.example.com {
+    reverse_proxy 127.0.0.1:3005
+}
+```
+
+Container ถูกจำกัด RAM ที่ 512 MB, CPU ที่ 0.8 core และหมุน log สูงสุดประมาณ 30 MB เพื่อให้เหมาะกับ Droplet 1 GB
