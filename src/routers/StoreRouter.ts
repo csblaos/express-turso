@@ -13,16 +13,16 @@ export class StoreRouter {
 
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getAll);
+		this.router.get("/", PermissionMiddleware.require("stores.view"), StoreController.getAll);
 		this.router.use("/:storeId/payment-accounts", StorePaymentAccountRouter.getInstance().getRouter());
-		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getById);
-		this.router.get("/:id/cost-method/history", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCostMethodHistory);
-		this.router.get("/:id/currency-rates", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRates);
-		this.router.get("/:id/currency-rates/history", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);
-		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.create"), StoreController.create);
-		this.router.put("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), StoreController.update);
-		this.router.put("/:id/currency-rates", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.updateCurrencyRates);
-		this.router.delete("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.archive"), StoreController.delete);
+		this.router.get("/:id", PermissionMiddleware.require("stores.view"), StoreController.getById);
+		this.router.get("/:id/cost-method/history", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCostMethodHistory);
+		this.router.get("/:id/currency-rates", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRates);
+		this.router.get("/:id/currency-rates/history", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);
+		this.router.post("/", PermissionMiddleware.require("settings.store.create"), StoreController.create);
+		this.router.put("/:id", PermissionMiddleware.require("settings.store.update"), StoreController.update);
+		this.router.put("/:id/currency-rates", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.updateCurrencyRates);
+		this.router.delete("/:id", PermissionMiddleware.require("settings.store.archive"), StoreController.delete);
 	}
 
 	static getInstance(): StoreRouter {

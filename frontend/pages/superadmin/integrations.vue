@@ -109,8 +109,8 @@ function toneClasses(tone: IntegrationCard["tone"]) {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="workspace สำหรับ social, commerce และ shipping integrations ใต้ superadmin นี้"
 	>

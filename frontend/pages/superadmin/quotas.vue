@@ -221,8 +221,8 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="quota ของบัญชี ร้าน และการขยายร้าน ภายใต้ superadmin นี้เท่านั้น"
 	>
@@ -258,7 +258,7 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin quotas</p>
+									<p class="text-sm font-semibold text-stone-950">Super Admin quotas</p>
 									<p class="mt-1 hidden text-xs text-stone-500 lg:block">มุมมอง quota แบบ owner scope เพื่อดู capacity จริงและ account ที่ใกล้ชน limit</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">

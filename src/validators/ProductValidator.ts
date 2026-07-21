@@ -18,6 +18,7 @@ const finiteNumber = z.preprocess((value) => {
 const optionalString = z.string().nullish();
 const optionalNumber = finiteNumber.nullish();
 const optionalLocation = z.string().trim().max(80).nullish();
+const nonNegativeNumber = finiteNumber.refine((value) => value >= 0, "must be greater than or equal to 0");
 
 export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
@@ -101,12 +102,31 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variants: z.array(ProductValidator.bulkVariantItemSchema).min(1).max(200),
 	});
 
+	private static readonly importBodySchema = z.object({
+		store_id: nonEmptyString,
+		rows: z.array(z.object({
+			name: nonEmptyString.max(160),
+			sku: nonEmptyString.max(32),
+			barcode: z.string().trim().max(64).nullable().optional(),
+			category_id: z.string().trim().max(120).nullable().optional(),
+			base_unit_id: nonEmptyString.max(120),
+			price_base: nonNegativeNumber,
+			cost_base: nonNegativeNumber,
+			location: optionalLocation,
+			low_stock_threshold: nonNegativeNumber.nullable().optional(),
+		})).min(1).max(500),
+	});
+
 	public static readonly list = ProductValidator.init({
 		query: ProductValidator.listQuerySchema,
 	});
 
 	public static readonly create = ProductValidator.init({
 		body: ProductValidator.createBodySchema,
+	});
+
+	public static readonly importRows = ProductValidator.init({
+		body: ProductValidator.importBodySchema,
 	});
 
 	public static readonly update = ProductValidator.init({

@@ -143,7 +143,7 @@ const topbarMenuIcon = computed(() => {
 
 const roleLabelMap: Record<string, string> = {
 	system_admin: "System admin",
-	superadmin: "Superadmin",
+	superadmin: "Super Admin",
 	store_admin: "Store admin",
 	manager: "Manager",
 };

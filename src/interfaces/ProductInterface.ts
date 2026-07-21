@@ -28,7 +28,31 @@ export type ProductListResult = {
 	categoryCounts: Record<string, number>;
 };
 
+export type ProductImportRow = {
+	name: string;
+	sku: string;
+	barcode: string | null;
+	category_id: string | null;
+	base_unit_id: string;
+	price_base: number;
+	cost_base: number;
+	location: string | null;
+	low_stock_threshold: number | null;
+};
+
+export type ProductImportResult = {
+	created: number;
+	updated: number;
+	total: number;
+	missingCategoryIds: string[];
+	missingUnitIds: string[];
+};
+
 const PRODUCT_OPTIONAL_COLUMNS = [
+	{
+		name: "updated_at",
+		sql: "ALTER TABLE products ADD COLUMN updated_at TEXT",
+	},
 	{
 		name: "deleted_at",
 		sql: "ALTER TABLE products ADD COLUMN deleted_at TEXT",
@@ -164,8 +188,8 @@ export class ProductInterface {
 		const limit = Math.min(100, Math.max(1, Math.floor(input.limit)));
 		const offset = (page - 1) * limit;
 
-		const [itemsResult, countResult, statsResult, categoriesResult] = await Promise.all([
-			db.execute({
+		const [itemsResult, countResult, statsResult, categoriesResult] = await db.batch([
+			{
 				sql: `SELECT p.*,
 					pc.name AS category_name,
 					COALESCE(u.name_th, u.code) AS base_unit_name,
@@ -177,9 +201,9 @@ export class ProductInterface {
 				ORDER BY ${orderBy}
 				LIMIT ? OFFSET ?`,
 				args: [ ...args, limit, offset ],
-			}),
-			db.execute({ sql: `SELECT COUNT(*) AS total FROM products p WHERE ${where}`, args }),
-			db.execute({
+			},
+			{ sql: `SELECT COUNT(*) AS total FROM products p WHERE ${where}`, args },
+			{
 				sql: `SELECT
 					COUNT(*) AS total,
 					SUM(CASE WHEN p.active = 1 THEN 1 ELSE 0 END) AS active,
@@ -187,14 +211,14 @@ export class ProductInterface {
 					SUM(CASE WHEN p.active = 1 AND COALESCE(p.low_stock_threshold, 0) > 0 THEN 1 ELSE 0 END) AS low_stock
 				FROM products p WHERE p.deleted_at IS NULL${input.storeId ? " AND p.store_id = ?" : ""}`,
 				args: input.storeId ? [ input.storeId ] : [],
-			}),
-			db.execute({
+			},
+			{
 				sql: `SELECT COALESCE(p.category_id, 'uncategorized') AS category_id, COUNT(*) AS total
 				FROM products p WHERE p.deleted_at IS NULL${input.storeId ? " AND p.store_id = ?" : ""}
 				GROUP BY COALESCE(p.category_id, 'uncategorized')`,
 				args: input.storeId ? [ input.storeId ] : [],
-			}),
-		]);
+			},
+		], "read");
 
 		const total = Number(countResult.rows[0]?.total || 0);
 		const statsRow = statsResult.rows[0] || {};
@@ -248,6 +272,114 @@ export class ProductInterface {
 		return result.rows.map(ProductInterface.mapRow);
 	}
 
+	static async importRows(storeId: string, rows: ProductImportRow[]): Promise<ProductImportResult> {
+		await ProductInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const skus = rows.map((row) => row.sku);
+		const categoryIds = Array.from(new Set(rows.map((row) => row.category_id).filter((id): id is string => Boolean(id))));
+		const unitIds = Array.from(new Set(rows.map((row) => row.base_unit_id)));
+		const skuPlaceholders = skus.map(() => "?").join(", ");
+		const categoryPlaceholders = categoryIds.map(() => "?").join(", ");
+		const unitPlaceholders = unitIds.map(() => "?").join(", ");
+
+		const [ existingResult, categoryResult, unitResult ] = await db.batch([
+			{
+				sql: `SELECT id, sku FROM products WHERE store_id = ? AND deleted_at IS NULL AND sku IN (${skuPlaceholders})`,
+				args: [ storeId, ...skus ],
+			},
+			categoryIds.length > 0
+				? {
+					sql: `SELECT id FROM product_categories WHERE store_id = ? AND id IN (${categoryPlaceholders})`,
+					args: [ storeId, ...categoryIds ],
+				}
+				: { sql: "SELECT id FROM product_categories WHERE 0", args: [] },
+			{
+				sql: `SELECT id FROM units WHERE store_id = ? AND id IN (${unitPlaceholders})`,
+				args: [ storeId, ...unitIds ],
+			},
+		], "read");
+
+		const existingBySku = new Map(
+			existingResult.rows.map((row) => [ String(row.sku).trim().toUpperCase(), String(row.id) ]),
+		);
+		const validCategoryIds = new Set(categoryResult.rows.map((row) => String(row.id)));
+		const validUnitIds = new Set(unitResult.rows.map((row) => String(row.id)));
+		const missingCategoryIds = categoryIds.filter((id) => !validCategoryIds.has(id));
+		const missingUnitIds = unitIds.filter((id) => !validUnitIds.has(id));
+
+		if (missingCategoryIds.length > 0 || missingUnitIds.length > 0) {
+			return {
+				created: 0,
+				updated: 0,
+				total: rows.length,
+				missingCategoryIds,
+				missingUnitIds,
+			};
+		}
+
+		const now = new Date().toISOString();
+		let created = 0;
+		let updated = 0;
+		const statements = rows.map((row) => {
+			const existingId = existingBySku.get(row.sku);
+			if (existingId) {
+				updated += 1;
+				return {
+					sql: `UPDATE products SET
+						name = ?, barcode = ?, category_id = ?, base_unit_id = ?,
+						price_base = ?, cost_base = ?, location = ?, low_stock_threshold = ?, updated_at = ?
+					WHERE id = ? AND store_id = ? AND deleted_at IS NULL`,
+					args: [
+						row.name,
+						row.barcode,
+						row.category_id,
+						row.base_unit_id,
+						row.price_base,
+						row.cost_base,
+						row.location,
+						row.low_stock_threshold,
+						now,
+						existingId,
+						storeId,
+					] as InValue[],
+				};
+			}
+
+			created += 1;
+			return {
+				sql: `INSERT INTO products (
+					id, store_id, sku, name, barcode, category_id, base_unit_id,
+					price_base, cost_base, active, created_at, updated_at, out_stock_threshold,
+					low_stock_threshold, allow_base_unit_sale, location
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, 1, ?)`,
+				args: [
+					randomUUID(),
+					storeId,
+					row.sku,
+					row.name,
+					row.barcode,
+					row.category_id,
+					row.base_unit_id,
+					row.price_base,
+					row.cost_base,
+					now,
+					now,
+					row.low_stock_threshold,
+					row.location,
+				] as InValue[],
+			};
+		});
+
+		await db.batch(statements, "write");
+		return {
+			created,
+			updated,
+			total: rows.length,
+			missingCategoryIds: [],
+			missingUnitIds: [],
+		};
+	}
+
 	static async findById(id: string): Promise<Product | null> {
 		await ProductInterface.ensureColumns();
 		return ProductInterface.findByIdInternal(id, false);
@@ -275,6 +407,9 @@ export class ProductInterface {
 		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
 		const insertPayload = getInsertPayload(payload);
+		const now = new Date().toISOString();
+		if (!insertPayload.created_at) insertPayload.created_at = now;
+		insertPayload.updated_at = now;
 		const id = String(insertPayload.id);
 		const keys = Object.keys(insertPayload);
 		const values = Object.values(insertPayload);
@@ -294,12 +429,12 @@ export class ProductInterface {
 	static async update(id: string, data: UpdateProductInput): Promise<Product> {
 		await ProductInterface.ensureColumns();
 		const updatePayload = getUpdatePayload(data);
-		const keys = Object.keys(updatePayload) as ProductWritableKey[];
-		const values = Object.values(updatePayload);
-
-		if (keys.length === 0) {
+		if (Object.keys(updatePayload).length === 0) {
 			throw new Error("No data to update");
 		}
+		(updatePayload as Record<string, InValue>).updated_at = new Date().toISOString();
+		const keys = Object.keys(updatePayload) as ProductWritableKey[];
+		const values = Object.values(updatePayload);
 
 		const setClause = keys.map((key) => `${key} = ?`).join(", ");
 		const db = DbConn.getClient();

@@ -34,6 +34,27 @@ type ApiInventoryBalance = {
 	updated_at: string;
 };
 
+type ApiInventoryList = {
+	items: ApiInventoryBalance[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+	stats: {
+		total: number;
+		ready: number;
+		low: number;
+		out: number;
+		negative: number;
+		totalAvailableQty: number;
+	};
+	categories: Array<{
+		id: string;
+		label: string;
+		count: number;
+	}>;
+};
+
 	type ApiInventoryMovement = {
 		id: string;
 		store_id: string;
@@ -135,12 +156,26 @@ const adjustmentSubmitting = ref(false);
 const adjustmentBadgeIso = useState("inventory-adjustment-badge-iso", () => new Date().toISOString());
 const currentPage = ref(1);
 const pageSize = ref(20);
-const pageSizeOptions = [10, 20, 50];
+const pageSizeOptions = [10, 20, 50, 100];
+	const balancesTotal = ref(0);
+	const balancesTotalPages = ref(1);
+	const inventoryStats = ref<ApiInventoryList["stats"]>({
+		total: 0,
+		ready: 0,
+		low: 0,
+		out: 0,
+		negative: 0,
+		totalAvailableQty: 0,
+	});
+	const inventoryCategories = ref<ApiInventoryList["categories"]>([]);
 
 	let cameraScannerControls: { stop?: () => void } | null = null;
 	let scannerBuffer = "";
 	let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let balanceLoadSequence = 0;
 	let lastScannerKeyAt = 0;
+	let pendingScan: { code: string; source: "scanner" | "camera" } | null = null;
 
 	const canAdjustInventory = computed(() => can("inventory.adjust"));
 	const canUpdateProduct = computed(() => can("products.update"));
@@ -153,38 +188,10 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", {
 
 const categoryOptions = computed(() => [
 	{ id: "all", label: "ทั้งหมด" },
-	...Array.from(
-		new Map(
-			balances.value
-				.filter((item) => item.categoryId !== "uncategorized")
-				.map((item) => [item.categoryId, { id: item.categoryId, label: item.categoryLabel }]),
-		).values(),
-	),
+	...inventoryCategories.value.map((category) => ({ id: category.id, label: category.label })),
 ]);
 
-const filteredBalances = computed(() => {
-	const query = searchQuery.value.trim().toLowerCase();
-	let result = balances.value.filter((item) => {
-		const matchesQuery = !query || [item.name, item.sku, item.barcode, item.location || ""].some((value) => value.toLowerCase().includes(query));
-		const matchesCategory = activeCategory.value === "all" || item.categoryId === activeCategory.value;
-		const matchesStatus = activeStatus.value === "all"
-			|| (activeStatus.value === "active" && item.status === "active")
-			|| (activeStatus.value === "inactive" && item.status === "inactive")
-			|| item.stockState === activeStatus.value;
-
-		return matchesQuery && matchesCategory && matchesStatus;
-	});
-
-	if (activeSort.value === "name") {
-		result = [...result].sort((a, b) => a.name.localeCompare(b.name, "th"));
-	} else if (activeSort.value === "available") {
-		result = [...result].sort((a, b) => a.available - b.available || a.name.localeCompare(b.name, "th"));
-	} else {
-		result = [...result].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, "th"));
-	}
-
-	return result;
-});
+const filteredBalances = computed(() => balances.value);
 
 const selectedBalance = computed(() =>
 	balances.value.find((item) => item.id === selectedProductId.value)
@@ -195,24 +202,21 @@ const selectedBalance = computed(() =>
 const categoryCounts = computed(() =>
 	categoryOptions.value.reduce<Record<string, number>>((result, category) => {
 		result[category.id] = category.id === "all"
-			? balances.value.length
-			: balances.value.filter((item) => item.categoryId === category.id).length;
+			? inventoryStats.value.total
+			: inventoryCategories.value.find((item) => item.id === category.id)?.count || 0;
 		return result;
 	}, {}),
 );
 
-const totalSkuCount = computed(() => balances.value.length);
-const readyCount = computed(() => balances.value.filter((item) => item.stockState === "ready").length);
-const lowCount = computed(() => balances.value.filter((item) => item.stockState === "low").length);
-const outCount = computed(() => balances.value.filter((item) => item.stockState === "out").length);
-const negativeCount = computed(() => balances.value.filter((item) => item.stockState === "negative").length);
-const totalAvailableQty = computed(() => balances.value.reduce((sum, item) => sum + item.available, 0));
-const totalItems = computed(() => filteredBalances.value.length);
-const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)));
-const paginatedBalances = computed(() => {
-	const startIndex = (currentPage.value - 1) * pageSize.value;
-	return filteredBalances.value.slice(startIndex, startIndex + pageSize.value);
-});
+const totalSkuCount = computed(() => inventoryStats.value.total);
+const readyCount = computed(() => inventoryStats.value.ready);
+const lowCount = computed(() => inventoryStats.value.low);
+const outCount = computed(() => inventoryStats.value.out);
+const negativeCount = computed(() => inventoryStats.value.negative);
+const totalAvailableQty = computed(() => inventoryStats.value.totalAvailableQty);
+const totalItems = computed(() => balancesTotal.value);
+const totalPages = computed(() => balancesTotalPages.value);
+const paginatedBalances = computed(() => balances.value);
 const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
 const pageStart = computed(() => (
 	totalItems.value === 0
@@ -226,18 +230,14 @@ const pageSummaryText = computed(() => (
 		: `${pageStart.value}-${pageEnd.value} จาก ${totalItems.value} รายการ`
 ));
 
-watch([filteredBalances, pageSize], ([value]) => {
-	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
-	if (currentPage.value > maxPage) {
-		currentPage.value = maxPage;
-	}
+watch(balances, (value) => {
 	if (!value.length) {
 		selectedProductId.value = "";
 		detailOpen.value = false;
 		return;
 	}
 	if (!value.some((item) => item.id === selectedProductId.value)) {
-		selectedProductId.value = paginatedBalances.value[0]?.id || value[0].id;
+		selectedProductId.value = value[0].id;
 	}
 }, { immediate: true });
 
@@ -251,12 +251,17 @@ watch([filteredBalances, pageSize], ([value]) => {
 		void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
 	}, { immediate: false });
 
-watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
+watch(searchQuery, () => {
 	currentPage.value = 1;
+	if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+	searchDebounceTimer = setTimeout(() => {
+		void loadBalances();
+	}, pendingScan ? 0 : 250);
 });
 
-watch(pageSize, () => {
+watch([activeCategory, activeStatus, activeSort], () => {
 	currentPage.value = 1;
+	void loadBalances();
 });
 
 function formatDate(value: string) {
@@ -366,20 +371,62 @@ function getMovementQtyLabel(value: number) {
 }
 
 async function loadBalances() {
+	const loadSequence = ++balanceLoadSequence;
 	balancesPending.value = true;
 	balancesError.value = null;
 
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiInventoryBalance[]>>("/inventory");
-		balances.value = response.data.map(mapBalance);
+		const response = await apiFetch<ApiEnvelope<ApiInventoryList>>("/inventory", {
+			query: {
+				page: currentPage.value,
+				limit: pageSize.value,
+				query: searchQuery.value.trim() || undefined,
+				category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+				status: activeStatus.value,
+				sort: activeSort.value,
+			},
+		});
+		if (loadSequence !== balanceLoadSequence) return;
+		balances.value = response.data.items.map(mapBalance);
+		balancesTotal.value = response.data.total;
+		balancesTotalPages.value = Math.max(1, response.data.totalPages);
+		inventoryStats.value = response.data.stats;
+		inventoryCategories.value = response.data.categories;
+
+		if (currentPage.value > balancesTotalPages.value) {
+			currentPage.value = balancesTotalPages.value;
+			void loadBalances();
+			return;
+		}
+
 		if (!selectedProductId.value && balances.value.length) {
 			selectedProductId.value = balances.value[0].id;
 		}
+
+		if (pendingScan) {
+			const scan = pendingScan;
+			pendingScan = null;
+			const normalized = scan.code.toLowerCase();
+			const matched = balances.value.find((item) => (
+				item.barcode.toLowerCase() === normalized || item.sku.toLowerCase() === normalized
+			));
+
+			if (matched) openDetail(matched.id);
+			toastInfo(
+				matched
+					? `${scan.source === "camera" ? "สแกนกล้อง" : "สแกน"} ${scan.code} พบ ${matched.name}`
+					: `${scan.source === "camera" ? "สแกนกล้อง" : "สแกน"} ${scan.code} แต่ไม่พบสินค้า`,
+			);
+		}
 	} catch (error) {
+		if (loadSequence !== balanceLoadSequence) return;
+		pendingScan = null;
 		balances.value = [];
+		balancesTotal.value = 0;
+		balancesTotalPages.value = 1;
 		balancesError.value = resolveApiErrorMessage(error, "โหลดข้อมูลสต็อกไม่สำเร็จ");
 	} finally {
-		balancesPending.value = false;
+		if (loadSequence === balanceLoadSequence) balancesPending.value = false;
 	}
 }
 
@@ -491,21 +538,13 @@ function selectFromScan(code: string, source: "scanner" | "camera") {
 	const normalized = code.trim();
 	if (!normalized) return;
 
-	searchQuery.value = normalized;
-	const lower = normalized.toLowerCase();
-	const matched = balances.value.find((item) =>
-		item.barcode.toLowerCase() === lower || item.sku.toLowerCase() === lower,
-	) ?? filteredBalances.value[0];
-
-	if (matched) {
-		openDetail(matched.id);
+	pendingScan = { code: normalized, source };
+	currentPage.value = 1;
+	if (searchQuery.value === normalized) {
+		void loadBalances();
+	} else {
+		searchQuery.value = normalized;
 	}
-
-		toastInfo(
-			matched
-				? `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} พบ ${matched.name}`
-				: `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} แต่ไม่พบสินค้า`,
-		);
 
 	nextTick(() => {
 		focusSearchInput();
@@ -580,6 +619,7 @@ function goToPage(nextPage: number) {
 	const normalizedPage = Math.min(Math.max(1, nextPage), totalPages.value);
 	if (normalizedPage === currentPage.value) return;
 	currentPage.value = normalizedPage;
+	void loadBalances();
 	nextTick(() => {
 		scrollInventoryListToTop();
 	});
@@ -589,6 +629,8 @@ function updatePageSize(nextPageSize: number | string) {
 	const normalizedSize = Number(nextPageSize);
 	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
 	pageSize.value = normalizedSize;
+	currentPage.value = 1;
+	void loadBalances();
 	nextTick(() => {
 		scrollInventoryListToTop();
 	});
@@ -718,6 +760,9 @@ onMounted(() => {
 		stopCameraScanner();
 		if (scannerBufferTimer) {
 			clearTimeout(scannerBufferTimer);
+		}
+		if (searchDebounceTimer) {
+			clearTimeout(searchDebounceTimer);
 		}
 		window.removeEventListener("keydown", handleGlobalScannerKeydown);
 	});

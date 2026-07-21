@@ -5,7 +5,9 @@ import {
 	InventoryBalanceListItem,
 	InventoryFilters,
 	InventoryInterface,
+	InventoryListResult,
 	InventoryMovementListItem,
+	InventoryPageFilters,
 } from "@interfaces/InventoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
@@ -34,6 +36,11 @@ export class InventoryComponent {
 	static async getBalances(requestId: string, filters: InventoryFilters): Promise<InventoryBalanceListItem[]> {
 		void requestId;
 		return InventoryInterface.findBalances(filters);
+	}
+
+	static async getBalancePage(requestId: string, filters: InventoryPageFilters): Promise<InventoryListResult> {
+		void requestId;
+		return InventoryInterface.findBalancePage(filters);
 	}
 
 	static async getMovements(requestId: string, filters: InventoryMovementFilters): Promise<InventoryMovementListItem[]> {

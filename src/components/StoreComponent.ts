@@ -3,7 +3,7 @@ import { DbConn } from "@connections/DbConn";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
-import { StoreInterface } from "@interfaces/StoreInterface";
+import { StoreAccessActor, StoreInterface } from "@interfaces/StoreInterface";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { CreateStoreInput, Store } from "@models/Store";
@@ -35,11 +35,6 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 ];
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];
-type StoreActor = {
-	userId: string;
-	systemRole: string;
-};
-
 const ALLOWED_COST_METHODS = new Set([ "average", "fifo" ]);
 
 function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
@@ -53,44 +48,21 @@ function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
 }
 
 export class StoreComponent {
-	private static async assertAccess(store: Store, actor: StoreActor): Promise<void> {
-		if (actor.systemRole === "system_admin") return;
-		if (actor.systemRole === "superadmin" && store.owner_user_id === actor.userId) return;
-		const access = await RbacInterface.getUserPermissions(actor.userId);
-		if (access.memberships.some((membership) => membership.store_id === store.id)) return;
-		throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
+	static async getAll(requestId: string, actor: StoreAccessActor): Promise<Store[]> {
+		void requestId;
+		return StoreInterface.findAccessible(actor);
 	}
 
-	static async getAll(requestId: string, actor: StoreActor): Promise<Store[]> {
+	static async getById(requestId: string, id: string, actor: StoreAccessActor): Promise<Store> {
 		void requestId;
-		if (actor.systemRole === "system_admin") {
-			return StoreInterface.findAll();
-		}
-
-		if (actor.systemRole === "superadmin") {
-			const access = await RbacInterface.getUserPermissions(actor.userId);
-			const accessibleStoreIds = new Set(access.memberships.map((membership) => membership.store_id));
-			return (await StoreInterface.findAll()).filter((store) => (
-				store.owner_user_id === actor.userId || accessibleStoreIds.has(store.id)
-			));
-		}
-
-		const access = await RbacInterface.getUserPermissions(actor.userId);
-		const memberStoreIds = new Set(access.memberships.map((membership) => membership.store_id));
-		return (await StoreInterface.findAll()).filter((store) => memberStoreIds.has(store.id));
-	}
-
-	static async getById(requestId: string, id: string, actor: StoreActor): Promise<Store> {
-		void requestId;
-		const store = await StoreInterface.findById(id);
+		const store = await StoreInterface.findAccessibleById(id, actor);
 		if (!store) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
-		await StoreComponent.assertAccess(store, actor);
 		return store;
 	}
 
-	static async create(requestId: string, payload: CreateStoreInput, actor: StoreActor): Promise<Store> {
+	static async create(requestId: string, payload: CreateStoreInput, actor: StoreAccessActor): Promise<Store> {
 		void requestId;
 		if (!payload?.name) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NAME_REQUIRED);
@@ -132,13 +104,12 @@ export class StoreComponent {
 		throw ApiError.ForbiddenError("User cannot create stores");
 	}
 
-	static async update(requestId: string, id: string, data: Record<string, unknown>, actor: StoreActor): Promise<Store> {
+	static async update(requestId: string, id: string, data: Record<string, unknown>, actor: StoreAccessActor): Promise<Store> {
 		void requestId;
-		const existing = await StoreInterface.findById(id);
+		const existing = await StoreInterface.findAccessibleById(id, actor);
 		if (!existing) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
-		await StoreComponent.assertAccess(existing, actor);
 
 		const updateData = pickUpdateFields(data || {});
 		if (typeof updateData.cost_method === "string" && !ALLOWED_COST_METHODS.has(updateData.cost_method)) {
@@ -176,13 +147,12 @@ export class StoreComponent {
 		}
 	}
 
-	static async delete(requestId: string, id: string, actor: StoreActor): Promise<void> {
+	static async delete(requestId: string, id: string, actor: StoreAccessActor): Promise<void> {
 		void requestId;
-		const store = await StoreInterface.findById(id);
+		const store = await StoreInterface.findAccessibleById(id, actor);
 		if (!store) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
-		await StoreComponent.assertAccess(store, actor);
 
 		const ok = await StoreInterface.delete(id);
 		if (!ok) {

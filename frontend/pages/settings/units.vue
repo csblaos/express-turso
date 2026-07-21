@@ -22,6 +22,7 @@ type UnitRecord = {
 };
 
 const { apiFetch } = useApiClient();
+const { t } = useI18n();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
 
@@ -78,7 +79,7 @@ const effectiveStoreId = computed(() => (
 ));
 const selectedStoreLabel = computed(() => (
 	stores.value.find((store) => store.id === effectiveStoreId.value)?.name
-	|| "ยังไม่พบร้านที่กำลังใช้งาน"
+	|| t("unitsPage.noActiveStore")
 ));
 const filteredUnits = computed(() => {
 	const keyword = searchQuery.value.trim().toLowerCase();
@@ -104,7 +105,7 @@ const selectedUnit = computed(() => (
 	|| units.value[0]
 	|| null
 ));
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("unitsPage.pageOf", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	totalUnits.value === 0
 		? 0
@@ -113,14 +114,14 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalUnits.value));
 const pageSummaryText = computed(() => (
 	totalUnits.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalUnits.value} หน่วย`
+		? t("unitsPage.noData")
+		: t("unitsPage.rangeSummary", { start: pageStart.value, end: pageEnd.value, total: totalUnits.value })
 ));
 const overviewStats = computed(() => ([
-	{ label: "หน่วยทั้งหมด", value: units.value.length },
-	{ label: "ผลลัพธ์ที่แสดง", value: filteredUnits.value.length },
-	{ label: "Code ไม่ซ้ำ", value: new Set(units.value.map((unit) => unit.code.trim().toLowerCase())).size },
-	{ label: "Store scoped", value: units.value.filter((unit) => unit.store_id === effectiveStoreId.value).length },
+	{ label: t("unitsPage.totalUnits"), value: units.value.length },
+	{ label: t("unitsPage.shownResults"), value: filteredUnits.value.length },
+	{ label: t("unitsPage.uniqueCodes"), value: new Set(units.value.map((unit) => unit.code.trim().toLowerCase())).size },
+	{ label: t("unitsPage.storeScoped"), value: units.value.filter((unit) => unit.store_id === effectiveStoreId.value).length },
 ]));
 const canCreateUnit = computed(() => (
 	Boolean(effectiveStoreId.value)
@@ -191,7 +192,7 @@ watch(detailOpen, (isOpen) => {
 	detailForm.name_th = selectedUnit.value.name_th;
 });
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = t("unitsPage.tryAgain")) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -282,7 +283,7 @@ async function fetchUnits() {
 		await nextTick();
 		scrollUnitsListToTop();
 	} catch (error) {
-		unitsError.value = resolveApiErrorMessage(error, "โหลดหน่วยสินค้าไม่สำเร็จ");
+		unitsError.value = resolveApiErrorMessage(error, t("unitsPage.loadFailed"));
 	} finally {
 		unitsPending.value = false;
 	}
@@ -303,13 +304,13 @@ async function createUnit() {
 		});
 		createOpen.value = false;
 		appToast.success({
-			title: "สร้างหน่วยสินค้าแล้ว",
+			title: t("unitsPage.created"),
 			description: createForm.name_th.trim(),
 		});
 		await fetchUnits();
 	} catch (error) {
 		appToast.error({
-			title: "สร้างหน่วยสินค้าไม่สำเร็จ",
+			title: t("unitsPage.createFailed"),
 			description: resolveApiErrorMessage(error),
 			timeout: 3200,
 		});
@@ -330,15 +331,15 @@ async function importDefaultUnits() {
 		});
 		const createdCount = response.data.length;
 		appToast.success({
-			title: createdCount > 0 ? "โหลด preset หน่วยสินค้าแล้ว" : "หน่วยมาตรฐานมีครบแล้ว",
+			title: createdCount > 0 ? t("unitsPage.presetLoaded") : t("unitsPage.presetComplete"),
 			description: createdCount > 0
-				? `เพิ่ม ${createdCount} หน่วยมาตรฐานให้ร้านนี้แล้ว`
-				: "ไม่พบหน่วยมาตรฐานที่ต้องเพิ่มใหม่",
+				? t("unitsPage.presetAdded", { count: createdCount })
+				: t("unitsPage.presetNoChanges"),
 		});
 		await fetchUnits();
 	} catch (error) {
 		appToast.error({
-			title: "โหลด preset ไม่สำเร็จ",
+			title: t("unitsPage.presetFailed"),
 			description: resolveApiErrorMessage(error),
 			timeout: 3200,
 		});
@@ -359,14 +360,14 @@ async function saveUnitDetail() {
 			},
 		});
 		appToast.success({
-			title: "บันทึกหน่วยสินค้าแล้ว",
+			title: t("unitsPage.saved"),
 			description: detailForm.name_th.trim(),
 		});
 		await fetchUnits();
 		detailOpen.value = false;
 	} catch (error) {
 		appToast.error({
-			title: "บันทึกหน่วยสินค้าไม่สำเร็จ",
+			title: t("unitsPage.saveFailed"),
 			description: resolveApiErrorMessage(error),
 			timeout: 3200,
 		});
@@ -393,7 +394,7 @@ async function deleteUnit() {
 			method: "DELETE",
 		});
 		appToast.success({
-			title: "ลบหน่วยสินค้าแล้ว",
+			title: t("unitsPage.deleted"),
 			description: selectedUnit.value.name_th,
 		});
 		deleteOpen.value = false;
@@ -401,7 +402,7 @@ async function deleteUnit() {
 		await fetchUnits();
 	} catch (error) {
 		appToast.error({
-			title: "ลบหน่วยสินค้าไม่สำเร็จ",
+			title: t("unitsPage.deleteFailed"),
 			description: resolveApiErrorMessage(error),
 			timeout: 3200,
 		});
@@ -420,7 +421,7 @@ onMounted(async () => {
 			await fetchUnits();
 		}
 	} catch (error) {
-		unitsError.value = resolveApiErrorMessage(error, "โหลดหน่วยสินค้าไม่สำเร็จ");
+		unitsError.value = resolveApiErrorMessage(error, t("unitsPage.loadFailed"));
 	} finally {
 		storesPending.value = false;
 		unitsPending.value = false;
@@ -433,16 +434,16 @@ onMounted(async () => {
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
-		sidebar-title="Units"
+		:sidebar-title="$t('unitsPage.title')"
 		sidebar-compact-title="UNT"
-		sidebar-description="จัดการหน่วยสินค้าและหน่วยขายของร้านที่กำลังใช้งาน"
+		:sidebar-description="$t('unitsPage.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title=""
 					compact
-					description="จัดการหน่วยสินค้าและรหัสย่อที่ใช้กับสินค้าและ POS"
+					:description="$t('unitsPage.pageDescription')"
 					@menu="openSidebar"
 				>
 					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(280px,1fr)_auto_auto_auto] lg:gap-3 lg:justify-end">
@@ -451,7 +452,7 @@ onMounted(async () => {
 							icon="i-heroicons-magnifying-glass-20-solid"
 							size="lg"
 							color="neutral"
-							placeholder="ค้นหา code, ชื่อหน่วย หรือ unit id"
+							:placeholder="$t('unitsPage.searchPlaceholder')"
 							class="min-w-0 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 						/>
 						<AppButton
@@ -460,11 +461,11 @@ onMounted(async () => {
 							size="md"
 							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
 							icon="i-heroicons-arrow-path-20-solid"
-							aria-label="รีเฟรช"
-							title="รีเฟรช"
+							:aria-label="$t('unitsPage.refresh')"
+							:title="$t('unitsPage.refresh')"
 							@click="fetchUnits"
 						>
-							<span class="hidden sm:inline">รีเฟรช</span>
+							<span class="hidden sm:inline">{{ $t("unitsPage.refresh") }}</span>
 						</AppButton>
 						<AppButton
 							color="neutral"
@@ -475,23 +476,23 @@ onMounted(async () => {
 							:loading="presetPending"
 							:spin-icon-on-loading="true"
 							:disabled="!canCreateUnits || !effectiveStoreId || presetPending"
-							aria-label="โหลด preset"
-							title="โหลด preset"
+							:aria-label="$t('unitsPage.loadPreset')"
+							:title="$t('unitsPage.loadPreset')"
 							@click="importDefaultUnits"
 						>
-							<span class="hidden sm:inline">โหลด preset</span>
+							<span class="hidden sm:inline">{{ $t("unitsPage.loadPreset") }}</span>
 						</AppButton>
 						<AppButton
 							color="primary"
 							size="md"
 							class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
 							icon="i-heroicons-plus-20-solid"
-							aria-label="เพิ่มหน่วย"
-							title="เพิ่มหน่วย"
+							:aria-label="$t('unitsPage.addUnit')"
+							:title="$t('unitsPage.addUnit')"
 							:disabled="!canCreateUnits || !effectiveStoreId"
 							@click="createOpen = true"
 						>
-							<span class="hidden sm:inline">เพิ่มหน่วย</span>
+							<span class="hidden sm:inline">{{ $t("unitsPage.addUnit") }}</span>
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -515,7 +516,7 @@ onMounted(async () => {
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
 									<p class="text-sm font-semibold text-stone-950">Units</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">จัดการชื่อหน่วยสินค้า รหัสย่อ และรายการหน่วยที่ใช้ในร้านที่กำลังใช้งาน</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t("unitsPage.listDescription") }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ pageSummaryText }}
@@ -528,17 +529,17 @@ onMounted(async () => {
 										<AppInlineLoadingBar container-class="bg-neutral-100" />
 									</div>
 									<div v-else-if="unitsError" class="p-5 text-center text-sm text-error">{{ unitsError }}</div>
-									<div v-else-if="!filteredUnits.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีหน่วยสินค้า</div>
+									<div v-else-if="!filteredUnits.length" class="p-5 text-center text-sm text-stone-500">{{ $t("unitsPage.empty") }}</div>
 									<template v-else>
 										<div class="overflow-x-auto">
 											<table class="min-w-[880px] w-full border-separate border-spacing-0">
 												<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หน่วยสินค้า</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Code</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Scope</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Store</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.productUnit") }}</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.code") }}</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.scope") }}</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.store") }}</th>
+														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.action") }}</th>
 													</tr>
 												</thead>
 												<tbody>
@@ -573,7 +574,7 @@ onMounted(async () => {
 																icon="i-heroicons-chevron-right-20-solid"
 																@click.stop="openUnitDetail(unit.id)"
 															>
-																จัดการ
+																{{ $t("unitsPage.manage") }}
 															</AppButton>
 														</td>
 													</tr>
@@ -598,7 +599,7 @@ onMounted(async () => {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("unitsPage.perPage") }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -618,11 +619,11 @@ onMounted(async () => {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || unitsPending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="$t('unitsPage.previousPage')"
+												:title="$t('unitsPage.previousPage')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ $t("unitsPage.previous") }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -631,11 +632,11 @@ onMounted(async () => {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || unitsPending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="$t('unitsPage.nextPage')"
+												:title="$t('unitsPage.nextPage')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ $t("unitsPage.next") }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -648,8 +649,8 @@ onMounted(async () => {
 
 			<AppResponsivePanel
 				v-model="detailOpen"
-				:title="selectedUnit ? selectedUnit.name_th : 'รายละเอียดหน่วยสินค้า'"
-				description="แก้ชื่อหน่วยสินค้าและรหัสย่อของหน่วยนี้"
+				:title="selectedUnit ? selectedUnit.name_th : $t('unitsPage.detailTitle')"
+				:description="$t('unitsPage.detailDescription')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -659,34 +660,34 @@ onMounted(async () => {
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Unit id</p>
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("unitsPage.unitId") }}</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedUnit.id }}</p>
-								<p class="mt-1 text-xs text-stone-500">Store: {{ selectedStoreLabel }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ $t("unitsPage.store") }}: {{ selectedStoreLabel }}</p>
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">รหัสย่อ</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.shortCode") }}</label>
 								<UInput v-model="detailForm.code" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
-								<p class="text-xs leading-5 text-stone-500">ใช้รหัสสั้นเพื่อให้เลือกหน่วยได้เร็วขึ้นในฟอร์มสินค้าและจุดขาย เช่น `pcs`, `box`, `kg`</p>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("unitsPage.shortCodeHint") }}</p>
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">ชื่อหน่วยสินค้า</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.unitName") }}</label>
 								<UInput v-model="detailForm.name_th" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Scope</p>
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("unitsPage.scope") }}</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedUnit.scope === "global" ? "Global" : "Store" }}</p>
 							</div>
 						</div>
 
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-3 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
-								<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteUnits || saving" @click="openDeleteModal">ลบ</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">{{ $t("common.close") }}</AppButton>
+								<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteUnits || saving" @click="openDeleteModal">{{ $t("unitsPage.deletePermanently") }}</AppButton>
 								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canSaveDetail || !canUpdateUnits" @click="saveUnitDetail">
-									บันทึก
+									{{ $t("common.save") }}
 								</AppButton>
 							</div>
 						</div>
@@ -696,8 +697,8 @@ onMounted(async () => {
 
 			<AppResponsivePanel
 				v-model="deleteOpen"
-				title="ลบหน่วยสินค้า"
-				description="ยืนยันการลบหน่วยสินค้าแบบถาวรจากร้านที่กำลังใช้งาน"
+				:title="$t('unitsPage.deleteTitle')"
+				:description="$t('unitsPage.deleteDescription')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -707,8 +708,8 @@ onMounted(async () => {
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
 						<div class="space-y-4 pb-6">
 							<div class="rounded-md border border-error-200 bg-error-50 p-4">
-								<p class="text-sm font-semibold text-stone-950">ลบแบบถาวร</p>
-								<p class="mt-1 text-xs leading-5 text-stone-600">ถ้าลบสำเร็จ หน่วยสินค้านี้จะหายจากระบบทันที และต้องสร้างใหม่หากต้องการใช้งานอีกครั้ง</p>
+								<p class="text-sm font-semibold text-stone-950">{{ $t("unitsPage.permanentDelete") }}</p>
+								<p class="mt-1 text-xs leading-5 text-stone-600">{{ $t("unitsPage.permanentDeleteHint") }}</p>
 							</div>
 
 							<div v-if="selectedUnit" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -717,15 +718,15 @@ onMounted(async () => {
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
-								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Confirm delete</p>
-								<p class="mt-3 text-sm text-stone-700">ยืนยันการลบหน่วยสินค้านี้ออกจากร้านปัจจุบัน ถ้าลบแล้วจะไม่สามารถกู้คืนได้จากหน้าจอนี้</p>
+								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("unitsPage.confirmDelete") }}</p>
+								<p class="mt-3 text-sm text-stone-700">{{ $t("unitsPage.confirmDeleteHint") }}</p>
 							</div>
 						</div>
 					</div>
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDeleteModal">ปิด</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDeleteModal">{{ $t("common.close") }}</AppButton>
 							<AppButton
 								color="error"
 								variant="solid"
@@ -737,7 +738,7 @@ onMounted(async () => {
 								:block="true"
 								@click="deleteUnit"
 							>
-								ลบถาวร
+								{{ $t("unitsPage.deletePermanently") }}
 							</AppButton>
 						</div>
 					</div>
@@ -746,8 +747,8 @@ onMounted(async () => {
 
 			<AppResponsivePanel
 				v-model="createOpen"
-				title="เพิ่มหน่วยสินค้า"
-				description="สร้างหน่วยสินค้าใหม่สำหรับร้านที่กำลังใช้งาน"
+				:title="$t('unitsPage.createTitle')"
+				:description="$t('unitsPage.createDescription')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -756,27 +757,27 @@ onMounted(async () => {
 				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 						<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">ร้านที่กำลังใช้งาน</p>
+							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("unitsPage.activeStore") }}</p>
 							<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedStoreLabel }}</p>
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">รหัสย่อ</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.shortCode") }}</label>
 							<UInput v-model="createForm.code" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
-							<p class="text-xs leading-5 text-stone-500">แนะนำให้ใช้รหัสสั้นและจำง่าย เช่น `pcs`, `pack`, `kg`, `set`</p>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("unitsPage.createCodeHint") }}</p>
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">ชื่อหน่วยสินค้า</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.unitName") }}</label>
 							<UInput v-model="createForm.name_th" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 						</div>
 					</div>
 
 					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">ยกเลิก</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">{{ $t("common.cancel") }}</AppButton>
 							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canCreateUnit" @click="createUnit">
-								บันทึกหน่วย
+								{{ $t("unitsPage.saveUnit") }}
 							</AppButton>
 						</div>
 					</div>

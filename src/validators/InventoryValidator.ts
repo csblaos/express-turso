@@ -41,8 +41,11 @@ function createPositiveIntegerSchema(maxValue: number) {
 
 export default class InventoryValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
-		store_id: z.string().optional(),
-		query: z.string().optional(),
+		store_id: nonEmptyString,
+		page: z.coerce.number().int().min(1).optional(),
+		limit: z.coerce.number().int().min(1).max(100).optional(),
+		query: z.string().trim().max(120).optional(),
+		category_id: z.string().trim().max(120).optional(),
 		status: z.enum(["all", "low", "out", "negative", "active", "inactive"]).optional(),
 		sort: z.enum(["updated", "name", "available"]).optional(),
 	});

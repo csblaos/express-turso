@@ -23,6 +23,7 @@ type PasswordChangeResponse = ProfileUpdateResponse & {
 };
 
 const { apiFetch } = useApiClient();
+const { t, locale } = useI18n();
 const { currentUser, currentSession, currentAccess, fetchMe } = useAuthSession();
 const appToast = useAppToast();
 
@@ -66,7 +67,7 @@ function formatDateTime(value?: string | null) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return value;
 
-	return new Intl.DateTimeFormat("th-TH", {
+	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(date);
@@ -108,10 +109,10 @@ async function refreshProfile() {
 		await fetchMe();
 		return true;
 	} catch (error) {
-		const message = extractErrorMessage(error, "โหลดข้อมูลโปรไฟล์ไม่สำเร็จ");
+		const message = extractErrorMessage(error, t("profilePage.loadFailed"));
 		profileError.value = message;
 		appToast.error({
-			title: "โหลดโปรไฟล์ไม่สำเร็จ",
+			title: t("profilePage.loadFailed"),
 			description: message,
 		});
 		return false;
@@ -147,16 +148,16 @@ async function submitProfile() {
 		});
 
 		await refreshProfile();
-		profileSuccess.value = "อัปเดตชื่อผู้ใช้แล้ว";
+		profileSuccess.value = t("profilePage.usernameUpdated");
 		appToast.success({
-			title: "อัปเดตโปรไฟล์แล้ว",
-			description: "ชื่อผู้ใช้ใหม่ถูกบันทึกเรียบร้อย",
+			title: t("profilePage.profileUpdated"),
+			description: t("profilePage.profileUpdatedDescription"),
 		});
 		profileModalOpen.value = false;
 	} catch (error) {
-		profileError.value = extractErrorMessage(error, "อัปเดตโปรไฟล์ไม่สำเร็จ");
+		profileError.value = extractErrorMessage(error, t("profilePage.profileUpdateFailed"));
 		appToast.error({
-			title: "อัปเดตโปรไฟล์ไม่สำเร็จ",
+			title: t("profilePage.profileUpdateFailed"),
 			description: profileError.value || undefined,
 		});
 	} finally {
@@ -186,16 +187,16 @@ async function submitPassword() {
 		passwordVisibility.next = false;
 		passwordVisibility.confirm = false;
 		await refreshProfile();
-		passwordSuccess.value = "เปลี่ยนรหัสผ่านแล้ว และยกเลิก session อื่นเรียบร้อย";
+		passwordSuccess.value = t("profilePage.passwordUpdated");
 		appToast.success({
-			title: "เปลี่ยนรหัสผ่านแล้ว",
-			description: "ยกเลิก session อื่นของบัญชีนี้เรียบร้อย",
+			title: t("profilePage.passwordChanged"),
+			description: t("profilePage.passwordChangedDescription"),
 		});
 		passwordModalOpen.value = false;
 	} catch (error) {
-		passwordError.value = extractErrorMessage(error, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+		passwordError.value = extractErrorMessage(error, t("profilePage.passwordChangeFailed"));
 		appToast.error({
-			title: "เปลี่ยนรหัสผ่านไม่สำเร็จ",
+			title: t("profilePage.passwordChangeFailed"),
 			description: passwordError.value || undefined,
 		});
 	} finally {
@@ -212,22 +213,22 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
-		sidebar-eyebrow="Profile"
-		sidebar-title="ตั้งค่าโปรไฟล์"
+		:sidebar-eyebrow="t('profilePage.profile')"
+		:sidebar-title="t('profilePage.title')"
 		sidebar-compact-title="ME"
-		sidebar-description="แก้ไขชื่อผู้ใช้ เปลี่ยนรหัสผ่าน และดูข้อมูลบัญชีปัจจุบัน"
+		:sidebar-description="t('profilePage.sidebarDescription')"
 	>
 		<template #default>
 			<div class="space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-5 lg:space-y-0">
 				<div class="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-					<UCard class="border-0 rounded-none bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<UCard class="border-0 rounded-none bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)] dark:bg-[#221d18] sm:rounded-md">
 						<div class="space-y-5">
 							<div class="flex items-start gap-3">
 								<div class="flex h-14 w-14 items-center justify-center rounded-md bg-primary-50 text-lg font-semibold text-primary-700">
 									{{ (currentUser?.name || "U").slice(0, 1).toUpperCase() }}
 								</div>
 								<div class="min-w-0 flex-1">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Account summary</p>
+									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ t('profilePage.accountSummary') }}</p>
 									<h2 class="mt-2 truncate text-xl font-semibold text-stone-950">{{ currentUser?.name || "-" }}</h2>
 									<p class="mt-1 truncate text-sm text-stone-500">{{ currentUser?.email || "-" }}</p>
 								</div>
@@ -235,42 +236,42 @@ onMounted(async () => {
 
 							<div class="grid grid-cols-2 gap-3 text-xs text-stone-500">
 								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
-									<p>System role</p>
+									<p>{{ t('profilePage.systemRole') }}</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ currentUser?.systemRole || "-" }}</p>
 								</div>
 								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
-									<p>UI locale</p>
+									<p>{{ t('profilePage.uiLocale') }}</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ currentUser?.uiLocale || "-" }}</p>
 								</div>
 								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
-									<p>สิทธิ์ทั้งหมด</p>
+									<p>{{ t('profilePage.permissions') }}</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ permissionCount }}</p>
 								</div>
 								<div class="rounded-md bg-[var(--pos-surface-soft)] px-3 py-3.5">
-									<p>Memberships</p>
+									<p>{{ t('profilePage.memberships') }}</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ membershipCount }}</p>
 								</div>
 							</div>
 
 							<dl class="space-y-3 text-sm">
-								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
-									<dt class="text-stone-500">Role ร้านหลัก</dt>
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
+									<dt class="text-stone-500">{{ t('profilePage.primaryStoreRole') }}</dt>
 									<dd class="text-right font-medium text-stone-900">{{ primaryMembership?.role_name || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
-									<dt class="text-stone-500">Store ล่าสุด</dt>
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
+									<dt class="text-stone-500">{{ t('profilePage.currentStore') }}</dt>
 									<dd class="text-right font-medium text-stone-900">{{ primaryMembership?.store_id || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
-									<dt class="text-stone-500">Session ID</dt>
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
+									<dt class="text-stone-500">{{ t('profilePage.sessionId') }}</dt>
 									<dd class="min-w-0 max-w-[240px] truncate text-right font-mono text-xs font-medium whitespace-nowrap text-stone-900">{{ currentSession?.id || "-" }}</dd>
 								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3">
-									<dt class="text-stone-500">Remember me</dt>
-									<dd class="text-right font-medium text-stone-900">{{ currentSession?.rememberMe ? "เปิด" : "ปิด" }}</dd>
+								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
+									<dt class="text-stone-500">{{ t('profilePage.rememberMe') }}</dt>
+									<dd class="text-right font-medium text-stone-900">{{ currentSession?.rememberMe ? t('profilePage.on') : t('profilePage.off') }}</dd>
 								</div>
 								<div class="flex items-start justify-between gap-4">
-									<dt class="text-stone-500">Refresh session ถึง</dt>
+									<dt class="text-stone-500">{{ t('profilePage.refreshExpiresAt') }}</dt>
 									<dd class="text-right font-medium text-stone-900">{{ formatDateTime(currentSession?.refreshExpiresAt) }}</dd>
 								</div>
 							</dl>
@@ -279,12 +280,12 @@ onMounted(async () => {
 				</div>
 
 				<div class="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-					<UCard class="border-0 rounded-none bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<UCard class="border-0 rounded-none bg-white shadow-[0_10px_30px_rgba(31,28,24,0.06)] dark:bg-[#221d18] sm:rounded-md">
 						<div class="space-y-5">
 							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Actions</p>
-								<h2 class="mt-2 text-xl font-semibold text-stone-950">จัดการบัญชี</h2>
-								<p class="mt-2 text-sm leading-6 text-stone-500">แก้ไขชื่อผู้ใช้หรือเปลี่ยนรหัสผ่านผ่าน modal เดียวกับ pattern ของระบบ เพื่อให้หน้าหลักอ่านข้อมูลง่ายขึ้น</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ t('profilePage.actions') }}</p>
+								<h2 class="mt-2 text-xl font-semibold text-stone-950">{{ t('profilePage.manageAccount') }}</h2>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('profilePage.manageAccountDescription') }}</p>
 							</div>
 
 							<div v-if="profileSuccess" class="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -293,8 +294,8 @@ onMounted(async () => {
 
 							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4 sm:p-5">
 								<div class="min-w-0">
-									<p class="text-sm font-semibold text-stone-900">ข้อมูลบัญชี</p>
-									<p class="mt-1 text-sm leading-6 text-stone-500">แก้ไขชื่อที่ใช้แสดงผลของบัญชีนี้ โดยอีเมลจะยังเป็นข้อมูลอ้างอิงเดิม</p>
+									<p class="text-sm font-semibold text-stone-900">{{ t('profilePage.accountInformation') }}</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('profilePage.accountInformationDescription') }}</p>
 										<AppButton
 											color="primary"
 											variant="soft"
@@ -303,16 +304,16 @@ onMounted(async () => {
 											class="mt-3"
 											@click="openProfileModal"
 									>
-										แก้ข้อมูลบัญชี
+										{{ t('profilePage.editAccount') }}
 									</AppButton>
 								</div>
 								<dl class="mt-4 space-y-3 text-sm">
-									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3">
-										<dt class="text-stone-500">ชื่อปัจจุบัน</dt>
+									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3 dark:bg-[#191613]">
+										<dt class="text-stone-500">{{ t('profilePage.currentName') }}</dt>
 										<dd class="font-medium text-stone-900">{{ currentUser?.name || "-" }}</dd>
 									</div>
-									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3">
-										<dt class="text-stone-500">อีเมล</dt>
+									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3 dark:bg-[#191613]">
+										<dt class="text-stone-500">{{ t('profilePage.email') }}</dt>
 										<dd class="max-w-[220px] truncate font-medium text-stone-900">{{ currentUser?.email || "-" }}</dd>
 									</div>
 								</dl>
@@ -324,8 +325,8 @@ onMounted(async () => {
 
 							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4 sm:p-5">
 								<div class="min-w-0">
-									<p class="text-sm font-semibold text-stone-900">เปลี่ยนรหัสผ่าน</p>
-									<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อเปลี่ยนรหัสผ่าน ระบบจะยกเลิก session อื่นของบัญชีนี้เพื่อความปลอดภัย</p>
+									<p class="text-sm font-semibold text-stone-900">{{ t('profilePage.changePassword') }}</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('profilePage.passwordCardDescription') }}</p>
 										<AppButton
 											color="primary"
 											variant="soft"
@@ -334,11 +335,11 @@ onMounted(async () => {
 											class="mt-3"
 											@click="openPasswordModal"
 									>
-										เปลี่ยนรหัสผ่าน
+										{{ t('profilePage.changePassword') }}
 									</AppButton>
 								</div>
-								<div class="mt-4 rounded-md bg-white px-4 py-3 text-sm text-stone-500">
-									ระบบจะให้กรอกรหัสผ่านปัจจุบัน รหัสผ่านใหม่ และยืนยันรหัสผ่านใหม่ใน modal ก่อนบันทึก
+								<div class="mt-4 rounded-md bg-white px-4 py-3 text-sm text-stone-500 dark:bg-[#191613] dark:text-stone-300">
+								{{ t('profilePage.passwordCardHint') }}
 								</div>
 							</div>
 						</div>
@@ -348,8 +349,8 @@ onMounted(async () => {
 
 				<AppResponsivePanel
 					:model-value="profileModalOpen"
-					title="แก้ข้อมูลบัญชี"
-					description="อัปเดตชื่อผู้ใช้ของบัญชีปัจจุบัน"
+					:title="t('profilePage.editAccount')"
+					:description="t('profilePage.editAccountDescription')"
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
@@ -364,28 +365,28 @@ onMounted(async () => {
 							</div>
 
 							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-								<p class="text-sm font-semibold text-stone-900">ข้อมูลบัญชีปัจจุบัน</p>
-								<p class="mt-1 text-sm leading-6 text-stone-500">ระบบจะอัปเดตเฉพาะชื่อที่ใช้แสดงผล ส่วนอีเมลยังคงเป็นข้อมูลอ้างอิงเดิมของบัญชีนี้</p>
+								<p class="text-sm font-semibold text-stone-900">{{ t('profilePage.currentAccountInformation') }}</p>
+								<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('profilePage.currentAccountInformationDescription') }}</p>
 								<div class="mt-4 grid gap-4">
 									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
-										<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.email') }}</label>
+										<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-200" />
 									</div>
 									<div ref="profileNameFieldRef">
-										<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อผู้ใช้</label>
-										<UInput v-model="profileForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.username') }}</label>
+										<UInput v-model="profileForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100" />
 									</div>
 								</div>
 							</div>
 						</div>
 
-						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm dark:border-[#3a332a] dark:bg-[rgba(34,29,24,0.98)]">
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="profilePending" :spin-icon-on-loading="true" :block="true" class="order-2" @click="submitProfile">
-									บันทึกชื่อผู้ใช้
+									{{ t('profilePage.saveUsername') }}
 								</AppButton>
 								<AppButton color="neutral" variant="soft" size="md" :block="true" class="order-1" @click="profileModalOpen = false">
-									ยกเลิก
+									{{ t('profilePage.cancel') }}
 								</AppButton>
 							</div>
 						</div>
@@ -394,8 +395,8 @@ onMounted(async () => {
 
 				<AppResponsivePanel
 					:model-value="passwordModalOpen"
-					title="เปลี่ยนรหัสผ่าน"
-					description="ยืนยันรหัสผ่านเดิมก่อนตั้งรหัสผ่านใหม่"
+					:title="t('profilePage.changePassword')"
+					:description="t('profilePage.changePasswordDescription')"
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
@@ -410,74 +411,74 @@ onMounted(async () => {
 							</div>
 
 							<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-								<p class="text-sm font-semibold text-stone-900">ตั้งรหัสผ่านใหม่</p>
-								<p class="mt-1 text-sm leading-6 text-stone-500">เมื่อบันทึกแล้ว ระบบจะยกเลิก session อื่นของบัญชีนี้โดยอัตโนมัติเพื่อความปลอดภัย</p>
+								<p class="text-sm font-semibold text-stone-900">{{ t('profilePage.setNewPassword') }}</p>
+								<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('profilePage.setNewPasswordDescription') }}</p>
 								<div class="mt-4 grid gap-4">
 									<div ref="passwordCurrentFieldRef">
-										<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.currentPassword') }}</label>
 										<div class="relative">
 											<UInput
 												v-model="passwordForm.currentPassword"
 												:type="passwordVisibility.current ? 'text' : 'password'"
 												size="lg"
 												color="neutral"
-												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100"
 											/>
 											<AppButton
 												color="neutral"
 												variant="ghost"
 												size="xs"
 												tabindex="-1"
-												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900 dark:hover:bg-[#2a241e] dark:hover:text-stone-100"
 												:icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-												:aria-label="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-												:title="passwordVisibility.current ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+												:aria-label="passwordVisibility.current ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
+												:title="passwordVisibility.current ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
 												@click="passwordVisibility.current = !passwordVisibility.current"
 											/>
 										</div>
 									</div>
 									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.newPassword') }}</label>
 										<div class="relative">
 											<UInput
 												v-model="passwordForm.newPassword"
 												:type="passwordVisibility.next ? 'text' : 'password'"
 												size="lg"
 												color="neutral"
-												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100"
 											/>
 											<AppButton
 												color="neutral"
 												variant="ghost"
 												size="xs"
 												tabindex="-1"
-												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900 dark:hover:bg-[#2a241e] dark:hover:text-stone-100"
 												:icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-												:aria-label="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-												:title="passwordVisibility.next ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+												:aria-label="passwordVisibility.next ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
+												:title="passwordVisibility.next ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
 												@click="passwordVisibility.next = !passwordVisibility.next"
 											/>
 										</div>
 									</div>
 									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">ยืนยันรหัสผ่านใหม่</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.confirmNewPassword') }}</label>
 										<div class="relative">
 											<UInput
 												v-model="passwordForm.confirmPassword"
 												:type="passwordVisibility.confirm ? 'text' : 'password'"
 												size="lg"
 												color="neutral"
-												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11"
+												class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 [&_input]:pr-11 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100"
 											/>
 											<AppButton
 												color="neutral"
 												variant="ghost"
 												size="xs"
 												tabindex="-1"
-												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900"
+												class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900 dark:hover:bg-[#2a241e] dark:hover:text-stone-100"
 												:icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-												:aria-label="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-												:title="passwordVisibility.confirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+												:aria-label="passwordVisibility.confirm ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
+												:title="passwordVisibility.confirm ? t('profilePage.hidePassword') : t('profilePage.showPassword')"
 												@click="passwordVisibility.confirm = !passwordVisibility.confirm"
 											/>
 										</div>
@@ -486,13 +487,13 @@ onMounted(async () => {
 							</div>
 						</div>
 
-						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm dark:border-[#3a332a] dark:bg-[rgba(34,29,24,0.98)]">
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-key-20-solid" :loading="passwordPending" :spin-icon-on-loading="true" :block="true" class="order-2" @click="submitPassword">
-									เปลี่ยนรหัสผ่าน
+									{{ t('profilePage.changePassword') }}
 								</AppButton>
 								<AppButton color="neutral" variant="soft" size="md" :block="true" class="order-1" @click="passwordModalOpen = false">
-									ยกเลิก
+									{{ t('profilePage.cancel') }}
 								</AppButton>
 							</div>
 						</div>

@@ -515,7 +515,7 @@ onBeforeUnmount(() => {
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.summary.users_system_admin }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Superadmin</p>
+													<p class="text-xs text-stone-500">Super Admin</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.summary.users_superadmin }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">

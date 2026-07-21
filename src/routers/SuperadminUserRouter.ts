@@ -16,13 +16,13 @@ export class SuperadminUserRouter {
 
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireSuperadminOnly());
-		this.router.get("/config", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.view"), SuperadminConfigController.get);
-		this.router.put("/config", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.manage"), SuperadminConfigValidator.update, SuperadminConfigController.update);
-		this.router.get("/users", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.users.view"), SuperadminUserController.list);
-		this.router.get("/stores", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.stores.view"), SuperadminUserController.listStores);
-		this.router.get("/branches", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.stores.view"), SuperadminBranchController.list);
-		this.router.get("/security", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.users.view"), SuperadminSecurityController.snapshot);
-		this.router.get("/quotas", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("superadmin.users.view"), SuperadminQuotaController.list);
+		this.router.get("/config", PermissionMiddleware.require("superadmin.view"), SuperadminConfigController.get);
+		this.router.put("/config", PermissionMiddleware.require("superadmin.manage"), SuperadminConfigValidator.update, SuperadminConfigController.update);
+		this.router.get("/users", PermissionMiddleware.require("superadmin.users.view"), SuperadminUserController.list);
+		this.router.get("/stores", PermissionMiddleware.require("superadmin.stores.view"), SuperadminUserController.listStores);
+		this.router.get("/branches", PermissionMiddleware.require("superadmin.stores.view"), SuperadminBranchController.list);
+		this.router.get("/security", PermissionMiddleware.require("superadmin.users.view"), SuperadminSecurityController.snapshot);
+		this.router.get("/quotas", PermissionMiddleware.require("superadmin.users.view"), SuperadminQuotaController.list);
 	}
 
 	static getInstance(): SuperadminUserRouter {

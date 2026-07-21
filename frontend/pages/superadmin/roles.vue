@@ -750,8 +750,8 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="จัดการบทบาทระดับร้านภายใต้ client ที่คุณดูแล"
 	>
@@ -760,7 +760,7 @@ onMounted(async () => {
 				<AppPageHeader
 					title=""
 					compact
-					description="กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้านจากมุม Superadmin"
+					description="กำหนดบทบาทและสิทธิ์ของผู้ใช้ในแต่ละร้านจากมุม Super Admin"
 					@menu="openSidebar"
 				>
 						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:gap-3 lg:justify-end">
@@ -808,7 +808,7 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin roles</p>
+									<p class="text-sm font-semibold text-stone-950">Super Admin roles</p>
 									<p class="mt-1 hidden text-xs text-stone-500 lg:block">จัดการบทบาทตามร้าน พร้อมมุมมองรายการและการแบ่งหน้าแบบเดียวกับหน้า users</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">

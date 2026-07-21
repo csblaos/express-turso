@@ -1,7 +1,7 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
 import { ApiError } from "@middlewares/ApiError";
 import { StorePaymentAccountCreateInput, StorePaymentAccountInterface, StorePaymentAccountRow, StorePaymentAccountUpdateInput } from "@interfaces/StorePaymentAccountInterface";
-import { StoreInterface } from "@interfaces/StoreInterface";
+import { StoreAccessActor, StoreInterface } from "@interfaces/StoreInterface";
 import { R2Storage } from "@storage/R2Storage";
 
 function normalizeText(value?: string | null): string | null {
@@ -75,23 +75,24 @@ async function getStorePaymentAccountOrThrow(storeId: string, id: string): Promi
 	return account;
 }
 
+async function assertStoreAccess(storeId: string, actor: StoreAccessActor): Promise<void> {
+	const store = await StoreInterface.findAccessibleById(storeId, actor);
+	if (!store) {
+		throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
+	}
+}
+
 export class StorePaymentAccountComponent {
-	static async getAll(requestId: string, storeId: string): Promise<StorePaymentAccountRow[]> {
+	static async getAll(requestId: string, storeId: string, actor: StoreAccessActor): Promise<StorePaymentAccountRow[]> {
 		void requestId;
-		const store = await StoreInterface.findById(storeId);
-		if (!store) {
-			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
-		}
+		await assertStoreAccess(storeId, actor);
 
 		return StorePaymentAccountInterface.findAllByStoreId(storeId);
 	}
 
-	static async create(requestId: string, storeId: string, input: Record<string, unknown>): Promise<StorePaymentAccountRow> {
+	static async create(requestId: string, storeId: string, input: Record<string, unknown>, actor: StoreAccessActor): Promise<StorePaymentAccountRow> {
 		void requestId;
-		const store = await StoreInterface.findById(storeId);
-		if (!store) {
-			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
-		}
+		await assertStoreAccess(storeId, actor);
 
 		const payload = pickCreatePayload(input);
 		if (isMissingCreateField(payload)) {
@@ -103,12 +104,9 @@ export class StorePaymentAccountComponent {
 		return StorePaymentAccountInterface.create(storeId, payload);
 	}
 
-	static async update(requestId: string, storeId: string, id: string, input: Record<string, unknown>): Promise<StorePaymentAccountRow> {
+	static async update(requestId: string, storeId: string, id: string, input: Record<string, unknown>, actor: StoreAccessActor): Promise<StorePaymentAccountRow> {
 		void requestId;
-		const store = await StoreInterface.findById(storeId);
-		if (!store) {
-			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
-		}
+		await assertStoreAccess(storeId, actor);
 
 		const payload = pickUpdatePayload(input);
 		if (Object.keys(payload).length === 0) {
@@ -122,23 +120,17 @@ export class StorePaymentAccountComponent {
 		return StorePaymentAccountInterface.update(storeId, id, payload);
 	}
 
-	static async setDefault(requestId: string, storeId: string, id: string): Promise<StorePaymentAccountRow> {
+	static async setDefault(requestId: string, storeId: string, id: string, actor: StoreAccessActor): Promise<StorePaymentAccountRow> {
 		void requestId;
-		const store = await StoreInterface.findById(storeId);
-		if (!store) {
-			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
-		}
+		await assertStoreAccess(storeId, actor);
 
 		await getStorePaymentAccountOrThrow(storeId, id);
 		return StorePaymentAccountInterface.setDefault(storeId, id);
 	}
 
-	static async delete(requestId: string, storeId: string, id: string): Promise<void> {
+	static async delete(requestId: string, storeId: string, id: string, actor: StoreAccessActor): Promise<void> {
 		void requestId;
-		const store = await StoreInterface.findById(storeId);
-		if (!store) {
-			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
-		}
+		await assertStoreAccess(storeId, actor);
 
 		await getStorePaymentAccountOrThrow(storeId, id);
 		const ok = await StorePaymentAccountInterface.delete(storeId, id);

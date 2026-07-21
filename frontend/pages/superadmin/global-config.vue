@@ -81,8 +81,8 @@ onBeforeUnmount(() => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="global config และ business-level controls ของฝั่ง superadmin"
 	>

@@ -186,8 +186,8 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="branch config ของร้านใน scope นี้เท่านั้น โดยไม่แตะ branch policy กลางของระบบ"
 	>
@@ -223,7 +223,7 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin branches</p>
+									<p class="text-sm font-semibold text-stone-950">Super Admin branches</p>
 									<p class="mt-1 hidden text-xs text-stone-500 lg:block">อ่าน branch config ในมุม owner scope เพื่อไล่ดูความครบของ code, address และ sharing setup</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">

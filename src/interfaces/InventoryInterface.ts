@@ -8,8 +8,15 @@ import { ProductInterface } from "@interfaces/ProductInterface";
 export type InventoryFilters = {
 	storeId?: string;
 	query?: string;
+	categoryId?: string;
 	status?: "all" | "low" | "out" | "negative" | "active" | "inactive";
 	sort?: "updated" | "name" | "available";
+};
+
+export type InventoryPageFilters = InventoryFilters & {
+	storeId: string;
+	page: number;
+	limit: number;
 };
 
 export type InventoryBalanceListItem = {
@@ -69,6 +76,27 @@ export type InventoryBalanceNumbers = {
 	reserved_base: number;
 };
 
+export type InventoryListResult = {
+	items: InventoryBalanceListItem[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+	stats: {
+		total: number;
+		ready: number;
+		low: number;
+		out: number;
+		negative: number;
+		totalAvailableQty: number;
+	};
+	categories: Array<{
+		id: string;
+		label: string;
+		count: number;
+	}>;
+};
+
 type InventoryMovementFilters = {
 	storeId?: string;
 	productId?: string;
@@ -90,6 +118,70 @@ function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 	if (!base) return normalized;
 	const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
 	return `${base}${path}`;
+}
+
+function buildBalanceWhere(filters: InventoryFilters): { whereClause: string; args: InValue[] } {
+	const where = [ "p.deleted_at IS NULL" ];
+	const args: InValue[] = [];
+
+	if (filters.storeId) {
+		where.push("p.store_id = ?");
+		args.push(filters.storeId);
+	}
+
+	const search = filters.query?.trim().toLowerCase();
+	if (search) {
+		const like = `%${search}%`;
+		where.push(`(
+			LOWER(p.name) LIKE ?
+			OR LOWER(p.sku) LIKE ?
+			OR LOWER(COALESCE(p.barcode, '')) LIKE ?
+			OR LOWER(COALESCE(p.location, '')) LIKE ?
+		)`);
+		args.push(like, like, like, like);
+	}
+
+	if (filters.categoryId && filters.categoryId !== "all") {
+		if (filters.categoryId === "uncategorized") {
+			where.push("p.category_id IS NULL");
+		} else {
+			where.push("p.category_id = ?");
+			args.push(filters.categoryId);
+		}
+	}
+
+	if (filters.status === "active") {
+		where.push("p.active = 1");
+	} else if (filters.status === "inactive") {
+		where.push("p.active = 0");
+	} else if (filters.status === "low") {
+		where.push("p.active = 1 AND COALESCE(b.available_base, 0) > 0 AND COALESCE(p.low_stock_threshold, 0) > 0 AND COALESCE(b.available_base, 0) <= p.low_stock_threshold");
+	} else if (filters.status === "out") {
+		where.push("p.active = 1 AND COALESCE(b.available_base, 0) = 0");
+	} else if (filters.status === "negative") {
+		where.push("p.active = 1 AND COALESCE(b.available_base, 0) < 0");
+	}
+
+	return {
+		whereClause: `WHERE ${where.join(" AND ")}`,
+		args,
+	};
+}
+
+function getBalanceOrderBy(sort: InventoryFilters["sort"]): string {
+	if (sort === "name") return "p.name COLLATE NOCASE ASC, p.id ASC";
+	if (sort === "available") return "COALESCE(b.available_base, 0) ASC, p.name COLLATE NOCASE ASC, p.id ASC";
+	return "COALESCE(b.updated_at, p.created_at) DESC, p.name COLLATE NOCASE ASC, p.id ASC";
+}
+
+function mapBalanceRows(rows: Iterable<unknown>): InventoryBalanceListItem[] {
+	return Array.from(rows, (row) => {
+		const item = row as InventoryBalanceListItem;
+		return {
+			...item,
+			image_url: resolvePublicProductImageUrl(item.image_url),
+		};
+	});
 }
 
 export class InventoryInterface {
@@ -283,40 +375,8 @@ export class InventoryInterface {
 	static async findBalances(filters: InventoryFilters = {}): Promise<InventoryBalanceListItem[]> {
 		await ProductInterface.ensureColumns();
 		const db = DbConn.getClient();
-		const where: string[] = [];
-		const args: InValue[] = [];
-
-		if (filters.storeId) {
-			where.push("p.store_id = ?");
-			args.push(filters.storeId);
-		}
-
-		if (filters.query) {
-			const like = `%${filters.query.trim().toLowerCase()}%`;
-			where.push("(LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ? OR LOWER(COALESCE(p.barcode, '')) LIKE ?)");
-			args.push(like, like, like);
-		}
-
-		if (filters.status === "active") {
-			where.push("p.active = 1");
-		} else if (filters.status === "inactive") {
-			where.push("p.active = 0");
-		} else if (filters.status === "low") {
-			where.push("p.active = 1 AND COALESCE(b.available_base, 0) <= COALESCE(NULLIF(p.low_stock_threshold, 0), 0) AND COALESCE(b.available_base, 0) > 0");
-		} else if (filters.status === "out") {
-			where.push("p.active = 1 AND COALESCE(b.available_base, 0) = 0");
-		} else if (filters.status === "negative") {
-			where.push("COALESCE(b.available_base, 0) < 0");
-		}
-
-		const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
-
-		let orderBy = "COALESCE(b.updated_at, p.created_at) DESC, p.name ASC";
-		if (filters.sort === "name") {
-			orderBy = "p.name ASC";
-		} else if (filters.sort === "available") {
-			orderBy = "COALESCE(b.available_base, 0) ASC, p.name ASC";
-		}
+		const { whereClause, args } = buildBalanceWhere(filters);
+		const orderBy = getBalanceOrderBy(filters.sort);
 
 		const result = await db.execute({
 			sql: `
@@ -353,13 +413,120 @@ export class InventoryInterface {
 			args,
 		});
 
-		return result.rows.map((row) => {
-			const item = row as unknown as InventoryBalanceListItem;
-			return {
-				...item,
-				image_url: resolvePublicProductImageUrl(item.image_url),
-			};
-		});
+		return mapBalanceRows(result.rows);
+	}
+
+	static async findBalancePage(filters: InventoryPageFilters): Promise<InventoryListResult> {
+		await ProductInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const page = Math.max(1, Math.floor(filters.page));
+		const limit = Math.min(100, Math.max(1, Math.floor(filters.limit)));
+		const offset = (page - 1) * limit;
+		const { whereClause, args } = buildBalanceWhere(filters);
+		const orderBy = getBalanceOrderBy(filters.sort);
+		const storeArgs: InValue[] = [ filters.storeId ];
+
+		const [ itemsResult, countResult, statsResult, categoriesResult ] = await db.batch([
+			{
+				sql: `
+					SELECT
+						p.store_id,
+						p.id AS product_id,
+						p.sku,
+						p.name,
+						p.barcode,
+						p.image_url,
+						p.location,
+						p.category_id,
+						pc.name AS category_name,
+						p.base_unit_id,
+						u.name_th AS unit_name,
+						p.active,
+						p.low_stock_threshold,
+						p.out_stock_threshold,
+						COALESCE(b.on_hand_base, 0) AS on_hand_base,
+						COALESCE(b.reserved_base, 0) AS reserved_base,
+						COALESCE(b.available_base, 0) AS available_base,
+						COALESCE(b.updated_at, p.created_at) AS updated_at
+					FROM products p
+					LEFT JOIN inventory_balances b
+						ON b.product_id = p.id
+						AND b.store_id = p.store_id
+					LEFT JOIN product_categories pc ON pc.id = p.category_id
+					LEFT JOIN units u ON u.id = p.base_unit_id
+					${whereClause}
+					ORDER BY ${orderBy}
+					LIMIT ? OFFSET ?
+				`,
+				args: [ ...args, limit, offset ],
+			},
+			{
+				sql: `
+					SELECT COUNT(*) AS total
+					FROM products p
+					LEFT JOIN inventory_balances b
+						ON b.product_id = p.id
+						AND b.store_id = p.store_id
+					${whereClause}
+				`,
+				args,
+			},
+			{
+				sql: `
+					SELECT
+						COUNT(*) AS total,
+						SUM(CASE WHEN p.active = 1 AND COALESCE(b.available_base, 0) > 0 AND (COALESCE(p.low_stock_threshold, 0) <= 0 OR COALESCE(b.available_base, 0) > p.low_stock_threshold) THEN 1 ELSE 0 END) AS ready,
+						SUM(CASE WHEN p.active = 1 AND COALESCE(b.available_base, 0) > 0 AND COALESCE(p.low_stock_threshold, 0) > 0 AND COALESCE(b.available_base, 0) <= p.low_stock_threshold THEN 1 ELSE 0 END) AS low,
+						SUM(CASE WHEN p.active = 1 AND COALESCE(b.available_base, 0) = 0 THEN 1 ELSE 0 END) AS out,
+						SUM(CASE WHEN p.active = 1 AND COALESCE(b.available_base, 0) < 0 THEN 1 ELSE 0 END) AS negative,
+						SUM(COALESCE(b.available_base, 0)) AS total_available_qty
+					FROM products p
+					LEFT JOIN inventory_balances b
+						ON b.product_id = p.id
+						AND b.store_id = p.store_id
+					WHERE p.deleted_at IS NULL AND p.store_id = ?
+				`,
+				args: storeArgs,
+			},
+			{
+				sql: `
+					SELECT
+						COALESCE(p.category_id, 'uncategorized') AS category_id,
+						COALESCE(pc.name, 'ไม่ระบุหมวด') AS category_name,
+						COUNT(*) AS total
+					FROM products p
+					LEFT JOIN product_categories pc ON pc.id = p.category_id
+					WHERE p.deleted_at IS NULL AND p.store_id = ?
+					GROUP BY COALESCE(p.category_id, 'uncategorized'), COALESCE(pc.name, 'ไม่ระบุหมวด')
+					ORDER BY category_name COLLATE NOCASE ASC
+				`,
+				args: storeArgs,
+			},
+		], "read");
+
+		const total = Number(countResult.rows[0]?.total || 0);
+		const stats = statsResult.rows[0] || {};
+
+		return {
+			items: mapBalanceRows(itemsResult.rows),
+			total,
+			page,
+			limit,
+			totalPages: Math.max(1, Math.ceil(total / limit)),
+			stats: {
+				total: Number(stats.total || 0),
+				ready: Number(stats.ready || 0),
+				low: Number(stats.low || 0),
+				out: Number(stats.out || 0),
+				negative: Number(stats.negative || 0),
+				totalAvailableQty: Number(stats.total_available_qty || 0),
+			},
+			categories: categoriesResult.rows.map((row) => ({
+				id: String(row.category_id),
+				label: String(row.category_name),
+				count: Number(row.total || 0),
+			})),
+		};
 	}
 
 	static async findBalanceByProductId(storeId: string, productId: string, executor?: SqlExecutor): Promise<InventoryBalanceListItem | null> {

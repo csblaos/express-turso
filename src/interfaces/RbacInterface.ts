@@ -34,6 +34,17 @@ type UserAccessSummary = {
 	memberships: UserAccessMembership[];
 };
 
+type RequestAccessUser = {
+	id: string;
+	system_role: string;
+	client_suspended: number;
+};
+
+export type RequestAccess = {
+	user: RequestAccessUser | null;
+	permissionKeys: string[];
+};
+
 type StoreMemberRoleAssignment = {
 	store_id: string;
 	user_id: string;
@@ -381,6 +392,7 @@ export class RbacInterface {
 				PRIMARY KEY (store_id, user_id)
 			)
 		`);
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_store_members_user_status_store ON store_members(user_id, status, store_id)");
 
 		await RbacInterface.ensureRoleColumns();
 	}
@@ -424,6 +436,65 @@ export class RbacInterface {
 		});
 
 		return RbacInterface.ensurePermissionSeedPromise;
+	}
+
+	static async warmup(): Promise<void> {
+		await RbacInterface.ensurePermissionSeed();
+	}
+
+	static async getRequestAccess(userId: string, storeId?: string): Promise<RequestAccess> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		const permissionWhere = [ "sm.user_id = ?", "sm.status = ?" ];
+		const permissionArgs: InValue[] = [ userId, "active" ];
+
+		if (storeId) {
+			permissionWhere.push("sm.store_id = ?");
+			permissionArgs.push(storeId);
+		}
+
+		const [ userResult, permissionResult ] = await db.batch([
+			{
+				sql: `
+					SELECT id, system_role, client_suspended
+					FROM users
+					WHERE id = ?
+					LIMIT 1
+				`,
+				args: [ userId ],
+			},
+			{
+				sql: `
+					SELECT p.key AS permission_key
+					FROM store_members sm
+					INNER JOIN roles r
+						ON r.id = sm.role_id
+						AND r.deleted_at IS NULL
+					LEFT JOIN role_permissions rp ON rp.role_id = r.id
+					LEFT JOIN permissions p ON p.id = rp.permission_id
+					WHERE ${permissionWhere.join(" AND ")}
+				`,
+				args: permissionArgs,
+			},
+		], "read");
+
+		const userRow = userResult.rows[0] as Record<string, unknown> | undefined;
+		const permissionKeys = Array.from(new Set(
+			permissionResult.rows
+				.map((row) => String(row.permission_key || ""))
+				.filter(Boolean),
+		));
+
+		return {
+			user: userRow
+				? {
+					id: String(userRow.id),
+					system_role: String(userRow.system_role || "staff"),
+					client_suspended: Number(userRow.client_suspended || 0),
+				}
+				: null,
+			permissionKeys,
+		};
 	}
 
 	static async listPermissions(): Promise<Permission[]> {

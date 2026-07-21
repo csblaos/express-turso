@@ -3,13 +3,27 @@ import { Request, Response } from "express";
 import { ProductComponent } from "@components/ProductComponent";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateProductInput } from "@models/Product";
+import { appendServerTiming } from "@utils/ServerTiming";
 import { SuccessHandler } from "@utils/SuccessHandler";
+
+async function withProductTiming<T>(res: Response, action: () => Promise<T>): Promise<T> {
+	const startedAt = process.hrtime.bigint();
+	try {
+		return await action();
+	} finally {
+		appendServerTiming(
+			res,
+			"products-db",
+			Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+		);
+	}
+}
 
 export class ProductController {
 	static getAll = SyncFunction.handler(async (req: Request, res: Response) => {
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
 		if (req.query.page !== undefined || req.query.limit !== undefined) {
-			const data = await ProductComponent.getPage(req.requestId, {
+			const data = await withProductTiming(res, () => ProductComponent.getPage(req.requestId, {
 				storeId,
 				page: Number(req.query.page || 1),
 				limit: Number(req.query.limit || 20),
@@ -17,11 +31,11 @@ export class ProductController {
 				categoryId: typeof req.query.category_id === "string" ? req.query.category_id : undefined,
 				status: typeof req.query.status === "string" ? req.query.status as "all" | "active" | "inactive" : undefined,
 				sort: typeof req.query.sort === "string" ? req.query.sort as "updated" | "name" | "price" : undefined,
-			});
+			}));
 			SuccessHandler.send(res, req.requestId, { data });
 			return;
 		}
-		const data = await ProductComponent.getAll(req.requestId, storeId);
+		const data = await withProductTiming(res, () => ProductComponent.getAll(req.requestId, storeId));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
@@ -33,6 +47,28 @@ export class ProductController {
 	static create = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await ProductComponent.create(req.requestId, req.body as CreateProductInput);
 		SuccessHandler.created(res, req.requestId, { data });
+	});
+
+	static importRows = SyncFunction.handler(async (req: Request, res: Response) => {
+		const body = req.body as {
+			store_id: string;
+			rows: Array<{
+				name: string;
+				sku: string;
+				barcode?: string | null;
+				category_id?: string | null;
+				base_unit_id: string;
+				price_base: number;
+				cost_base: number;
+				location?: string | null;
+				low_stock_threshold?: number | null;
+			}>;
+		};
+		const data = await withProductTiming(res, () => ProductComponent.importRows(req.requestId, {
+			storeId: body.store_id,
+			rows: body.rows,
+		}));
+		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static update = SyncFunction.handler(async (req: Request, res: Response) => {

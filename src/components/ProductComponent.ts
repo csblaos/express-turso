@@ -1,7 +1,7 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { ProductModelInterface } from "@interfaces/ProductModelInterface";
-import { ProductInterface, ProductListResult } from "@interfaces/ProductInterface";
+import { ProductImportResult, ProductInterface, ProductListResult } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreateProductInput, Product, UpdateProductInput } from "@models/Product";
 import { R2Storage } from "@storage/R2Storage";
@@ -105,6 +105,52 @@ export class ProductComponent {
 		}
 
 		return ProductInterface.create(nextPayload);
+	}
+
+	static async importRows(requestId: string, input: {
+		storeId: string;
+		rows: Array<{
+			name: string;
+			sku: string;
+			barcode?: string | null;
+			category_id?: string | null;
+			base_unit_id: string;
+			price_base: number;
+			cost_base: number;
+			location?: string | null;
+			low_stock_threshold?: number | null;
+		}>;
+	}): Promise<ProductImportResult> {
+		void requestId;
+		const normalizedRows = input.rows.map((row) => ({
+			name: row.name.trim(),
+			sku: row.sku.trim().toUpperCase(),
+			barcode: row.barcode?.trim() || null,
+			category_id: row.category_id?.trim() || null,
+			base_unit_id: row.base_unit_id.trim(),
+			price_base: Number(row.price_base),
+			cost_base: Number(row.cost_base),
+			location: row.location?.trim().toUpperCase() || null,
+			low_stock_threshold: row.low_stock_threshold === null || row.low_stock_threshold === undefined
+				? null
+				: Number(row.low_stock_threshold),
+		}));
+
+		const duplicateSku = normalizedRows.find((row, index) => (
+			normalizedRows.findIndex((candidate) => candidate.sku === row.sku) !== index
+		));
+		if (duplicateSku) {
+			throw ApiError.BadRequestError(`duplicate sku in import file: ${duplicateSku.sku}`);
+		}
+
+		const result = await ProductInterface.importRows(input.storeId, normalizedRows);
+		if (result.missingCategoryIds.length > 0) {
+			throw ApiError.BadRequestError(`unknown product category: ${result.missingCategoryIds.join(", ")}`);
+		}
+		if (result.missingUnitIds.length > 0) {
+			throw ApiError.BadRequestError(`unknown product unit: ${result.missingUnitIds.join(", ")}`);
+		}
+		return result;
 	}
 
 	static async update(requestId: string, id: string, data: Record<string, unknown>): Promise<Product> {

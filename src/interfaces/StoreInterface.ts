@@ -5,30 +5,51 @@ import { InValue } from "@libsql/client";
 import { DbConn } from "@connections/DbConn";
 import { CreateStoreInput, Store } from "@models/Store";
 
+export type StoreAccessActor = {
+	userId: string;
+	systemRole: string;
+};
+
 export class StoreInterface {
+	private static columnsEnsured = false;
+	private static ensureColumnsPromise: Promise<void> | null = null;
+
 	// Backward-compatible alias for older callers.
 	static async ensureOwnerColumn(): Promise<void> {
 		await StoreInterface.ensureColumns();
 	}
 
 	static async ensureColumns(): Promise<void> {
-		const db = DbConn.getClient();
-		const pragmaResult = await db.execute("PRAGMA table_info(stores)");
-		const existingColumns = new Set(
-			pragmaResult.rows.map((row) => String(row.name || "")),
-		);
+		if (StoreInterface.columnsEnsured) return;
+		if (StoreInterface.ensureColumnsPromise) return StoreInterface.ensureColumnsPromise;
 
-		if (!existingColumns.has("owner_user_id")) {
-			await db.execute("ALTER TABLE stores ADD COLUMN owner_user_id TEXT");
-		}
+		StoreInterface.ensureColumnsPromise = (async () => {
+			const db = DbConn.getClient();
+			const pragmaResult = await db.execute("PRAGMA table_info(stores)");
+			const existingColumns = new Set(
+				pragmaResult.rows.map((row) => String(row.name || "")),
+			);
 
-		if (!existingColumns.has("allow_negative_stock")) {
-			await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
-		}
+			if (!existingColumns.has("owner_user_id")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN owner_user_id TEXT");
+			}
 
-		if (!existingColumns.has("cost_method")) {
-			await db.execute("ALTER TABLE stores ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'average'");
-		}
+			if (!existingColumns.has("allow_negative_stock")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
+			}
+
+			if (!existingColumns.has("cost_method")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'average'");
+			}
+
+			await db.execute("CREATE INDEX IF NOT EXISTS idx_stores_owner_created ON stores (owner_user_id, created_at DESC)");
+			StoreInterface.columnsEnsured = true;
+		})().catch((error) => {
+			StoreInterface.ensureColumnsPromise = null;
+			throw error;
+		});
+
+		return StoreInterface.ensureColumnsPromise;
 	}
 
 	static async findAll(ownerUserId?: string): Promise<Store[]> {
@@ -41,6 +62,71 @@ export class StoreInterface {
 			})
 			: await db.execute("SELECT * FROM stores ORDER BY created_at DESC");
 		return result.rows.map(StoreInterface.mapRow);
+	}
+
+	static async findAccessible(actor: StoreAccessActor): Promise<Store[]> {
+		await StoreInterface.ensureColumns();
+		const db = DbConn.getClient();
+
+		if (actor.systemRole === "system_admin") {
+			return StoreInterface.findAll();
+		}
+
+		const membershipExists = `EXISTS (
+			SELECT 1
+			FROM store_members sm
+			WHERE sm.store_id = s.id
+				AND sm.user_id = ?
+				AND sm.status = 'active'
+		)`;
+		const result = actor.systemRole === "superadmin"
+			? await db.execute({
+				sql: `
+					SELECT s.*
+					FROM stores s
+					WHERE s.owner_user_id = ? OR ${membershipExists}
+					ORDER BY s.created_at DESC
+				`,
+				args: [ actor.userId, actor.userId ],
+			})
+			: await db.execute({
+				sql: `
+					SELECT s.*
+					FROM stores s
+					WHERE ${membershipExists}
+					ORDER BY s.created_at DESC
+				`,
+				args: [ actor.userId ],
+			});
+
+		return result.rows.map(StoreInterface.mapRow);
+	}
+
+	static async findAccessibleById(id: string, actor: StoreAccessActor): Promise<Store | null> {
+		await StoreInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const conditions = [ "s.id = ?" ];
+		const args: InValue[] = [ id ];
+
+		if (actor.systemRole === "superadmin") {
+			conditions.push(`(s.owner_user_id = ? OR EXISTS (
+				SELECT 1 FROM store_members sm
+				WHERE sm.store_id = s.id AND sm.user_id = ? AND sm.status = 'active'
+			))`);
+			args.push(actor.userId, actor.userId);
+		} else if (actor.systemRole !== "system_admin") {
+			conditions.push(`EXISTS (
+				SELECT 1 FROM store_members sm
+				WHERE sm.store_id = s.id AND sm.user_id = ? AND sm.status = 'active'
+			)`);
+			args.push(actor.userId);
+		}
+
+		const result = await db.execute({
+			sql: `SELECT s.* FROM stores s WHERE ${conditions.join(" AND ")} LIMIT 1`,
+			args,
+		});
+		return result.rows[0] ? StoreInterface.mapRow(result.rows[0]) : null;
 	}
 
 	static async findById(id: string, executor?: Pick<ReturnType<typeof DbConn.getClient>, "execute">): Promise<Store | null> {
@@ -126,15 +212,12 @@ export class StoreInterface {
 	static async delete(id: string): Promise<boolean> {
 		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
-		const existing = await StoreInterface.findById(id);
-		if (!existing) return false;
-
-		await db.execute({
+		const result = await db.execute({
 			sql: "DELETE FROM stores WHERE id = ?",
 			args: [ id ],
 		});
 
-		return true;
+		return result.rowsAffected > 0;
 	}
 
 	private static mapRow(row: Record<string, unknown>): Store {

@@ -24,6 +24,7 @@ type ApiProduct = {
 	cost_base: number;
 	active: number;
 	created_at: string;
+	updated_at?: string | null;
 	image_url: string | null;
 	category_id: string | null;
 	out_stock_threshold: number | null;
@@ -95,6 +96,24 @@ type ApiBulkCreateVariantsResult = {
 	created: ApiProduct[];
 };
 
+type ProductCsvImportRow = {
+	name: string;
+	sku: string;
+	barcode: string | null;
+	category_id: string | null;
+	base_unit_id: string;
+	price_base: number;
+	cost_base: number;
+	location: string | null;
+	low_stock_threshold: number | null;
+};
+
+type ProductImportResult = {
+	created: number;
+	updated: number;
+	total: number;
+};
+
 type ProductUnitRecord = {
 	id: string;
 	productId: string;
@@ -162,6 +181,13 @@ type ProductRecord = {
 	const router = useRouter();
 	const { t } = useI18n();
 	const { intlLocale } = useAppLocale();
+	const localizedDefaultUnitCodes = new Set([ "pcs", "box", "pack", "set", "kg", "g", "ltr", "ml", "btl" ]);
+
+	function getUnitDisplayName(unit: ApiUnit) {
+		const code = String(unit.code || "").trim().toLowerCase();
+		if (localizedDefaultUnitCodes.has(code)) return t(`products.unitNames.${code}`);
+		return unit.name_th || unit.code;
+	}
 
 const statusOptions = computed<Array<{ id: ProductStatus; label: string }>>(() => [
 	{ id: "all", label: t("products.allStatuses") },
@@ -256,6 +282,13 @@ const productUnitsPending = ref(false);
 	const cameraUserSelected = ref(false);
 	const scannerVideoRef = ref<HTMLVideoElement | null>(null);
 const productImageInputRef = ref<HTMLInputElement | null>(null);
+const productImportInputRef = ref<HTMLInputElement | null>(null);
+const productImportOpen = ref(false);
+const productImportSaving = ref(false);
+const productExportSaving = ref(false);
+const productImportFileName = ref("");
+const productImportRows = ref<ProductCsvImportRow[]>([]);
+const productImportErrors = ref<string[]>([]);
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
@@ -310,11 +343,13 @@ let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
 let lastScannerKeyAt = 0;
 let productSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let productLoadSequence = 0;
+let initialProductLoadPromise: Promise<void> | null = null;
 let cameraScannerMode: "search" | "create-barcode" | "variant-barcode" = "search";
 const variantBarcodeScanTargetRowId = ref("");
 
 const canCreateProduct = computed(() => can("products.create"));
 const canUpdateProduct = computed(() => can("products.update"));
+const canImportProducts = computed(() => canCreateProduct.value && canUpdateProduct.value);
 const canUpdateProductCost = computed(() => can("products.update_cost"));
 const canDeactivateProduct = computed(() => can("products.archive"));
 const canManageProductUnits = computed(() => canUpdateProduct.value || canCreateProduct.value);
@@ -389,7 +424,7 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(intlLocale.value, {
 }));
 
 const unitLabelMap = computed(() => (
-	Object.fromEntries(units.value.map((unit) => [ unit.id, unit.name_th || unit.code ]))
+	Object.fromEntries(units.value.map((unit) => [ unit.id, getUnitDisplayName(unit) ]))
 ));
 
 const categoryOptions = computed(() => [
@@ -455,25 +490,29 @@ const paginatedProducts = computed(() => products.value);
 		return Number.isFinite(manual) ? manual : null;
 	});
 	const draftUnitPriceNote = computed(() => {
-		const unitLabel = unitLabelMap.value[draftUnitForm.unitId] || draftUnitForm.unitId || "หน่วย";
+		const unitLabel = unitLabelMap.value[draftUnitForm.unitId] || draftUnitForm.unitId || t("products.unit");
 		const multiplier = draftUnitMultiplierNumber.value;
 		const formula = draftUnitFormulaPrice.value;
 		if (!multiplier || formula === null) return "";
 
 		if (!draftUnitPriceManualOverride.value) {
-			return `ราคาขาย 1 ${unitLabel} = ${formatMoney(formula)} (สูตรอัตโนมัติ)`;
+			return t("products.create.automaticPrice", { unit: unitLabel, price: formatMoney(formula) });
 		}
 
 		const manual = draftUnitManualPriceNumber.value;
 		if (manual === null) {
-			return `สูตรเดิม 1 ${unitLabel} = ${formatMoney(formula)} (กำหนดเอง: ยังไม่กรอกราคา)`;
+			return t("products.create.manualPriceEmpty", { unit: unitLabel, price: formatMoney(formula) });
 		}
 
 		if (Math.abs(manual - formula) < 0.000001) {
-			return `ราคาขาย 1 ${unitLabel} = ${formatMoney(manual)} (กำหนดเอง)`;
+			return t("products.create.manualPrice", { unit: unitLabel, price: formatMoney(manual) });
 		}
 
-		return `ราคาขาย 1 ${unitLabel} = ${formatMoney(manual)} (กำหนดเอง, สูตรเดิม ${formatMoney(formula)})`;
+		return t("products.create.manualPriceWithFormula", {
+			unit: unitLabel,
+			price: formatMoney(manual),
+			formula: formatMoney(formula),
+		});
 	});
 	const selectedProductUnit = computed(() => (
 		productUnits.value.find((item) => item.id === editingProductUnitId.value) || null
@@ -800,57 +839,268 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
 	URL.revokeObjectURL(url);
 }
 
-function exportFilteredProductsCsv() {
-	if (!filteredProducts.value.length) {
-		appToast.info({
-			title: "ยังไม่มีสินค้าให้ส่งออก",
-			description: "ลองเปลี่ยนตัวกรองหรือค้นหาใหม่",
-		});
-		return;
+const productCsvHeaders = [
+	"name",
+	"sku",
+	"barcode",
+	"category",
+	"price",
+	"cost",
+	"base_unit",
+	"location",
+	"low_stock_threshold",
+] as const;
+
+type ProductCsvColumn = typeof productCsvHeaders[number];
+
+const productCsvHeaderAliases: Record<ProductCsvColumn, string[]> = {
+	name: [ "name", "product_name", "ชื่อสินค้า", "ຊື່ສິນຄ້າ" ],
+	sku: [ "sku" ],
+	barcode: [ "barcode", "บาร์โค้ด", "บาโคด", "ບາໂຄດ" ],
+	category: [ "category", "category_name", "หมวดสินค้า", "ໝວດສິນຄ້າ" ],
+	price: [ "price", "sale_price", "ราคาขาย", "ລາຄາຂາຍ" ],
+	cost: [ "cost", "ต้นทุน", "ຕົ້ນທຶນ" ],
+	base_unit: [ "base_unit", "unit", "หน่วยหลัก", "ຫົວໜ່ວຍຫຼັກ" ],
+	location: [ "location", "ตำแหน่งสินค้า", "ຕຳແໜ່ງສິນຄ້າ" ],
+	low_stock_threshold: [ "low_stock_threshold", "low_stock", "สต็อกต่ำ", "ສະຕັອກຕ່ຳ" ],
+};
+
+function normalizeCsvHeader(value: string) {
+	return value.replace(/^\ufeff/, "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function parseCsv(content: string): string[][] {
+	const rows: string[][] = [];
+	let row: string[] = [];
+	let field = "";
+	let quoted = false;
+
+	for (let index = 0; index < content.length; index += 1) {
+		const character = content[index];
+		if (quoted) {
+			if (character === '"' && content[index + 1] === '"') {
+				field += '"';
+				index += 1;
+			} else if (character === '"') {
+				quoted = false;
+			} else {
+				field += character;
+			}
+			continue;
+		}
+
+		if (character === '"') {
+			quoted = true;
+		} else if (character === ",") {
+			row.push(field);
+			field = "";
+		} else if (character === "\n" || character === "\r") {
+			if (character === "\r" && content[index + 1] === "\n") index += 1;
+			row.push(field);
+			if (row.some((value) => value.trim() !== "")) rows.push(row);
+			row = [];
+			field = "";
+		} else {
+			field += character;
+		}
 	}
 
-	const now = new Date();
-	const fileStamp = [
-		now.getFullYear(),
-		String(now.getMonth() + 1).padStart(2, "0"),
-		String(now.getDate()).padStart(2, "0"),
-		"-",
-		String(now.getHours()).padStart(2, "0"),
-		String(now.getMinutes()).padStart(2, "0"),
-	].join("");
-	const filename = `products-${fileStamp}.csv`;
+	row.push(field);
+	if (row.some((value) => value.trim() !== "")) rows.push(row);
+	return rows;
+}
 
-	const headers = [
-		"ชื่อสินค้า",
-		"SKU",
-		"Barcode",
-		"หมวดสินค้า",
-		"ราคาขาย",
-		"ต้นทุน",
-		"หน่วยหลัก",
-		"สถานะขาย",
-		"อัปเดตล่าสุด",
-	] as const;
+function resolveCsvColumns(headers: string[]) {
+	const normalizedHeaders = headers.map(normalizeCsvHeader);
+	return Object.fromEntries(productCsvHeaders.map((column) => {
+		const aliases = productCsvHeaderAliases[column].map(normalizeCsvHeader);
+		return [ column, normalizedHeaders.findIndex((header) => aliases.includes(header)) ];
+	})) as Record<ProductCsvColumn, number>;
+}
 
-	const rows = filteredProducts.value.map((product) => ([
-		product.name,
-		product.sku,
-		product.barcode,
-		getCategoryLabel(product.categoryId),
-		product.price,
-		product.cost,
-		product.unitLabel,
-		product.status === "active" ? "พร้อมขาย" : "ปิดขาย",
-		product.updatedAt,
-	]));
+function csvCell(row: string[], columnIndexes: Record<ProductCsvColumn, number>, column: ProductCsvColumn) {
+	const index = columnIndexes[column];
+	return index >= 0 ? String(row[index] || "").trim() : "";
+}
 
-	const csv = [
-		headers.map(escapeCsvValue).join(","),
-		...rows.map((row) => row.map(escapeCsvValue).join(",")),
-	].join("\r\n");
+function downloadProductCsvTemplate() {
+	const csv = `${productCsvHeaders.join(",")}\r\n`;
+	downloadTextFile("products-import-template.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
+}
 
-	downloadTextFile(filename, `\ufeff${csv}`, "text/csv;charset=utf-8");
-	appToast.success({ title: "ส่งออกสินค้าแล้ว", description: filename });
+async function exportFilteredProductsCsv() {
+	if (productExportSaving.value) return;
+	productExportSaving.value = true;
+	try {
+		const baseQuery = {
+			limit: 100,
+			search: searchQuery.value.trim() || undefined,
+			category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+			status: activeStatus.value,
+			sort: activeSort.value,
+		};
+		const firstResponse = await apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+			query: { ...baseQuery, page: 1 },
+		});
+		const remainingResponses = firstResponse.data.totalPages > 1
+			? await Promise.all(Array.from({ length: firstResponse.data.totalPages - 1 }, (_, index) => (
+				apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+					query: { ...baseQuery, page: index + 2 },
+				})
+			)))
+			: [];
+		const exportProducts = [
+			...firstResponse.data.items,
+			...remainingResponses.flatMap((response) => response.data.items),
+		];
+
+		const rows = exportProducts.map((product) => {
+			const category = categories.value.find((item) => item.id === product.category_id);
+			const unit = units.value.find((item) => item.id === product.base_unit_id);
+			return [
+				product.name,
+				product.sku,
+				product.barcode || "",
+				category?.name || "",
+				product.price_base,
+				product.cost_base,
+				unit?.code || product.base_unit_id,
+				product.location || "",
+				product.low_stock_threshold ?? "",
+			];
+		});
+		const now = new Date();
+		const fileStamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+		const filename = `products-${fileStamp}.csv`;
+		const csv = [
+			productCsvHeaders.join(","),
+			...rows.map((row) => row.map(escapeCsvValue).join(",")),
+		].join("\r\n");
+		downloadTextFile(filename, `\ufeff${csv}`, "text/csv;charset=utf-8");
+		appToast.success({ title: t("products.csv.exported"), description: filename });
+	} catch (error) {
+		appToast.error({
+			title: t("products.csv.exportFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
+		});
+	} finally {
+		productExportSaving.value = false;
+	}
+}
+
+function openProductImportPicker() {
+	if (!canImportProducts.value) return;
+	productImportInputRef.value?.click();
+}
+
+async function handleProductImportFileChange(event: Event) {
+	const input = event.target as HTMLInputElement | null;
+	const file = input?.files?.[0];
+	if (!file) return;
+	productImportFileName.value = file.name;
+	productImportRows.value = [];
+	productImportErrors.value = [];
+
+	try {
+		const parsedRows = parseCsv(await file.text());
+		if (parsedRows.length < 2) throw new Error(t("products.csv.noRows"));
+		if (parsedRows.length - 1 > 500) throw new Error(t("products.csv.tooManyRows"));
+		const columnIndexes = resolveCsvColumns(parsedRows[0]);
+		const missingColumns = ([ "name", "sku", "price", "cost", "base_unit" ] as ProductCsvColumn[])
+			.filter((column) => columnIndexes[column] < 0);
+		if (missingColumns.length > 0) {
+			throw new Error(t("products.csv.missingColumns", { columns: missingColumns.join(", ") }));
+		}
+
+		const categoryLookup = new Map<string, string>();
+		for (const category of categories.value) {
+			categoryLookup.set(category.id.trim().toLowerCase(), category.id);
+			categoryLookup.set(category.name.trim().toLowerCase(), category.id);
+		}
+		const unitLookup = new Map<string, string>();
+		for (const unit of units.value) {
+			unitLookup.set(unit.id.trim().toLowerCase(), unit.id);
+			unitLookup.set(unit.code.trim().toLowerCase(), unit.id);
+			unitLookup.set(unit.name_th.trim().toLowerCase(), unit.id);
+			unitLookup.set(getUnitDisplayName(unit).trim().toLowerCase(), unit.id);
+		}
+
+		const seenSkus = new Set<string>();
+		const nextRows: ProductCsvImportRow[] = [];
+		for (let index = 1; index < parsedRows.length; index += 1) {
+			const source = parsedRows[index];
+			const rowNumber = index + 1;
+			const name = csvCell(source, columnIndexes, "name");
+			const sku = csvCell(source, columnIndexes, "sku").toUpperCase();
+			const categoryText = csvCell(source, columnIndexes, "category");
+			const unitText = csvCell(source, columnIndexes, "base_unit");
+			const priceText = csvCell(source, columnIndexes, "price");
+			const costText = csvCell(source, columnIndexes, "cost");
+			const price = parseLocaleNumber(priceText);
+			const cost = parseLocaleNumber(costText);
+			const lowStockText = csvCell(source, columnIndexes, "low_stock_threshold");
+			const lowStock = lowStockText === "" ? null : parseLocaleNumber(lowStockText);
+			const categoryId = categoryText === "" || [ "uncategorized", "ไม่ระบุหมวด", "ບໍ່ລະບຸໝວດ" ].includes(categoryText.toLowerCase())
+				? null
+				: categoryLookup.get(categoryText.toLowerCase());
+			const unitId = unitLookup.get(unitText.toLowerCase());
+
+			if (!name || !sku) productImportErrors.value.push(t("products.csv.rowMissingNameSku", { row: rowNumber }));
+			else if (seenSkus.has(sku)) productImportErrors.value.push(t("products.csv.duplicateSku", { row: rowNumber, sku }));
+			else if (!priceText || !costText || !Number.isFinite(price) || price < 0 || !Number.isFinite(cost) || cost < 0) productImportErrors.value.push(t("products.csv.invalidPriceCost", { row: rowNumber }));
+			else if (lowStock !== null && (!Number.isFinite(lowStock) || lowStock < 0)) productImportErrors.value.push(t("products.csv.invalidLowStock", { row: rowNumber }));
+			else if (categoryText && categoryId === undefined) productImportErrors.value.push(t("products.csv.unknownCategory", { row: rowNumber, category: categoryText }));
+			else if (!unitId) productImportErrors.value.push(t("products.csv.unknownUnit", { row: rowNumber, unit: unitText }));
+			else {
+				seenSkus.add(sku);
+				nextRows.push({
+					name,
+					sku,
+					barcode: csvCell(source, columnIndexes, "barcode") || null,
+					category_id: categoryId || null,
+					base_unit_id: unitId,
+					price_base: price,
+					cost_base: cost,
+					location: csvCell(source, columnIndexes, "location").toUpperCase() || null,
+					low_stock_threshold: lowStock,
+				});
+			}
+		}
+		productImportRows.value = nextRows;
+	} catch (error) {
+		productImportErrors.value = [ error instanceof Error ? error.message : t("products.csv.invalidFile") ];
+	} finally {
+		productImportOpen.value = true;
+		if (input) input.value = "";
+	}
+}
+
+async function confirmProductImport() {
+	if (productImportSaving.value || productImportErrors.value.length > 0 || productImportRows.value.length === 0) return;
+	productImportSaving.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<ProductImportResult>>("/products/import", {
+			method: "POST",
+			body: {
+				store_id: effectiveStoreId.value,
+				rows: productImportRows.value,
+			},
+		});
+		productImportOpen.value = false;
+		currentPage.value = 1;
+		await loadProducts();
+		appToast.success({
+			title: t("products.csv.imported"),
+			description: t("products.csv.importSummary", response.data),
+		});
+	} catch (error) {
+		appToast.error({
+			title: t("products.csv.importFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
+		});
+	} finally {
+		productImportSaving.value = false;
+	}
 }
 
 function getCategoryLabel(categoryId: string) {
@@ -1092,7 +1342,7 @@ function mapApiProduct(
 		imageKey: getInitials(product.name),
 		imageUrl: resolveImageUrl(product.image_url),
 		accent: getAccent(product.id),
-		updatedAt: formatApiDate(product.created_at),
+		updatedAt: formatApiDate(product.updated_at || product.created_at),
 		updatedBy: "API",
 		lowStockThreshold,
 		tag: status === "inactive" ? "ปิดขาย" : variantCount > 0 ? "มีตัวเลือก" : undefined,
@@ -1117,7 +1367,7 @@ async function loadProducts() {
 		});
 		if (loadSequence !== productLoadSequence) return;
 		const categoryMap = Object.fromEntries(categories.value.map((category) => [category.id, category.name]));
-		const unitMap = Object.fromEntries(units.value.map((unit) => [unit.id, unit.name_th || unit.code]));
+		const unitMap = Object.fromEntries(units.value.map((unit) => [unit.id, getUnitDisplayName(unit)]));
 		productsTotal.value = response.data.total;
 		productStats.value = response.data.stats;
 		serverCategoryCounts.value = response.data.categoryCounts;
@@ -1144,6 +1394,17 @@ async function loadProductReferenceData() {
 	categories.value = categoriesResult.status === "fulfilled" ? categoriesResult.value.data : [];
 	units.value = unitsResult.status === "fulfilled" ? unitsResult.value.data : [];
 	stores.value = storesResult.status === "fulfilled" ? storesResult.value.data : [];
+}
+
+function loadInitialProductData(): Promise<void> {
+	if (initialProductLoadPromise) return initialProductLoadPromise;
+	initialProductLoadPromise = Promise.all([
+		loadProductReferenceData(),
+		loadProducts(),
+	]).then(() => undefined).finally(() => {
+		initialProductLoadPromise = null;
+	});
+	return initialProductLoadPromise;
 }
 
 	function resetProductForm() {
@@ -1997,7 +2258,7 @@ async function transformProductImage(file: File) {
 	const context = canvas.getContext("2d");
 	if (!context) {
 		bitmap.close();
-		throw new Error("ไม่สามารถเตรียมภาพสำหรับอัปโหลดได้");
+		throw new Error(t("products.create.imagePrepareFailed"));
 	}
 	context.drawImage(bitmap, 0, 0, width, height);
 	bitmap.close();
@@ -2012,11 +2273,11 @@ async function transformProductImage(file: File) {
 	}
 
 	if (!outputBlob) {
-		throw new Error("แปลงรูปสินค้าไม่สำเร็จ");
+		throw new Error(t("products.create.imageConvertFailed"));
 	}
 
 	if (outputBlob.size > 3 * 1024 * 1024) {
-		throw new Error("รูปหลังย่อยังเกิน 3 MB โปรดเลือกรูปที่เล็กลง");
+		throw new Error(t("products.create.imageTooLarge"));
 	}
 
 	return {
@@ -2035,13 +2296,13 @@ async function handleProductImageChange(event: Event) {
 		productForm.imageDataUrl = transformed.dataUrl;
 		productForm.imageName = transformed.fileName;
 		appToast.success({
-			title: "เพิ่มรูปสินค้าแล้ว",
+			title: t("products.create.imageAdded"),
 			description: transformed.fileName,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "เพิ่มรูปสินค้าไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("products.create.imageAddFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
 			timeout: 3200,
 		});
 	} finally {
@@ -2105,32 +2366,32 @@ function removeDraftSaleUnit(draftId: string) {
 }
 
 	function validateProductCreateForm() {
-		if (!canCreateProduct.value) return "คุณไม่มีสิทธิ์เพิ่มสินค้า";
-		if (!effectiveStoreId.value) return "ยังไม่พบร้านที่กำลังใช้งาน";
-		if (!productForm.name.trim()) return "กรุณากรอกชื่อสินค้า";
-		if (!productForm.sku.trim()) return "กรุณากรอก SKU";
-		if (!productForm.baseUnitId.trim()) return "กรุณาเลือกหน่วยหลัก";
-		if (productForm.location.trim().length > 80) return "ตำแหน่งสินค้า ต้องยาวไม่เกิน 80 ตัวอักษร";
+		if (!canCreateProduct.value) return t("products.create.noCreatePermission");
+		if (!effectiveStoreId.value) return t("products.create.noActiveStore");
+		if (!productForm.name.trim()) return t("products.create.nameRequired");
+		if (!productForm.sku.trim()) return t("products.create.skuRequired");
+		if (!productForm.baseUnitId.trim()) return t("products.create.baseUnitRequired");
+		if (productForm.location.trim().length > 80) return t("products.create.locationTooLong");
 		const priceBase = parseLocaleNumber(productForm.priceBase);
-		if (!Number.isFinite(priceBase) || priceBase < 0) return "กรุณากรอกราคาขายให้ถูกต้อง";
+		if (!Number.isFinite(priceBase) || priceBase < 0) return t("products.create.invalidSalePrice");
 		const costBase = parseLocaleNumber(productForm.costBase);
-		if (!Number.isFinite(costBase) || costBase < 0) return "กรุณากรอกต้นทุนให้ถูกต้อง";
+		if (!Number.isFinite(costBase) || costBase < 0) return t("products.create.invalidCost");
 		if (productForm.lowStockThreshold.trim() !== "") {
 			const lowStockThreshold = parseLocaleNumber(productForm.lowStockThreshold);
 			if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
-				return "ค่าเตือนสต็อกต่ำต้องเป็นตัวเลข 0 ขึ้นไป";
+				return t("products.create.invalidLowStock");
 			}
 		}
 			for (const draftUnit of productUnitDrafts.value) {
 				const multiplier = Number(draftUnit.multiplierToBase);
-				if (!draftUnit.unitId.trim()) return "พบหน่วยขายเพิ่มเติมที่ยังไม่สมบูรณ์";
+				if (!draftUnit.unitId.trim()) return t("products.create.incompleteExtraUnit");
 				if (!Number.isFinite(multiplier) || multiplier <= 0) {
-				return "จำนวนแปลงหน่วยขายต้องมากกว่า 0";
+					return t("products.create.invalidMultiplier");
 			}
 			if (draftUnit.pricePerUnit.trim() !== "") {
 				const draftPrice = parseLocaleNumber(draftUnit.pricePerUnit);
 				if (!Number.isFinite(draftPrice) || draftPrice < 0) {
-					return "ราคาของหน่วยขายเพิ่มเติมต้องเป็น 0 ขึ้นไป";
+					return t("products.create.invalidExtraUnitPrice");
 				}
 			}
 		}
@@ -2142,7 +2403,7 @@ function removeDraftSaleUnit(draftId: string) {
 		const validationError = validateProductCreateForm();
 	if (validationError) {
 		appToast.error({
-			title: "บันทึกสินค้าไม่ได้",
+			title: t("products.create.saveFailed"),
 			description: validationError,
 			timeout: 3200,
 		});
@@ -2193,13 +2454,13 @@ function removeDraftSaleUnit(draftId: string) {
 		selectedProductId.value = response.data.id;
 		productDetailOpen.value = true;
 		appToast.success({
-			title: "สร้างสินค้าแล้ว",
+			title: t("products.create.created"),
 			description: response.data.name,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "สร้างสินค้าไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("products.create.createFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
 			timeout: 3200,
 		});
 	} finally {
@@ -3005,8 +3266,7 @@ function submitSearchInput() {
 
 	onMounted(() => {
 		void ensureProductAuthPermissionReady();
-		void loadProductReferenceData();
-		void loadProducts();
+		void loadInitialProductData();
 		window.addEventListener("keydown", handleGlobalScannerKeydown);
 	});
 
@@ -3036,6 +3296,13 @@ onBeforeUnmount(() => {
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
+				<input
+					ref="productImportInputRef"
+					type="file"
+					accept=".csv,text/csv"
+					class="hidden"
+					@change="handleProductImportFileChange"
+				>
 				<AppPageHeader
 					title=""
 					compact
@@ -3226,10 +3493,10 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-arrow-up-tray-20-solid"
 												class="rounded-md"
-												:disabled="!canCreateProduct"
+												:disabled="!canImportProducts"
 												:aria-label="$t('products.import')"
 												:title="$t('products.import')"
-												@click="appToast.info({ title: 'นำเข้า (กำลังพัฒนา)', description: 'ตอนนี้ยังไม่มี flow นำเข้าไฟล์ในหน้านี้' })"
+												@click="openProductImportPicker"
 											>
 												{{ $t('products.import') }}
 											</AppButton>
@@ -3240,7 +3507,9 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-arrow-down-tray-20-solid"
 												class="rounded-md"
-												:disabled="productsPending"
+												:disabled="productsPending || productExportSaving"
+												:loading="productExportSaving"
+												:spin-icon-on-loading="true"
 												:aria-label="$t('products.export')"
 												:title="$t('products.export')"
 												@click="exportFilteredProductsCsv"
@@ -3273,8 +3542,8 @@ onBeforeUnmount(() => {
 														<button
 															type="button"
 															class="group flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-50"
-															:disabled="!canCreateProduct"
-															@click="productActionsMenuOpen = false; appToast.info({ title: 'นำเข้า (กำลังพัฒนา)', description: 'ตอนนี้ยังไม่มี flow นำเข้าไฟล์ในหน้านี้' })"
+																	:disabled="!canImportProducts"
+																	@click="productActionsMenuOpen = false; openProductImportPicker()"
 														>
 															<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
 																<UIcon name="i-heroicons-arrow-up-tray-20-solid" class="h-5 w-5" />
@@ -3288,7 +3557,7 @@ onBeforeUnmount(() => {
 														<button
 															type="button"
 															class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-50"
-															:disabled="productsPending"
+																	:disabled="productsPending || productExportSaving"
 															@click="productActionsMenuOpen = false; exportFilteredProductsCsv()"
 														>
 															<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
@@ -3468,8 +3737,72 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 					</div>
-				</div>
 			</div>
+		</div>
+					<AppResponsivePanel
+						v-model="productImportOpen"
+						:title="$t('products.csv.title')"
+						:description="$t('products.csv.description')"
+						desktop-width="680px"
+						close-button-size="md"
+						compact-header
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+					>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto py-2">
+								<div class="rounded-md border border-neutral-200 bg-white p-4">
+									<div class="flex items-start gap-3">
+										<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+											<UIcon name="i-heroicons-document-text-20-solid" class="h-5 w-5" />
+										</span>
+										<div class="min-w-0 flex-1">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.csv.file") }}</p>
+											<p class="mt-1 truncate text-sm font-semibold text-stone-900">{{ productImportFileName }}</p>
+											<p v-if="!productImportErrors.length" class="mt-1 text-xs text-emerald-700">{{ $t("products.csv.readyRows", { count: productImportRows.length }) }}</p>
+											<p v-else class="mt-1 text-xs text-red-700">{{ $t("products.csv.errors", { count: productImportErrors.length }) }}</p>
+										</div>
+									</div>
+									<div class="mt-4 flex flex-wrap gap-2">
+										<AppButton color="neutral" variant="soft" size="sm" icon="i-heroicons-folder-open-20-solid" :label="$t('products.csv.chooseFile')" @click="openProductImportPicker" />
+										<AppButton color="neutral" variant="ghost" size="sm" icon="i-heroicons-arrow-down-tray-20-solid" :label="$t('products.csv.downloadTemplate')" @click="downloadProductCsvTemplate" />
+									</div>
+								</div>
+
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-sm font-semibold text-stone-900">{{ $t("products.csv.requiredFormat") }}</p>
+									<code class="mt-2 block overflow-x-auto whitespace-nowrap rounded-md bg-stone-900 px-3 py-2 text-xs text-stone-100">{{ productCsvHeaders.join(", ") }}</code>
+									<p class="mt-3 text-xs leading-5 text-stone-600">{{ $t("products.csv.upsertHint") }}</p>
+									<p class="mt-2 text-xs leading-5 text-stone-600">{{ $t("products.csv.automaticFields") }}</p>
+								</div>
+
+								<div v-if="productImportErrors.length" class="rounded-md border border-red-200 bg-red-50 p-4">
+									<p class="text-sm font-semibold text-red-900">{{ $t("products.csv.errors", { count: productImportErrors.length }) }}</p>
+									<ul class="mt-2 space-y-1 text-xs leading-5 text-red-800">
+										<li v-for="(error, index) in productImportErrors.slice(0, 20)" :key="`${index}-${error}`">• {{ error }}</li>
+									</ul>
+								</div>
+							</div>
+
+							<div class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="grid grid-cols-2 gap-2">
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productImportOpen = false">{{ $t("common.cancel") }}</AppButton>
+									<AppButton
+										color="primary"
+										variant="solid"
+										size="md"
+										icon="i-heroicons-arrow-up-tray-20-solid"
+										:block="true"
+										:loading="productImportSaving"
+										:spin-icon-on-loading="true"
+										:disabled="productImportSaving || productImportErrors.length > 0 || productImportRows.length === 0"
+										:label="$t('products.csv.importNow', { count: productImportRows.length })"
+										@click="confirmProductImport"
+									/>
+								</div>
+							</div>
+						</div>
+					</AppResponsivePanel>
 					<AppResponsivePanel
 						v-model="productCreateOpen"
 						:title="$t('products.addProduct')"
@@ -3491,7 +3824,7 @@ onBeforeUnmount(() => {
 
 						<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700">
 							<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.create.store") }}</span>
 							<UBadge color="neutral" variant="soft" class="max-w-full">
 								<span class="truncate">{{ currentStoreName }}</span>
 							</UBadge>
@@ -3507,29 +3840,29 @@ onBeforeUnmount(() => {
 									<img
 										v-if="productImageSelected"
 										:src="productForm.imageDataUrl"
-										alt="ตัวอย่างรูปสินค้า"
+										:alt="$t('products.create.imagePreviewAlt')"
 										class="h-full w-full object-cover"
 									>
 									<div v-else class="flex flex-col items-center gap-1 text-stone-400">
 										<UIcon name="i-heroicons-photo-20-solid" class="h-5 w-5 transition group-hover:text-primary-500" />
-										<span class="text-[11px] font-medium transition group-hover:text-primary-600">เพิ่มรูป</span>
+										<span class="text-[11px] font-medium transition group-hover:text-primary-600">{{ $t("products.create.addImage") }}</span>
 									</div>
 								</button>
 
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<p class="text-sm font-medium text-stone-900">รูปสินค้า (ไม่บังคับ)</p>
+										<p class="text-sm font-medium text-stone-900">{{ $t("products.create.imageOptional") }}</p>
 										<UBadge color="neutral" variant="soft" label="640px WebP" />
-										<UBadge color="neutral" variant="soft" label="สูงสุด 3 MB" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.create.maxImageSize')" />
 									</div>
-									<p class="mt-1 text-xs leading-5 text-stone-500">กดที่พื้นที่รูปเพื่อใช้ตัวเลือกรูปแบบ native ของอุปกรณ์ ถ้ามีกล้องระบบจะให้เลือกผ่าน OS เอง</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.create.imagePickerHint") }}</p>
 									<div class="mt-3 flex flex-wrap gap-2">
 										<AppButton
 											color="neutral"
 											variant="soft"
 											size="xs"
 											:icon="productImageSelected ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'"
-											:label="productImageSelected ? 'เปลี่ยนรูป' : 'เลือกรูป'"
+											:label="productImageSelected ? $t('products.create.changeImage') : $t('products.create.chooseImage')"
 											@click="openProductImagePicker"
 										/>
 										<AppButton
@@ -3538,7 +3871,7 @@ onBeforeUnmount(() => {
 											variant="ghost"
 											size="xs"
 											icon="i-heroicons-trash-20-solid"
-											label="ลบรูป"
+											:label="$t('products.create.removeImage')"
 											@click="removeProductImage"
 										/>
 									</div>
@@ -3550,25 +3883,25 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4">
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ชื่อสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.productName") }}</label>
 									<UInput
 										v-model="productForm.name"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น น้ำดื่ม 1.5 ลิตร"
+										:placeholder="$t('products.create.namePlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductNameInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">พิมพ์ชื่อสินค้าแล้ว SKU จะสร้างให้อัตโนมัติ และจะหยุดทับเมื่อคุณแก้ SKU เอง</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.nameAutoSkuHint") }}</p>
 								</div>
 
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หมวดสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.productCategory") }}</label>
 									<select
 										v-model="productForm.categoryId"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
-										<option value="">ไม่ระบุหมวด</option>
+										<option value="">{{ $t("products.uncategorized") }}</option>
 										<option
 											v-for="category in categoryFormOptions"
 											:key="category.id"
@@ -3591,7 +3924,7 @@ onBeforeUnmount(() => {
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-arrow-path-20-solid"
-											label="สร้างใหม่"
+											:label="$t('products.create.generateNew')"
 											@click="generateProductSku"
 										/>
 									</div>
@@ -3599,24 +3932,24 @@ onBeforeUnmount(() => {
 											v-model="productForm.sku"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น WATER-1500"
+											:placeholder="$t('products.create.skuPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 											@focus="pauseProductSkuAutogen"
 											@blur="resumeProductSkuAutogen"
 										/>
-										<p class="text-xs leading-5 text-stone-500">แตะช่องนี้เมื่อไร ระบบจะหยุด auto-generate ทันที และเมื่อออกจากช่อง ระบบจะกลับมา auto-generate อีกครั้งถ้าคุณยังไม่ได้แก้ SKU เอง (ปุ่มสร้างใหม่จะบังคับสร้างและเปิด auto-sync กลับมา)</p>
+										<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.skuAutoHint") }}</p>
 									</div>
 
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">Barcode</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.create.barcode") }}</label>
 											<div class="flex items-center gap-2">
 												<AppButton
 													color="neutral"
 													variant="soft"
 													size="xs"
 													icon="i-heroicons-bolt-20-solid"
-													label="สร้าง"
+													:label="$t('products.create.generate')"
 													@click="generateProductBarcode"
 												/>
 												<AppButton
@@ -3624,7 +3957,7 @@ onBeforeUnmount(() => {
 													variant="soft"
 													size="xs"
 													icon="i-heroicons-qr-code-20-solid"
-													label="สแกน"
+													:label="$t('products.create.scan')"
 													@click="openCreateBarcodeScanner"
 												/>
 											</div>
@@ -3633,22 +3966,22 @@ onBeforeUnmount(() => {
 												v-model="productForm.barcode"
 												size="lg"
 											color="neutral"
-											placeholder="เว้นว่างได้"
+											:placeholder="$t('products.create.optional')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ตำแหน่งสินค้า (ชั้น/ช่อง)</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.create.location") }}</label>
 									<UInput
 										v-model="productForm.location"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น A1-03 (เว้นว่างได้)"
+										:placeholder="$t('products.create.locationPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductLocationInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">จะแสดงในหน้าสต็อกเพื่อช่วยหาของจริงได้เร็วขึ้น</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.locationHint") }}</p>
 								</div>
 								</div>
 							</div>
@@ -3656,24 +3989,24 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="grid gap-4 sm:grid-cols-2">
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">หน่วยหลัก</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.create.baseUnit") }}</label>
 										<select
 											v-model="productForm.baseUnitId"
 											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										>
-											<option value="">เลือกหน่วยหลัก</option>
+											<option value="">{{ $t("products.create.selectBaseUnit") }}</option>
 											<option
 												v-for="unit in units"
 												:key="unit.id"
 												:value="unit.id"
 											>
-												{{ unit.name_th || unit.code }}
+												{{ getUnitDisplayName(unit) }}
 											</option>
 										</select>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ราคาขาย</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.salePrice") }}</label>
 										<UInput
 											v-model="productForm.priceBase"
 											type="text"
@@ -3688,7 +4021,7 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ต้นทุน</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.cost") }}</label>
 										<UInput
 											v-model="productForm.costBase"
 											type="text"
@@ -3703,7 +4036,7 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">สต็อกต่ำ (≤)</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.create.lowStockThreshold") }}</label>
 										<UInput
 											v-model="productForm.lowStockThreshold"
 											type="text"
@@ -3711,10 +4044,10 @@ onBeforeUnmount(() => {
 											pattern="[0-9.,-]*"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น 10"
+											:placeholder="$t('products.create.lowStockPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
-										<p class="text-xs leading-5 text-stone-500">สต็อก ≤ 0 ถือว่าหมดอัตโนมัติ</p>
+										<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.outOfStockHint") }}</p>
 									</div>
 								</div>
 							</div>
@@ -3724,8 +4057,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 										<div class="flex items-start justify-between gap-4">
 											<span class="min-w-0">
-												<span class="block text-sm font-medium text-stone-900">ขายหน่วยหลักใน POS</span>
-												<span class="mt-1 block text-xs leading-5 text-stone-500">ปิดได้ถ้าต้องการขายเฉพาะแบบแพ็คหรือหน่วยแปลง</span>
+												<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.allowBaseUnitSale") }}</span>
+												<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.allowBaseUnitSaleHint") }}</span>
 											</span>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="productForm.allowBaseUnitSale" type="checkbox" class="peer sr-only">
@@ -3738,8 +4071,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 										<div class="flex items-start justify-between gap-4">
 											<span class="min-w-0">
-												<span class="block text-sm font-medium text-stone-900">เปิดขายสินค้านี้ทันที</span>
-												<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ สินค้าจะถูกสร้างแต่ยังไม่พร้อมขายใน POS</span>
+												<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.activeImmediately") }}</span>
+												<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.activeImmediatelyHint") }}</span>
 											</span>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="productForm.active" type="checkbox" class="peer sr-only">
@@ -3754,10 +4087,10 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
-									<h3 class="text-sm font-semibold text-stone-950">หน่วยขายเพิ่มเติม</h3>
-									<p class="mt-1 text-xs leading-5 text-stone-500">กำหนด conversion เช่น `1 PACK = 12 {{ unitLabelMap[productForm.baseUnitId] || "หน่วยหลัก" }}`</p>
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.create.extraSaleUnits") }}</h3>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.create.conversionHint", { unit: unitLabelMap[productForm.baseUnitId] || $t("products.create.baseUnit") }) }}</p>
 								</div>
-								<UBadge color="neutral" variant="soft" :label="`${productUnitDrafts.length} หน่วย`" />
+								<UBadge color="neutral" variant="soft" :label="$t('products.create.unitCount', { count: productUnitDrafts.length })" />
 							</div>
 
 								<div class="mt-4 flex flex-wrap gap-2" v-if="productUnitDrafts.length">
@@ -3772,9 +4105,9 @@ onBeforeUnmount(() => {
 											{{ unitLabelMap[draftUnit.unitId] || draftUnit.unitId }}
 											({{ draftUnit.multiplierToBase }})
 											·
-											ราคา {{ draftUnit.pricePerUnit.trim() ? formatMoney(parseLocaleNumber(draftUnit.pricePerUnit)) : "ใช้ราคากลาง" }}
+											{{ $t("products.create.price") }} {{ draftUnit.pricePerUnit.trim() ? formatMoney(parseLocaleNumber(draftUnit.pricePerUnit)) : $t("products.create.useDefaultPrice") }}
 											<span v-if="draftUnit.priceManualOverride && draftUnit.formulaPricePerUnit !== null" class="text-primary-700/80">
-												(กำหนดเอง)
+												({{ $t("products.create.manual") }})
 											</span>
 										</span>
 										<button
@@ -3792,13 +4125,13 @@ onBeforeUnmount(() => {
 									v-model="draftUnitForm.unitId"
 									class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
-									<option value="">เลือกหน่วยขาย</option>
+									<option value="">{{ $t("products.create.selectSaleUnit") }}</option>
 									<option
 										v-for="unit in availableDraftSaleUnits"
 										:key="unit.id"
 										:value="unit.id"
 									>
-										{{ unit.name_th || unit.code }}
+										{{ getUnitDisplayName(unit) }}
 									</option>
 								</select>
 									<UInput
@@ -3808,7 +4141,7 @@ onBeforeUnmount(() => {
 										step="1"
 										size="lg"
 										color="neutral"
-										placeholder="จำนวน"
+										:placeholder="$t('products.create.quantity')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="() => syncDraftUnitPriceFromFormula()"
 										@input="() => syncDraftUnitPriceFromFormula()"
@@ -3820,7 +4153,7 @@ onBeforeUnmount(() => {
 										pattern="[0-9.,-]*"
 										size="lg"
 										color="neutral"
-										placeholder="ราคา (optional)"
+										:placeholder="$t('products.create.optionalPrice')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleDraftUnitPriceInput"
 										@input="handleDraftUnitPriceNativeInput"
@@ -3831,7 +4164,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="md"
 									icon="i-heroicons-plus-20-solid"
-									label="เพิ่มหน่วย"
+									:label="$t('products.create.addUnit')"
 									:disabled="!draftUnitForm.unitId"
 										@click="addDraftSaleUnit"
 									/>
@@ -3841,8 +4174,8 @@ onBeforeUnmount(() => {
 								<div class="mt-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 									<div class="flex items-start justify-between gap-4">
 										<span class="min-w-0">
-											<span class="block text-sm font-medium text-stone-900">เปิดขายหน่วยที่กำลังเพิ่ม</span>
-											<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ ระบบจะสร้าง conversion นี้ไว้ก่อน แต่ยังไม่แสดงใน POS</span>
+											<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.enableDraftUnit") }}</span>
+											<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.enableDraftUnitHint") }}</span>
 										</span>
 										<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 											<input v-model="draftUnitForm.enabledForSale" type="checkbox" class="peer sr-only">
@@ -3859,7 +4192,7 @@ onBeforeUnmount(() => {
 							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 						>
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCreateOpen = false">ยกเลิก</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCreateOpen = false">{{ $t("common.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 								variant="solid"
@@ -3871,7 +4204,7 @@ onBeforeUnmount(() => {
 								:disabled="productSaving"
 								@click="saveProduct"
 							>
-								บันทึกสินค้า
+								{{ $t("products.create.saveProduct") }}
 							</AppButton>
 						</div>
 					</div>
@@ -3880,8 +4213,8 @@ onBeforeUnmount(() => {
 				<AppResponsivePanel
 					v-if="selectedProduct"
 					v-model="productDetailOpen"
-					title="ข้อมูลสินค้า"
-				description="ดูราคา ต้นทุน หมวดสินค้า และจัดการสถานะการขาย"
+					:title="$t('products.detail.title')"
+					:description="$t('products.detail.description')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -3913,7 +4246,7 @@ onBeforeUnmount(() => {
 														variant="soft"
 														size="xs"
 														icon="i-heroicons-clipboard-document"
-														label="คัดลอก"
+												:label="$t('products.detail.copy')"
 														:disabled="!canCopySelectedProductName"
 														@click="copySelectedProductName"
 														@mousedown.prevent
@@ -3928,7 +4261,7 @@ onBeforeUnmount(() => {
 														variant="soft"
 														size="xs"
 														icon="i-heroicons-clipboard-document"
-														label="คัดลอก"
+												:label="$t('products.detail.copy')"
 														:disabled="!canCopySelectedProductBarcode"
 														@click="copySelectedProductBarcode"
 														@mousedown.prevent
@@ -3945,7 +4278,7 @@ onBeforeUnmount(() => {
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge color="neutral" variant="soft" :label="getCategoryLabel(selectedProduct.categoryId)" />
 											<UBadge color="neutral" variant="soft" :label="selectedProduct.unitLabel" />
-											<UBadge color="neutral" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.detail.variantsCount', { count: selectedProduct.variantCount })" />
 										</div>
 									</div>
 								</div>
@@ -3953,29 +4286,29 @@ onBeforeUnmount(() => {
 
 							<div class="grid grid-cols-3 gap-2">
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.salePrice") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.cost") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.detail.margin") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
 								</div>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
-									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.summary") }}</h3>
 									<div class="flex items-center gap-2">
 										<AppButton
 											color="secondary"
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-document-duplicate"
-											label="ทำสำเนา"
+											:label="$t('products.detail.duplicate')"
 											:disabled="!canCreateProduct"
 											@click="openCloneProduct"
 										/>
@@ -3984,7 +4317,7 @@ onBeforeUnmount(() => {
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-pencil-square-20-solid"
-											label="แก้ไข"
+											:label="$t('products.detail.edit')"
 											:disabled="!canUpdateProduct"
 											@click="openEditProduct"
 										/>
@@ -3993,23 +4326,23 @@ onBeforeUnmount(() => {
 
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">หมวดสินค้า</dt>
+											<dt class="text-stone-500">{{ $t("products.productCategory") }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ getCategoryLabel(selectedProduct.categoryId) }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ตำแหน่งสินค้า</dt>
-											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.location === '-' ? "ยังไม่ตั้งค่า" : selectedProduct.location }}</dd>
+											<dt class="text-stone-500">{{ $t("products.detail.location") }}</dt>
+											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.location === '-' ? $t("products.detail.notSet") : selectedProduct.location }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">หน่วยหลัก</dt>
+											<dt class="text-stone-500">{{ $t("products.detail.baseUnit") }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.unitLabel }}</dd>
 										</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">จำนวนหน่วยขาย</dt>
-										<dd class="text-right font-medium text-stone-900">{{ selectedProduct.saleUnits.length }} แบบ</dd>
+										<dt class="text-stone-500">{{ $t("products.detail.saleUnitCount") }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ $t("products.unitTypes", { count: selectedProduct.saleUnits.length }) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4">
-										<dt class="text-stone-500">อัปเดตล่าสุด</dt>
+										<dt class="text-stone-500">{{ $t("products.detail.updatedAt") }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ selectedProduct.updatedAt }}</dd>
 									</div>
 								</dl>
@@ -4018,8 +4351,8 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">หน่วยขายและ conversion</h3>
-										<p class="mt-1 text-xs text-stone-500">กำหนดหน่วยขายของสินค้านี้แยกจาก master unit เช่น {{ productUnitSummary }}</p>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.saleUnits") }}</h3>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.detail.saleUnitsHint", { example: productUnitSummary }) }}</p>
 									</div>
 									<AppButton
 										v-if="canManageProductUnits"
@@ -4027,7 +4360,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-plus-20-solid"
-										label="เพิ่มหน่วยขาย"
+										:label="$t('products.detail.addSaleUnit')"
 										@click="openCreateProductUnit"
 									/>
 								</div>
@@ -4041,20 +4374,20 @@ onBeforeUnmount(() => {
 										<UBadge
 											:color="selectedProduct.allowBaseUnitSale ? 'info' : 'neutral'"
 											variant="soft"
-											:label="selectedProduct.allowBaseUnitSale ? 'ขายหน่วยหลักได้' : 'ปิดขายหน่วยหลัก'"
+											:label="selectedProduct.allowBaseUnitSale ? $t('products.detail.baseUnitEnabled') : $t('products.detail.baseUnitDisabled')"
 										/>
 									</div>
 								</div>
 
 								<div class="mt-4 space-y-3">
 									<div v-if="productUnitsPending" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-										กำลังโหลดหน่วยขาย...
+										{{ $t("products.detail.loadingSaleUnits") }}
 									</div>
 									<div v-else-if="productUnitsError" class="rounded-md bg-white px-4 py-4 text-sm text-rose-600 ring-1 ring-neutral-200">
 										{{ productUnitsError }}
 									</div>
 									<div v-else-if="!productUnits.length" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-										ยังไม่มีหน่วยขายเพิ่มเติมสำหรับสินค้านี้ คุณสามารถเพิ่มเช่น `แพ็ค`, `ลัง` หรือ `โหล` ตาม conversion จริงของสินค้าได้
+										{{ $t("products.detail.noSaleUnits") }}
 									</div>
 									<div
 										v-for="productUnit in productUnits"
@@ -4068,17 +4401,17 @@ onBeforeUnmount(() => {
 													<UBadge
 														:color="productUnit.enabledForSale ? 'info' : 'neutral'"
 														variant="soft"
-														:label="productUnit.enabledForSale ? 'เปิดขาย' : 'ปิดขาย'"
+													:label="productUnit.enabledForSale ? $t('products.detail.enabled') : $t('products.detail.disabled')"
 													/>
 												</div>
 												<p class="mt-1 text-sm text-stone-500">1 {{ productUnit.unitLabel }} = {{ productUnit.multiplierToBase }} {{ selectedProduct.unitLabel }}</p>
 												<p class="mt-1 text-xs text-stone-400">
-													{{ productUnit.pricePerUnit === null ? "ใช้ราคากลางของสินค้า" : `ราคาหน่วยนี้ ${formatMoney(productUnit.pricePerUnit)}` }}
+													{{ productUnit.pricePerUnit === null ? $t("products.detail.useBasePrice") : $t("products.detail.unitPrice", { price: formatMoney(productUnit.pricePerUnit) }) }}
 												</p>
 											</div>
 											<div v-if="canManageProductUnits" class="flex flex-wrap gap-2">
-												<AppButton color="neutral" variant="soft" size="xs" label="แก้ไข" @click="openEditProductUnit(productUnit.id)" />
-												<AppButton color="error" variant="soft" size="xs" label="ลบ" @click="openDeleteProductUnit(productUnit.id)" />
+												<AppButton color="neutral" variant="soft" size="xs" :label="$t('products.detail.edit')" @click="openEditProductUnit(productUnit.id)" />
+												<AppButton color="error" variant="soft" size="xs" :label="$t('products.detail.delete')" @click="openDeleteProductUnit(productUnit.id)" />
 											</div>
 										</div>
 									</div>
@@ -4088,9 +4421,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">ตัวเลือกสินค้า (Variant)</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.variants") }}</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">
-											สต็อก/ราคา/ต้นทุน แยกตาม SKU แต่ละตัวเลือก (สูงสุด 2 แกน)
+											{{ $t("products.detail.variantsHint") }}
 										</p>
 									</div>
 									<AppButton
@@ -4098,19 +4431,19 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-squares-plus-20-solid"
-										label="เพิ่มตัวเลือก"
+										:label="$t('products.detail.addVariant')"
 										:disabled="!canCreateProduct"
 										@click="openVariantMatrix"
 									/>
 								</div>
 
 								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">สถานะ Variant</p>
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">{{ $t("products.detail.variantStatus") }}</p>
 									<p class="mt-2 text-sm text-stone-700">
-										{{ selectedProduct.variantCount > 0 ? `มี ${selectedProduct.variantCount} ตัวเลือก` : "ยังไม่มีตัวเลือก" }}
+										{{ selectedProduct.variantCount > 0 ? $t("products.detail.hasVariants", { count: selectedProduct.variantCount }) : $t("products.detail.noVariants") }}
 									</p>
 									<p class="mt-1 text-xs text-stone-500">
-										กด “เพิ่มตัวเลือก” เพื่อสร้างหลาย SKU แบบ Matrix และเลือกสร้างบาร์โค้ดอัตโนมัติได้
+										{{ $t("products.detail.variantHelp") }}
 									</p>
 								</div>
 							</div>
@@ -4118,9 +4451,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.costUpdate") }}</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">
-											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
+											{{ $t("products.detail.costUpdateHint") }}
 										</p>
 									</div>
 									<AppButton
@@ -4128,26 +4461,28 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-banknotes-20-solid"
-										label="แก้ต้นทุน"
+										:label="$t('products.detail.editCost')"
 										:disabled="!canUpdateProductCost"
 										@click="openProductCostAdjust"
 									/>
 								</div>
 
 								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
-									<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">กำลังโหลด...</div>
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">{{ $t("products.detail.latestAudit") }}</p>
+									<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">{{ $t("products.detail.loading") }}</div>
 									<div v-else-if="productCostAdjustmentsError" class="mt-2 text-sm text-rose-600">{{ productCostAdjustmentsError }}</div>
 									<div v-else-if="productCostAdjustments.length" class="mt-2 space-y-2">
 										<div class="flex items-start justify-between gap-3">
 											<div>
 												<p class="text-sm font-semibold text-stone-900">{{ formatApiDate(productCostAdjustments[0].occurred_at) }}</p>
 												<p class="mt-1 text-sm text-stone-500">
-													ทุน {{ formatMoney(productCostAdjustments[0].before_cost_base) }}
-													→ {{ formatMoney(productCostAdjustments[0].after_cost_base) }}
-													({{ productCostAdjustments[0].delta >= 0 ? "+" : "" }}{{ formatMoney(productCostAdjustments[0].delta) }})
-												</p>
-												<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ productCostAdjustments[0].reason }}</p>
+															{{ $t("products.detail.costChange", {
+																before: formatMoney(productCostAdjustments[0].before_cost_base),
+																after: formatMoney(productCostAdjustments[0].after_cost_base),
+																delta: `${productCostAdjustments[0].delta >= 0 ? "+" : ""}${formatMoney(productCostAdjustments[0].delta)}`,
+															}) }}
+														</p>
+														<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">{{ $t("products.detail.reason", { reason: productCostAdjustments[0].reason }) }}</p>
 											</div>
 											<UBadge color="neutral" variant="soft" :label="productCostAdjustments[0].actor_role || 'user'" />
 										</div>
@@ -4157,11 +4492,11 @@ onBeforeUnmount(() => {
 												:key="adjustment.id"
 												color="neutral"
 												variant="soft"
-												:label="`ทุน ${formatMoney(adjustment.before_cost_base)}→${formatMoney(adjustment.after_cost_base)}`"
+													:label="$t('products.detail.costAudit', { before: formatMoney(adjustment.before_cost_base), after: formatMoney(adjustment.after_cost_base) })"
 											/>
 										</div>
 									</div>
-									<div v-else class="mt-2 text-sm text-stone-500">ยังไม่มีประวัติการปรับต้นทุน</div>
+									<div v-else class="mt-2 text-sm text-stone-500">{{ $t("products.detail.noCostHistory") }}</div>
 								</div>
 							</div>
 						</div>
@@ -4180,14 +4515,14 @@ onBeforeUnmount(() => {
 									:disabled="!canPrintSelectedProductBarcode"
 									@click="printSelectedProductBarcode"
 								>
-									พิมพ์บาร์โค้ด
+									{{ $t("products.detail.printBarcode") }}
 								</AppButton>
 								<AppButton
 									color="neutral"
 									:variant="selectedProduct.status === 'active' ? 'outline' : 'solid'"
 									size="md"
 									:block="true"
-									:label="selectedProduct.status === 'active' ? 'ปิดขาย' : 'เปิดขาย'"
+									:label="selectedProduct.status === 'active' ? $t('products.detail.deactivate') : $t('products.detail.activate')"
 									:disabled="(selectedProduct.status === 'active' ? !canDeactivateProduct : !canUpdateProduct) || productStatusSaving"
 									:loading="productStatusSaving"
 									:spin-icon-on-loading="true"
@@ -4204,7 +4539,7 @@ onBeforeUnmount(() => {
 								:disabled="!canDeactivateProduct"
 								@click="openDeleteProduct"
 							>
-								ลบสินค้า
+								{{ $t("products.detail.deleteProduct") }}
 							</AppButton>
 						</div>
 					</div>

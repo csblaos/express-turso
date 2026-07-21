@@ -41,6 +41,7 @@ const ACCOUNT_TYPE_OPTIONS = [
 ] as const;
 
 const { apiFetch } = useApiClient();
+const { t } = useI18n();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
 const runtimeConfig = useRuntimeConfig();
@@ -141,7 +142,7 @@ const paginatedAccounts = computed(() => {
 	const startIndex = (currentPage.value - 1) * pageSize.value;
 	return filteredAccounts.value.slice(startIndex, startIndex + pageSize.value);
 });
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("storePaymentsPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	filteredAccounts.value.length === 0
 		? 0
@@ -150,13 +151,13 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredAccounts.value.length));
 const pageSummaryText = computed(() => (
 	filteredAccounts.value.length === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${filteredAccounts.value.length} รายการ`
+		? t("storePaymentsPage.noData")
+		: t("storePaymentsPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: filteredAccounts.value.length })
 ));
 
 const accountTypeLabel = (accountType: StorePaymentAccountRecord["account_type"]) => {
-	if (!accountType) return "ไม่ระบุ";
-	return ACCOUNT_TYPE_OPTIONS.find((option) => option.id === accountType)?.label || "ไม่ระบุ";
+	if (!accountType) return t("storePaymentsPage.unspecified");
+	return ACCOUNT_TYPE_OPTIONS.find((option) => option.id === accountType)?.label || t("storePaymentsPage.unspecified");
 };
 
 const currentCurrency = computed(() => normalizeCurrencyCode(selectedStore.value?.currency) || "LAK");
@@ -184,22 +185,22 @@ const deleteTargetAccount = computed(() => (
 ));
 const deleteTargetLabel = computed(() => deleteTargetAccount.value?.display_name || form.display_name.trim() || "บัญชีรับเงิน");
 const accountCurrencyOptions = computed(() => ([
-	{ code: "all" as const, label: "ทุกสกุลเงิน" },
+	{ code: "all" as const, label: t("storePaymentsPage.allCurrencies") },
 	...enabledCurrencyOptions.value,
 ]));
 const accountTypeFilterOptions = computed(() => ([
-	{ id: "all" as const, label: "ทุกประเภท" },
-	{ id: "bank" as const, label: "บัญชีธนาคาร" },
+	{ id: "all" as const, label: t("storePaymentsPage.allTypes") },
+	{ id: "bank" as const, label: t("storePaymentsPage.bankAccount") },
 	{ id: "qr" as const, label: "QR" },
-	{ id: "other" as const, label: "อื่น ๆ" },
-	{ id: "none" as const, label: "ไม่ระบุ" },
+	{ id: "other" as const, label: t("storePaymentsPage.other") },
+	{ id: "none" as const, label: t("storePaymentsPage.unspecified") },
 ]));
 const accountStatusOptions = computed(() => ([
-	{ id: "all" as const, label: "ทั้งหมด" },
-	{ id: "active" as const, label: "ใช้งาน" },
-	{ id: "inactive" as const, label: "ปิดใช้งาน" },
-	{ id: "default" as const, label: "ค่าหลัก" },
-	{ id: "qr" as const, label: "มี QR" },
+	{ id: "all" as const, label: t("storePaymentsPage.all") },
+	{ id: "active" as const, label: t("storePaymentsPage.active") },
+	{ id: "inactive" as const, label: t("storePaymentsPage.inactive") },
+	{ id: "default" as const, label: t("storePaymentsPage.default") },
+	{ id: "qr" as const, label: t("storePaymentsPage.hasQr") },
 ]));
 const hasActiveAccountFilters = computed(() => (
 	searchQuery.value.trim().length > 0
@@ -634,10 +635,10 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
-		sidebar-eyebrow="Settings"
-		sidebar-title="Store Payments"
+		:sidebar-eyebrow="t('storePaymentsPage.settings')"
+		:sidebar-title="t('storePaymentsPage.title')"
 		sidebar-compact-title="PAY"
-		sidebar-description="จัดการบัญชีรับเงิน, เบอร์โทร/QR และรูป QR สำหรับ checkout ของร้าน"
+		:sidebar-description="t('storePaymentsPage.sidebarDescription')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
@@ -653,7 +654,7 @@ onMounted(async () => {
 								v-model="searchQuery"
 								size="lg"
 								icon="i-heroicons-magnifying-glass-20-solid"
-								placeholder="ค้นหาชื่อบัญชี, ธนาคาร หรือ เบอร์โทร/QR"
+								:placeholder="t('storePaymentsPage.searchPlaceholder')"
 								color="neutral"
 							class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 							/>
@@ -664,8 +665,8 @@ onMounted(async () => {
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"
 								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-								aria-label="ล้างคำค้น"
-								title="ล้างคำค้น"
+								:aria-label="t('storePaymentsPage.clearSearch')"
+								:title="t('storePaymentsPage.clearSearch')"
 								@click="searchQuery = ''"
 							/>
 						</div>
@@ -678,11 +679,11 @@ onMounted(async () => {
 							:loading="reloading"
 							:disabled="reloading"
 							:spin-icon-on-loading="true"
-							aria-label="รีโหลด"
-							title="รีโหลด"
+							:aria-label="t('storePaymentsPage.reload')"
+							:title="t('storePaymentsPage.reload')"
 							@click="reloadAll"
 						>
-							<span class="hidden sm:inline">รีโหลด</span>
+							<span class="hidden sm:inline">{{ t('storePaymentsPage.reload') }}</span>
 						</AppButton>
 						<AppButton
 							color="primary"
@@ -690,11 +691,11 @@ onMounted(async () => {
 							size="md"
 							icon="i-heroicons-plus-20-solid"
 							class="justify-center rounded-md"
-							aria-label="เพิ่มบัญชี"
-							title="เพิ่มบัญชี"
+							:aria-label="t('storePaymentsPage.addAccount')"
+							:title="t('storePaymentsPage.addAccount')"
 							@click="startCreateAccount"
 						>
-							<span class="hidden sm:inline">เพิ่มบัญชี</span>
+							<span class="hidden sm:inline">{{ t('storePaymentsPage.addAccount') }}</span>
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -706,17 +707,17 @@ onMounted(async () => {
 					>
 						<div class="grid grid-cols-4 gap-1.5 p-0">
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-[#3a332a] dark:bg-[#2a241d]">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ร้าน</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storePaymentsPage.store') }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950" :title="selectedStore?.name || ''">
 									{{ selectedStore?.name || "-" }}
 								</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-[#3a332a] dark:bg-[#2a241d]">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ทั้งหมด</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storePaymentsPage.all') }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ totalAccounts }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-[#3a332a] dark:bg-[#2a241d]">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ใช้งาน</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storePaymentsPage.active') }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ activeAccounts }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-[#3a332a] dark:bg-[#2a241d]">
@@ -730,10 +731,10 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5 dark:border-[#3a332a]">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">ตัวกรองบัญชีรับเงิน</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('storePaymentsPage.paymentFilters') }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500 dark:bg-[#2a241d] dark:text-stone-300">
-									{{ filteredAccounts.length }} รายการ
+									{{ t('storePaymentsPage.itemCount', { count: filteredAccounts.length }) }}
 								</div>
 							</div>
 
@@ -741,7 +742,7 @@ onMounted(async () => {
 								<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="store-payment-currency-filter">
-											สกุลเงิน
+											{{ t('storePaymentsPage.currency') }}
 										</label>
 										<div class="relative">
 											<select
@@ -766,7 +767,7 @@ onMounted(async () => {
 
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="store-payment-type-filter">
-											ประเภทบัญชี
+											{{ t('storePaymentsPage.accountType') }}
 										</label>
 										<div class="relative">
 											<select
@@ -811,8 +812,8 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5 dark:border-[#3a332a]">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">บัญชีรับเงิน</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">แสดงรายการบัญชีรับเงินแบบตาราง และจัดการผ่าน modal</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('storePaymentsPage.paymentAccounts') }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('storePaymentsPage.paymentAccountsDescription') }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500 dark:bg-[#2a241d] dark:text-stone-300">
 									{{ pageSummaryText }}
@@ -827,10 +828,10 @@ onMounted(async () => {
 								<div v-else-if="!filteredAccounts.length" class="flex min-h-[280px] items-center justify-center px-4 py-8 text-center">
 									<div class="space-y-3">
 										<p class="text-sm font-medium text-stone-900">
-											{{ hasActiveAccountFilters ? "ไม่พบรายการที่ตรงกับตัวกรอง" : searchQuery ? "ไม่พบรายการที่ค้นหา" : "ยังไม่มีบัญชีรับเงิน" }}
+											{{ hasActiveAccountFilters ? t('storePaymentsPage.noFilterResults') : searchQuery ? t('storePaymentsPage.noSearchResults') : t('storePaymentsPage.noAccounts') }}
 										</p>
 										<p class="text-sm text-stone-500">
-											{{ hasActiveAccountFilters ? "ลองปรับตัวกรองหรือเคลียร์ตัวกรอง แล้วลองอีกครั้ง" : searchQuery ? "ลองปรับคำค้นหรือเคลียร์ช่องค้นหา แล้วลองอีกครั้ง" : "กดปุ่ม “เพิ่มบัญชี” เพื่อสร้างบัญชีรับเงินแรกของร้าน" }}
+											{{ hasActiveAccountFilters ? t('storePaymentsPage.noFilterResultsHint') : searchQuery ? t('storePaymentsPage.noSearchResultsHint') : t('storePaymentsPage.noAccountsHint') }}
 										</p>
 										<AppButton
 											color="primary"
@@ -841,7 +842,7 @@ onMounted(async () => {
 											:disabled="hasActiveAccountFilters ? false : searchQuery ? false : !canUpdateStorePayments"
 											@click="hasActiveAccountFilters ? clearAccountFilters() : searchQuery ? (searchQuery = '') : startCreateAccount()"
 										>
-											{{ hasActiveAccountFilters ? "ล้างตัวกรอง" : searchQuery ? "ล้างคำค้น" : "เพิ่มบัญชีแรก" }}
+											{{ hasActiveAccountFilters ? t('storePaymentsPage.clearFilters') : searchQuery ? t('storePaymentsPage.clearSearch') : t('storePaymentsPage.addFirstAccount') }}
 										</AppButton>
 									</div>
 								</div>
@@ -1007,8 +1008,8 @@ onMounted(async () => {
 
 				<AppResponsivePanel
 					v-model="accountModalOpen"
-					:title="editingAccountId ? 'แก้ไขบัญชีรับเงิน' : 'เพิ่มบัญชีรับเงิน'"
-					description="กรอกข้อมูลบัญชีธนาคาร, เบอร์โทร/QR หรือรูป QR ของร้าน"
+					:title="editingAccountId ? t('storePaymentsPage.editAccount') : t('storePaymentsPage.addAccount')"
+					:description="t('storePaymentsPage.accountModalDescription')"
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
@@ -1027,7 +1028,7 @@ onMounted(async () => {
 
 							<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700 dark:border-[#3a332a] dark:bg-[#2a241d] dark:text-stone-100">
 								<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-								<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+								<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('storePaymentsPage.store') }}</span>
 								<UBadge color="neutral" variant="soft" class="max-w-full">
 									<span class="truncate">{{ currentStoreName }}</span>
 								</UBadge>
@@ -1043,29 +1044,29 @@ onMounted(async () => {
 										<img
 											v-if="qrImagePreviewUrl"
 											:src="qrImagePreviewUrl"
-											alt="ตัวอย่างรูป QR"
+											:alt="t('storePaymentsPage.qrPreview')"
 											class="h-full w-full object-cover"
 										>
 										<div v-else class="flex flex-col items-center gap-1 text-stone-400">
 											<UIcon name="i-heroicons-photo-20-solid" class="h-5 w-5 transition group-hover:text-primary-500" />
-											<span class="text-[11px] font-medium transition group-hover:text-primary-600">เพิ่มรูป</span>
+											<span class="text-[11px] font-medium transition group-hover:text-primary-600">{{ t('storePaymentsPage.addImage') }}</span>
 										</div>
 									</button>
 
 									<div class="min-w-0 flex-1">
 										<div class="flex flex-wrap items-center gap-2">
-											<p class="text-sm font-medium text-stone-900">รูป QR (ไม่บังคับ)</p>
+											<p class="text-sm font-medium text-stone-900">{{ t('storePaymentsPage.qrImageOptional') }}</p>
 											<UBadge color="neutral" variant="soft" label="640px WebP" />
-											<UBadge color="neutral" variant="soft" label="สูงสุด 3 MB" />
+											<UBadge color="neutral" variant="soft" :label="t('storePaymentsPage.maxFileSize')" />
 										</div>
-										<p class="mt-1 text-xs leading-5 text-stone-500">กดที่พื้นที่รูปเพื่อใช้ตัวเลือกรูปแบบ native ของอุปกรณ์ ถ้ามีกล้องระบบจะให้เลือกผ่าน OS เอง</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ t('storePaymentsPage.qrImageHint') }}</p>
 										<div class="mt-3 flex flex-wrap gap-2">
 											<AppButton
 												color="neutral"
 												variant="soft"
 												size="xs"
 												:icon="qrImageSelected ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'"
-												:label="qrImageSelected ? 'เปลี่ยนรูป' : 'เลือกรูป'"
+											:label="qrImageSelected ? t('storePaymentsPage.changeImage') : t('storePaymentsPage.chooseImage')"
 												@click="openQrImagePicker"
 											/>
 											<AppButton
@@ -1074,7 +1075,7 @@ onMounted(async () => {
 												variant="ghost"
 												size="xs"
 												icon="i-heroicons-trash-20-solid"
-												label="ลบรูป"
+											:label="t('storePaymentsPage.removeImage')"
 												@click="removeQrImage"
 											/>
 										</div>
@@ -1086,19 +1087,19 @@ onMounted(async () => {
 							<div class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
 								<div class="grid gap-4">
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ชื่อบัญชี</label>
+										<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.accountName') }}</label>
 										<UInput
 											v-model="form.display_name"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น บัญชีหลักร้าน / QR หน้าเคาน์เตอร์"
+											:placeholder="t('storePaymentsPage.accountNamePlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 										/>
 									</div>
 
 										<div class="grid gap-4">
 											<div class="space-y-2">
-												<label class="text-sm font-medium text-stone-700">สกุลเงิน</label>
+												<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.currency') }}</label>
 												<select
 													v-model="form.currency"
 												class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-100"
@@ -1111,19 +1112,19 @@ onMounted(async () => {
 										</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ชื่อบัญชีผู้รับเงิน</label>
+										<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.recipientName') }}</label>
 										<UInput
 											v-model="form.account_name"
 											size="lg"
 											color="neutral"
-											placeholder="ชื่อเจ้าของบัญชีหรือชื่อหน้าร้าน"
+											:placeholder="t('storePaymentsPage.recipientNamePlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 										/>
 									</div>
 
 									<div class="grid gap-4 sm:grid-cols-2">
 										<div class="space-y-2">
-											<label class="text-sm font-medium text-stone-700">ชื่อธนาคาร</label>
+											<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.bankName') }}</label>
 											<UInput
 												v-model="form.bank_name"
 												size="lg"
@@ -1134,12 +1135,12 @@ onMounted(async () => {
 										</div>
 
 										<div class="space-y-2">
-											<label class="text-sm font-medium text-stone-700">เลขบัญชี</label>
+											<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.accountNumber') }}</label>
 											<UInput
 												v-model="form.account_number"
 												size="lg"
 												color="neutral"
-												placeholder="บัญชีธนาคาร"
+												:placeholder="t('storePaymentsPage.accountNumber')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 											/>
 										</div>
@@ -1147,7 +1148,7 @@ onMounted(async () => {
 
 									<div class="grid gap-4 sm:grid-cols-2">
 										<div class="space-y-2">
-											<label class="text-sm font-medium text-stone-700">เบอร์โทรที่ผูกกับบัญชี/QR</label>
+											<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.phoneOrQr') }}</label>
 											<UInput
 												v-model="form.qr_id"
 												size="lg"
@@ -1160,8 +1161,8 @@ onMounted(async () => {
 										<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-[#3a332a] dark:bg-[#2a241d]">
 											<div class="flex items-start justify-between gap-4">
 												<span class="min-w-0">
-													<span class="block text-sm font-medium text-stone-900">ใช้งานบัญชีนี้</span>
-													<span class="mt-1 block text-xs leading-5 text-stone-500">ปิดไว้ถ้ายังไม่ต้องการให้บัญชีนี้แสดงในช่องทางรับเงิน</span>
+													<span class="block text-sm font-medium text-stone-900">{{ t('storePaymentsPage.activeAccount') }}</span>
+													<span class="mt-1 block text-xs leading-5 text-stone-500">{{ t('storePaymentsPage.activeAccountHint') }}</span>
 												</span>
 												<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 													<input v-model="form.is_active" type="checkbox" class="peer sr-only">
@@ -1175,8 +1176,8 @@ onMounted(async () => {
 							</div>
 
 							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3 text-xs leading-5 text-stone-500 dark:border-[#3a332a] dark:bg-[#2a241d] dark:text-stone-400">
-								<p class="font-semibold text-stone-700">หมายเหตุ</p>
-								<p class="mt-1">รองรับทั้งเลขบัญชี, เบอร์โทรที่ผูกกับบัญชี/QR และรูป QR โดยเลือกอัปโหลดรูปได้จากปุ่มด้านบน</p>
+								<p class="font-semibold text-stone-700">{{ t('storePaymentsPage.note') }}</p>
+								<p class="mt-1">{{ t('storePaymentsPage.accountNote') }}</p>
 							</div>
 						</div>
 
@@ -1186,7 +1187,7 @@ onMounted(async () => {
 						>
 							<div class="grid w-full gap-2" :class="editingAccountId ? 'grid-cols-3' : 'grid-cols-2'">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeAccountModal">
-									ยกเลิก
+									{{ t('storePaymentsPage.cancel') }}
 								</AppButton>
 								<AppButton
 									v-if="editingAccountId"
@@ -1198,7 +1199,7 @@ onMounted(async () => {
 									:disabled="saving || deletingId === editingAccountId"
 									@click="openDeleteConfirm"
 								>
-									ลบ
+									{{ t('storePaymentsPage.delete') }}
 								</AppButton>
 								<AppButton
 									color="primary"
@@ -1211,7 +1212,7 @@ onMounted(async () => {
 									:block="true"
 									@click="saveAccount"
 								>
-									{{ editingAccountId ? "บันทึก" : "เพิ่มบัญชี" }}
+									{{ editingAccountId ? t('storePaymentsPage.save') : t('storePaymentsPage.addAccount') }}
 								</AppButton>
 							</div>
 						</div>
@@ -1220,8 +1221,8 @@ onMounted(async () => {
 
 				<AppResponsivePanel
 					v-model="deleteConfirmOpen"
-					title="ลบบัญชีรับเงิน"
-					description="ยืนยันการลบบัญชีนี้แบบถาวร"
+					:title="t('storePaymentsPage.deleteAccount')"
+					:description="t('storePaymentsPage.deleteAccountDescription')"
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
@@ -1232,20 +1233,20 @@ onMounted(async () => {
 						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-4">
 							<div class="space-y-4 pb-6">
 								<div class="rounded-md border border-error-200 bg-error-50 p-4 dark:border-error-900/60 dark:bg-error-950/20">
-									<p class="text-sm font-semibold text-stone-950">ลบแบบถาวร</p>
-									<p class="mt-1 text-xs leading-5 text-stone-600">ถ้าลบสำเร็จ บัญชีรับเงินนี้จะหายจากรายการทันที และต้องสร้างใหม่หากต้องการใช้งานอีกครั้ง</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('storePaymentsPage.permanentDelete') }}</p>
+									<p class="mt-1 text-xs leading-5 text-stone-600">{{ t('storePaymentsPage.permanentDeleteHint') }}</p>
 								</div>
 
 								<div v-if="deleteTargetAccount" class="rounded-md border border-neutral-200 bg-neutral-50 p-4 dark:border-[#3a332a] dark:bg-[#2a241d]">
 									<p class="text-sm font-medium text-stone-900">{{ deleteTargetAccount.display_name }}</p>
-									<p class="mt-1 text-xs text-stone-500">ร้าน: {{ currentStoreName }}</p>
-									<p class="mt-1 text-xs text-stone-500">ธนาคาร: {{ deleteTargetAccount.bank_name || "-" }}</p>
-									<p class="mt-1 text-xs text-stone-500">เบอร์โทร/QR: {{ deleteTargetAccount.qr_id || "-" }}</p>
+									<p class="mt-1 text-xs text-stone-500">{{ t('storePaymentsPage.store') }}: {{ currentStoreName }}</p>
+									<p class="mt-1 text-xs text-stone-500">{{ t('storePaymentsPage.bankName') }}: {{ deleteTargetAccount.bank_name || "-" }}</p>
+									<p class="mt-1 text-xs text-stone-500">{{ t('storePaymentsPage.phoneOrQr') }}: {{ deleteTargetAccount.qr_id || "-" }}</p>
 								</div>
 
 								<div class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
-									<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Confirm delete</p>
-									<p class="mt-3 text-sm text-stone-700">ยืนยันการลบ {{ deleteTargetLabel }} ออกจากร้านปัจจุบัน ถ้าลบแล้วจะไม่สามารถกู้คืนได้จากหน้าจอนี้</p>
+									<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('storePaymentsPage.confirmDelete') }}</p>
+									<p class="mt-3 text-sm text-stone-700">{{ t('storePaymentsPage.confirmDeleteHint', { account: deleteTargetLabel }) }}</p>
 								</div>
 							</div>
 						</div>
@@ -1256,7 +1257,7 @@ onMounted(async () => {
 						>
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDeleteConfirm">
-									ปิด
+									{{ t('storePaymentsPage.close') }}
 								</AppButton>
 								<AppButton
 									color="error"
@@ -1269,7 +1270,7 @@ onMounted(async () => {
 									:block="true"
 									@click="deleteAccount"
 								>
-									ลบถาวร
+									{{ t('storePaymentsPage.permanentDelete') }}
 								</AppButton>
 							</div>
 						</div>
@@ -1279,7 +1280,7 @@ onMounted(async () => {
 				<AppResponsivePanel
 					v-model="qrPreviewOpen"
 					:title="qrPreviewTitle"
-					description="ตัวอย่างรูป QR แบบเต็มขนาด"
+					:description="t('storePaymentsPage.fullQrPreview')"
 					desktop-width="720px"
 					close-button-size="md"
 					compact-header
@@ -1296,12 +1297,12 @@ onMounted(async () => {
 								class="max-h-[72vh] w-full max-w-full rounded-lg object-contain"
 							>
 							<div v-else class="py-10 text-sm text-stone-500">
-								ไม่พบรูป QR
+								{{ t('storePaymentsPage.qrNotFound') }}
 							</div>
 						</div>
 						<div class="w-full max-w-2xl rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-600 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-400">
 							<p class="font-medium text-stone-900">{{ qrPreviewTitle }}</p>
-							<p class="mt-1 text-xs text-stone-500">กดปิดเพื่อกลับไปที่รายการบัญชีรับเงิน</p>
+							<p class="mt-1 text-xs text-stone-500">{{ t('storePaymentsPage.qrPreviewHint') }}</p>
 						</div>
 					</div>
 				</AppResponsivePanel>

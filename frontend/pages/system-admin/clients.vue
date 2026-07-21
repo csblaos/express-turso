@@ -330,7 +330,7 @@ function openCreateModal() {
 	if (!canManageSystem.value) {
 		appToast.error({
 			title: "ไม่มีสิทธิ์ใช้งาน",
-			description: "บัญชีนี้ไม่สามารถสร้าง Superadmin ได้",
+			description: "บัญชีนี้ไม่สามารถสร้าง Super Admin ได้",
 		});
 		return;
 	}
@@ -614,7 +614,7 @@ async function createClient() {
 		};
 		resetListPage();
 		appToast.success({
-			title: "สร้าง Superadmin แล้ว",
+			title: "สร้าง Super Admin แล้ว",
 			description: "บัญชีใหม่พร้อมสำหรับ login แล้วเริ่ม onboarding ร้านของตัวเอง",
 		});
 		await loadClients();
@@ -778,7 +778,7 @@ onMounted(async () => {
 					<template #actions>
 						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
 								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadClients">รีโหลด</AppButton>
-								<AppButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Superadmin</AppButton>
+								<AppButton color="primary" variant="solid" size="md" class="rounded-md" icon="i-heroicons-plus-20-solid" @click="openCreateModal">สร้าง Super Admin</AppButton>
 						</div>
 					</template>
 					<template #default>
@@ -788,7 +788,7 @@ onMounted(async () => {
 								<input
 									v-model="searchQuery"
 									type="text"
-									placeholder="ค้นหาชื่อหรืออีเมลของ Superadmin"
+									placeholder="ค้นหาชื่อหรืออีเมลของ Super Admin"
 									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									@keydown.enter="applyFilters"
 								>
@@ -828,7 +828,7 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin accounts</p>
+									<p class="text-sm font-semibold text-stone-950">Super Admin accounts</p>
 									<p class="mt-1 hidden text-xs text-stone-500 lg:block">มุมมองตารางช่วยให้ไล่ดูสถานะ, quota และวันที่สร้างได้เร็วกว่า card list</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
@@ -844,12 +844,12 @@ onMounted(async () => {
 									{{ error }}
 								</div>
 								<div v-else-if="!clients.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
-									ยังไม่มี Superadmin account ในระบบ
+									ยังไม่มี Super Admin account ในระบบ
 								</div>
 								<table v-else class="min-w-[940px] w-full border-separate border-spacing-0">
 									<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
 										<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-											<th class="border-b border-[#ece6dc] px-4 py-3">Superadmin</th>
+											<th class="border-b border-[#ece6dc] px-4 py-3">Super Admin</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">Store</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">Branch quota</th>
@@ -952,7 +952,7 @@ onMounted(async () => {
 
 				<AppResponsivePanel
 					v-model="createOpen"
-					title="สร้าง Superadmin"
+					title="สร้าง Super Admin"
 					description="บัญชีนี้จะใช้ login เพื่อเริ่มสร้างร้านแรกและตั้งค่าธีม/ข้อมูลธุรกิจของตัวเอง"
 					desktop-width="680px"
 					mobile-max-height="88dvh"
@@ -1058,7 +1058,7 @@ onMounted(async () => {
 										<UIcon name="i-heroicons-check-circle-20-solid" class="h-5 w-5" />
 									</div>
 									<div>
-										<p class="text-sm font-semibold text-stone-950">สร้าง Superadmin สำเร็จแล้ว</p>
+										<p class="text-sm font-semibold text-stone-950">สร้าง Super Admin สำเร็จแล้ว</p>
 										<p class="mt-1 text-sm leading-6 text-stone-600">คัดลอก username และ password ชุดนี้ไปส่งต่อให้ client ได้ทันที ก่อนกด done เพื่อปิด modal</p>
 									</div>
 								</div>
@@ -1106,7 +1106,7 @@ onMounted(async () => {
 				<AppResponsivePanel
 					v-model="detailOpen"
 					title="Client detail"
-					description="ปรับสิทธิ์ onboarding ร้าน, quota การขยายร้าน และสถานะของ Superadmin บัญชีนี้"
+					description="ปรับสิทธิ์ onboarding ร้าน, quota การขยายร้าน และสถานะของ Super Admin บัญชีนี้"
 					desktop-width="680px"
 					mobile-max-height="88dvh"
 					:fill-mobile-height="true"

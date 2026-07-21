@@ -5,46 +5,60 @@ import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHist
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateStoreInput } from "@models/Store";
+import { appendServerTiming } from "@utils/ServerTiming";
 import { SuccessHandler } from "@utils/SuccessHandler";
+
+async function withStoreTiming<T>(res: Response, action: () => Promise<T>): Promise<T> {
+	const startedAt = process.hrtime.bigint();
+	try {
+		return await action();
+	} finally {
+		appendServerTiming(
+			res,
+			"stores-db",
+			Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+		);
+	}
+}
 
 export class StoreController {
 	static getAll = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.getAll(req.requestId, {
+		const data = await withStoreTiming(res, () => StoreComponent.getAll(req.requestId, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getById = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.getById(req.requestId, req.params.id as string, {
+		const data = await withStoreTiming(res, () => StoreComponent.getById(req.requestId, req.params.id as string, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static create = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.create(req.requestId, req.body as CreateStoreInput, {
+		const data = await withStoreTiming(res, () => StoreComponent.create(req.requestId, req.body as CreateStoreInput, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
 	static update = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.update(req.requestId, req.params.id as string, req.body || {}, {
+		const data = await withStoreTiming(res, () => StoreComponent.update(req.requestId, req.params.id as string, req.body || {}, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static delete = SyncFunction.handler(async (req: Request, res: Response) => {
-		await StoreComponent.delete(req.requestId, req.params.id as string, {
+		await withStoreTiming(res, () => StoreComponent.delete(req.requestId, req.params.id as string, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId);
 	});
 

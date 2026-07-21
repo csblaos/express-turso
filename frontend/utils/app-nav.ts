@@ -15,7 +15,7 @@ export const appNavItems: AppNavItem[] = [
 	{ id: "reports", label: "รายงาน", labelKey: "nav.reports", icon: "i-heroicons-chart-bar-square-20-solid", to: "/reports" },
 	{ id: "activity", label: "กิจกรรม", labelKey: "nav.activity", icon: "i-heroicons-clock-20-solid", to: "/activity" },
 	{ id: "settings", label: "ตั้งค่า", labelKey: "nav.settings", icon: "i-heroicons-cog-6-tooth-20-solid", to: "/settings" },
-	{ id: "superadmin", label: "Superadmin", labelKey: "nav.superadmin", icon: "i-heroicons-building-office-2-20-solid", to: "/superadmin" },
+	{ id: "superadmin", label: "Super Admin", labelKey: "nav.superadmin", icon: "i-heroicons-building-office-2-20-solid", to: "/superadmin" },
 	{ id: "system-dashboard", label: "Dashboard", labelKey: "nav.dashboard", icon: "i-heroicons-chart-pie-20-solid", to: "/system-admin/dashboard" },
 	{ id: "system-clients", label: "Clients", labelKey: "nav.clients", icon: "i-heroicons-briefcase-20-solid", to: "/system-admin/clients" },
 	{ id: "system-policy", label: "System Policy", labelKey: "nav.policy", icon: "i-heroicons-cog-8-tooth-20-solid", to: "/system-admin/system" },

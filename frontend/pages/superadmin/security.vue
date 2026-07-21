@@ -67,7 +67,7 @@ const roleBreakdownRows = computed(() => {
 	if (!breakdown) return [];
 
 	return [
-		{ key: "superadmin", label: "Superadmin", value: breakdown.superadmin, tone: "primary" as const },
+		{ key: "superadmin", label: "Super Admin", value: breakdown.superadmin, tone: "primary" as const },
 		{ key: "owner", label: "Owner", value: breakdown.owner, tone: "success" as const },
 		{ key: "manager", label: "Manager", value: breakdown.manager, tone: "warning" as const },
 		{ key: "cashier", label: "Cashier", value: breakdown.cashier, tone: "neutral" as const },
@@ -162,8 +162,8 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
 		sidebar-description="snapshot ความพร้อมของผู้ใช้ ร้าน และทีม ภายใต้ superadmin นี้เท่านั้น"
 	>
