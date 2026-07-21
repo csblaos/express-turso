@@ -5,7 +5,7 @@
 	"scripts": {
 		"build": "nuxt build",
 		"dev": "nuxt dev --port 3001",
-		"generate": "nuxt generate",
+		"generate": "nuxt generate && node scripts/prepare-pages-output.mjs",
 		"preview": "nuxt preview --port 3001",
 		"postinstall": "nuxt prepare",
 		"i18n:check": "node scripts/check-i18n.mjs"
