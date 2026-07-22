@@ -77,6 +77,7 @@ type ApiPurchaseOrderDetail = {
 
 const { apiFetch } = useApiClient();
 const { currentStoreId, hydrateAuthState } = useAuthSession();
+const { t, locale } = useI18n();
 
 type StoreRecord = {
 	id: string;
@@ -104,12 +105,23 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
 
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
-const numberFormatter = new Intl.NumberFormat("th-TH");
+const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium", timeStyle: "short" }));
+const numberFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH"));
 const appToast = useAppToast();
+const historyText = computed(() => {
+	const copy = locale.value === "lo"
+		? {
+			search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ, ຜູ້ຕິດຕໍ່ ຫຼື ໝາຍເຫດ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ", apply: "ໃຊ້ຕົວກອງ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", fromDate: "ຈາກວັນທີ", toDate: "ເຖິງວັນທີ", history: "ປະຫວັດ PO", historyDescription: "ລຽງຈາກລາຍການຫຼ້າສຸດ ແລະ ຄົ້ນຫາ/ກອງໄດ້ຈາກດ້ານເທິງ", items: "ລາຍການ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດ PO", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", paid: "ຊຳລະ", quantity: "ຈຳນວນ", received: "ຮັບແລ້ວ", value: "ມູນຄ່າ", updated: "ອັບເດດ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ", unknownSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", allPayments: "ທຸກການຊຳລະ", unpaid: "ຍັງບໍ່ຊຳລະ", partial: "ຊຳລະບາງສ່ວນ", paidStatus: "ຊຳລະແລ້ວ", details: "ລາຍລະອຽດ PO", detailsDescription: "ເບິ່ງສິນຄ້າ, ຕົ້ນທຶນ ແລະ ການຊຳລະ", mainSummary: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", expected: "ຄາດວ່າຈະຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", products: "ລາຍການສິນຄ້າ", payments: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", copy: "ຄັດລອກ", copyContact: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", baseUnit: "ໜ່ວຍຫຼັກ", ordered: "ສັ່ງ", remaining: "ຄົງເຫຼືອ", lines: "ແຖວ", paymentItems: "ລາຍການຊຳລະ", latestPayment: "ຊຳລະຫຼ້າສຸດ", reference: "ອ້າງອີງ", noPayment: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", startDate: "ເລືອກວັນເລີ່ມ", endDate: "ເລືອກວັນສິ້ນສຸດ", pickDate: "ແຕະວັນທີທີ່ຕ້ອງການເລືອກ",
+		}
+		: locale.value === "en"
+			? {
+				search: "Search PO number, supplier, contact, or note", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear", apply: "Apply filters", poStatus: "PO status", paymentStatus: "Payment status", fromDate: "From date", toDate: "To date", history: "PO history", historyDescription: "Latest records first. Search or filter above.", items: "items", retry: "Try again", empty: "No PO history yet", emptyHint: "Try changing the filters or date range.", time: "Time", supplier: "Supplier", status: "Status", paid: "Payment", quantity: "Quantity", received: "Received", value: "Value", updated: "Updated", perPage: "Per page", previous: "Previous", next: "Next", unknownSupplier: "Supplier not specified", allPayments: "All payments", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "PO details", detailsDescription: "View products, costs, and payments.", mainSummary: "Main summary", expected: "Expected", totalCost: "Total cost", note: "Note", products: "Products", payments: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", copy: "Copy", copyContact: "Copy supplier contact", baseUnit: "base unit", ordered: "Ordered", remaining: "Remaining", lines: "lines", paymentItems: "payment entries", latestPayment: "Latest payment", reference: "Reference", noPayment: "No payment entry yet", close: "Close", startDate: "Select start date", endDate: "Select end date", pickDate: "Tap a date to select it",
+			}
+			: {
+				search: "ค้นหาเลข PO, supplier, contact หรือหมายเหตุ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง", apply: "ใช้ตัวกรอง", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", fromDate: "จากวันที่", toDate: "ถึงวันที่", history: "รายการประวัติ PO", historyDescription: "เรียงจากรายการล่าสุด และรองรับค้นหา/กรองจากด้านบน", items: "รายการ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติ PO", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", supplier: "Supplier", status: "สถานะ", paid: "ชำระ", quantity: "จำนวน", received: "รับแล้ว", value: "มูลค่า", updated: "อัปเดต", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", unknownSupplier: "ไม่ระบุ supplier", allPayments: "ทุกการชำระ", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "รายละเอียด PO", detailsDescription: "ดูสินค้า ต้นทุน และการชำระเงิน", mainSummary: "สรุปข้อมูลหลัก", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", products: "รายการสินค้า", payments: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", copy: "คัดลอก", copyContact: "คัดลอก contact supplier", baseUnit: "base unit", ordered: "สั่ง", remaining: "คงเหลือ", lines: "lines", paymentItems: "รายการชำระ", latestPayment: "ชำระล่าสุด", reference: "Reference", noPayment: "ยังไม่มี payment entry", close: "ปิด", startDate: "เลือกเริ่มวันที่", endDate: "เลือกสิ้นวันที่", pickDate: "แตะวันที่ที่ต้องการเลือก",
+			};
+	return copy;
+});
 
 const filteredOrders = computed(() => orders.value.filter((order) => {
 	const query = searchQuery.value.trim().toLowerCase();
@@ -131,7 +143,7 @@ const paginatedOrders = computed(() => {
 	const startIndex = (currentPage.value - 1) * pageSize.value;
 	return filteredOrders.value.slice(startIndex, startIndex + pageSize.value);
 });
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("purchaseOrdersPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	totalItems.value === 0
 		? 0
@@ -140,8 +152,8 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalItems.value));
 const pageSummaryText = computed(() => (
 	totalItems.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalItems.value} รายการ`
+		? t("purchaseOrdersPage.noData")
+		: t("purchaseOrdersPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: totalItems.value })
 ));
 const storeCurrency = computed(() => {
 	return stores.value.find((store) => store.id === currentStoreId.value)?.currency?.trim()?.toUpperCase()
@@ -169,22 +181,22 @@ const selectedOrderPaymentSummary = computed(() => {
 	};
 });
 
-const typeOptions: Array<{ id: typeof statusFilter.value; label: string }> = [
-	{ id: "all", label: "ทุกสถานะ" },
-	{ id: "draft", label: "ร่าง" },
-	{ id: "ordered", label: "สั่งซื้อแล้ว" },
-	{ id: "shipped", label: "ส่งแล้ว" },
-	{ id: "arrived", label: "รอรับสต็อก" },
-	{ id: "received", label: "รับครบแล้ว" },
-	{ id: "cancelled", label: "ยกเลิก" },
-];
+const typeOptions = computed<Array<{ id: typeof statusFilter.value; label: string }>>(() => [
+	{ id: "all", label: t("purchaseOrdersPage.allStatuses") },
+	{ id: "draft", label: t("purchaseOrdersPage.draft") },
+	{ id: "ordered", label: t("purchaseOrdersPage.ordered") },
+	{ id: "shipped", label: t("purchaseOrdersPage.shipped") },
+	{ id: "arrived", label: t("purchaseOrdersPage.arrived") },
+	{ id: "received", label: t("purchaseOrdersPage.received") },
+	{ id: "cancelled", label: t("purchaseOrdersPage.cancelled") },
+]);
 
-const paymentOptions: Array<{ id: typeof paymentFilter.value; label: string }> = [
-	{ id: "all", label: "ทุกการชำระ" },
-	{ id: "unpaid", label: "Unpaid" },
-	{ id: "partial", label: "Partial" },
-	{ id: "paid", label: "Paid" },
-];
+const paymentOptions = computed<Array<{ id: typeof paymentFilter.value; label: string }>>(() => [
+	{ id: "all", label: historyText.value.allPayments },
+	{ id: "unpaid", label: historyText.value.unpaid },
+	{ id: "partial", label: historyText.value.partial },
+	{ id: "paid", label: historyText.value.paidStatus },
+]);
 
 type DatePickerField = "from" | "to";
 type CalendarDay = {
@@ -199,7 +211,11 @@ type CalendarDay = {
 const datePickerOpen = ref(false);
 const datePickerField = ref<DatePickerField>("from");
 const datePickerMonth = ref(startOfMonth(new Date()));
-const weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+const weekdayLabels = computed(() => locale.value === "lo"
+	? ["ອາ", "ຈ", "ອ", "ພ", "ພຫ", "ສ", "ສ"]
+	: locale.value === "en"
+		? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+		: ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]);
 
 type DatePresetId = "today" | "this_week" | "last_week" | "this_month" | "last_month";
 
@@ -223,8 +239,8 @@ function startOfMonth(date: Date) {
 
 function formatPickerDate(value: string | null) {
 	const parsed = parseDateInputValue(value || "");
-	if (!parsed) return "เลือกวันที่";
-	return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(parsed);
+	if (!parsed) return t("purchaseOrdersPage.selectDate");
+	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium" }).format(parsed);
 }
 
 function setDateRangeValue(field: DatePickerField, value: string) {
@@ -382,7 +398,7 @@ function clearFilters() {
 function formatDate(value: string | null) {
 	if (!value) return "-";
 	try {
-		return dateFormatter.format(new Date(value));
+		return dateFormatter.value.format(new Date(value));
 	} catch {
 		return value;
 	}
@@ -534,16 +550,16 @@ onMounted(() => {
 		:nav-items="appNavItems"
 		:active-ids="['purchase']"
 		sidebar-eyebrow="Purchase"
-		sidebar-title="ประวัติ PO"
+		:sidebar-title="t('purchaseOrdersPage.historyTitle')"
 		sidebar-compact-title="PO HIS"
-		sidebar-description="ดูประวัติ purchase order และสถานะย้อนหลัง"
+		:sidebar-description="t('purchaseOrdersPage.historySidebarDescription')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-2 pb-2 lg:gap-3">
 				<AppPageHeader
 					compact
 					title=""
-					description="ค้นหาและดู purchase order ย้อนหลัง"
+					:description="t('purchaseOrdersPage.historyHeaderDescription')"
 					@menu="openSidebar"
 				>
 					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto] lg:justify-end">
@@ -552,7 +568,7 @@ onMounted(() => {
 								v-model="searchQuery"
 								size="lg"
 								icon="i-heroicons-magnifying-glass-20-solid"
-								placeholder="ค้นหาเลข PO, supplier, contact หรือหมายเหตุ"
+								:placeholder="historyText.search"
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								@keydown.enter.prevent="loadHistory"
@@ -564,8 +580,8 @@ onMounted(() => {
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"
 								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-								aria-label="ล้างคำค้น"
-								title="ล้างคำค้น"
+								:aria-label="historyText.clearSearch"
+								:title="historyText.clearSearch"
 								@click="searchQuery = ''"
 							/>
 						</div>
@@ -578,11 +594,11 @@ onMounted(() => {
 							class="justify-center rounded-md"
 							:loading="ordersPending"
 							:spin-icon-on-loading="true"
-							aria-label="รีโหลด"
-							title="รีโหลด"
+							:aria-label="historyText.reload"
+							:title="historyText.reload"
 							@click="loadHistory"
 						>
-							<span class="hidden sm:inline">รีโหลด</span>
+							<span class="hidden sm:inline">{{ historyText.reload }}</span>
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -591,7 +607,7 @@ onMounted(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
-								<p class="text-sm font-semibold text-stone-950">ตัวกรอง</p>
+								<p class="text-sm font-semibold text-stone-950">{{ historyText.filters }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 								{{ pageSummaryText }}
@@ -601,12 +617,12 @@ onMounted(() => {
 						<div class="grid gap-2 px-4 py-3">
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<div class="flex flex-wrap items-center gap-2">
-									<span class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ช่วงเวลา</span>
-									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('today')">วันนี้</AppButton>
-									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_week')">สัปดาห์นี้</AppButton>
-									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_week')">สัปดาห์ที่แล้ว</AppButton>
-									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_month')">เดือนนี้</AppButton>
-									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_month')">เดือนที่แล้ว</AppButton>
+									<span class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.period }}</span>
+									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('today')">{{ historyText.today }}</AppButton>
+									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_week')">{{ historyText.thisWeek }}</AppButton>
+									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_week')">{{ historyText.lastWeek }}</AppButton>
+									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('this_month')">{{ historyText.thisMonth }}</AppButton>
+									<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyPreset('last_month')">{{ historyText.lastMonth }}</AppButton>
 								</div>
 								<div class="flex items-center gap-2">
 									<AppButton
@@ -617,7 +633,7 @@ onMounted(() => {
 										:disabled="ordersPending"
 										@click="clearFilters"
 									>
-										ล้าง
+										{{ historyText.clear }}
 									</AppButton>
 									<AppButton
 										color="primary"
@@ -629,14 +645,14 @@ onMounted(() => {
 										:spin-icon-on-loading="true"
 										@click="loadHistory"
 									>
-										ใช้ตัวกรอง
+										{{ historyText.apply }}
 									</AppButton>
 								</div>
 							</div>
 
 							<div class="grid grid-cols-2 gap-2 md:grid-cols-3 md:items-end">
 								<div class="min-w-0">
-									<label class="mb-1 block text-[11px] font-medium text-stone-500">สถานะ PO</label>
+									<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.poStatus }}</label>
 									<div class="relative">
 										<select
 											v-model="statusFilter"
@@ -651,7 +667,7 @@ onMounted(() => {
 								</div>
 
 								<div class="min-w-0">
-									<label class="mb-1 block text-[11px] font-medium text-stone-500">สถานะชำระเงิน</label>
+									<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.paymentStatus }}</label>
 									<div class="relative">
 										<select
 											v-model="paymentFilter"
@@ -667,24 +683,24 @@ onMounted(() => {
 
 								<div class="col-span-2 grid grid-cols-2 gap-2 md:col-span-1">
 									<div class="min-w-0">
-										<label class="mb-1 block text-[11px] font-medium text-stone-500">จากวันที่</label>
+										<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.fromDate }}</label>
 										<button
 											type="button"
 											class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 											@click="openDatePicker('from')"
 										>
-											<span class="truncate">{{ fromDate ? formatPickerDate(fromDate) : 'เลือกวันที่' }}</span>
+											<span class="truncate">{{ fromDate ? formatPickerDate(fromDate) : t('purchaseOrdersPage.selectDate') }}</span>
 											<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
 										</button>
 									</div>
 									<div class="min-w-0">
-										<label class="mb-1 block text-[11px] font-medium text-stone-500">ถึงวันที่</label>
+										<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.toDate }}</label>
 										<button
 											type="button"
 											class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 											@click="openDatePicker('to')"
 										>
-											<span class="truncate">{{ toDate ? formatPickerDate(toDate) : 'เลือกวันที่' }}</span>
+											<span class="truncate">{{ toDate ? formatPickerDate(toDate) : t('purchaseOrdersPage.selectDate') }}</span>
 											<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
 										</button>
 									</div>
@@ -698,11 +714,11 @@ onMounted(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
-								<p class="text-sm font-semibold text-stone-950">รายการประวัติ PO</p>
-								<p class="mt-1 hidden text-xs text-stone-500 lg:block">เรียงจากรายการล่าสุด และรองรับค้นหา/กรองจากด้านบน</p>
+								<p class="text-sm font-semibold text-stone-950">{{ historyText.history }}</p>
+								<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ historyText.historyDescription }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-								{{ totalItems }} รายการ
+								{{ totalItems }} {{ historyText.items }}
 							</div>
 						</div>
 
@@ -713,28 +729,28 @@ onMounted(() => {
 							<div v-else-if="ordersError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 								<div class="space-y-3">
 									<p class="text-sm text-stone-600">{{ ordersError }}</p>
-									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadHistory">ลองใหม่</AppButton>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadHistory">{{ historyText.retry }}</AppButton>
 								</div>
 							</div>
 							<div v-else-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 								<div class="space-y-3">
-									<p class="text-sm font-medium text-stone-900">ยังไม่มีประวัติ PO</p>
-									<p class="text-sm text-stone-500">ลองเปลี่ยนตัวกรองหรือช่วงเวลา</p>
+									<p class="text-sm font-medium text-stone-900">{{ historyText.empty }}</p>
+									<p class="text-sm text-stone-500">{{ historyText.emptyHint }}</p>
 								</div>
 							</div>
 
 							<table v-else class="min-w-[1120px] w-full border-separate border-spacing-0">
 								<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เวลา</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.time }}</th>
 										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">PO</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Supplier</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ชำระ</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">จำนวน</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">รับแล้ว</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">มูลค่า</th>
-										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">อัปเดต</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.supplier }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.status }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.paid }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.quantity }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.received }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.value }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ historyText.updated }}</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -752,7 +768,7 @@ onMounted(() => {
 											<p class="mt-1 text-xs text-stone-400">{{ order.purchase_currency }} · {{ order.created_by || "-" }}</p>
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<p class="font-medium text-stone-900">{{ order.supplier_name || "ไม่ระบุ supplier" }}</p>
+											<p class="font-medium text-stone-900">{{ order.supplier_name || historyText.unknownSupplier }}</p>
 											<p v-if="order.supplier_contact" class="mt-1 text-xs text-stone-500">{{ order.supplier_contact }}</p>
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
@@ -792,7 +808,7 @@ onMounted(() => {
 
 								<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 									<div class="flex items-center gap-2">
-										<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+										<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.perPage }}</label>
 										<select
 											:value="pageSize"
 											class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -812,11 +828,11 @@ onMounted(() => {
 											class="rounded-md"
 											icon="i-heroicons-chevron-left-20-solid"
 											:disabled="currentPage <= 1 || ordersPending"
-											aria-label="หน้าก่อนหน้า"
-											title="หน้าก่อนหน้า"
+											:aria-label="historyText.previous"
+											:title="historyText.previous"
 											@click="goToPage(currentPage - 1)"
 										>
-											<span class="hidden sm:inline">ก่อนหน้า</span>
+											<span class="hidden sm:inline">{{ historyText.previous }}</span>
 										</AppButton>
 										<AppButton
 											color="neutral"
@@ -825,11 +841,11 @@ onMounted(() => {
 											class="rounded-md"
 											icon="i-heroicons-chevron-right-20-solid"
 											:disabled="currentPage >= totalPages || ordersPending"
-											aria-label="หน้าถัดไป"
-											title="หน้าถัดไป"
+											:aria-label="historyText.next"
+											:title="historyText.next"
 											@click="goToPage(currentPage + 1)"
 										>
-											<span class="hidden sm:inline">ถัดไป</span>
+											<span class="hidden sm:inline">{{ historyText.next }}</span>
 										</AppButton>
 									</div>
 								</div>
@@ -841,8 +857,8 @@ onMounted(() => {
 
 			<AppResponsivePanel
 				v-model="detailOpen"
-				title="รายละเอียด PO"
-				description="ดูสรุป รายการสินค้า และ payment ของ purchase order นี้"
+				:title="historyText.details"
+				:description="historyText.detailsDescription"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -866,7 +882,7 @@ onMounted(() => {
 														{{ selectedOrder?.po_number || "PO-XXXX" }}
 													</h3>
 													<p class="mt-1 truncate text-sm text-stone-500">
-														{{ selectedOrder?.supplier_name || "ไม่ระบุ supplier" }}
+														{{ selectedOrder?.supplier_name || historyText.unknownSupplier }}
 													</p>
 												</div>
 												<div class="flex shrink-0 flex-wrap items-center gap-2">
@@ -886,22 +902,22 @@ onMounted(() => {
 								</div>
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<h3 class="text-sm font-semibold text-stone-950">{{ historyText.mainSummary }}</h3>
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">Supplier</dt>
+											<dt class="text-stone-500">{{ historyText.supplier }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">คาดรับ</dt>
+											<dt class="text-stone-500">{{ historyText.expected }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ต้นทุนรวม</dt>
+											<dt class="text-stone-500">{{ historyText.totalCost }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4">
-											<dt class="text-stone-500">หมายเหตุ</dt>
+											<dt class="text-stone-500">{{ historyText.note }}</dt>
 											<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
 										</div>
 									</dl>
@@ -918,7 +934,7 @@ onMounted(() => {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">Payments</h3>
+											<h3 class="text-sm font-semibold text-stone-950">{{ historyText.payments }}</h3>
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="index in 2" :key="index" class="min-h-[64px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
@@ -929,7 +945,7 @@ onMounted(() => {
 							<div v-else-if="detailError" class="rounded-md border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 								<div class="space-y-3 py-10 text-center">
 									<p class="text-sm text-stone-600">{{ detailError }}</p>
-									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</AppButton>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">{{ historyText.retry }}</AppButton>
 								</div>
 							</div>
 
@@ -943,7 +959,7 @@ onMounted(() => {
 											<div class="flex flex-wrap items-start justify-between gap-3">
 												<div class="min-w-0">
 													<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrderDetail.order.po_number }}</h3>
-													<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</p>
+													<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || historyText.unknownSupplier }}</p>
 												</div>
 												<div class="flex shrink-0 flex-wrap items-center gap-2">
 													<UBadge :color="statusColor(selectedOrderDetail.order.status)" variant="soft" :label="statusLabel(selectedOrderDetail.order.status)" />
@@ -952,7 +968,7 @@ onMounted(() => {
 											<div class="mt-3 flex flex-wrap gap-2">
 												<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
 												<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
-												<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} รายการ`" />
+												<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} ${historyText.items}`" />
 											</div>
 											<div v-if="detailPending" class="pointer-events-none absolute inset-x-0 bottom-0">
 												<AppInlineLoadingBar minimal container-class="bg-transparent" />
@@ -963,22 +979,22 @@ onMounted(() => {
 
 								<template v-if="detailPending">
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ historyText.mainSummary }}</h3>
 										<dl class="mt-4 space-y-3 text-sm">
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">Supplier</dt>
+												<dt class="text-stone-500">{{ historyText.supplier }}</dt>
 												<dd class="text-right font-medium text-stone-900">-</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">คาดรับ</dt>
+												<dt class="text-stone-500">{{ historyText.expected }}</dt>
 												<dd class="text-right font-medium text-stone-900">-</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">ต้นทุนรวม</dt>
+												<dt class="text-stone-500">{{ historyText.totalCost }}</dt>
 												<dd class="text-right font-medium text-stone-900">-</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4">
-												<dt class="text-stone-500">หมายเหตุ</dt>
+												<dt class="text-stone-500">{{ historyText.note }}</dt>
 												<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
 											</div>
 										</dl>
@@ -986,7 +1002,7 @@ onMounted(() => {
 
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+											<h3 class="text-sm font-semibold text-stone-950">{{ historyText.products }}</h3>
 										</div>
 										<div class="mt-4 space-y-3">
 											<div v-for="index in 2" :key="index" class="min-h-[72px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
@@ -995,20 +1011,20 @@ onMounted(() => {
 
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
-											<UBadge color="neutral" variant="soft" label="กำลังโหลด" />
+											<h3 class="text-sm font-semibold text-stone-950">{{ historyText.payments }}</h3>
+											<UBadge color="neutral" variant="soft" :label="historyText.loading" />
 										</div>
 										<div class="mt-4 grid gap-3 sm:grid-cols-3">
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.estimated }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.actual }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.variance }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 											</div>
 										</div>
@@ -1072,9 +1088,9 @@ onMounted(() => {
 													<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base) }}</p>
 												</div>
 												<div class="mt-3 flex flex-wrap gap-2">
-													<UBadge color="neutral" variant="soft" :label="`สั่ง ${numberFormatter.format(item.qty_ordered)}`" />
-													<UBadge color="neutral" variant="soft" :label="`รับแล้ว ${numberFormatter.format(item.qty_received)}`" />
-													<UBadge color="neutral" variant="soft" :label="`คงเหลือ ${numberFormatter.format(Math.max(0, item.qty_ordered - item.qty_received))}`" />
+													<UBadge color="neutral" variant="soft" :label="`${historyText.ordered} ${numberFormatter.format(item.qty_ordered)}`" />
+													<UBadge color="neutral" variant="soft" :label="`${historyText.received} ${numberFormatter.format(item.qty_received)}`" />
+													<UBadge color="neutral" variant="soft" :label="`${historyText.remaining} ${numberFormatter.format(Math.max(0, item.qty_ordered - item.qty_received))}`" />
 												</div>
 											</div>
 										</div>
@@ -1152,7 +1168,7 @@ onMounted(() => {
 
 						<div class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-1 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">{{ historyText.close }}</AppButton>
 							</div>
 						</div>
 					</div>
@@ -1161,8 +1177,8 @@ onMounted(() => {
 
 			<AppResponsivePanel
 				v-model="datePickerOpen"
-				:title="datePickerField === 'from' ? 'เลือกเริ่มวันที่' : 'เลือกสิ้นวันที่'"
-				:description="datePickerCurrentValue ? formatPickerDate(datePickerCurrentValue) : 'แตะวันที่ที่ต้องการเลือก'"
+				:title="datePickerField === 'from' ? historyText.startDate : historyText.endDate"
+				:description="datePickerCurrentValue ? formatPickerDate(datePickerCurrentValue) : historyText.pickDate"
 				desktop-width="420px"
 				close-button-size="md"
 				compact-header
@@ -1224,7 +1240,7 @@ onMounted(() => {
 									class="w-full justify-center rounded-md text-center"
 									@click="pickToday"
 								>
-									วันนี้
+									{{ historyText.today }}
 								</AppButton>
 								<AppButton
 									color="neutral"
@@ -1235,7 +1251,7 @@ onMounted(() => {
 								>
 									<span class="inline-flex items-center justify-center gap-1.5">
 										<Eraser class="h-4 w-4 shrink-0" />
-										<span>ล้าง</span>
+										<span>{{ historyText.clear }}</span>
 									</span>
 								</AppButton>
 								<AppButton
@@ -1246,7 +1262,7 @@ onMounted(() => {
 									class="w-full justify-center rounded-md text-center"
 									@click="closeDatePicker"
 								>
-									ปิด
+									{{ historyText.close }}
 								</AppButton>
 							</div>
 						</div>

@@ -29,6 +29,15 @@ type SuperadminSecuritySnapshot = {
 };
 
 const { apiFetch } = useApiClient();
+const { locale } = useI18n();
+
+const copy = computed(() => locale.value === "lo" ? {
+	description: "ພາບລວມຄວາມພ້ອມຂອງຜູ້ໃຊ້ ຮ້ານ ແລະ ທີມງານພາຍໃຕ້ Super Admin ນີ້", reload: "ໂຫຼດໃໝ່", title: "ພາບລວມຄວາມປອດໄພ", subtitle: "ພາບລວມສຳລັບຂອບເຂດ Owner ເພື່ອໃຫ້ໂຫຼດໄວ", updated: "ອັບເດດລ່າສຸດ", users: "ຜູ້ໃຊ້ທັງໝົດ", usersNote: "ບັນຊີໃນຂອບເຂດ Super Admin ນີ້", active: "ໃຊ້ງານ", activeNote: "ບັນຊີທີ່ຍັງບໍ່ຖືກລະງັບ", stores: "ຮ້ານທັງໝົດ", storesNote: "ຮ້ານພາຍໃຕ້ກຸ່ມເຈົ້າຂອງນີ້", noTeam: "ຮ້ານທີ່ຍັງບໍ່ມີທີມ", noTeamNote: "ຄວນກວດສອບກ່ອນເປີດໃຊ້ງານ", posture: "ສະຖານະບັນຊີ", postureHint: "ສະຫຼຸບສະຖານະບັນຊີ ແລະ ຄວາມຄອບຄຸມຂອງທີມ", suspended: "ຖືກລະງັບ", passwordChange: "ຕ້ອງປ່ຽນລະຫັດຜ່ານ", members: "ສະມາຊິກຮ້ານທັງໝົດ", coverage: "ຄວາມຄອບຄຸມຂອງຮ້ານ", coverageHint: "ກວດວ່າທຸກຮ້ານມີທີມກ່ອນເລີ່ມໃຊ້ງານ", attention: "ຕ້ອງກວດເບິ່ງ", ready: "ພ້ອມໃຊ້ງານ", noMembers: "ຮ້ານທີ່ບໍ່ມີສະມາຊິກ", roles: "ການແຈກບົດບາດ", rolesHint: "ການແຈກບົດບາດຜູ້ໃຊ້ໃນຂອບເຂດນີ້", warnings: "ຄຳເຕືອນ", warningsHint: "ສັນຍານທີ່ຄວນຕິດຕາມ", items: "ລາຍການ", none: "ບໍ່ມີລາຍການທີ່ຕ້ອງຕິດຕາມ", noRisk: "ບໍ່ພົບສັນຍານຄວາມສ່ຽງຫຼັກໃນຂໍ້ມູນລ່າສຸດ", superAdmin: "ຜູ້ດູແລລະບົບສູງສຸດ", owner: "ເຈົ້າຂອງ", manager: "ຜູ້ຈັດການ", cashier: "ພະນັກງານຂາຍ", other: "ອື່ນໆ",
+} : locale.value === "en" ? {
+	description: "A readiness snapshot for users, stores, and teams within this Super Admin scope.", reload: "Reload", title: "Security snapshot", subtitle: "A lightweight Owner-scope snapshot for fast reading.", updated: "Last updated", users: "Total users", usersNote: "Accounts in this Super Admin scope", active: "Active", activeNote: "Accounts that are not suspended", stores: "Total stores", storesNote: "Stores under this owner group", noTeam: "Stores without a team", noTeamNote: "Review before going live", posture: "Account posture", postureHint: "Summary of account status and team coverage.", suspended: "Suspended", passwordChange: "Must change password", members: "Total store members", coverage: "Store coverage", coverageHint: "Check every store has a team before onboarding or launch.", attention: "Needs attention", ready: "Ready", noMembers: "Stores without members", roles: "Role breakdown", rolesHint: "Distribution of user roles in this scope.", warnings: "Warnings", warningsHint: "Signals to follow up in this Owner scope.", items: "items", none: "No follow-up items", noRisk: "No key risk signals in the latest snapshot.", superAdmin: "Super Admin", owner: "Owner", manager: "Manager", cashier: "Cashier", other: "Other",
+} : {
+	description: "ภาพรวมความพร้อมของผู้ใช้ ร้าน และทีม ภายใต้ Super Admin นี้", reload: "รีโหลด", title: "ภาพรวมความปลอดภัย", subtitle: "ภาพรวมขอบเขต Owner แบบกระชับ เพื่อให้อ่านเร็ว", updated: "อัปเดตล่าสุด", users: "ผู้ใช้ทั้งหมด", usersNote: "บัญชีในขอบเขต Super Admin นี้", active: "กำลังใช้งาน", activeNote: "บัญชีที่ยังไม่ถูกระงับ", stores: "ร้านทั้งหมด", storesNote: "ร้านที่อยู่ใต้กลุ่มเจ้าของนี้", noTeam: "ร้านที่ยังไม่มีทีม", noTeamNote: "ควรตรวจสอบก่อนเปิดใช้งานจริง", posture: "สถานะบัญชี", postureHint: "สรุปสถานะบัญชีและการครอบคลุมของทีม", suspended: "บัญชีที่ถูกระงับ", passwordChange: "ยังต้องเปลี่ยนรหัสผ่าน", members: "สมาชิกในร้านทั้งหมด", coverage: "ความครอบคลุมของร้าน", coverageHint: "ตรวจว่าร้านทุกแห่งมีทีมรองรับก่อนเริ่มใช้งาน", attention: "ต้องตรวจสอบ", ready: "พร้อมใช้งาน", noMembers: "ร้านที่ยังไม่มีสมาชิก", roles: "การกระจายบทบาท", rolesHint: "การกระจายบทบาทของผู้ใช้ในขอบเขตนี้", warnings: "คำเตือน", warningsHint: "สัญญาณที่ควรติดตามในขอบเขต Owner นี้", items: "รายการ", none: "ไม่มีรายการต้องติดตาม", noRisk: "ไม่พบสัญญาณความเสี่ยงสำคัญในข้อมูลล่าสุด", superAdmin: "ผู้ดูแลระบบสูงสุด", owner: "เจ้าของ", manager: "ผู้จัดการ", cashier: "แคชเชียร์", other: "อื่น ๆ",
+});
 
 const pending = ref(true);
 const error = ref<string | null>(null);
@@ -40,24 +49,24 @@ const overviewStats = computed(() => {
 
 	return [
 		{
-			label: "ผู้ใช้ทั้งหมด",
+			label: copy.value.users,
 			value: data.users_total,
-			note: "บัญชีใน scope ของ superadmin นี้",
+			note: copy.value.usersNote,
 		},
 		{
-			label: "กำลังใช้งาน",
+			label: copy.value.active,
 			value: data.users_active,
-			note: "บัญชีที่ยังไม่ถูกระงับ",
+			note: copy.value.activeNote,
 		},
 		{
-			label: "ร้านทั้งหมด",
+			label: copy.value.stores,
 			value: data.stores_total,
-			note: "ร้านที่อยู่ใต้เจ้าของกลุ่มนี้",
+			note: copy.value.storesNote,
 		},
 		{
-			label: "ร้านที่ยังไม่มีทีม",
+			label: copy.value.noTeam,
 			value: data.stores_without_members,
-			note: "ควรตรวจสอบก่อนเปิดใช้งานจริง",
+			note: copy.value.noTeamNote,
 		},
 	];
 });
@@ -67,11 +76,11 @@ const roleBreakdownRows = computed(() => {
 	if (!breakdown) return [];
 
 	return [
-		{ key: "superadmin", label: "Super Admin", value: breakdown.superadmin, tone: "primary" as const },
-		{ key: "owner", label: "Owner", value: breakdown.owner, tone: "success" as const },
-		{ key: "manager", label: "Manager", value: breakdown.manager, tone: "warning" as const },
-		{ key: "cashier", label: "Cashier", value: breakdown.cashier, tone: "neutral" as const },
-		{ key: "other", label: "Other", value: breakdown.other, tone: "info" as const },
+		{ key: "superadmin", label: copy.value.superAdmin, value: breakdown.superadmin, tone: "primary" as const },
+		{ key: "owner", label: copy.value.owner, value: breakdown.owner, tone: "success" as const },
+		{ key: "manager", label: copy.value.manager, value: breakdown.manager, tone: "warning" as const },
+		{ key: "cashier", label: copy.value.cashier, value: breakdown.cashier, tone: "neutral" as const },
+		{ key: "other", label: copy.value.other, value: breakdown.other, tone: "info" as const },
 	];
 });
 
@@ -80,14 +89,41 @@ const maxRoleCount = computed(() => {
 	return counts.length ? Math.max(...counts, 1) : 1;
 });
 
+const localizedWarnings = computed(() => {
+	const summary = snapshot.value?.summary;
+	if (!summary) return [];
+
+	if (locale.value === "lo") {
+		return [
+			summary.users_must_change_password > 0 ? `ຍັງມີ ${summary.users_must_change_password} ບັນຊີທີ່ຄວນປ່ຽນລະຫັດຜ່ານກ່ອນໃຊ້ງານຕໍ່` : null,
+			summary.users_suspended > 0 ? `ມີ ${summary.users_suspended} ບັນຊີທີ່ຖືກລະງັບໃນຂອບເຂດ Super Admin ນີ້` : null,
+			summary.stores_without_members > 0 ? `ຍັງມີ ${summary.stores_without_members} ຮ້ານທີ່ບໍ່ມີສະມາຊິກໃນທີມ` : null,
+		].filter((warning): warning is string => Boolean(warning));
+	}
+
+	if (locale.value === "en") {
+		return [
+			summary.users_must_change_password > 0 ? `${summary.users_must_change_password} account(s) should change their password before continuing.` : null,
+			summary.users_suspended > 0 ? `${summary.users_suspended} suspended account(s) are in this Super Admin scope.` : null,
+			summary.stores_without_members > 0 ? `${summary.stores_without_members} store(s) do not yet have team members.` : null,
+		].filter((warning): warning is string => Boolean(warning));
+	}
+
+	return [
+		summary.users_must_change_password > 0 ? `ยังมี ${summary.users_must_change_password} บัญชีที่ควรเปลี่ยนรหัสผ่านก่อนใช้งานต่อ` : null,
+		summary.users_suspended > 0 ? `มี ${summary.users_suspended} บัญชีที่ถูกระงับอยู่ในขอบเขต Super Admin นี้` : null,
+		summary.stores_without_members > 0 ? `ยังมี ${summary.stores_without_members} ร้านที่ยังไม่มีสมาชิกในทีม` : null,
+	].filter((warning): warning is string => Boolean(warning));
+});
+
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat("th-TH", {
+	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
 }
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โหลด security snapshot ไม่สำเร็จ") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = copy.value.title) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -165,7 +201,7 @@ onMounted(async () => {
 		sidebar-eyebrow="Super Admin"
 		sidebar-title="Super Admin"
 		sidebar-compact-title="SUP"
-		sidebar-description="snapshot ความพร้อมของผู้ใช้ ร้าน และทีม ภายใต้ superadmin นี้เท่านั้น"
+		:sidebar-description="copy.description"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
@@ -188,7 +224,7 @@ onMounted(async () => {
 								:spin-icon-on-loading="true"
 								@click="loadSecurity"
 							>
-								รีโหลด
+								{{ copy.reload }}
 							</AppButton>
 						</div>
 					</template>
@@ -199,11 +235,11 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Security snapshot</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">manual snapshot สำหรับ owner scope นี้เท่านั้น เพื่อคุม query ให้เบาและอ่านเร็ว</p>
+									<p class="text-sm font-semibold text-stone-950">{{ copy.title }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ copy.subtitle }}</p>
 								</div>
 								<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}
+									{{ copy.updated }} {{ formatDateTime(snapshot.checked_at) }}
 								</div>
 							</div>
 
@@ -233,25 +269,25 @@ onMounted(async () => {
 										<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 											<div class="space-y-4">
 												<div>
-													<h2 class="text-lg font-semibold text-stone-950">Account posture</h2>
-													<p class="mt-1 text-xs leading-5 text-stone-500">สรุปสถานะบัญชีและการครอบคลุมของทีมในร้านภายใต้ superadmin นี้</p>
+													<h2 class="text-lg font-semibold text-stone-950">{{ copy.posture }}</h2>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.postureHint }}</p>
 												</div>
 
 												<div class="grid grid-cols-2 gap-3">
 													<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-														<p class="text-xs text-stone-500">บัญชีที่ยังใช้งาน</p>
+														<p class="text-xs text-stone-500">{{ copy.active }}</p>
 														<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.users_active }}</p>
 													</div>
 													<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-														<p class="text-xs text-stone-500">บัญชีที่ถูกระงับ</p>
+														<p class="text-xs text-stone-500">{{ copy.suspended }}</p>
 														<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.users_suspended }}</p>
 													</div>
 													<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-														<p class="text-xs text-stone-500">ยังต้องเปลี่ยนรหัสผ่าน</p>
+														<p class="text-xs text-stone-500">{{ copy.passwordChange }}</p>
 														<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.users_must_change_password }}</p>
 													</div>
 													<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-														<p class="text-xs text-stone-500">สมาชิกในร้านทั้งหมด</p>
+														<p class="text-xs text-stone-500">{{ copy.members }}</p>
 														<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.store_members_total }}</p>
 													</div>
 												</div>
@@ -259,23 +295,23 @@ onMounted(async () => {
 												<div class="rounded-md border border-neutral-200 bg-white px-3 py-3.5">
 													<div class="flex items-center justify-between gap-3">
 														<div>
-															<p class="text-sm font-semibold text-stone-900">Store coverage</p>
-															<p class="mt-1 text-xs leading-5 text-stone-500">ตรวจว่าร้านทุกแห่งมีทีมรองรับก่อน onboarding หรือเปิดใช้งานจริง</p>
+															<p class="text-sm font-semibold text-stone-900">{{ copy.coverage }}</p>
+															<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.coverageHint }}</p>
 														</div>
 														<UBadge
 															:color="snapshot.summary.stores_without_members > 0 ? 'warning' : 'success'"
 															variant="soft"
-															:label="snapshot.summary.stores_without_members > 0 ? 'ต้องตรวจสอบ' : 'พร้อมใช้งาน'"
+															:label="snapshot.summary.stores_without_members > 0 ? copy.attention : copy.ready"
 														/>
 													</div>
 
 													<div class="mt-3 grid gap-3 sm:grid-cols-2">
 														<div class="rounded-md bg-neutral-50 px-3 py-3">
-															<p class="text-xs text-stone-500">ร้านทั้งหมด</p>
+															<p class="text-xs text-stone-500">{{ copy.stores }}</p>
 															<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.stores_total }}</p>
 														</div>
 														<div class="rounded-md bg-neutral-50 px-3 py-3">
-															<p class="text-xs text-stone-500">ร้านที่ยังไม่มีสมาชิก</p>
+															<p class="text-xs text-stone-500">{{ copy.noMembers }}</p>
 															<p class="mt-1 text-base font-semibold text-stone-950">{{ snapshot.summary.stores_without_members }}</p>
 														</div>
 													</div>
@@ -286,8 +322,8 @@ onMounted(async () => {
 										<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 											<div class="space-y-4">
 												<div>
-													<h2 class="text-lg font-semibold text-stone-950">Role breakdown</h2>
-													<p class="mt-1 text-xs leading-5 text-stone-500">กระจายบทบาทของผู้ใช้ที่อยู่ในขอบเขตของ superadmin นี้</p>
+													<h2 class="text-lg font-semibold text-stone-950">{{ copy.roles }}</h2>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.rolesHint }}</p>
 												</div>
 
 												<div class="space-y-3">
@@ -319,19 +355,19 @@ onMounted(async () => {
 										<div class="space-y-4">
 											<div class="flex flex-wrap items-center justify-between gap-3">
 												<div>
-													<h2 class="text-lg font-semibold text-stone-950">Warnings</h2>
-													<p class="mt-1 text-xs leading-5 text-stone-500">สัญญาณที่ควรตามต่อในฝั่งธุรกิจของ owner scope นี้</p>
+													<h2 class="text-lg font-semibold text-stone-950">{{ copy.warnings }}</h2>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.warningsHint }}</p>
 												</div>
 												<UBadge
-													:color="snapshot.warnings.length > 0 ? 'warning' : 'success'"
+													:color="localizedWarnings.length > 0 ? 'warning' : 'success'"
 													variant="soft"
-													:label="snapshot.warnings.length > 0 ? `${snapshot.warnings.length} รายการ` : 'ไม่มีรายการต้องตามต่อ'"
+													:label="localizedWarnings.length > 0 ? `${localizedWarnings.length} ${copy.items}` : copy.none"
 												/>
 											</div>
 
-											<div v-if="snapshot.warnings.length" class="grid gap-3">
+											<div v-if="localizedWarnings.length" class="grid gap-3">
 												<div
-													v-for="warning in snapshot.warnings"
+													v-for="warning in localizedWarnings"
 													:key="warning"
 													class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
 												>
@@ -339,7 +375,7 @@ onMounted(async () => {
 												</div>
 											</div>
 											<div v-else class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">
-												ไม่พบสัญญาณความเสี่ยงหลักใน scope ของ superadmin นี้ตอน snapshot ล่าสุด
+												{{ copy.noRisk }}
 											</div>
 										</div>
 									</UCard>

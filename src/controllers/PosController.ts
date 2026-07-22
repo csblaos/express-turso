@@ -26,6 +26,7 @@ export class PosController {
 			service_mode: String(body.service_mode || "walk-in") as PosCheckoutPayload["service_mode"],
 			payment_method: String(body.payment_method || "") as PosPaymentMethod,
 			items: Array.isArray(body.items) ? body.items as PosCheckoutPayload["items"] : [],
+			promotion_ids: Array.isArray(body.promotion_ids) ? body.promotion_ids.map(String) : [],
 			amount_tendered: body.amount_tendered == null ? null : Number(body.amount_tendered),
 			payment_account_id: typeof body.payment_account_id === "string" ? body.payment_account_id : null,
 			payment_reference: typeof body.payment_reference === "string" ? body.payment_reference : null,

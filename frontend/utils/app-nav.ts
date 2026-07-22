@@ -12,6 +12,7 @@ export const appNavItems: AppNavItem[] = [
 	{ id: "orders", label: "ออเดอร์", labelKey: "nav.orders", icon: "i-heroicons-shopping-cart-20-solid", to: "/orders" },
 	{ id: "stock", label: "สต็อก", labelKey: "nav.inventory", icon: "i-heroicons-cube-20-solid", to: "/inventory" },
 	{ id: "purchase", label: "สั่งซื้อ", labelKey: "nav.purchaseOrders", icon: "i-heroicons-clipboard-document-list-20-solid", to: "/purchase-orders" },
+	{ id: "promotions", label: "โปรโมชั่น", labelKey: "nav.promotions", icon: "i-heroicons-gift-20-solid", to: "/promotions" },
 	{ id: "reports", label: "รายงาน", labelKey: "nav.reports", icon: "i-heroicons-chart-bar-square-20-solid", to: "/reports" },
 	{ id: "activity", label: "กิจกรรม", labelKey: "nav.activity", icon: "i-heroicons-clock-20-solid", to: "/activity" },
 	{ id: "settings", label: "ตั้งค่า", labelKey: "nav.settings", icon: "i-heroicons-cog-6-tooth-20-solid", to: "/settings" },

@@ -3601,7 +3601,7 @@ onBeforeUnmount(() => {
 											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.stock') }}</th>
 											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.unit') }}</th>
 											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.extraUnits') }}</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Variants</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.variants') }}</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 												</tr>
 											</thead>
@@ -3659,7 +3659,7 @@ onBeforeUnmount(() => {
 																	{{ product.extraSaleUnitCount ? $t('products.unitTypes', { count: product.extraSaleUnitCount }) : "-" }}
 														</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-														{{ product.variantCount }}
+														{{ product.variantCount > 0 ? product.variantCount : "-" }}
 													</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
 													<AppButton

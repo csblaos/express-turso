@@ -126,6 +126,7 @@ const { apiFetch } = useApiClient();
 const { can, accessToken, currentUser, currentAccess, fetchMe, hydrateAuthState, currentStoreId, switchStore } = useAuthSession();
 const appToast = useAppToast();
 const route = useRoute();
+const { t, locale } = useI18n();
 
 const searchQuery = ref("");
 const activeStatus = ref("all");
@@ -189,15 +190,34 @@ const createForm = reactive({
 	items: [] as CreateLine[],
 });
 
-const numberFormatter = new Intl.NumberFormat("th-TH");
-const receiveQtyFormatter = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
+const numberFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH"));
+const receiveQtyFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { maximumFractionDigits: 0 }));
+const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium", timeStyle: "short" }));
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
+
+const poFormText = computed(() => {
+	if (locale.value === "en") return {
+		store: "Store", restricted: "This status only allows rate, shipping, other costs, and notes to be edited.", poInfo: "PO information", poInfoHint: "Enter the supplier, currency, and expected delivery date.", supplier: "Supplier", supplierPlaceholder: "Supplier name", supplierContact: "Supplier contact", supplierContactPlaceholder: "Phone number or contact channel", currency: "Currency", expectedAt: "Expected delivery", extraCosts: "Exchange rate and additional costs", extraCostsHint: "Enter an estimated rate now and adjust it at final settlement.", extraCostsEditHint: "You can edit the rate, shipping, and other costs before receiving stock.", estimatedRate: "Estimated exchange rate", estimatedRatePlaceholder: "e.g. 1 or 21,500", estimatedRateHint: "If the rate is not known yet, keep the current value when creating the PO.", estimatedShipping: "Estimated shipping", estimatedShippingHint: "Enter the actual shipping cost after goods arrive.", estimatedOtherCost: "Estimated other costs", otherCostNote: "Other-cost note", items: "Product items", itemsHint: "Add only products that will be received into stock.", itemsCostHint: "Enter actual costs from Lazada, Taobao, or the supplier for each item.", addItem: "Add item", product: "Product", loadingProducts: "Loading products…", selectProduct: "Select product", quantity: "Quantity", cost: "Cost", perUnit: "Per unit", total: "Total", totalCost: "Total cost", removeItem: "Remove item", note: "Note", notePlaceholder: "Additional details (optional)", cancel: "Cancel", saveCost: "Save costs", saveChanges: "Save changes", saveDraft: "Save draft", createPo: "Create PO",
+	};
+	if (locale.value === "lo") return {
+		store: "ຮ້ານ", restricted: "ສະຖານະນີ້ແກ້ໄຂໄດ້ສະເພາະອັດຕາແລກປ່ຽນ, ຄ່າຂົນສົ່ງ, ຄ່າໃຊ້ຈ່າຍອື່ນ ແລະ ໝາຍເຫດ.", poInfo: "ຂໍ້ມູນ PO", poInfoHint: "ລະບຸຜູ້ສະໜອງ, ສະກຸນເງິນ ແລະ ວັນຄາດວ່າຈະໄດ້ຮັບ.", supplier: "ຜູ້ສະໜອງ", supplierPlaceholder: "ຊື່ຜູ້ສະໜອງ", supplierContact: "ຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", supplierContactPlaceholder: "ເບີໂທ ຫຼື ຊ່ອງທາງຕິດຕໍ່", currency: "ສະກຸນເງິນ", expectedAt: "ວັນຄາດວ່າຈະໄດ້ຮັບ", extraCosts: "ອັດຕາແລກປ່ຽນ ແລະ ຄ່າໃຊ້ຈ່າຍເພີ່ມ", extraCostsHint: "ລະບຸອັດຕາໂດຍປະມານໄດ້ ແລະ ປັບຕອນປິດບິນຈິງ.", extraCostsEditHint: "ແກ້ໄຂອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າອື່ນໄດ້ກ່ອນຮັບສິນຄ້າ.", estimatedRate: "ອັດຕາແລກປ່ຽນ (ປະມານ)", estimatedRatePlaceholder: "ເຊັ່ນ 1 ຫຼື 21500", estimatedRateHint: "ຖ້າຍັງບໍ່ຮູ້ອັດຕາ ໃຫ້ໃຊ້ຄ່າເດີມໄດ້.", estimatedShipping: "ຄ່າຂົນສົ່ງ (ປະມານ)", estimatedShippingHint: "ລະບຸຄ່າຂົນສົ່ງຈິງຫຼັງສິນຄ້າມາຮອດ.", estimatedOtherCost: "ຄ່າໃຊ້ຈ່າຍອື່ນ (ປະມານ)", otherCostNote: "ໝາຍເຫດຄ່າໃຊ້ຈ່າຍອື່ນ", items: "ລາຍການສິນຄ້າ", itemsHint: "ໃສ່ສະເພາະສິນຄ້າທີ່ຈະຮັບເຂົ້າສະຕັອກ.", itemsCostHint: "ລະບຸຕົ້ນທຶນຈິງຈາກ Lazada, Taobao ຫຼື ຜູ້ສະໜອງໃນແຕ່ລະລາຍການ.", addItem: "ເພີ່ມລາຍການ", product: "ສິນຄ້າ", loadingProducts: "ກຳລັງໂຫຼດສິນຄ້າ…", selectProduct: "ເລືອກສິນຄ້າ", quantity: "ຈຳນວນ", cost: "ຕົ້ນທຶນ", perUnit: "ຕໍ່ໜ່ວຍ", total: "ລວມ", totalCost: "ຕົ້ນທຶນລວມ", removeItem: "ລຶບລາຍການ", note: "ໝາຍເຫດ", notePlaceholder: "ລາຍລະອຽດເພີ່ມ (ຖ້າມີ)", cancel: "ຍົກເລີກ", saveCost: "ບັນທຶກຕົ້ນທຶນ", saveChanges: "ບັນທຶກການແກ້ໄຂ", saveDraft: "ບັນທຶກຮ່າງ", createPo: "ສ້າງ PO",
+	};
+	return { store: "ร้าน", restricted: "สถานะนี้แก้ได้เฉพาะ rate / shipping / other cost และหมายเหตุเท่านั้น", poInfo: "ข้อมูล PO", poInfoHint: "กรอก supplier, สกุลเงิน และวันคาดรับของ", supplier: "Supplier", supplierPlaceholder: "ชื่อ supplier", supplierContact: "Supplier contact", supplierContactPlaceholder: "เบอร์โทร/ช่องทางติดต่อ", currency: "Currency", expectedAt: "Expected at", extraCosts: "อัตราแลกเปลี่ยนและค่าใช้จ่ายเพิ่มเติม", extraCostsHint: "กรอก rate แบบประมาณได้ แล้วค่อยปรับตอน settle จริง", extraCostsEditHint: "แก้ rate / shipping / ค่าใช้จ่ายอื่นได้ก่อนรับของ", estimatedRate: "อัตราแลกเปลี่ยน (ประมาณ)", estimatedRatePlaceholder: "เช่น 1 หรือ 21500", estimatedRateHint: "ถ้ายังไม่รู้ rate ตอนสร้าง PO ให้ปล่อยค่าเดิมไว้ได้", estimatedShipping: "ค่าขนส่ง (ประมาณ)", estimatedShippingHint: "กรอกตอนรู้ค่าขนส่งจริงหลังของมาถึงได้", estimatedOtherCost: "ค่าใช้จ่ายอื่น (ประมาณ)", otherCostNote: "หมายเหตุค่าใช้จ่ายอื่น", items: "รายการสินค้า", itemsHint: "ใส่เฉพาะสินค้าที่จะเข้าสต็อก", itemsCostHint: "กรอกต้นทุนจริงจาก Lazada / Taobao / Supplier ในแต่ละรายการ", addItem: "เพิ่มรายการ", product: "สินค้า", loadingProducts: "กำลังโหลดสินค้า...", selectProduct: "เลือกสินค้า", quantity: "จำนวน", cost: "ต้นทุน", perUnit: "ต่อหน่วย", total: "รวม", totalCost: "ต้นทุนรวม", removeItem: "ลบรายการ", note: "หมายเหตุ", notePlaceholder: "รายละเอียดเพิ่มเติม (ถ้ามี)", cancel: "ยกเลิก", saveCost: "บันทึกต้นทุน", saveChanges: "บันทึกการแก้ไข", saveDraft: "บันทึก Draft", createPo: "สร้าง PO" };
+});
+
+const poListText = computed(() => {
+	if (locale.value === "en") return { eyebrow: "Purchasing", search: "Search PO number, supplier, or contact", clear: "Clear search", history: "PO history", reload: "Reload", create: "Create PO", open: "Open", pending: "Unpaid", estimated: "Estimated value", filters: "Filters", items: "{count} items", poStatus: "PO status", paymentStatus: "Payment status", allPayments: "All payment statuses", orders: "Purchase orders", ordersHint: "Select a PO to see product lines, payments, and total cost.", retry: "Try again", noOrders: "No purchase orders yet", supplier: "Supplier", status: "Status", payment: "Payment", lines: "Items", orderedQty: "Ordered", expected: "Expected", value: "Value", action: "Action", createdAt: "Created", unspecifiedSupplier: "Unspecified supplier", convertedBase: "Converted to base currency", manage: "Manage", perPage: "Per page", previousPage: "Previous page", previous: "Previous", nextPage: "Next page", next: "Next", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
+	if (locale.value === "lo") return { eyebrow: "ຈັດຊື້", search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ ຫຼື ຂໍ້ມູນຕິດຕໍ່", clear: "ລ້າງຄຳຄົ້ນຫາ", history: "ປະຫວັດ PO", reload: "ໂຫຼດໃໝ່", create: "ສ້າງ PO", open: "ເປີດຢູ່", pending: "ຄ້າງຊຳລະ", estimated: "ມູນຄ່າໂດຍປະມານ", filters: "ຕົວກອງ", items: "{count} ລາຍການ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", allPayments: "ທຸກການຊຳລະ", orders: "ໃບສັ່ງຊື້", ordersHint: "ເລືອກ PO ເພື່ອເບິ່ງລາຍການສິນຄ້າ, ການຊຳລະ ແລະ ຕົ້ນທຶນລວມ.", retry: "ລອງໃໝ່", noOrders: "ຍັງບໍ່ມີໃບສັ່ງຊື້", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", payment: "ຊຳລະ", lines: "ລາຍການ", orderedQty: "ສັ່ງລວມ", expected: "ຄາດຮັບ", value: "ມູນຄ່າ", action: "ຈັດການ", createdAt: "ສ້າງເມື່ອ", unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", convertedBase: "ແປງເປັນສະກຸນຫຼັກ", manage: "ຈັດການ", perPage: "ຕໍ່ໜ້າ", previousPage: "ໜ້າກ່ອນ", previous: "ກ່ອນໜ້າ", nextPage: "ໜ້າຕໍ່ໄປ", next: "ຕໍ່ໄປ", unpaid: "ຍັງບໍ່ຊຳລະ", partialPayment: "ຊຳລະບາງສ່ວນ", paid: "ຊຳລະແລ້ວ" };
+	return { eyebrow: "Purchase", search: "ค้นหาเลข PO, supplier หรือ contact", clear: "ล้างคำค้น", history: "ประวัติ PO", reload: "รีโหลด", create: "สร้าง PO", open: "เปิดอยู่", pending: "ค้างชำระ", estimated: "มูลค่าประมาณ", filters: "ตัวกรอง", items: "{count} รายการ", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", allPayments: "ทุกการชำระ", orders: "Purchase orders", ordersHint: "เลือก PO เพื่อดูรายการสินค้า, payment และต้นทุนรวมแบบละเอียด", retry: "ลองใหม่", noOrders: "ยังไม่มี purchase order", supplier: "Supplier", status: "สถานะ", payment: "ชำระ", lines: "รายการ", orderedQty: "สั่งรวม", expected: "คาดรับ", value: "มูลค่า", action: "Action", createdAt: "สร้างเมื่อ", unspecifiedSupplier: "ไม่ระบุ supplier", convertedBase: "แปลงเป็น base", manage: "จัดการ", perPage: "ต่อหน้า", previousPage: "หน้าก่อนหน้า", previous: "ก่อนหน้า", nextPage: "หน้าถัดไป", next: "ถัดไป", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
+});
+
+const poDetailText = computed(() => {
+	if (locale.value === "en") return { unspecifiedSupplier: "Unspecified supplier", edit: "Edit", editCost: "Edit costs", items: "{count} items", overview: "Overview", supplier: "Supplier", expected: "Expected delivery", totalCost: "Total cost", note: "Note", productItems: "Product items", paymentSummary: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", retry: "Try again", copySupplier: "Copy supplier contact", copy: "Copy", baseUnit: "Base unit", ordered: "Ordered {count}", received: "Received {count}", remaining: "Remaining {count}", paymentItems: "{count} payments", lastPaid: "Last paid {date}", reference: "Reference", noPayments: "No payment entries", close: "Close", confirmOrder: "Confirm order", receiveStock: "Receive into stock", savePayment: "Record payment" };
+	if (locale.value === "lo") return { unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", edit: "ແກ້ໄຂ", editCost: "ແກ້ໄຂຕົ້ນທຶນ", items: "{count} ລາຍການ", overview: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", supplier: "ຜູ້ສະໜອງ", expected: "ຄາດຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", productItems: "ລາຍການສິນຄ້າ", paymentSummary: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", retry: "ລອງໃໝ່", copySupplier: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", copy: "ຄັດລອກ", baseUnit: "ຫົວໜ່ວຍຫຼັກ", ordered: "ສັ່ງ {count}", received: "ຮັບແລ້ວ {count}", remaining: "ຄົງເຫຼືອ {count}", paymentItems: "{count} ລາຍການຊຳລະ", lastPaid: "ຊຳລະລ່າສຸດ {date}", reference: "ເລກອ້າງອີງ", noPayments: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", confirmOrder: "ຢືນຢັນສັ່ງຊື້", receiveStock: "ຮັບເຂົ້າສະຕັອກ", savePayment: "ບັນທຶກການຊຳລະ" };
+	return { unspecifiedSupplier: "ไม่ระบุ supplier", edit: "แก้ไข", editCost: "แก้ไขต้นทุน", items: "{count} รายการ", overview: "สรุปข้อมูลหลัก", supplier: "Supplier", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", productItems: "รายการสินค้า", paymentSummary: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", retry: "ลองใหม่", copySupplier: "คัดลอก contact supplier", copy: "คัดลอก", baseUnit: "หน่วยหลัก", ordered: "สั่ง {count}", received: "รับแล้ว {count}", remaining: "คงเหลือ {count}", paymentItems: "{count} รายการชำระ", lastPaid: "ชำระล่าสุด {date}", reference: "Reference", noPayments: "ยังไม่มี payment entry", close: "ปิด", confirmOrder: "ยืนยันสั่งซื้อ", receiveStock: "รับของเข้าสต็อก", savePayment: "บันทึกชำระเงิน" };
+});
 
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 const selectedOrder = computed(() =>
@@ -235,13 +255,13 @@ const effectiveStoreId = computed(() => (
 ));
 const currentStoreName = computed(() => (
 	stores.value.find((store) => store.id === effectiveStoreId.value)?.name
-	|| "ยังไม่พบร้าน"
+	|| t("purchaseOrdersPage.storeNotFound")
 ));
 const storeCurrency = computed(() => (
 	stores.value.find((store) => store.id === effectiveStoreId.value)?.currency?.trim()?.toUpperCase()
 	|| "LAK"
 ));
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("purchaseOrdersPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	orders.value.length === 0
 		? 0
@@ -250,8 +270,8 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, orders.value.length));
 const pageSummaryText = computed(() => (
 	orders.value.length === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${orders.value.length} PO`
+		? t("purchaseOrdersPage.noData")
+		: t("purchaseOrdersPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: orders.value.length })
 ));
 const selectedOrderPaymentSummary = computed(() => {
 	if (!selectedOrderDetail.value?.payments.length) return null;
@@ -368,7 +388,7 @@ function formatPurchaseAmount(baseAmount: number, exchangeRate: number, currency
 function formatDate(value?: string | null) {
 	if (!value) return "-";
 	try {
-		return dateFormatter.format(new Date(value));
+		return dateFormatter.value.format(new Date(value));
 	} catch {
 		return value;
 	}
@@ -391,13 +411,13 @@ function statusColor(status: string) {
 }
 
 function statusLabel(status: string) {
-	if (status === "draft") return "ร่าง";
-	if (status === "ordered") return "สั่งซื้อแล้ว";
-	if (status === "shipped") return "ส่งแล้ว";
-	if (status === "arrived") return "รอรับสต็อก";
-	if (status === "partial") return "รับบางส่วน";
-	if (status === "received") return "รับครบแล้ว";
-	if (status === "cancelled") return "ยกเลิก";
+	if (status === "draft") return t("purchaseOrdersPage.draft");
+	if (status === "ordered") return t("purchaseOrdersPage.ordered");
+	if (status === "shipped") return t("purchaseOrdersPage.shipped");
+	if (status === "arrived") return t("purchaseOrdersPage.arrived");
+	if (status === "partial") return t("purchaseOrdersPage.partial");
+	if (status === "received") return t("purchaseOrdersPage.received");
+	if (status === "cancelled") return t("purchaseOrdersPage.cancelled");
 	return status;
 }
 
@@ -405,6 +425,13 @@ function paymentStatusColor(status: string) {
 	if (status === "paid") return "success";
 	if (status === "partial") return "warning";
 	return "neutral";
+}
+
+function paymentStatusLabel(status: string) {
+	if (status === "paid") return poListText.value.paid;
+	if (status === "partial") return poListText.value.partialPayment;
+	if (status === "unpaid") return poListText.value.unpaid;
+	return status;
 }
 
 function productLabel(productId: string) {
@@ -665,7 +692,7 @@ function openReceiveFlow() {
 			orderedQty,
 			receivedQty,
 			remainingQty,
-			receiveQty: receiveQtyFormatter.format(remainingQty),
+			receiveQty: receiveQtyFormatter.value.format(remainingQty),
 		};
 	});
 	receiveOpen.value = true;
@@ -674,7 +701,7 @@ function openReceiveFlow() {
 function fillAllReceiveNow() {
 	receiveLines.value = receiveLines.value.map((line) => ({
 		...line,
-		receiveQty: receiveQtyFormatter.format(line.remainingQty),
+		receiveQty: receiveQtyFormatter.value.format(line.remainingQty),
 	}));
 }
 
@@ -687,7 +714,7 @@ function selectReceiveMode(mode: typeof receiveMode.value) {
 	if (mode === "partial") {
 		receiveLines.value = receiveLines.value.map((line) => ({
 			...line,
-			receiveQty: receiveQtyFormatter.format(Math.max(0, Math.min(parseReceiveQty(line.receiveQty), line.remainingQty))),
+			receiveQty: receiveQtyFormatter.value.format(Math.max(0, Math.min(parseReceiveQty(line.receiveQty), line.remainingQty))),
 		}));
 	}
 }
@@ -699,7 +726,7 @@ function parseReceiveQty(value: string | number | null | undefined) {
 }
 
 function formatReceiveQty(value: string | number | null | undefined) {
-	return receiveQtyFormatter.format(Math.max(0, parseReceiveQty(value)));
+	return receiveQtyFormatter.value.format(Math.max(0, parseReceiveQty(value)));
 }
 
 function handleReceiveQtyInput(line: ReceiveLineForm, value: string | number) {
@@ -710,7 +737,7 @@ function handleReceiveQtyInput(line: ReceiveLineForm, value: string | number) {
 }
 
 function setReceiveQtyToMax(line: ReceiveLineForm) {
-	line.receiveQty = receiveQtyFormatter.format(line.remainingQty);
+	line.receiveQty = receiveQtyFormatter.value.format(line.remainingQty);
 }
 
 async function confirmReceiveAllNow() {
@@ -1088,17 +1115,17 @@ async function submitEditPurchaseOrder() {
 		v-else
 		:nav-items="appNavItems"
 		:active-ids="['purchase']"
-		sidebar-eyebrow="Purchase"
-		sidebar-title="สั่งซื้อ"
+		:sidebar-eyebrow="poListText.eyebrow"
+		:sidebar-title="t('purchaseOrdersPage.title')"
 		sidebar-compact-title="PO"
-		sidebar-description="จัดการ purchase orders, supplier, สถานะรับของ และต้นทุนก่อนเข้าสต็อก"
+		:sidebar-description="t('purchaseOrdersPage.sidebarDescription')"
 	>
 			<template #default="{ openSidebar }">
 				<div class="grid gap-3 pb-3 lg:gap-4">
 					<AppPageHeader
 						title=""
 						compact
-						description="จัดการ Purchase Orders, supplier, สถานะรับของ และการชำระเงิน"
+						:description="t('purchaseOrdersPage.headerDescription')"
 						@menu="openSidebar"
 					>
 						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
@@ -1107,7 +1134,7 @@ async function submitEditPurchaseOrder() {
 									v-model="searchQuery"
 									size="lg"
 									icon="i-heroicons-magnifying-glass-20-solid"
-									placeholder="ค้นหาเลข PO, supplier หรือ contact"
+									:placeholder="poListText.search"
 									color="neutral"
 									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								/>
@@ -1118,8 +1145,8 @@ async function submitEditPurchaseOrder() {
 									size="xs"
 									icon="i-heroicons-x-mark-20-solid"
 									class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-									aria-label="ล้างคำค้น"
-									title="ล้างคำค้น"
+									:aria-label="poListText.clear"
+									:title="poListText.clear"
 									@click="searchQuery = ''"
 								/>
 							</div>
@@ -1130,11 +1157,11 @@ async function submitEditPurchaseOrder() {
 								size="md"
 								icon="i-heroicons-clock-20-solid"
 								class="justify-center rounded-md"
-								aria-label="ประวัติ PO"
-								title="ประวัติ PO"
+								:aria-label="poListText.history"
+								:title="poListText.history"
 								@click="navigateTo('/purchase-orders/history')"
 							>
-								<span class="hidden sm:inline">ประวัติ</span>
+								<span class="hidden sm:inline">{{ poListText.history }}</span>
 							</AppButton>
 
 							<AppButton
@@ -1146,11 +1173,11 @@ async function submitEditPurchaseOrder() {
 								:loading="ordersPending"
 								:disabled="ordersPending"
 								:spin-icon-on-loading="true"
-								aria-label="รีโหลด"
-								title="รีโหลด"
+								:aria-label="poListText.reload"
+								:title="poListText.reload"
 								@click="loadOrders"
 							>
-								<span class="hidden sm:inline">รีโหลด</span>
+								<span class="hidden sm:inline">{{ poListText.reload }}</span>
 							</AppButton>
 
 									<AppButton
@@ -1160,11 +1187,11 @@ async function submitEditPurchaseOrder() {
 										icon="i-heroicons-plus-20-solid"
 										class="justify-center rounded-md"
 										:disabled="!authPermissionReady || !canCreatePurchaseOrder"
-										aria-label="สร้าง PO"
-										title="สร้าง PO"
+										:aria-label="poListText.create"
+										:title="poListText.create"
 										@click="openCreateDrawer"
 									>
-								<span class="hidden sm:inline">สร้าง PO</span>
+								<span class="hidden sm:inline">{{ poListText.create }}</span>
 							</AppButton>
 						</div>
 					</AppPageHeader>
@@ -1175,7 +1202,7 @@ async function submitEditPurchaseOrder() {
 					>
 						<div class="grid grid-cols-3 gap-1.5 p-0 sm:grid-cols-4">
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">เปิดอยู่</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.open }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalOpenOrders) }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
@@ -1183,11 +1210,11 @@ async function submitEditPurchaseOrder() {
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalDraftOrders) }}</p>
 							</div>
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ค้างชำระ</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.pending }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalPendingPayments) }}</p>
 							</div>
 							<div class="col-span-3 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">มูลค่าประมาณ</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.estimated }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950 tabular-nums">{{ formatMoney(totalEstimated, storeCurrency) }}</p>
 							</div>
 						</div>
@@ -1197,45 +1224,45 @@ async function submitEditPurchaseOrder() {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">ตัวกรอง</p>
+									<p class="text-sm font-semibold text-stone-950">{{ poListText.filters }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ numberFormatter.format(orders.length) }} รายการ
+									{{ poListText.items.replace('{count}', numberFormatter.format(orders.length)) }}
 								</div>
 							</div>
 
 								<div class="grid gap-2 px-4 py-3">
 									<div class="grid grid-cols-2 gap-2 md:items-end">
 										<div class="min-w-0">
-											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">สถานะ PO</label>
+											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">{{ poListText.poStatus }}</label>
 											<div class="relative">
 												<select
 													v-model="activeStatus"
 													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-3 py-2.5 pr-8 text-xs font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4 sm:text-sm"
 												>
-													<option value="all">ทุกสถานะ</option>
-													<option value="draft">ร่าง</option>
-													<option value="ordered">สั่งซื้อแล้ว</option>
-													<option value="shipped">ส่งแล้ว</option>
-													<option value="arrived">รอรับสต็อก</option>
-													<option value="received">รับครบแล้ว</option>
-													<option value="cancelled">ยกเลิก</option>
+													<option value="all">{{ t('purchaseOrdersPage.allStatuses') }}</option>
+													<option value="draft">{{ t('purchaseOrdersPage.draft') }}</option>
+													<option value="ordered">{{ t('purchaseOrdersPage.ordered') }}</option>
+													<option value="shipped">{{ t('purchaseOrdersPage.shipped') }}</option>
+													<option value="arrived">{{ t('purchaseOrdersPage.arrived') }}</option>
+													<option value="received">{{ t('purchaseOrdersPage.received') }}</option>
+													<option value="cancelled">{{ t('purchaseOrdersPage.cancelled') }}</option>
 												</select>
 												<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 											</div>
 										</div>
 
 										<div class="min-w-0">
-											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">สถานะชำระเงิน</label>
+											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">{{ poListText.paymentStatus }}</label>
 											<div class="relative">
 												<select
 													v-model="activePaymentStatus"
 													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-3 py-2.5 pr-8 text-xs font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4 sm:text-sm"
 												>
-													<option value="all">ทุกการชำระ</option>
-													<option value="unpaid">Unpaid</option>
-													<option value="partial">Partial</option>
-													<option value="paid">Paid</option>
+													<option value="all">{{ poListText.allPayments }}</option>
+													<option value="unpaid">{{ poListText.unpaid }}</option>
+													<option value="partial">{{ poListText.partialPayment }}</option>
+													<option value="paid">{{ poListText.paid }}</option>
 												</select>
 												<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 											</div>
@@ -1245,11 +1272,11 @@ async function submitEditPurchaseOrder() {
 
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-y border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Purchase orders</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือก PO เพื่อดูรายการสินค้า, payment และต้นทุนรวมแบบละเอียด</p>
+									<p class="text-sm font-semibold text-stone-950">{{ poListText.orders }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ poListText.ordersHint }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ numberFormatter.format(orders.length) }} รายการ
+									{{ poListText.items.replace('{count}', numberFormatter.format(orders.length)) }}
 								</div>
 							</div>
 
@@ -1260,24 +1287,24 @@ async function submitEditPurchaseOrder() {
 									<div v-else-if="ordersError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 										<div class="space-y-3">
 											<p class="text-sm text-stone-600">{{ ordersError }}</p>
-											<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">ลองใหม่</AppButton>
+											<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">{{ poListText.retry }}</AppButton>
 										</div>
 									</div>
 									<div v-else-if="!orders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
-										ยังไม่มี purchase order
+										{{ poListText.noOrders }}
 									</div>
 									<table v-else class="min-w-[1120px] w-full border-separate border-spacing-0">
 										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">PO</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Supplier</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ชำระ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">รายการ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สั่งรวม</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">คาดรับ</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">มูลค่า</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.supplier }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.status }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.payment }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.lines }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.orderedQty }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.expected }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.value }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ poListText.action }}</th>
 											</tr>
 										</thead>
 										<tbody>
@@ -1291,17 +1318,17 @@ async function submitEditPurchaseOrder() {
 											>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
 													<p class="font-semibold text-stone-950">{{ order.po_number }}</p>
-													<p class="mt-1 text-xs text-stone-400">สร้างเมื่อ {{ formatDate(order.created_at) }}</p>
+													<p class="mt-1 text-xs text-stone-400">{{ poListText.createdAt }} {{ formatDate(order.created_at) }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
-													<p class="font-medium text-stone-900">{{ order.supplier_name || "ไม่ระบุ supplier" }}</p>
+													<p class="font-medium text-stone-900">{{ order.supplier_name || poListText.unspecifiedSupplier }}</p>
 													<p v-if="order.supplier_contact" class="mt-1 text-xs text-stone-500">{{ order.supplier_contact }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
 													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
-													<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />
+											<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="paymentStatusLabel(order.payment_status)" />
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-900 tabular-nums">
 													{{ numberFormatter.format(order.item_count) }}
@@ -1318,7 +1345,7 @@ async function submitEditPurchaseOrder() {
 															{{ formatPurchaseAmount(order.total_estimated_base, order.exchange_rate, order.purchase_currency) }}
 														</p>
 														<p class="mt-1 text-xs text-stone-500">
-															{{ formatMoney(order.total_estimated_base, storeCurrency) }} แปลงเป็น base
+															{{ formatMoney(order.total_estimated_base, storeCurrency) }} · {{ poListText.convertedBase }}
 														</p>
 													</div>
 												</td>
@@ -1331,7 +1358,7 @@ async function submitEditPurchaseOrder() {
 														icon="i-heroicons-chevron-right-20-solid"
 														@click.stop="prefetchOrderDetails([order.id]); openDetail(order.id)"
 													>
-														จัดการ
+														{{ poListText.manage }}
 													</AppButton>
 												</td>
 											</tr>
@@ -1353,7 +1380,7 @@ async function submitEditPurchaseOrder() {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ poListText.perPage }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -1373,11 +1400,11 @@ async function submitEditPurchaseOrder() {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || ordersPending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="poListText.previousPage"
+												:title="poListText.previousPage"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ poListText.previous }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -1386,11 +1413,11 @@ async function submitEditPurchaseOrder() {
 												class="rounded-md"
 												icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || ordersPending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="poListText.nextPage"
+												:title="poListText.nextPage"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ poListText.next }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -1402,8 +1429,8 @@ async function submitEditPurchaseOrder() {
 
 					<AppResponsivePanel
 						v-model="detailOpen"
-						title="รายละเอียด PO"
-					description="ดูสรุป, รายการสินค้า และ payment ของ purchase order นี้"
+						:title="t('purchaseOrdersPage.poDetails')"
+						:description="t('purchaseOrdersPage.poDetailsDescription')"
 					desktop-width="680px"
 					close-button-size="md"
 					compact-header
@@ -1423,7 +1450,7 @@ async function submitEditPurchaseOrder() {
 									<div class="flex flex-wrap items-start justify-between gap-3">
 										<div class="min-w-0">
 											<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrder.po_number }}</h3>
-											<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.supplier_name || "ไม่ระบุ supplier" }}</p>
+											<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.supplier_name || poDetailText.unspecifiedSupplier }}</p>
 										</div>
 										<div class="flex shrink-0 flex-wrap items-center gap-2">
 											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="statusLabel(selectedOrder.status)" />
@@ -1437,14 +1464,14 @@ async function submitEditPurchaseOrder() {
 												:disabled="!authPermissionReady || !canUpdatePurchaseOrder"
 												@click="openEditDrawer(selectedOrder.id)"
 											>
-												{{ selectedOrder.status === 'draft' ? 'แก้ไข' : 'แก้ไขต้นทุน' }}
+												{{ selectedOrder.status === 'draft' ? poDetailText.edit : poDetailText.editCost }}
 											</AppButton>
 										</div>
 									</div>
 									<div class="mt-3 flex flex-wrap gap-2">
-										<UBadge :color="paymentStatusColor(selectedOrder.payment_status)" variant="soft" :label="selectedOrder.payment_status" />
+										<UBadge :color="paymentStatusColor(selectedOrder.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrder.payment_status)" />
 										<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrder.purchase_currency) || selectedOrder.purchase_currency" />
-										<UBadge color="neutral" variant="soft" :label="`${selectedOrder.item_count} รายการ`" />
+										<UBadge color="neutral" variant="soft" :label="poDetailText.items.replace('{count}', String(selectedOrder.item_count))" />
 									</div>
 									<div v-if="detailPending" class="pointer-events-none absolute inset-x-0 bottom-0">
 										<AppInlineLoadingBar minimal container-class="bg-transparent" />
@@ -1455,22 +1482,22 @@ async function submitEditPurchaseOrder() {
 
 							<template v-if="detailPending">
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.overview }}</h3>
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">Supplier</dt>
+											<dt class="text-stone-500">{{ poDetailText.supplier }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">คาดรับ</dt>
+											<dt class="text-stone-500">{{ poDetailText.expected }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ต้นทุนรวม</dt>
+											<dt class="text-stone-500">{{ poDetailText.totalCost }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4">
-											<dt class="text-stone-500">หมายเหตุ</dt>
+											<dt class="text-stone-500">{{ poDetailText.note }}</dt>
 											<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
 										</div>
 									</dl>
@@ -1478,7 +1505,7 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.productItems }}</h3>
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="index in 2" :key="index" class="min-h-[72px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
@@ -1487,20 +1514,20 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
-										<UBadge color="neutral" variant="soft" label="กำลังโหลด" />
+										<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.paymentSummary }}</h3>
+										<UBadge color="neutral" variant="soft" :label="poDetailText.loading" />
 									</div>
 									<div class="mt-4 grid gap-3 sm:grid-cols-3">
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.estimated }}</p>
 											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.actual }}</p>
 											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.variance }}</p>
 											<p class="mt-2 text-base font-semibold text-stone-950">-</p>
 										</div>
 									</div>
@@ -1512,15 +1539,15 @@ async function submitEditPurchaseOrder() {
 							<UCard v-else-if="detailError" class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none">
 								<div class="space-y-3 py-10 text-center">
 									<p class="text-sm text-stone-600">{{ detailError }}</p>
-									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">ลองใหม่</AppButton>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="selectedOrderId && loadOrderDetail(selectedOrderId)">{{ poDetailText.retry }}</AppButton>
 								</div>
 							</UCard>
 							<template v-else-if="selectedOrderDetail">
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.overview }}</h3>
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">Supplier</dt>
+											<dt class="text-stone-500">{{ poDetailText.supplier }}</dt>
 											<dd class="text-right font-medium text-stone-900">
 												{{ selectedOrderDetail.order.supplier_name || "-" }}
 												<div v-if="selectedOrderDetail.order.supplier_contact" class="mt-2 flex items-center justify-end gap-2">
@@ -1532,24 +1559,24 @@ async function submitEditPurchaseOrder() {
 														icon="i-heroicons-clipboard-document-20-solid"
 														class="rounded-md"
 														type="button"
-														title="คัดลอก contact supplier"
+															:title="poDetailText.copySupplier"
 														@click="copySupplierContact"
 													>
-														คัดลอก
+														{{ poDetailText.copy }}
 													</AppButton>
 												</div>
 											</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">คาดรับ</dt>
+											<dt class="text-stone-500">{{ poDetailText.expected }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrderDetail.order.expected_at) }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ต้นทุนรวม</dt>
+											<dt class="text-stone-500">{{ poDetailText.totalCost }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrderDetail.order.total_estimated_base, storeCurrency) }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4">
-											<dt class="text-stone-500">หมายเหตุ</dt>
+											<dt class="text-stone-500">{{ poDetailText.note }}</dt>
 											<dd class="max-w-[220px] text-right font-medium text-stone-900">{{ selectedOrderDetail.order.note || "-" }}</dd>
 										</div>
 									</dl>
@@ -1557,22 +1584,22 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
-										<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
+										<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.productItems }}</h3>
+										<UBadge color="neutral" variant="soft" :label="poDetailText.items.replace('{count}', String(selectedOrderDetail.items.length))" />
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="item in selectedOrderDetail.items" :key="item.id" class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200">
 											<div class="flex items-start justify-between gap-3">
 												<div class="min-w-0">
 													<p class="truncate text-sm font-semibold text-stone-900">{{ item.product_name || item.product_id }}</p>
-													<p class="mt-1 text-xs text-stone-500">{{ item.product_sku || "-" }} · {{ item.unit_name || "base unit" }}</p>
+														<p class="mt-1 text-xs text-stone-500">{{ item.product_sku || "-" }} · {{ item.unit_name || poDetailText.baseUnit }}</p>
 												</div>
 												<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base, storeCurrency) }}</p>
 											</div>
 											<div class="mt-3 flex flex-wrap gap-2">
-												<UBadge color="neutral" variant="soft" :label="`สั่ง ${numberFormatter.format(item.qty_ordered)}`" />
-												<UBadge color="neutral" variant="soft" :label="`รับแล้ว ${numberFormatter.format(item.qty_received)}`" />
-												<UBadge color="neutral" variant="soft" :label="`คงเหลือ ${numberFormatter.format(Math.max(0, item.qty_ordered - item.qty_received))}`" />
+												<UBadge color="neutral" variant="soft" :label="poDetailText.ordered.replace('{count}', numberFormatter.format(item.qty_ordered))" />
+												<UBadge color="neutral" variant="soft" :label="poDetailText.received.replace('{count}', numberFormatter.format(item.qty_received))" />
+												<UBadge color="neutral" variant="soft" :label="poDetailText.remaining.replace('{count}', numberFormatter.format(Math.max(0, item.qty_ordered - item.qty_received)))" />
 											</div>
 										</div>
 									</div>
@@ -1580,22 +1607,22 @@ async function submitEditPurchaseOrder() {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
-										<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+										<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.paymentSummary }}</h3>
+										<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrderDetail.order.payment_status)" />
 									</div>
 									<div class="mt-4 grid gap-3 sm:grid-cols-3">
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.estimated }}</p>
 											<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderDetail.order.total_estimated_base, storeCurrency) }}</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.actual }}</p>
 											<p class="mt-2 text-base font-semibold text-stone-950">
 												{{ formatMoney(selectedOrderPaymentSummary?.actualAmountBase ?? 0, storeCurrency) }}
 											</p>
 										</div>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poDetailText.variance }}</p>
 											<p
 												class="mt-2 text-base font-semibold"
 												:class="(selectedOrderPaymentSummary?.varianceBase || 0) === 0
@@ -1610,8 +1637,8 @@ async function submitEditPurchaseOrder() {
 									</div>
 									<div v-if="selectedOrderPaymentSummary" class="mt-4 rounded-md border border-neutral-200 bg-white px-4 py-4">
 										<div class="flex flex-wrap items-center gap-2">
-											<UBadge color="neutral" variant="soft" :label="`${selectedOrderPaymentSummary.count} รายการชำระ`" />
-											<UBadge color="neutral" variant="soft" :label="`ชำระล่าสุด ${formatDate(selectedOrderPaymentSummary.paidAt)}`" />
+											<UBadge color="neutral" variant="soft" :label="poDetailText.paymentItems.replace('{count}', String(selectedOrderPaymentSummary.count))" />
+											<UBadge color="neutral" variant="soft" :label="poDetailText.lastPaid.replace('{date}', formatDate(selectedOrderPaymentSummary.paidAt))" />
 											<UBadge v-if="selectedOrderPaymentSummary.reference" color="neutral" variant="soft" :label="selectedOrderPaymentSummary.reference" />
 										</div>
 										<p v-if="selectedOrderPaymentSummary.note" class="mt-3 text-sm leading-6 text-stone-600">
@@ -1625,17 +1652,17 @@ async function submitEditPurchaseOrder() {
 													<p class="text-sm font-semibold text-stone-900">{{ payment.entry_type }}</p>
 													<p class="mt-1 text-xs text-stone-500">{{ formatDate(payment.paid_at) }}</p>
 													<div class="mt-2 flex flex-wrap gap-2">
-														<UBadge color="neutral" variant="soft" :label="`ประมาณ ${formatMoney(payment.estimated_amount_base, storeCurrency)}`" />
-														<UBadge color="neutral" variant="soft" :label="`จริง ${formatMoney(payment.amount_base, storeCurrency)}`" />
+														<UBadge color="neutral" variant="soft" :label="`${poDetailText.estimated} ${formatMoney(payment.estimated_amount_base, storeCurrency)}`" />
+														<UBadge color="neutral" variant="soft" :label="`${poDetailText.actual} ${formatMoney(payment.amount_base, storeCurrency)}`" />
 														<UBadge
 															:color="payment.variance_base === 0 ? 'neutral' : payment.variance_base > 0 ? 'warning' : 'success'"
 															variant="soft"
-															:label="`ส่วนต่าง ${formatMoney(Math.abs(payment.variance_base), storeCurrency)}`"
+															:label="`${poDetailText.variance} ${formatMoney(Math.abs(payment.variance_base), storeCurrency)}`"
 														/>
 													</div>
 													<div v-if="payment.reference || payment.note" class="mt-3 space-y-1 text-xs text-stone-500">
-														<p v-if="payment.reference">Reference: {{ payment.reference }}</p>
-														<p v-if="payment.note">Note: {{ payment.note }}</p>
+														<p v-if="payment.reference">{{ poDetailText.reference }}: {{ payment.reference }}</p>
+														<p v-if="payment.note">{{ poDetailText.note }}: {{ payment.note }}</p>
 													</div>
 												</div>
 												<p class="text-sm font-semibold text-stone-900">{{ formatMoney(payment.amount_base, storeCurrency) }}</p>
@@ -1643,7 +1670,7 @@ async function submitEditPurchaseOrder() {
 										</div>
 									</div>
 									<div v-else class="mt-4 rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-										ยังไม่มี payment entry
+										{{ poDetailText.noPayments }}
 									</div>
 								</div>
 								</template>
@@ -1662,7 +1689,7 @@ async function submitEditPurchaseOrder() {
 												class="flex-1"
 												@click="closeDetail"
 											>
-												ปิด
+												{{ poDetailText.close }}
 											</AppButton>
 											<AppButton
 												v-if="selectedOrderDetail && selectedOrderDetail.order.status === 'draft'"
@@ -1677,7 +1704,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="confirmMarkPurchaseOrderOrdered"
 											>
-												ยืนยันสั่งซื้อ
+												{{ poDetailText.confirmOrder }}
 											</AppButton>
 											<AppButton
 												v-else-if="selectedOrderDetail && selectedOrderDetail.order.status !== 'received' && selectedOrderDetail.order.status !== 'cancelled'"
@@ -1690,7 +1717,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="openReceiveFlow"
 											>
-												รับของเข้าสต็อก
+												{{ poDetailText.receiveStock }}
 											</AppButton>
 											<AppButton
 												v-else-if="selectedOrderDetail && selectedOrderDetail.order.status === 'received' && selectedOrderDetail.order.payment_status !== 'paid'"
@@ -1702,7 +1729,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="openPaymentFlow"
 											>
-												บันทึกชำระเงิน
+												{{ poDetailText.savePayment }}
 											</AppButton>
 										</div>
 									</div>
@@ -1734,7 +1761,7 @@ async function submitEditPurchaseOrder() {
 												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrderDetail.order.po_number }}</h3>
 												<p class="mt-1 text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</p>
 											</div>
-											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrderDetail.order.payment_status)" />
 										</div>
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
@@ -2091,13 +2118,13 @@ async function submitEditPurchaseOrder() {
 					<AppResponsivePanel
 						v-model="createOpen"
 						:title="purchaseOrderFormMode === 'edit'
-							? (purchaseOrderCostOnlyEdit ? 'แก้ไขต้นทุน PO' : 'แก้ไข PO')
-							: 'สร้าง PO ใหม่'"
+							? (purchaseOrderCostOnlyEdit ? t('purchaseOrdersPage.editPoCost') : t('purchaseOrdersPage.editPo'))
+							: t('purchaseOrdersPage.createNewPo')"
 						:description="purchaseOrderFormMode === 'edit'
 							? (purchaseOrderCostOnlyEdit
-								? 'ปรับ rate, shipping และค่าใช้จ่ายอื่นของ PO ที่สั่งแล้ว'
-								: 'ปรับ supplier, รายการสินค้า และต้นทุนของ draft PO นี้')
-							: 'ระบุ supplier, กำหนดรายการสินค้า และต้นทุนต่อหน่วย'"
+								? t('purchaseOrdersPage.editCostDescription')
+								: t('purchaseOrdersPage.editPoDescription'))
+							: t('purchaseOrdersPage.createPoDescription')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -2110,7 +2137,7 @@ async function submitEditPurchaseOrder() {
 								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-1 sm:py-2">
 									<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700">
 										<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-										<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+										<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poFormText.store }}</span>
 										<UBadge color="neutral" variant="soft" class="max-w-full">
 											<span class="truncate">{{ currentStoreName }}</span>
 										</UBadge>
@@ -2119,40 +2146,40 @@ async function submitEditPurchaseOrder() {
 										<AppInlineLoadingBar minimal container-class="bg-transparent" />
 									</div>
 									<div v-if="purchaseOrderCostOnlyEdit" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-										สถานะนี้แก้ได้เฉพาะ <span class="font-medium">rate / shipping / other cost</span> และหมายเหตุเท่านั้น
+										{{ poFormText.restricted }}
 									</div>
 
 									<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 										<div class="space-y-4">
 											<div class="flex items-start justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">ข้อมูล PO</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">กรอก supplier, สกุลเงิน และวันคาดรับของ</p>
+											<p class="text-sm font-semibold text-stone-950">{{ poFormText.poInfo }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.poInfoHint }}</p>
 												</div>
 												<UBadge color="neutral" variant="soft" :label="createForm.purchaseCurrency" />
 											</div>
 
 											<div class="grid gap-4 sm:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Supplier</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplier }}</label>
 													<UInput
 														v-model="createForm.supplierName"
 														type="text"
 														size="lg"
 														color="neutral"
-														placeholder="ชื่อ supplier"
+														:placeholder="poFormText.supplierPlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 														:disabled="purchaseOrderCostOnlyEdit"
 													/>
 												</div>
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Supplier contact</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplierContact }}</label>
 													<UInput
 														v-model="createForm.supplierContact"
 														type="text"
 														size="lg"
 														color="neutral"
-														placeholder="เบอร์โทร/ช่องทางติดต่อ"
+														:placeholder="poFormText.supplierContactPlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 														:disabled="purchaseOrderCostOnlyEdit"
 													/>
@@ -2161,7 +2188,7 @@ async function submitEditPurchaseOrder() {
 
 											<div class="grid gap-4 sm:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Currency</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.currency }}</label>
 													<div class="relative">
 														<select
 															v-model="createForm.purchaseCurrency"
@@ -2176,7 +2203,7 @@ async function submitEditPurchaseOrder() {
 													</div>
 												</div>
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Expected at</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.expectedAt }}</label>
 													<UInput
 														v-model="createForm.expectedAt"
 														type="datetime-local"
@@ -2194,9 +2221,9 @@ async function submitEditPurchaseOrder() {
 										<div class="space-y-4">
 											<div class="flex items-start justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">อัตราแลกเปลี่ยนและค่าใช้จ่ายเพิ่มเติม</p>
+											<p class="text-sm font-semibold text-stone-950">{{ poFormText.extraCosts }}</p>
 													<p class="mt-1 text-xs leading-5 text-stone-500">
-														{{ purchaseOrderCostOnlyEdit ? "แก้ rate / shipping / ค่าใช้จ่ายอื่นได้ก่อนรับของ" : "กรอก rate แบบประมาณได้ แล้วค่อยปรับตอน settle จริง" }}
+												{{ purchaseOrderCostOnlyEdit ? poFormText.extraCostsEditHint : poFormText.extraCostsHint }}
 													</p>
 												</div>
 												<UBadge color="neutral" variant="soft" label="Optional" />
@@ -2204,7 +2231,7 @@ async function submitEditPurchaseOrder() {
 
 											<div class="grid gap-4 md:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">อัตราแลกเปลี่ยน (ประมาณ)</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedRate }}</label>
 													<UInput
 														v-model="createForm.exchangeRate"
 														type="text"
@@ -2212,14 +2239,14 @@ async function submitEditPurchaseOrder() {
 														pattern="[0-9.,-]*"
 														size="lg"
 														color="neutral"
-														placeholder="เช่น 1 หรือ 21500"
+														:placeholder="poFormText.estimatedRatePlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ถ้ายังไม่รู้ rate ตอนสร้าง PO ให้ปล่อยค่าเดิมไว้ได้</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.estimatedRateHint }}</p>
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าขนส่ง (ประมาณ)</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedShipping }}</label>
 													<UInput
 														v-model="createForm.shippingCost"
 														type="text"
@@ -2230,11 +2257,11 @@ async function submitEditPurchaseOrder() {
 														placeholder="0"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
-													<p class="mt-1 text-xs leading-5 text-stone-500">กรอกตอนรู้ค่าขนส่งจริงหลังของมาถึงลาวได้</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.estimatedShippingHint }}</p>
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าใช้จ่ายอื่น (ประมาณ)</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedOtherCost }}</label>
 													<UInput
 														v-model="createForm.otherCost"
 														type="text"
@@ -2248,7 +2275,7 @@ async function submitEditPurchaseOrder() {
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุค่าใช้จ่ายอื่น</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.otherCostNote }}</label>
 													<UInput
 														v-model="createForm.otherCostNote"
 														type="text"
@@ -2266,9 +2293,9 @@ async function submitEditPurchaseOrder() {
 										<div class="space-y-4">
 											<div class="flex items-center justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">รายการสินค้า</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ใส่เฉพาะสินค้าที่จะเข้าสต็อก</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">กรอกต้นทุนจริงจาก Lazada / Taobao / Supplier ในแต่ละรายการ</p>
+											<p class="text-sm font-semibold text-stone-950">{{ poFormText.items }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.itemsHint }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.itemsCostHint }}</p>
 												</div>
 												<AppButton
 													v-if="!purchaseOrderCostOnlyEdit"
@@ -2277,7 +2304,7 @@ async function submitEditPurchaseOrder() {
 													size="md"
 													class="rounded-md"
 													icon="i-heroicons-plus-20-solid"
-													label="เพิ่มรายการ"
+													:label="poFormText.addItem"
 													@click="addLine"
 												/>
 											</div>
@@ -2286,21 +2313,21 @@ async function submitEditPurchaseOrder() {
 												<div v-for="line in createForm.items" :key="line.id" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 													<div class="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_96px_minmax(0,1.1fr)_44px] md:items-end">
 														<div class="min-w-0">
-															<label class="mb-2 block text-xs font-medium text-stone-500">สินค้า</label>
+															<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.product }}</label>
 															<div class="relative">
 																<select
 																	v-model="line.productId"
 																	class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 																	:disabled="purchaseOrderCostOnlyEdit"
 																>
-																	<option value="" disabled>{{ productsPending ? "กำลังโหลดสินค้า..." : "เลือกสินค้า" }}</option>
+																	<option value="" disabled>{{ productsPending ? poFormText.loadingProducts : poFormText.selectProduct }}</option>
 																	<option v-for="product in products" :key="product.id" :value="product.id">{{ productLabel(product.id) }}</option>
 																</select>
 																<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 															</div>
 														</div>
 														<div class="min-w-0">
-															<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน</label>
+															<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.quantity }}</label>
 															<UInput
 																:model-value="line.qtyOrdered"
 																type="number"
@@ -2315,7 +2342,7 @@ async function submitEditPurchaseOrder() {
 														</div>
 														<div class="min-w-0">
 															<div class="mb-1 flex items-center justify-between gap-2">
-																<label class="block text-xs font-medium text-stone-500">ต้นทุน</label>
+																<label class="block text-xs font-medium text-stone-500">{{ poFormText.cost }}</label>
 																<div class="inline-flex rounded-md bg-neutral-100 p-0.5 text-[11px] font-medium text-stone-500">
 																	<button
 																		type="button"
@@ -2324,7 +2351,7 @@ async function submitEditPurchaseOrder() {
 																		:disabled="purchaseOrderCostOnlyEdit"
 																		@click="setLineCostMode(line, 'unit')"
 																	>
-																		ต่อหน่วย
+																						{{ poFormText.perUnit }}
 																	</button>
 																	<button
 																		type="button"
@@ -2333,7 +2360,7 @@ async function submitEditPurchaseOrder() {
 																		:disabled="purchaseOrderCostOnlyEdit"
 																		@click="setLineCostMode(line, 'total')"
 																	>
-																		รวม
+																						{{ poFormText.total }}
 																	</button>
 																</div>
 															</div>
@@ -2344,14 +2371,14 @@ async function submitEditPurchaseOrder() {
 																pattern="[0-9.,-]*"
 																size="lg"
 																color="neutral"
-																:placeholder="line.costMode === 'total' ? 'ต้นทุนรวม' : unitCostPlaceholder(line.productId)"
+																:placeholder="line.costMode === 'total' ? poFormText.totalCost : unitCostPlaceholder(line.productId)"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 																:disabled="purchaseOrderCostOnlyEdit"
 																@update:model-value="(value) => line.costMode === 'total' ? handleLineTotalCostInput(line, value) : handleLineUnitCostInput(line, value)"
 															/>
 														</div>
 														<div v-if="!purchaseOrderCostOnlyEdit" class="flex items-end justify-end">
-															<AppButton color="neutral" variant="soft" size="sm" class="h-11 w-11 rounded-md p-0" icon="i-heroicons-trash-20-solid" aria-label="ลบรายการ" title="ลบรายการ" @click="removeLine(line.id)" />
+															<AppButton color="neutral" variant="soft" size="sm" class="h-11 w-11 rounded-md p-0" icon="i-heroicons-trash-20-solid" :aria-label="poFormText.removeItem" :title="poFormText.removeItem" @click="removeLine(line.id)" />
 														</div>
 													</div>
 												</div>
@@ -2361,11 +2388,11 @@ async function submitEditPurchaseOrder() {
 
 									<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 										<div class="space-y-2">
-											<label class="block text-xs font-medium text-stone-500">หมายเหตุ</label>
+											<label class="block text-xs font-medium text-stone-500">{{ poFormText.note }}</label>
 											<textarea
 												v-model="createForm.note"
 												rows="4"
-												placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+												:placeholder="poFormText.notePlaceholder"
 												class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 											/>
 										</div>
@@ -2377,7 +2404,7 @@ async function submitEditPurchaseOrder() {
 									:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 								>
 											<div class="grid w-full gap-2" :class="purchaseOrderFormMode === 'edit' ? 'grid-cols-2' : 'grid-cols-3'">
-										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateDrawer">ยกเลิก</AppButton>
+										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateDrawer">{{ poFormText.cancel }}</AppButton>
 										<template v-if="purchaseOrderFormMode === 'edit'">
 											<AppButton
 												color="primary"
@@ -2390,7 +2417,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="submitEditPurchaseOrder"
 											>
-												{{ purchaseOrderCostOnlyEdit ? 'บันทึกต้นทุน' : 'บันทึกการแก้ไข' }}
+												{{ purchaseOrderCostOnlyEdit ? poFormText.saveCost : poFormText.saveChanges }}
 											</AppButton>
 										</template>
 										<template v-else>
@@ -2405,7 +2432,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="submitCreate('draft')"
 											>
-												บันทึก Draft
+												{{ poFormText.saveDraft }}
 											</AppButton>
 											<AppButton
 												color="primary"
@@ -2418,7 +2445,7 @@ async function submitEditPurchaseOrder() {
 												:block="true"
 												@click="submitCreate('ordered')"
 											>
-												สร้าง PO
+												{{ poFormText.createPo }}
 											</AppButton>
 										</template>
 									</div>

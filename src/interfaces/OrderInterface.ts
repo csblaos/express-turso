@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
+import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { ApiError } from "@middlewares/ApiError";
 
 export type PosPaymentMethod = "cash" | "qr_transfer" | "credit_card";
@@ -12,6 +13,7 @@ export type PosCheckoutPayload = {
 	service_mode: "walk-in" | "pickup" | "delivery";
 	payment_method: PosPaymentMethod;
 	items: Array<{ product_id: string; qty: number }>;
+	promotion_ids?: string[];
 	amount_tendered?: number | null;
 	payment_account_id?: string | null;
 	payment_reference?: string | null;
@@ -78,6 +80,7 @@ export class OrderInterface {
 
 	static async checkout(payload: PosCheckoutPayload): Promise<CheckoutResult> {
 		await OrderInterface.ensureTables();
+		await PromotionInterface.ensureTables();
 		if (!payload.store_id.trim()) throw ApiError.BadRequestError("store_id is required");
 		if (!ALLOWED_METHODS.has(payload.payment_method)) throw ApiError.BadRequestError("payment_method is invalid");
 		if (!ALLOWED_MODES.has(payload.service_mode)) throw ApiError.BadRequestError("service_mode is invalid");
@@ -136,6 +139,21 @@ export class OrderInterface {
 				return { row, qty, lineTotal: price * qty };
 			});
 			const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+			const appliedPromotions = await PromotionInterface.evaluate(payload.store_id, lines.map((line) => ({ product_id: String(line.row.id), qty: line.qty })), payload.promotion_ids, transaction as never);
+			const giftProductIds = [ ...new Set(appliedPromotions.map((promotion) => promotion.gift_product_id)) ];
+			if (giftProductIds.length) {
+				const gifts = await transaction.execute({
+					sql: `SELECT p.id, p.name, p.base_unit_id, p.price_base, p.cost_base, p.active, COALESCE(ib.on_hand_base, 0) AS on_hand_base, COALESCE(ib.reserved_base, 0) AS reserved_base
+						FROM products p LEFT JOIN inventory_balances ib ON ib.store_id=p.store_id AND ib.product_id=p.id WHERE p.store_id=? AND p.id IN (${giftProductIds.map(() => "?").join(",")})`,
+					args: [ payload.store_id, ...giftProductIds ],
+				});
+				const giftRows = new Map(gifts.rows.map((row: any) => [ String(row.id), row as Record<string, unknown> ]));
+				for (const promotion of appliedPromotions) {
+					const row = giftRows.get(promotion.gift_product_id);
+					if (!row || !Number(row.active)) throw ApiError.BadRequestError(`gift product for ${promotion.name} is unavailable`);
+					lines.push({ row, qty: promotion.gift_qty, lineTotal: 0, isGift: true, promotionId: promotion.promotion_id } as typeof lines[number] & { isGift: boolean; promotionId: string });
+				}
+			}
 			const rawRate = Number(store.vat_rate || 0);
 			const rate = rawRate > 100 ? rawRate / 100 : rawRate;
 			const vatAmount = Number(store.vat_enabled)
@@ -184,16 +202,23 @@ export class OrderInterface {
 					payload.payment_slip_url || null, payload.payment_slip_url ? now : null, payload.service_mode,
 					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null ],
 			});
+			for (const promotion of appliedPromotions) {
+				await transaction.execute({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id, promotion.gift_qty, now ] });
+			}
 
+			const consumedByProduct = new Map<string, number>();
 			for (const line of lines) {
 				const productId = String(line.row.id);
+				const consumed = consumedByProduct.get(productId) || 0;
+				const available = Number(line.row.on_hand_base) - Number(line.row.reserved_base) - consumed;
+				if (!Number(store.allow_negative_stock) && available < line.qty) throw ApiError.BadRequestError(`${String(line.row.name)} has insufficient stock`);
 				await transaction.execute({
-					sql: `INSERT INTO order_items (id, order_id, product_id, unit_id, qty, qty_base, price_base_at_sale, cost_base_at_sale, line_total)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					sql: `INSERT INTO order_items (id, order_id, product_id, unit_id, qty, qty_base, price_base_at_sale, cost_base_at_sale, line_total, is_gift, promotion_id)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					args: [ randomUUID(), orderId, productId, String(line.row.base_unit_id), line.qty, line.qty,
-						Number(line.row.price_base || 0), Number(line.row.cost_base || 0), line.lineTotal ],
+						(line as any).isGift ? 0 : Number(line.row.price_base || 0), Number(line.row.cost_base || 0), line.lineTotal, (line as any).isGift ? 1 : 0, (line as any).promotionId || null ],
 				});
-				const nextOnHand = Number(line.row.on_hand_base) - line.qty;
+				const nextOnHand = Number(line.row.on_hand_base) - consumed - line.qty;
 				const reserved = Number(line.row.reserved_base);
 				await transaction.execute({
 					sql: `INSERT INTO inventory_balances (store_id, product_id, on_hand_base, reserved_base, available_base, updated_at)
@@ -201,6 +226,7 @@ export class OrderInterface {
 						on_hand_base=excluded.on_hand_base, available_base=excluded.available_base, updated_at=excluded.updated_at`,
 					args: [ payload.store_id, productId, nextOnHand, reserved, nextOnHand - reserved, now ],
 				});
+				consumedByProduct.set(productId, consumed + line.qty);
 				await transaction.execute({
 					sql: `INSERT INTO inventory_movements (id, store_id, product_id, type, qty_base, ref_type, ref_id, note, created_by, created_at)
 						VALUES (?, ?, ?, 'SALE_OUT', ?, 'order', ?, ?, ?, ?)`,

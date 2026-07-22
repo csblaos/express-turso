@@ -216,7 +216,10 @@ const profileInitials = computed(() => (
 	.join("") || "ST"
 ));
 const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.navItems));
-const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "reports", "activity", "settings" ]);
+// Store-level screens are available to an active store member, including a
+// superadmin acting as that store's owner. Keep this list in sync with
+// `app-nav.ts`; otherwise a newly added store screen is silently hidden.
+const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "promotions", "reports", "activity", "settings" ]);
 const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-thirdparty-usage" ]);
 
 const visibleNavItems = computed(() => {
