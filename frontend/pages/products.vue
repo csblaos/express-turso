@@ -37,6 +37,9 @@ type ApiProduct = {
 	category_name?: string | null;
 	base_unit_name?: string | null;
 	extra_sale_unit_count?: number;
+	inventory_mode?: "tracked" | "untracked";
+	cost_source?: "purchase" | "manual" | "unknown";
+	manual_sold_out?: number;
 };
 
 type ApiProductList = {
@@ -170,6 +173,9 @@ type ProductRecord = {
 	updatedAt: string;
 	updatedBy: string;
 	lowStockThreshold: number | null;
+	inventoryMode: "tracked" | "untracked";
+	costSource: "purchase" | "manual" | "unknown";
+	manualSoldOut: boolean;
 	tag?: string;
 };
 
@@ -314,6 +320,9 @@ const productUnitForm = reactive({
 		lowStockThreshold: "",
 		active: true,
 		allowBaseUnitSale: true,
+		inventoryMode: "tracked" as "tracked" | "untracked",
+		costSource: "purchase" as "purchase" | "manual" | "unknown",
+		manualSoldOut: false,
 	});
 
 	const productEditForm = reactive({
@@ -327,6 +336,9 @@ const productUnitForm = reactive({
 		priceBase: "",
 		lowStockThreshold: "",
 		allowBaseUnitSale: true,
+		inventoryMode: "tracked" as "tracked" | "untracked",
+		costSource: "purchase" as "purchase" | "manual" | "unknown",
+		manualSoldOut: false,
 	});
 	const draftUnitForm = reactive({
 		unitId: "",
@@ -335,6 +347,14 @@ const productUnitForm = reactive({
 		enabledForSale: true,
 	});
 	const draftUnitPriceManualOverride = ref(false);
+	watch(() => productForm.inventoryMode, (mode) => {
+		if (mode === "tracked") productForm.costSource = "purchase";
+		else if (productForm.costSource === "purchase") productForm.costSource = "manual";
+	});
+	watch(() => productEditForm.inventoryMode, (mode) => {
+		if (mode === "tracked") productEditForm.costSource = "purchase";
+		else if (productEditForm.costSource === "purchase") productEditForm.costSource = "manual";
+	});
 
 let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 	let cameraScannerControls: { stop?: () => void } | null = null;
@@ -1345,6 +1365,9 @@ function mapApiProduct(
 		updatedAt: formatApiDate(product.updated_at || product.created_at),
 		updatedBy: "API",
 		lowStockThreshold,
+		inventoryMode: product.inventory_mode === "untracked" ? "untracked" : "tracked",
+		costSource: product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase",
+		manualSoldOut: Boolean(product.manual_sold_out),
 		tag: status === "inactive" ? "ปิดขาย" : variantCount > 0 ? "มีตัวเลือก" : undefined,
 	};
 }
@@ -1426,6 +1449,9 @@ function loadInitialProductData(): Promise<void> {
 		productForm.lowStockThreshold = "";
 		productForm.active = true;
 		productForm.allowBaseUnitSale = true;
+		productForm.inventoryMode = "tracked";
+		productForm.costSource = "purchase";
+		productForm.manualSoldOut = false;
 		productUnitDrafts.value = [];
 		resetDraftUnitForm();
 	}
@@ -1462,6 +1488,8 @@ async function openCloneProduct() {
 		? ""
 		: normalizeMoneyTyping(String(selectedProduct.value.lowStockThreshold), { maxDecimals: 0 });
 	productForm.allowBaseUnitSale = selectedProduct.value.allowBaseUnitSale;
+	productForm.inventoryMode = selectedProduct.value.inventoryMode;
+	productForm.costSource = selectedProduct.value.costSource;
 	productForm.location = selectedProduct.value.location === "-" ? "" : (selectedProduct.value.location || "");
 
 	// Never clone barcode (should be unique / scanned per item)
@@ -1485,6 +1513,9 @@ function resetProductEditForm() {
 	productEditForm.priceBase = "";
 	productEditForm.lowStockThreshold = "";
 	productEditForm.allowBaseUnitSale = true;
+	productEditForm.inventoryMode = "tracked";
+	productEditForm.costSource = "purchase";
+	productEditForm.manualSoldOut = false;
 	resetProductImageInputValue(productEditImageInputRef.value);
 }
 
@@ -1502,6 +1533,9 @@ function openEditProduct() {
 		? ""
 		: normalizeMoneyTyping(String(selectedProduct.value.lowStockThreshold), { maxDecimals: 0 });
 	productEditForm.allowBaseUnitSale = selectedProduct.value.allowBaseUnitSale;
+	productEditForm.inventoryMode = selectedProduct.value.inventoryMode;
+	productEditForm.costSource = selectedProduct.value.costSource;
+	productEditForm.manualSoldOut = selectedProduct.value.manualSoldOut;
 
 	productDetailOpen.value = false;
 	productEditOpen.value = true;
@@ -2374,7 +2408,7 @@ function removeDraftSaleUnit(draftId: string) {
 		if (productForm.location.trim().length > 80) return t("products.create.locationTooLong");
 		const priceBase = parseLocaleNumber(productForm.priceBase);
 		if (!Number.isFinite(priceBase) || priceBase < 0) return t("products.create.invalidSalePrice");
-		const costBase = parseLocaleNumber(productForm.costBase);
+		const costBase = productForm.costSource === "unknown" ? 0 : parseLocaleNumber(productForm.costBase);
 		if (!Number.isFinite(costBase) || costBase < 0) return t("products.create.invalidCost");
 		if (productForm.lowStockThreshold.trim() !== "") {
 			const lowStockThreshold = parseLocaleNumber(productForm.lowStockThreshold);
@@ -2411,7 +2445,7 @@ function removeDraftSaleUnit(draftId: string) {
 	}
 		productSaving.value = true;
 		const priceBase = parseLocaleNumber(productForm.priceBase);
-		const costBase = parseLocaleNumber(productForm.costBase);
+		const costBase = productForm.costSource === "unknown" ? 0 : parseLocaleNumber(productForm.costBase);
 		const lowStockThreshold = productForm.lowStockThreshold.trim() === ""
 			? null
 			: parseLocaleNumber(productForm.lowStockThreshold);
@@ -2430,6 +2464,9 @@ function removeDraftSaleUnit(draftId: string) {
 			low_stock_threshold: lowStockThreshold,
 			active: productForm.active ? 1 : 0,
 			allow_base_unit_sale: productForm.allowBaseUnitSale ? 1 : 0,
+			inventory_mode: productForm.inventoryMode,
+			cost_source: productForm.inventoryMode === "tracked" ? "purchase" : productForm.costSource,
+			manual_sold_out: productForm.manualSoldOut ? 1 : 0,
 		};
 
 	try {
@@ -2495,6 +2532,9 @@ async function saveProductEdit() {
 		out_stock_threshold: 0,
 		low_stock_threshold: lowStockThreshold,
 		allow_base_unit_sale: productEditForm.allowBaseUnitSale ? 1 : 0,
+		inventory_mode: productEditForm.inventoryMode,
+		cost_source: productEditForm.inventoryMode === "tracked" ? "purchase" : productEditForm.costSource,
+		manual_sold_out: productEditForm.manualSoldOut ? 1 : 0,
 	};
 
 	if (productEditForm.imageDataUrl) {
@@ -3940,6 +3980,30 @@ onBeforeUnmount(() => {
 										<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.skuAutoHint") }}</p>
 									</div>
 
+									<div class="space-y-2 sm:col-span-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t('productRestaurant.productType') }}</label>
+										<select
+											v-model="productForm.inventoryMode"
+											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option value="tracked">{{ $t('productRestaurant.tracked') }}</option>
+											<option value="untracked">{{ $t('productRestaurant.untracked') }}</option>
+										</select>
+										<p class="text-xs text-stone-500">{{ $t('productRestaurant.untrackedHint') }}</p>
+									</div>
+
+									<div v-if="productForm.inventoryMode === 'untracked'" class="space-y-2 sm:col-span-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t('productRestaurant.costTitle') }}</label>
+										<select
+											v-model="productForm.costSource"
+											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option value="manual">{{ $t('productRestaurant.manualCost') }}</option>
+											<option value="unknown">{{ $t('productRestaurant.unknownCost') }}</option>
+										</select>
+										<p v-if="productForm.costSource === 'unknown'" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">{{ $t('productRestaurant.unknownHint') }}</p>
+									</div>
+
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
 											<label class="text-sm font-medium text-stone-700">{{ $t("products.create.barcode") }}</label>
@@ -4020,7 +4084,7 @@ onBeforeUnmount(() => {
 										/>
 									</div>
 
-									<div class="space-y-2">
+									<div v-if="productForm.costSource !== 'unknown'" class="space-y-2">
 										<label class="text-sm font-medium text-stone-700">{{ $t("products.cost") }}</label>
 										<UInput
 											v-model="productForm.costBase"
@@ -4035,7 +4099,7 @@ onBeforeUnmount(() => {
 										/>
 									</div>
 
-									<div class="space-y-2">
+									<div v-if="productForm.inventoryMode === 'tracked'" class="space-y-2">
 										<label class="text-sm font-medium text-stone-700">{{ $t("products.create.lowStockThreshold") }}</label>
 										<UInput
 											v-model="productForm.lowStockThreshold"
@@ -4705,6 +4769,27 @@ onBeforeUnmount(() => {
 
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4 sm:grid-cols-2">
+								<div class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">รูปแบบสินค้า</label>
+									<select
+										v-model="productEditForm.inventoryMode"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option value="tracked">{{ $t('productRestaurant.tracked') }}</option>
+										<option value="untracked">{{ $t('productRestaurant.untracked') }}</option>
+									</select>
+								</div>
+								<div v-if="productEditForm.inventoryMode === 'untracked'" class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">ต้นทุนเมนู</label>
+									<select
+										v-model="productEditForm.costSource"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option value="manual">{{ $t('productRestaurant.manualCost') }}</option>
+										<option value="unknown">{{ $t('productRestaurant.unknownCost') }}</option>
+									</select>
+									<UCheckbox v-model="productEditForm.manualSoldOut" label="หมดชั่วคราว (ซ่อนจาก POS ร้านอาหาร)" />
+								</div>
 								<div class="space-y-2">
 									<label class="text-sm font-medium text-stone-700">หน่วยหลัก</label>
 									<div class="flex h-12 items-center rounded-md border border-neutral-200 bg-neutral-50 px-4 text-sm text-stone-700">
@@ -4728,7 +4813,7 @@ onBeforeUnmount(() => {
 									/>
 								</div>
 
-								<div class="space-y-2 sm:col-span-2">
+								<div v-if="productEditForm.inventoryMode === 'tracked'" class="space-y-2 sm:col-span-2">
 									<label class="text-sm font-medium text-stone-700">สต็อกต่ำ (≤)</label>
 									<UInput
 										v-model="productEditForm.lowStockThreshold"

@@ -11,6 +11,7 @@
     "db:introspect": "node script/turso-db/inspect-app-db.mjs",
     "db:generate-models": "node script/turso-db/generate-models.mjs",
     "roles:coverage": "node script/permission-role-coverage.mjs",
+    "test:hybrid-pos": "node --import tsx script/hybrid-pos-smoke.mjs",
     "build": "npm run build:api",
     "build:api": "tsc",
     "build:web": "npm --prefix frontend run build",

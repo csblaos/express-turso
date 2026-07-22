@@ -123,6 +123,9 @@ export class PurchaseOrderComponent {
 			if (!product || product.store_id !== payload.store_id) {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.PRODUCT_NOT_FOUND);
 			}
+			if (product.inventory_mode === "untracked") {
+				throw ApiError.BadRequestError(`${product.name} is a non-stock menu and cannot be purchased as inventory`);
+			}
 		}
 
 		const normalized = normalizePurchaseOrderPayload(payload, payload.status?.trim() || "draft");

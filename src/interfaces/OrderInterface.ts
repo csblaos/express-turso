@@ -263,6 +263,17 @@ export class OrderInterface {
 
 	static async list(filters: OrderListFilters): Promise<Record<string, unknown>[]> {
 		await OrderInterface.ensureTables();
+		const db = DbConn.getClient();
+		const tableCheck = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='restaurant_tables'");
+		const hasRestaurantTables = tableCheck.rows.length > 0;
+		const itemInfo = await db.execute("PRAGMA table_info(order_items)");
+		const hasLineStatus = itemInfo.rows.some((row) => String(row.name) === "line_status");
+		const restaurantSelect = hasRestaurantTables
+			? ", t.name AS restaurant_table_name, z.name AS restaurant_zone_name"
+			: ", NULL AS restaurant_table_name, NULL AS restaurant_zone_name";
+		const restaurantJoins = hasRestaurantTables
+			? " LEFT JOIN restaurant_tables t ON t.id=o.restaurant_table_id LEFT JOIN restaurant_zones z ON z.id=t.zone_id"
+			: "";
 		const where = [ "o.store_id = ?" ];
 		const args: InValue[] = [ filters.storeId ];
 		if (filters.query) { where.push("(LOWER(o.order_no) LIKE ? OR LOWER(COALESCE(o.customer_name,'')) LIKE ? OR LOWER(COALESCE(u.name,'')) LIKE ?)"); const q = `%${filters.query.toLowerCase()}%`; args.push(q, q, q); }
@@ -272,18 +283,20 @@ export class OrderInterface {
 		if (filters.paymentMethod && filters.paymentMethod !== "all") { where.push("o.payment_method = ?"); args.push(filters.paymentMethod); }
 		if (filters.from) { where.push("o.created_at >= ?"); args.push(filters.from); }
 		if (filters.to) { where.push("o.created_at <= ?"); args.push(filters.to); }
-		const result = await DbConn.getClient().execute({
+		const result = await db.execute({
 			sql: `SELECT o.*, COALESCE(u.name, 'ผู้ใช้งาน') AS cashier_name,
-				COALESCE(SUM(oi.qty), 0) AS item_count
-				FROM orders o LEFT JOIN users u ON u.id = o.created_by LEFT JOIN order_items oi ON oi.order_id = o.id
+				COALESCE(SUM(${hasLineStatus ? "CASE WHEN COALESCE(oi.line_status,'sent')!='cancelled' THEN oi.qty ELSE 0 END" : "oi.qty"}), 0) AS item_count${restaurantSelect}
+				FROM orders o LEFT JOIN users u ON u.id = o.created_by LEFT JOIN order_items oi ON oi.order_id = o.id${restaurantJoins}
 				WHERE ${where.join(" AND ")} GROUP BY o.id ORDER BY o.created_at DESC LIMIT 500`,
 			args,
 		});
 		const orders: Array<Record<string, unknown> & { lines: Record<string, unknown>[] }> = result.rows.map((row) => ({ ...(row as Record<string, unknown>), lines: [] }));
 		if (!orders.length) return orders;
 		const orderIds = orders.map((order) => String(order.id));
-		const itemResult = await DbConn.getClient().execute({
-			sql: `SELECT oi.*, p.name, p.sku FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY oi.id`,
+		const itemResult = await db.execute({
+			sql: `SELECT oi.*, p.name, p.sku${hasRestaurantTables ? ", r.round_no, r.dispatch_mode" : ", NULL AS round_no, NULL AS dispatch_mode"}
+				FROM order_items oi JOIN products p ON p.id = oi.product_id${hasRestaurantTables ? " LEFT JOIN restaurant_order_rounds r ON r.id=oi.round_id" : ""}
+				WHERE oi.order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY oi.id`,
 			args: orderIds,
 		});
 		const byOrder = new Map<string, Record<string, unknown>[]>();

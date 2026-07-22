@@ -1,0 +1,73 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const tempDirectory = await mkdtemp(join(tmpdir(), "hybrid-pos-smoke-"));
+process.env.DATABASE_URL = `file:${join(tempDirectory, "database.db")}`;
+process.env.TURSO_DATABASE_URL = "";
+
+try {
+	const { DbConn } = await import("../src/connections/DbConn.ts");
+	await DbConn.connect();
+	const db = DbConn.getClient();
+	for (const sql of [
+		`CREATE TABLE products (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,name TEXT NOT NULL,sku TEXT NOT NULL,barcode TEXT,category_id TEXT,base_unit_id TEXT NOT NULL,price_base REAL NOT NULL,cost_base REAL NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)`,
+		`CREATE TABLE product_units (id TEXT PRIMARY KEY,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,enabled_for_sale INTEGER NOT NULL DEFAULT 1)`,
+		`CREATE TABLE orders (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,order_no TEXT NOT NULL,channel TEXT,status TEXT,subtotal REAL,discount REAL,vat_amount REAL,shipping_fee_charged REAL,total REAL,shipping_cost REAL,created_by TEXT,created_at TEXT,payment_currency TEXT,payment_method TEXT,payment_status TEXT,paid_at TEXT)`,
+		`CREATE TABLE order_items (id TEXT PRIMARY KEY,order_id TEXT NOT NULL,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,qty REAL NOT NULL,qty_base REAL NOT NULL,price_base_at_sale REAL NOT NULL,cost_base_at_sale REAL NOT NULL,line_total REAL NOT NULL)`,
+		`CREATE TABLE inventory_balances (store_id TEXT NOT NULL,product_id TEXT NOT NULL,on_hand_base REAL NOT NULL,reserved_base REAL NOT NULL,available_base REAL NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(store_id,product_id))`,
+		`CREATE TABLE inventory_movements (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,product_id TEXT NOT NULL,type TEXT NOT NULL,qty_base REAL NOT NULL,ref_type TEXT,ref_id TEXT,note TEXT,created_by TEXT,created_at TEXT NOT NULL)`,
+		`CREATE TABLE cash_flow_entries (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,account_id TEXT,direction TEXT,entry_type TEXT,source_type TEXT,source_id TEXT,amount REAL,currency TEXT,reference TEXT,note TEXT,metadata TEXT,occurred_at TEXT,created_by TEXT,created_at TEXT)`,
+		`CREATE TABLE idempotency_requests (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,action TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT,status TEXT,response_body TEXT)`,
+	]) await db.execute(sql);
+
+	const stamp = new Date().toISOString();
+	await db.execute({ sql: "INSERT INTO stores(id,name,store_type,currency,created_at) VALUES(?,?,?,?,?)", args: [ "smoke-store", "Hybrid Smoke", "RESTAURANT", "LAK", stamp ] });
+	await db.execute({ sql: "INSERT INTO products(id,store_id,name,sku,base_unit_id,price_base,cost_base,active,created_at) VALUES(?,?,?,?,?,?,?,?,?)", args: [ "beer", "smoke-store", "Beer", "BEER", "bottle", 100, 60, 1, stamp ] });
+	await db.execute({ sql: "INSERT INTO products(id,store_id,name,sku,base_unit_id,price_base,cost_base,active,created_at) VALUES(?,?,?,?,?,?,?,?,?)", args: [ "pizza", "smoke-store", "Pizza", "PIZZA", "plate", 200, 0, 1, stamp ] });
+	await db.execute("ALTER TABLE products ADD COLUMN inventory_mode TEXT NOT NULL DEFAULT 'tracked'");
+	await db.execute("ALTER TABLE products ADD COLUMN cost_source TEXT NOT NULL DEFAULT 'purchase'");
+	await db.execute("ALTER TABLE products ADD COLUMN manual_sold_out INTEGER NOT NULL DEFAULT 0");
+	await db.execute("ALTER TABLE products ADD COLUMN updated_at TEXT");
+	await db.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT");
+	await db.execute("ALTER TABLE products ADD COLUMN location TEXT");
+	await db.execute("UPDATE products SET inventory_mode='untracked',cost_source='unknown' WHERE id='pizza'");
+	await db.execute({ sql: "INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)", args: [ "smoke-store", "beer", 5, 0, 5, stamp ] });
+
+	const { RestaurantInterface } = await import("../src/interfaces/RestaurantInterface.ts");
+	const first = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-1", initial_item: { product_id: "beer", qty: 1 } }, "cashier");
+	assert.equal(first.queue_no, "Q001");
+	const firstRetry = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-1", initial_item: { product_id: "beer", qty: 1 } }, "cashier");
+	assert.equal(firstRetry.id, first.id);
+	const paid = await RestaurantInterface.checkout("smoke-store", first.id, { expected_version: first.version, payment_method: "cash", amount_tendered: 100, dispatch_mode: "direct" }, "cashier", "checkout-1");
+	assert.equal(paid.status, "completed");
+	assert.equal(paid.rounds[0].dispatch_mode, "direct");
+	const balance = await db.execute("SELECT on_hand_base FROM inventory_balances WHERE store_id='smoke-store' AND product_id='beer'");
+	assert.equal(Number(balance.rows[0].on_hand_base), 4);
+	await RestaurantInterface.checkout("smoke-store", first.id, { expected_version: first.version, payment_method: "cash", amount_tendered: 100, dispatch_mode: "direct" }, "cashier", "checkout-1");
+	const movements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='beer'");
+	assert.equal(Number(movements.rows[0].total), 1);
+
+	const second = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-2", initial_item: { product_id: "pizza", qty: 1 } }, "cashier");
+	assert.equal(second.queue_no, "Q002");
+	const secondWithExtra = await RestaurantInterface.addItem("smoke-store", second.id, { product_id: "pizza", qty: 1, expected_version: second.version }, "cashier");
+	assert.equal(secondWithExtra.items.length, 2);
+	const zone = await RestaurantInterface.saveZone("smoke-store", { name: "Zone A", sort_order: 1 });
+	const table = await RestaurantInterface.saveTable("smoke-store", { zone_id: zone.id, name: "A1", capacity: 2 });
+	const dineIn = await RestaurantInterface.changeServiceMode("smoke-store", secondWithExtra.id, { service_mode: "dine-in", table_id: table.id, guest_count: 2, expected_version: secondWithExtra.version }, "cashier");
+	assert.equal(dineIn.service_mode, "dine-in");
+	assert.equal(dineIn.items.length, 2);
+	const sent = await RestaurantInterface.sendRound("smoke-store", dineIn.id, dineIn.version, "send-2", "cashier");
+	assert.equal(sent.rounds[0].dispatch_mode, "kitchen");
+	const completed = await RestaurantInterface.checkout("smoke-store", sent.id, { expected_version: sent.version, payment_method: "cash", amount_tendered: 400, dispatch_mode: "existing" }, "cashier", "checkout-2");
+	assert.equal(completed.status, "completed");
+	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
+	const pizzaMovements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='pizza'");
+	assert.equal(Number(pizzaMovements.rows[0].total), 0);
+
+	console.log("Hybrid POS smoke passed: Q001/Q002, direct checkout, table conversion, stock-once, open-order cleanup");
+	db.close();
+} finally {
+	await rm(tempDirectory, { recursive: true, force: true });
+}

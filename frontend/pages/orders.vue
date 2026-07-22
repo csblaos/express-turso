@@ -14,6 +14,11 @@ type OrderLine = {
 	qty: number;
 	price: number;
 	note?: string;
+	lineStatus?: string;
+	isGift?: boolean;
+	roundNo?: number;
+	dispatchMode?: "kitchen" | "direct";
+	cancelReason?: string;
 };
 
 type OrderRecord = {
@@ -154,14 +159,27 @@ const orders = ref<OrderRecord[]>([
 type ApiOrder = Record<string, unknown> & { lines?: Array<Record<string, unknown>> };
 
 function mapApiOrder(order: ApiOrder): OrderRecord {
+	const serviceMode = String(order.service_mode || "walk-in");
+	const channel = serviceMode === "dine-in" ? "walk-in" : serviceMode === "pickup" ? "pickup" : String(order.channel || serviceMode || "walk-in");
+	const tableLabel = order.queue_no
+		? `คิว ${String(order.queue_no)}`
+		: order.restaurant_table_name
+			? [ order.restaurant_zone_name, order.restaurant_table_name ].filter(Boolean).join(" · ")
+			: undefined;
 	return {
 		id: String(order.id), orderNumber: String(order.order_no), customerName: String(order.customer_name || t("orders.generalCustomer")),
-		channel: String(order.channel || order.service_mode || "walk-in") as FulfillmentType,
+		channel: channel as FulfillmentType,
 		status: String(order.status || "completed") as OrderStatus, paymentStatus: String(order.payment_status || "paid") as PaymentStatus,
 		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), itemCount: Number(order.item_count || 0),
 		createdAt: String(order.created_at), updatedAt: String(order.created_at), cashier: String(order.cashier_name || t("orders.user")),
-		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined,
-		lines: (order.lines || []).map((line) => ({ id: String(line.id), name: String(line.name), sku: String(line.sku), qty: Number(line.qty), price: Number(line.price_base_at_sale) })),
+		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined, tableLabel,
+		lines: (order.lines || []).map((line) => ({
+			id: String(line.id), name: String(line.name), sku: String(line.sku), qty: Number(line.qty), price: Number(line.price_base_at_sale),
+			note: line.note ? String(line.note) : undefined, lineStatus: line.line_status ? String(line.line_status) : undefined,
+			isGift: Boolean(Number(line.is_gift)), roundNo: line.round_no ? Number(line.round_no) : undefined,
+			dispatchMode: line.dispatch_mode === "direct" ? "direct" : line.dispatch_mode === "kitchen" ? "kitchen" : undefined,
+			cancelReason: line.cancel_reason ? String(line.cancel_reason) : undefined,
+		})),
 	};
 }
 
@@ -577,7 +595,9 @@ function closeDetail() {
 											<div class="min-w-0">
 												<p class="truncate text-sm font-semibold text-stone-900">{{ line.name }}</p>
 												<p class="mt-1 text-xs text-stone-500">{{ line.sku }} · {{ line.qty }} x {{ formatMoney(line.price) }}</p>
+												<div v-if="line.isGift || line.roundNo || line.lineStatus === 'cancelled'" class="mt-2 flex flex-wrap gap-1"><UBadge v-if="line.isGift" color="success" variant="soft" label="สินค้าฟรี" /><UBadge v-if="line.roundNo" color="neutral" variant="soft" :label="line.dispatchMode === 'direct' ? `ขายตรงรอบ ${line.roundNo}` : `ครัวรอบ ${line.roundNo}`" /><UBadge v-if="line.lineStatus === 'cancelled'" color="error" variant="soft" label="ยกเลิกแล้ว" /></div>
 												<p v-if="line.note" class="mt-2 text-xs text-stone-400">{{ line.note }}</p>
+												<p v-if="line.cancelReason" class="mt-1 text-xs text-red-500">เหตุผล: {{ line.cancelReason }}</p>
 											</div>
 											<p class="text-sm font-semibold text-stone-900">{{ formatMoney(line.qty * line.price) }}</p>
 										</div>

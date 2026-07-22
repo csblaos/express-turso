@@ -56,6 +56,7 @@ type ApiPosCatalogResponse = {
 		vat_enabled: number;
 		vat_rate: number;
 		vat_mode: string;
+		store_type: string;
 	};
 	categories: Array<{
 		id: string;
@@ -312,6 +313,12 @@ const catalogCurrency = ref("THB");
 const vatEnabled = ref(false);
 const vatRate = ref(0);
 const vatMode = ref<"EXCLUSIVE" | "INCLUSIVE">("EXCLUSIVE");
+const catalogStoreType = ref("");
+const isRestaurantStore = computed(() => catalogStoreType.value === "RESTAURANT");
+const posExperience = computed<"loading" | "restaurant" | "retail">(() => {
+	if (productsPending.value && !catalogStoreType.value) return "loading";
+	return isRestaurantStore.value ? "restaurant" : "retail";
+});
 const cart = ref<CartEntry[]>([]);
 type AvailablePromotion = { promotion_id: string; name: string; applications: number; gift_product_id: string; gift_qty: number };
 const availablePromotions = ref<AvailablePromotion[]>([]);
@@ -1145,6 +1152,7 @@ async function loadPosProducts() {
 			`/pos/products?store_id=${encodeURIComponent(effectiveStoreId.value)}`,
 		);
 		catalogCurrency.value = response.data.store.currency || "THB";
+		catalogStoreType.value = String(response.data.store.store_type || "OTHER").toUpperCase();
 		vatEnabled.value = Boolean(response.data.store.vat_enabled);
 		vatRate.value = Number(response.data.store.vat_rate || 0);
 		vatMode.value = String(response.data.store.vat_mode || "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
@@ -1167,6 +1175,8 @@ async function loadPosProducts() {
 }
 
 watch(effectiveStoreId, () => {
+	catalogStoreType.value = "";
+	products.value = [];
 	void loadPosProducts();
 	void loadPaymentAccounts();
 	void evaluatePromotions();
@@ -1212,6 +1222,24 @@ onBeforeUnmount(() => {
 
 <template>
 	<AppSidebarShell
+		v-if="posExperience === 'loading'"
+		:nav-items="appNavItems"
+		:active-ids="['pos']"
+		sidebar-eyebrow="POS"
+		:sidebar-title="$t('pos.title')"
+		sidebar-compact-title="POS"
+		:sidebar-description="$t('pos.productList')"
+	>
+		<template #default>
+			<div class="grid min-h-0 gap-2 lg:h-full lg:grid-cols-[minmax(0,1fr)_400px]">
+				<section class="rounded-md border border-neutral-200 bg-white p-3"><USkeleton class="h-10 w-full rounded-md" /><div class="mt-3 grid content-start grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"><div v-for="index in 10" :key="index" class="min-h-[118px] rounded-md border border-neutral-100 p-2"><div class="flex gap-2"><USkeleton class="size-10 shrink-0 rounded-md" /><div class="flex-1 space-y-2"><USkeleton class="h-3.5 w-4/5" /><USkeleton class="h-2.5 w-2/5" /></div></div><USkeleton class="mt-5 h-3.5 w-2/5" /><USkeleton class="mt-1.5 h-3.5 w-3/5" /></div></div></section>
+				<aside class="hidden rounded-md border border-neutral-200 bg-white p-4 lg:block"><USkeleton class="h-5 w-32" /><USkeleton class="mt-2 h-3 w-52" /><USkeleton class="mt-6 h-16 w-full rounded-md" /><USkeleton class="mt-3 h-16 w-full rounded-md" /><USkeleton class="mt-6 h-11 w-full rounded-md" /></aside>
+			</div>
+		</template>
+	</AppSidebarShell>
+	<RestaurantPos v-else-if="posExperience === 'restaurant' && effectiveStoreId" :store-id="effectiveStoreId" />
+	<AppSidebarShell
+		v-else
 		:nav-items="appNavItems"
 		:active-ids="['pos']"
 		sidebar-eyebrow="POS"

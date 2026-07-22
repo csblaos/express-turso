@@ -122,7 +122,7 @@ function mapRow(row: Record<string, unknown>): AuditEventRecord {
 export class AuditEventInterface {
 	private static initialized = false;
 
-	private static async ensureTable(): Promise<void> {
+	static async ensureTable(): Promise<void> {
 		if (AuditEventInterface.initialized) return;
 
 		const db = DbConn.getClient();

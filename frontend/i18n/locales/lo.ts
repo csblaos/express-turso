@@ -24,6 +24,9 @@ export default defineI18nLocale(() => ({
 		number: "ຕົວເລກ",
 		itemCount: "{count} ລາຍການ",
 	},
+	restaurantPosCompact: { viewBill: "ເບິ່ງບິນ", closeBill: "ປິດບິນ", moreActions: "ຄຳສັ່ງເພີ່ມເຕີມ", sendKitchen: "ສົ່ງຄົວ", sendPay: "ສົ່ງຄົວ ແລະ ຊຳລະ", sendPark: "ສົ່ງຄົວ ແລະ ພັກຄິວ", refresh: "ໂຫຼດອໍເດີໃໝ່", directSale: "ຂາຍກົງ", kitchenRound: "ສົ່ງຄົວຮອບ {round}", itemShort: "{count} ລາຍການ", printAgain: "ພິມຊ້ຳ", addGift: "ເພີ່ມ", showAllPromotions: "ເບິ່ງໂປຣໂມຊັນທັງໝົດ", showLess: "ສະແດງໜ້ອຍລົງ", deleteItem: "ລຶບ {name}" },
+	restaurantPos: { sidebarTitle: "ຂາຍດ່ວນ ແລະ ໂຕະ", sidebarDescription: "ຂາຍກັບບ້ານ, ເປີດໂຕະ ແລະ ສົ່ງຄົວ", openMenu: "ເປີດເມນູ", quickSale: "ຂາຍດ່ວນ", selectTable: "ເລືອກໂຕະ", openOrders: "ອໍເດີທີ່ເປີດ", reload: "ໂຫຼດໃໝ່", search: "ຄົ້ນຫາສິນຄ້າ ຫຼື SKU", quickCart: "ກະຕ່າຂາຍດ່ວນ", quickCartHint: "ແຕະສິນຄ້າຊິ້ນທຳອິດເພື່ອສ້າງຄິວຊື້ກັບບ້ານ", noItems: "ຍັງບໍ່ມີສິນຄ້າ", selectProduct: "ເລືອກສິນຄ້າດ້ານຊ້າຍເພື່ອເລີ່ມຄິວໃໝ່", stock: "ສະຕັອກ {count}", foodMenu: "ເມນູອາຫານ", soldOut: "ໝົດຊົ່ວຄາວ", available: "ພ້ອມຂາຍ", loadFailed: "ໂຫຼດ POS ບໍ່ສຳເລັດ", retry: "ລອງໃໝ່", addFailed: "ເພີ່ມສິນຄ້າບໍ່ສຳເລັດ", orderLoadFailed: "ໂຫຼດອໍເດີບໍ່ສຳເລັດ", queueOpened: "ເປີດຄິວ {queue} ແລ້ວ", takeaway: "ຊື້ກັບບ້ານ", dineIn: "ທານຢູ່ຮ້ານ", readyToPay: "ຂໍເຊັກບິນ", open: "ເປີດຢູ່", moveTable: "ຍ້າຍໂຕະ", changeToTakeaway: "ປ່ຽນເປັນຊື້ກັບ", draftItems: "ລາຍການຮ່າງ · ຍັງບໍ່ສົ່ງຄົວ", free: "ຟຣີ", total: "ລວມ", payDirect: "ຊຳລະ ແລະ ຈົບເລີຍ", sendAndPay: "ສົ່ງຄົວ ແລະ ຊຳລະ", sendAndPark: "ສົ່ງຄົວ ແລະ ພັກຄິວ", parkOrder: "ພັກອໍເດີ", checkBill: "ເຊັກບິນ / ພິມ", pay: "ຊຳລະເງິນ", cancelOrder: "ຍົກເລີກອໍເດີ" },
+	productRestaurant: { productType: "ຮູບແບບສິນຄ້າ", tracked: "ສິນຄ້າມີສະຕັອກ ເຊັ່ນ ເບຍ/ນ້ຳອັດລົມ", untracked: "ເມນູອາຫານ ບໍ່ຕິດຕາມຈຳນວນ", untrackedHint: "ເມນູອາຫານຂາຍໄດ້ໂດຍບໍ່ຕ້ອງສ້າງຈຳນວນສະຕັອກສົມມຸດ", costTitle: "ການບັນທຶກຕົ້ນທຶນເມນູ", manualCost: "ລະບຸຕົ້ນທຶນປະມານຕໍ່ຈານ", unknownCost: "ຍັງບໍ່ຮູ້ຕົ້ນທຶນ", unknownHint: "ຂາຍໄດ້ໂດຍບໍ່ຕັດສະຕັອກ ລະບົບຈະບັນທຶກຕົ້ນທຶນເປັນ 0 ຊົ່ວຄາວ ແລະ ແຍກຍອດນີ້ອອກຈາກລາຍງານກຳໄລ" },
 	breadcrumbs: {
 		ariaLabel: "ເສັ້ນທາງນຳທາງ",
 		pos: "ຂາຍໜ້າຮ້ານ", products: "ສິນຄ້າ", orders: "ອໍເດີ", inventory: "ສະຕັອກ", inventoryHistory: "ປະຫວັດສະຕັອກ",
@@ -119,6 +122,7 @@ export default defineI18nLocale(() => ({
 				title: "ການຮັບຊຳລະ",
 				description: "ບັນຊີທະນາຄານ QR ID ແລະ ສະກຸນເງິນ",
 			},
+			restaurant: { title: "ໂຊນ ແລະ ໂຕະ", description: "ຈັດການໂຊນ ໂຕະ ແລະ ຈຳນວນບ່ອນນັ່ງສຳລັບຮ້ານອາຫານ" },
 			shipping: {
 				title: "ຜູ້ໃຫ້ບໍລິການຂົນສົ່ງ",
 				description: "ຂົນສົ່ງສຳລັບອໍເດີອອນລາຍ",

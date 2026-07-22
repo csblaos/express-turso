@@ -3,7 +3,7 @@ import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type Product = { id: string; name: string; sku: string };
-type Promotion = { id: string; name: string; type: "buy_x_get_y" | "cart_total_gift"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string; gift_qty: number; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number };
+type Promotion = { id: string; name: string; type: "buy_x_get_y" | "cart_total_gift"; apply_mode: "automatic" | "manual"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string; gift_qty: number; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number };
 type Envelope<T> = { data: T };
 
 const { apiFetch } = useApiClient();
@@ -25,7 +25,7 @@ const typeFilter = ref<"all" | Promotion["type"]>("all");
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [ 10, 20, 50 ];
-const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
+const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], apply_mode: "manual" as Promotion["apply_mode"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
 const noEndDate = ref(true);
 const modalInputClass = "w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#1b1713]";
 const modalSelectClass = "w-full [&_button]:min-h-11 [&_button]:rounded-md [&_button]:border-neutral-200 [&_button]:bg-white dark:[&_button]:border-[#3a332a] dark:[&_button]:bg-[#1b1713]";
@@ -81,7 +81,7 @@ function goToPage(page: number) { currentPage.value = Math.min(Math.max(1, page)
 function reset(value?: Promotion) {
 	editing.value = value || null;
 	noEndDate.value = !value?.ends_at;
-	Object.assign(form, value ? { name: value.name, type: value.type, qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id, gift_qty: value.gift_qty, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
+	Object.assign(form, value ? { name: value.name, type: value.type, apply_mode: value.apply_mode || "manual", qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id, gift_qty: value.gift_qty, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", apply_mode: "manual", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
 	open.value = true;
 }
 function formatMoney(value: number | null) { return new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-US").format(Number(value || 0)); }
@@ -153,7 +153,7 @@ async function togglePromotion(item: Promotion) {
 				name: item.name, type: item.type, qualifying_product_id: item.qualifying_product_id,
 				qualifying_qty: item.qualifying_qty, minimum_subtotal: item.minimum_subtotal,
 				gift_product_id: item.gift_product_id, gift_qty: item.gift_qty,
-				starts_at: item.starts_at, ends_at: item.ends_at, is_active: !Boolean(item.is_active)
+				starts_at: item.starts_at, ends_at: item.ends_at, apply_mode: item.apply_mode || "manual", is_active: !Boolean(item.is_active)
 			}
 		});
 		form.is_active = !Boolean(item.is_active);
@@ -268,7 +268,7 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 						</section>
 						<section class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
 							<h3 class="text-sm font-semibold text-stone-900 dark:text-stone-100">{{ copy.rules }}</h3>
-							<div class="mt-3 space-y-3"><UFormField :label="copy.type"><USelect v-model="form.type" size="lg" color="neutral" :items="[{ label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }]" :class="modalSelectClass" /></UFormField><template v-if="form.type === 'buy_x_get_y'"><UFormField :label="copy.qualify"><USelect v-model="form.qualifying_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.qty"><UInput v-model.number="form.qualifying_qty" type="number" min="1" size="lg" color="neutral" :placeholder="copy.qtyPlaceholder" :class="modalInputClass" /></UFormField></template><UFormField v-else :label="copy.minimum"><UInput v-model.number="form.minimum_subtotal" type="number" min="1" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField><div class="border-t border-neutral-100 pt-3 dark:border-[#332d26]"><UFormField :label="copy.gift"><USelect v-model="form.gift_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.giftQty" class="mt-3"><UInput v-model.number="form.gift_qty" type="number" min="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" /></UFormField></div></div>
+							<div class="mt-3 space-y-3"><UFormField :label="copy.type"><USelect v-model="form.type" size="lg" color="neutral" :items="[{ label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }]" :class="modalSelectClass" /></UFormField><UFormField label="วิธีเพิ่มของแถม"><USelect v-model="form.apply_mode" size="lg" color="neutral" :items="[{label:'ให้พนักงานกดเพิ่มเอง',value:'manual'},{label:'เพิ่มอัตโนมัติเมื่อครบเงื่อนไข',value:'automatic'}]" :class="modalSelectClass" /></UFormField><template v-if="form.type === 'buy_x_get_y'"><UFormField :label="copy.qualify"><USelect v-model="form.qualifying_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.qty"><UInput v-model.number="form.qualifying_qty" type="number" min="1" size="lg" color="neutral" :placeholder="copy.qtyPlaceholder" :class="modalInputClass" /></UFormField></template><UFormField v-else :label="copy.minimum"><UInput v-model.number="form.minimum_subtotal" type="number" min="1" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField><div class="border-t border-neutral-100 pt-3 dark:border-[#332d26]"><UFormField :label="copy.gift"><USelect v-model="form.gift_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.giftQty" class="mt-3"><UInput v-model.number="form.gift_qty" type="number" min="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" /></UFormField></div></div>
 						</section>
 						<section class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
 							<h3 class="text-sm font-semibold text-stone-900 dark:text-stone-100">{{ copy.schedule }}</h3>

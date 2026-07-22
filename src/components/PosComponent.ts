@@ -12,6 +12,7 @@ type PosCatalogStore = {
 	vat_enabled: number;
 	vat_rate: number;
 	vat_mode: string;
+	store_type: string;
 };
 
 type PosCatalogCategory = {
@@ -42,6 +43,9 @@ export type PosCatalogItem = {
 	image_url: string | null;
 	updated_at: string;
 	stock_state: "ready" | "low" | "out" | "negative" | "inactive";
+	inventory_mode: "tracked" | "untracked";
+	cost_source: "purchase" | "manual" | "unknown";
+	manual_sold_out: number;
 };
 
 export type PosCatalogResponse = {
@@ -101,7 +105,10 @@ export class PosComponent {
 					|| null;
 				const availableBase = Number(balance?.available_base ?? 0);
 				const lowStockThreshold = product.low_stock_threshold ?? balance?.low_stock_threshold ?? null;
-				const stockState = resolveStockState(Number(product.active ?? 1), availableBase, lowStockThreshold);
+				const inventoryMode: PosCatalogItem["inventory_mode"] = product.inventory_mode === "untracked" ? "untracked" : "tracked";
+				const stockState = inventoryMode === "untracked"
+					? (!Number(product.active ?? 1) || Number(product.manual_sold_out ?? 0) ? "inactive" : "ready")
+					: resolveStockState(Number(product.active ?? 1), availableBase, lowStockThreshold);
 
 				return {
 					id: product.id,
@@ -125,6 +132,9 @@ export class PosComponent {
 					image_url: resolvePublicProductImageUrl(product.image_url || balance?.image_url || null),
 					updated_at: balance?.updated_at || product.created_at,
 					stock_state: stockState,
+					inventory_mode: inventoryMode,
+					cost_source: (product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase") as PosCatalogItem["cost_source"],
+					manual_sold_out: Number(product.manual_sold_out ?? 0),
 				};
 			})
 			.sort((left, right) => {
@@ -173,6 +183,7 @@ export class PosComponent {
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),
 				vat_mode: String(store?.vat_mode || "EXCLUSIVE"),
+				store_type: String(store?.store_type || "OTHER"),
 			},
 			categories: responseCategories,
 			items,

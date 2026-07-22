@@ -575,6 +575,9 @@ export class PurchaseOrderInterface {
 				if (!product || product.store_id !== detail.order.store_id) {
 					throw ApiError.CustomError(ErrorConfig.DOMAIN.PRODUCT_NOT_FOUND);
 				}
+				if (product.inventory_mode === "untracked") {
+					throw ApiError.BadRequestError(`${product.name} is a non-stock menu and cannot be purchased as inventory`);
+				}
 			}
 		}
 

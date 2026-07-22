@@ -105,6 +105,7 @@ type ApiProduct = {
 	name: string;
 	base_unit_id: string;
 	cost_base: number;
+	inventory_mode?: string;
 };
 
 type StoreRecord = {
@@ -909,7 +910,7 @@ async function loadProducts() {
 	productsPending.value = true;
 	try {
 		const response = await apiFetch<ApiEnvelope<ApiProduct[]>>("/products");
-		products.value = response.data;
+		products.value = response.data.filter((product) => product.inventory_mode !== "untracked");
 		if (!createForm.storeId) {
 			createForm.storeId = response.data[0]?.store_id || "";
 		}

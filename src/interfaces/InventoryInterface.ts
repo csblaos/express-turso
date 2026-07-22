@@ -121,7 +121,7 @@ function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
 }
 
 function buildBalanceWhere(filters: InventoryFilters): { whereClause: string; args: InValue[] } {
-	const where = [ "p.deleted_at IS NULL" ];
+	const where = [ "p.deleted_at IS NULL", "COALESCE(p.inventory_mode, 'tracked') = 'tracked'" ];
 	const args: InValue[] = [];
 
 	if (filters.storeId) {
@@ -206,6 +206,7 @@ export class InventoryInterface {
 					p.base_unit_id,
 					u.name_th AS unit_name,
 					p.active,
+					p.inventory_mode,
 					p.low_stock_threshold,
 					p.out_stock_threshold
 				FROM products p
@@ -222,6 +223,9 @@ export class InventoryInterface {
 		const productRow = productResult.rows[0] as Record<string, unknown> | undefined;
 		if (!productRow) {
 			throw new Error("Product not found");
+		}
+		if (String(productRow.inventory_mode || "tracked") !== "tracked") {
+			throw new Error("Untracked menu items cannot be adjusted in inventory");
 		}
 
 		const current = await db.execute({
@@ -484,7 +488,7 @@ export class InventoryInterface {
 					LEFT JOIN inventory_balances b
 						ON b.product_id = p.id
 						AND b.store_id = p.store_id
-					WHERE p.deleted_at IS NULL AND p.store_id = ?
+					WHERE p.deleted_at IS NULL AND p.store_id = ? AND COALESCE(p.inventory_mode, 'tracked') = 'tracked'
 				`,
 				args: storeArgs,
 			},
@@ -496,7 +500,7 @@ export class InventoryInterface {
 						COUNT(*) AS total
 					FROM products p
 					LEFT JOIN product_categories pc ON pc.id = p.category_id
-					WHERE p.deleted_at IS NULL AND p.store_id = ?
+					WHERE p.deleted_at IS NULL AND p.store_id = ? AND COALESCE(p.inventory_mode, 'tracked') = 'tracked'
 					GROUP BY COALESCE(p.category_id, 'uncategorized'), COALESCE(pc.name, 'ไม่ระบุหมวด')
 					ORDER BY category_name COLLATE NOCASE ASC
 				`,

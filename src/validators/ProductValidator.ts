@@ -50,6 +50,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
 		location: optionalLocation,
+		inventory_mode: z.enum(["tracked", "untracked"]).optional(),
+		cost_source: z.enum(["purchase", "manual", "unknown"]).optional(),
+		manual_sold_out: z.coerce.number().int().min(0).max(1).optional(),
 	});
 
 	private static readonly updateBodySchema = z.object({
@@ -71,6 +74,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
 		location: optionalLocation,
+		inventory_mode: z.enum(["tracked", "untracked"]).optional(),
+		cost_source: z.enum(["purchase", "manual", "unknown"]).optional(),
+		manual_sold_out: z.coerce.number().int().min(0).max(1).optional(),
 	});
 
 	private static readonly statusBodySchema = z.object({

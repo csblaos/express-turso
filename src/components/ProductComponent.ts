@@ -26,6 +26,9 @@ const UPDATABLE_FIELDS: Array<keyof UpdateProductInput> = [
 	"variant_sort_order",
 	"allow_base_unit_sale",
 	"location",
+	"inventory_mode",
+	"cost_source",
+	"manual_sold_out",
 ];
 
 function pickUpdateFields(input: Record<string, unknown>): UpdateProductInput {

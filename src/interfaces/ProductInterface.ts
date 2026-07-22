@@ -61,6 +61,18 @@ const PRODUCT_OPTIONAL_COLUMNS = [
 		name: "location",
 		sql: "ALTER TABLE products ADD COLUMN location TEXT",
 	},
+	{
+		name: "inventory_mode",
+		sql: "ALTER TABLE products ADD COLUMN inventory_mode TEXT NOT NULL DEFAULT 'tracked'",
+	},
+	{
+		name: "cost_source",
+		sql: "ALTER TABLE products ADD COLUMN cost_source TEXT NOT NULL DEFAULT 'purchase'",
+	},
+	{
+		name: "manual_sold_out",
+		sql: "ALTER TABLE products ADD COLUMN manual_sold_out INTEGER NOT NULL DEFAULT 0",
+	},
 ] as const;
 
 function getInsertPayload(payload: CreateProductInput): Record<string, InValue> {

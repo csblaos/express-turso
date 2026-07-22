@@ -24,6 +24,8 @@
 | settings.users | `settings.users.view` | `settings.users.create` | `settings.users.update` | `settings.users.suspend` | `settings.users.assign_role`, `settings.users.reset_password` |
 | settings.roles | `settings.roles.view` | `settings.roles.create` | `settings.roles.update` | `settings.roles.archive` | - |
 | settings.store | `settings.store.view` | `settings.store.create` | `settings.store.update` | `settings.store.archive` | - |
+| settings.restaurant | `settings.restaurant.view` | - | `settings.restaurant.update` | - | - |
+| pos.restaurant | `pos.restaurant.open` | `pos.restaurant.send_kitchen` | `pos.restaurant.transfer` | `pos.restaurant.cancel_sent` | `pos.restaurant.apply_promotion`, `pos.restaurant.print` |
 | superadmin.users | `superadmin.users.view` | `superadmin.users.create` | `superadmin.users.update` | `superadmin.users.archive` | - |
 | superadmin.stores | `superadmin.stores.view` | `superadmin.stores.create` | `superadmin.stores.update` | `superadmin.stores.archive` | - |
 | superadmin.roles | `superadmin.roles.view` | `superadmin.roles.create` | `superadmin.roles.update` | `superadmin.roles.archive` | - |

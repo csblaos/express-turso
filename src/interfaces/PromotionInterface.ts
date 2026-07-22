@@ -15,6 +15,7 @@ export type PromotionInput = {
 	starts_at?: string | null;
 	ends_at?: string | null;
 	is_active?: boolean | number;
+	apply_mode?: "automatic" | "manual";
 };
 export type PromotionCartItem = { product_id: string; qty: number; is_gift?: boolean };
 export type AppliedPromotion = { promotion_id: string; name: string; type: PromotionType; applications: number; gift_product_id: string; gift_qty: number };
@@ -47,6 +48,9 @@ export class PromotionInterface {
 			const columns = new Set(itemInfo.rows.map((row: any) => String(row.name)));
 			if (!columns.has("is_gift")) await db.execute("ALTER TABLE order_items ADD COLUMN is_gift INTEGER NOT NULL DEFAULT 0");
 			if (!columns.has("promotion_id")) await db.execute("ALTER TABLE order_items ADD COLUMN promotion_id TEXT");
+			const promotionInfo = await db.execute("PRAGMA table_info(promotions)");
+			const promotionColumns = new Set(promotionInfo.rows.map((row: any) => String(row.name)));
+			if (!promotionColumns.has("apply_mode")) await db.execute("ALTER TABLE promotions ADD COLUMN apply_mode TEXT NOT NULL DEFAULT 'manual'");
 		})();
 		try { await PromotionInterface.ensured; } catch (error) { PromotionInterface.ensured = null; throw error; }
 	}
@@ -70,6 +74,7 @@ export class PromotionInterface {
 		await PromotionInterface.assertProducts(db as Executor, storeId, input);
 		await db.execute({ sql: `INSERT INTO promotions (id, store_id, name, type, qualifying_product_id, qualifying_qty, minimum_subtotal, gift_product_id, gift_qty, starts_at, ends_at, is_active, created_by, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ id, storeId, text(input.name), input.type, input.qualifying_product_id || null, input.qualifying_qty || null, input.minimum_subtotal || null, input.gift_product_id, input.gift_qty, input.starts_at || null, input.ends_at || null, input.is_active === false || Number(input.is_active) === 0 ? 0 : 1, actorId, now, now ] });
+		await db.execute({ sql: "UPDATE promotions SET apply_mode=? WHERE id=?", args: [ input.apply_mode === "automatic" ? "automatic" : "manual", id ] });
 		return (await PromotionInterface.list(storeId)).find((row) => row.id === id) || { id };
 	}
 
@@ -78,7 +83,7 @@ export class PromotionInterface {
 		PromotionInterface.assertInput(input);
 		const db = DbConn.getClient();
 		await PromotionInterface.assertProducts(db as Executor, storeId, input);
-		const result = await db.execute({ sql: `UPDATE promotions SET name=?, type=?, qualifying_product_id=?, qualifying_qty=?, minimum_subtotal=?, gift_product_id=?, gift_qty=?, starts_at=?, ends_at=?, is_active=?, updated_at=? WHERE id=? AND store_id=? AND deleted_at IS NULL`, args: [ text(input.name), input.type, input.qualifying_product_id || null, input.qualifying_qty || null, input.minimum_subtotal || null, input.gift_product_id, input.gift_qty, input.starts_at || null, input.ends_at || null, input.is_active === false || Number(input.is_active) === 0 ? 0 : 1, new Date().toISOString(), id, storeId ] });
+		const result = await db.execute({ sql: `UPDATE promotions SET name=?, type=?, qualifying_product_id=?, qualifying_qty=?, minimum_subtotal=?, gift_product_id=?, gift_qty=?, starts_at=?, ends_at=?, is_active=?, apply_mode=?, updated_at=? WHERE id=? AND store_id=? AND deleted_at IS NULL`, args: [ text(input.name), input.type, input.qualifying_product_id || null, input.qualifying_qty || null, input.minimum_subtotal || null, input.gift_product_id, input.gift_qty, input.starts_at || null, input.ends_at || null, input.is_active === false || Number(input.is_active) === 0 ? 0 : 1, input.apply_mode === "automatic" ? "automatic" : "manual", new Date().toISOString(), id, storeId ] });
 		if (!(result as any).rowsAffected) throw ApiError.NotFoundError("promotion not found");
 		return (await PromotionInterface.list(storeId)).find((row) => row.id === id) || { id };
 	}
@@ -94,7 +99,9 @@ export class PromotionInterface {
 		const db = executor || DbConn.getClient();
 		const now = new Date().toISOString();
 		const active = await db.execute({ sql: `SELECT * FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at >= ?)`, args: [ storeId, now, now ] });
-		const selected = selectedIds?.length ? new Set(selectedIds) : null;
+		// `undefined` means evaluate every active promotion for discovery. An explicit
+		// empty list means the cashier selected none; do not silently apply all promos.
+		const selected = selectedIds === undefined ? null : new Set(selectedIds);
 		const paidItems = items.filter((item) => !item.is_gift && number(item.qty) > 0);
 		const qtyByProduct = new Map<string, number>();
 		for (const item of paidItems) qtyByProduct.set(item.product_id, (qtyByProduct.get(item.product_id) || 0) + number(item.qty));

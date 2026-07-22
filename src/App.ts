@@ -9,7 +9,10 @@ import { SuccessHandler } from "@utils/SuccessHandler";
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 	res.setHeader("access-control-allow-origin", "*");
 	res.setHeader("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-	res.setHeader("access-control-allow-headers", "content-type,authorization,request-id");
+	res.setHeader(
+		"access-control-allow-headers",
+		"content-type,authorization,request-id,idempotency-key",
+	);
 	res.setHeader("access-control-expose-headers", "request-id,server-timing");
 	res.setHeader("timing-allow-origin", "*");
 

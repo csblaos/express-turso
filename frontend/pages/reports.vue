@@ -47,10 +47,43 @@ type StaffRank = {
 	avgTicket: string;
 };
 
+type ProfitabilitySummary = {
+	revenue: number;
+	known_cost_revenue: number;
+	known_cost: number;
+	known_gross_profit: number;
+	unknown_cost_revenue: number;
+	unknown_cost_bills: number;
+	bill_count: number;
+};
+
 const activeRange = ref<"today" | "week" | "month">("today");
 const activeBranch = ref("all");
 const activeReportView = ref<"sales" | "products" | "operations">("sales");
 const { t } = useI18n();
+const { apiFetch } = useApiClient();
+const { currentStoreId } = useAuthSession();
+const profitability = ref<ProfitabilitySummary | null>(null);
+
+function reportFrom(): string {
+	const date = new Date();
+	date.setHours(0, 0, 0, 0);
+	if (activeRange.value === "week") date.setDate(date.getDate() - 6);
+	if (activeRange.value === "month") date.setDate(date.getDate() - 29);
+	return date.toISOString();
+}
+
+async function loadProfitability() {
+	if (!currentStoreId.value) return;
+	try {
+		const response = await apiFetch<{ data: ProfitabilitySummary }>(`/pos/restaurant/reports/profitability?store_id=${encodeURIComponent(currentStoreId.value)}&from=${encodeURIComponent(reportFrom())}`);
+		profitability.value = response.data;
+	} catch {
+		profitability.value = null;
+	}
+}
+
+watch([activeRange, currentStoreId], () => void loadProfitability(), { immediate: true });
 
 const metricCards = computed<MetricCard[]>(() => {
 	if (activeRange.value === "today") {
@@ -199,6 +232,13 @@ function barHeight(value: number) {
 									</div>
 								</div>
 							</div>
+						</div>
+
+						<div v-if="profitability" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">รายได้จากข้อมูลจริง</p><p class="mt-1 text-xl font-semibold">{{ profitability.revenue.toLocaleString() }}</p></div>
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">ต้นทุนที่ระบุแล้ว</p><p class="mt-1 text-xl font-semibold">{{ profitability.known_cost.toLocaleString() }}</p></div>
+							<div class="rounded-md border border-emerald-200 bg-emerald-50 p-4"><p class="text-xs text-emerald-700">กำไรขั้นต้นเฉพาะรายการที่ทราบต้นทุน</p><p class="mt-1 text-xl font-semibold text-emerald-900">{{ profitability.known_gross_profit.toLocaleString() }}</p></div>
+							<div class="rounded-md border border-amber-300 bg-amber-50 p-4"><p class="text-xs text-amber-800">ยอดขายที่ยังไม่ทราบต้นทุน</p><p class="mt-1 text-xl font-semibold text-amber-950">{{ profitability.unknown_cost_revenue.toLocaleString() }}</p><p class="mt-1 text-xs text-amber-700">{{ profitability.unknown_cost_bills }} บิล · ไม่นับเป็นกำไร 100%</p></div>
 						</div>
 
 						<div class="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
