@@ -5,6 +5,7 @@ import { OrderInterface, PosCheckoutPayload, PosPaymentMethod } from "@interface
 import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { SuccessHandler } from "@utils/SuccessHandler";
+import { appendServerTiming } from "@utils/ServerTiming";
 
 export class PosController {
 	static getCatalog = SyncFunction.handler(async (req: Request, res: Response) => {
@@ -16,6 +17,7 @@ export class PosController {
 	});
 
 	static checkout = SyncFunction.handler(async (req: Request, res: Response) => {
+		const startedAt = process.hrtime.bigint();
 		if (!req.auth) throw ApiError.UnauthorizedError();
 		const body = req.body as Record<string, unknown>;
 		const storeId = typeof body.store_id === "string" && body.store_id.trim() ? body.store_id.trim() : req.auth.storeId;
@@ -35,7 +37,9 @@ export class PosController {
 			idempotency_key: String(req.header("Idempotency-Key") || body.idempotency_key || "").trim(),
 			created_by: req.auth.userId,
 			request_id: req.requestId,
+			timing: (name, durationMs) => appendServerTiming(res, name, durationMs),
 		});
+		appendServerTiming(res, "checkout-controller", Number(process.hrtime.bigint() - startedAt) / 1_000_000);
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 

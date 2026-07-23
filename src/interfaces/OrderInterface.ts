@@ -5,6 +5,7 @@ import { InValue } from "@libsql/client";
 import { DbConn } from "@connections/DbConn";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { allocateRestaurantQueue } from "@utils/RestaurantQueue";
 
 export type PosPaymentMethod = "cash" | "qr_transfer" | "credit_card";
 
@@ -22,6 +23,18 @@ export type PosCheckoutPayload = {
 	idempotency_key: string;
 	created_by: string;
 	request_id?: string | null;
+	timing?: (name: string, durationMs: number) => void;
+};
+
+export type CheckoutReceiptLine = {
+	product_id: string;
+	name: string;
+	sku: string;
+	qty: number;
+	unit_price: number;
+	line_total: number;
+	is_gift: boolean;
+	promotion_id: string | null;
 };
 
 export type CheckoutResult = {
@@ -35,6 +48,12 @@ export type CheckoutResult = {
 	amount_tendered: number;
 	change_amount: number;
 	completed_at: string;
+	queue_no: string | null;
+	queue_date: string | null;
+	receipt: {
+		lines: CheckoutReceiptLine[];
+		promotions: Array<{ promotion_id: string; name: string; gift_product_id: string; gift_qty: number }>;
+	};
 };
 
 export type OrderListFilters = {
@@ -69,16 +88,26 @@ export class OrderInterface {
 			[ "change_amount", "REAL NOT NULL DEFAULT 0" ],
 			[ "payment_reference", "TEXT" ],
 			[ "note", "TEXT" ],
+			[ "queue_no", "TEXT" ],
+			[ "queue_date", "TEXT" ],
 		] as const) {
 			if (!columns.has(name)) await db.execute(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
 		}
 		await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_store_order_no ON orders (store_id, order_no)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders (store_id, created_at DESC)");
 		await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_idempotency_store_action_key ON idempotency_requests (store_id, action, idempotency_key)");
+		await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_daily_sequences (
+			store_id TEXT NOT NULL, sequence_date TEXT NOT NULL, last_queue_no INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(store_id, sequence_date)
+		)`);
+		await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS uq_restaurant_queue_per_day
+			ON orders(store_id, queue_date, queue_no) WHERE queue_date IS NOT NULL AND queue_no IS NOT NULL`);
 		OrderInterface.initialized = true;
 	}
 
 	static async checkout(payload: PosCheckoutPayload): Promise<CheckoutResult> {
+		const startedAt = performance.now();
+		const mark = (name: string, since: number) => payload.timing?.(name, performance.now() - since);
 		await OrderInterface.ensureTables();
 		await PromotionInterface.ensureTables();
 		if (!payload.store_id.trim()) throw ApiError.BadRequestError("store_id is required");
@@ -97,7 +126,7 @@ export class OrderInterface {
 			merged.set(productId, (merged.get(productId) || 0) + qty);
 		}
 
-		const requestHash = createHash("sha256").update(json({ ...payload, request_id: undefined })).digest("hex");
+		const requestHash = createHash("sha256").update(json({ ...payload, request_id: undefined, timing: undefined })).digest("hex");
 		const db = DbConn.getClient();
 		const previous = await db.execute({
 			sql: "SELECT request_hash, status, response_body FROM idempotency_requests WHERE store_id = ? AND action = 'pos.checkout' AND idempotency_key = ? LIMIT 1",
@@ -112,8 +141,9 @@ export class OrderInterface {
 
 		const transaction = await db.transaction("write");
 		try {
+			const catalogStartedAt = performance.now();
 			const storeResult = await transaction.execute({
-				sql: "SELECT currency, vat_enabled, vat_rate, vat_mode, allow_negative_stock FROM stores WHERE id = ? LIMIT 1",
+				sql: "SELECT currency, vat_enabled, vat_rate, vat_mode, allow_negative_stock, store_type FROM stores WHERE id = ? LIMIT 1",
 				args: [ payload.store_id ],
 			});
 			const store = storeResult.rows[0] as Record<string, unknown> | undefined;
@@ -128,6 +158,7 @@ export class OrderInterface {
 				args: [ payload.store_id, ...ids ],
 			});
 			if (productsResult.rows.length !== ids.length) throw ApiError.BadRequestError("some products were not found in this store");
+			mark("checkout-catalog", catalogStartedAt);
 
 			const lines = productsResult.rows.map((raw) => {
 				const row = raw as Record<string, unknown>;
@@ -139,6 +170,7 @@ export class OrderInterface {
 				return { row, qty, lineTotal: price * qty };
 			});
 			const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+			const promotionStartedAt = performance.now();
 			const appliedPromotions = await PromotionInterface.evaluate(payload.store_id, lines.map((line) => ({ product_id: String(line.row.id), qty: line.qty })), payload.promotion_ids, transaction as never);
 			const giftProductIds = [ ...new Set(appliedPromotions.map((promotion) => promotion.gift_product_id)) ];
 			if (giftProductIds.length) {
@@ -154,6 +186,7 @@ export class OrderInterface {
 					lines.push({ row, qty: promotion.gift_qty, lineTotal: 0, isGift: true, promotionId: promotion.promotion_id } as typeof lines[number] & { isGift: boolean; promotionId: string });
 				}
 			}
+			mark("checkout-promotion", promotionStartedAt);
 			const rawRate = Number(store.vat_rate || 0);
 			const rate = rawRate > 100 ? rawRate / 100 : rawRate;
 			const vatAmount = Number(store.vat_enabled)
@@ -180,12 +213,24 @@ export class OrderInterface {
 			const now = new Date().toISOString();
 			const orderId = randomUUID();
 			const orderNo = `POS-${now.slice(0, 10).replace(/-/g, "")}-${orderId.slice(0, 6).toUpperCase()}`;
+			const queue = String(store.store_type) === "RESTAURANT" && payload.service_mode === "pickup"
+				? await allocateRestaurantQueue(transaction, payload.store_id)
+				: { queueNo: null, queueDate: null };
 			const result: CheckoutResult = {
 				order_id: orderId, order_no: orderNo, subtotal, discount: 0, vat_amount: vatAmount, total,
 				payment_method: payload.payment_method, amount_tendered: amountTendered,
-				change_amount: amountTendered - total, completed_at: now,
+				change_amount: amountTendered - total, completed_at: now, queue_no: queue.queueNo, queue_date: queue.queueDate,
+				receipt: {
+					lines: lines.map((line: any) => ({
+						product_id: String(line.row.id), name: String(line.row.name), sku: String(line.row.sku || ""), qty: line.qty,
+						unit_price: line.isGift ? 0 : Number(line.row.price_base || 0), line_total: line.lineTotal,
+						is_gift: Boolean(line.isGift), promotion_id: line.promotionId || null,
+					})),
+					promotions: appliedPromotions.map((promotion) => ({ promotion_id: promotion.promotion_id, name: promotion.name, gift_product_id: promotion.gift_product_id, gift_qty: promotion.gift_qty })),
+				},
 			};
 
+			const writesStartedAt = performance.now();
 			await transaction.execute({
 				sql: `INSERT INTO idempotency_requests (id, store_id, action, idempotency_key, request_hash, status, created_by, created_at)
 					VALUES (?, ?, 'pos.checkout', ?, ?, 'processing', ?, ?)`,
@@ -195,12 +240,12 @@ export class OrderInterface {
 				sql: `INSERT INTO orders (id, store_id, order_no, channel, status, subtotal, discount, vat_amount,
 					shipping_fee_charged, total, shipping_cost, paid_at, created_by, created_at, payment_currency,
 					payment_method, payment_account_id, payment_slip_url, payment_proof_submitted_at, payment_status,
-					service_mode, amount_tendered, change_amount, payment_reference, note)
-					VALUES (?, ?, ?, ?, 'completed', ?, 0, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)`,
+					service_mode, amount_tendered, change_amount, payment_reference, note, queue_no, queue_date)
+					VALUES (?, ?, ?, ?, 'completed', ?, 0, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)`,
 				args: [ orderId, payload.store_id, orderNo, payload.service_mode, subtotal, vatAmount, total, now,
 					payload.created_by, now, String(store.currency || "LAK"), payload.payment_method, paymentAccountId,
 					payload.payment_slip_url || null, payload.payment_slip_url ? now : null, payload.service_mode,
-					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null ],
+					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null, queue.queueNo, queue.queueDate ],
 			});
 			for (const promotion of appliedPromotions) {
 				await transaction.execute({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id, promotion.gift_qty, now ] });
@@ -252,6 +297,8 @@ export class OrderInterface {
 				args: [ json(result), now, payload.store_id, payload.idempotency_key ],
 			});
 			await transaction.commit();
+			mark("checkout-writes", writesStartedAt);
+			mark("checkout-total", startedAt);
 			return result;
 		} catch (error) {
 			if (!transaction.closed) await transaction.rollback().catch(() => undefined);

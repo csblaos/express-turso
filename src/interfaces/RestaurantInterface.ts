@@ -6,6 +6,7 @@ import { OrderInterface } from "@interfaces/OrderInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { allocateRestaurantQueue } from "@utils/RestaurantQueue";
 
 type Executor = {
 	execute: (statement: any) => Promise<any>;
@@ -15,14 +16,6 @@ type Executor = {
 function now(): string { return new Date().toISOString(); }
 function text(value: unknown): string { return String(value ?? "").trim(); }
 function number(value: unknown): number { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
-function restaurantDate(): string {
-	return new Intl.DateTimeFormat("en-CA", {
-		timeZone: process.env.APP_TIMEZONE || "Asia/Vientiane",
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-	}).format(new Date());
-}
 function conflict(message: string): ApiError {
 	return ApiError.CustomError({ code: 409_101, message, httpStatusCode: 409 });
 }
@@ -192,15 +185,7 @@ export class RestaurantInterface {
 	}
 
 	private static async allocateQueue(executor: Executor, storeId: string): Promise<{ queueNo: string; queueDate: string }> {
-		const queueDate = restaurantDate();
-		const result = await executor.execute({
-			sql: `INSERT INTO restaurant_daily_sequences(store_id,sequence_date,last_queue_no) VALUES(?,?,1)
-				ON CONFLICT(store_id,sequence_date) DO UPDATE SET last_queue_no=last_queue_no+1
-				RETURNING last_queue_no`,
-			args: [storeId, queueDate],
-		});
-		const sequence = Math.max(1, number(result.rows[0]?.last_queue_no));
-		return { queueNo: `Q${String(sequence).padStart(3, "0")}`, queueDate };
+		return allocateRestaurantQueue(executor, storeId);
 	}
 
 	private static async insertDraftItem(executor: Executor, storeId: string, orderId: string, input: any): Promise<void> {
@@ -311,11 +296,10 @@ export class RestaurantInterface {
 				LEFT JOIN restaurant_tables t ON t.id=o.restaurant_table_id
 				LEFT JOIN restaurant_zones z ON z.id=t.zone_id
 				LEFT JOIN order_items oi ON oi.order_id=o.id
-				WHERE o.store_id=? AND o.status IN ('open','ready_to_pay')
+				WHERE o.store_id=? AND o.service_mode='dine-in' AND o.status IN ('open','ready_to_pay')
 					AND (o.channel='restaurant' OR o.restaurant_table_id IS NOT NULL)
-					AND o.service_mode IN ('pickup','dine-in')
 				GROUP BY o.id,t.name,z.name
-				ORDER BY CASE WHEN o.service_mode='pickup' THEN 0 ELSE 1 END,o.opened_at`,
+				ORDER BY o.opened_at`,
 			args: [storeId],
 		});
 		return result.rows as any[];
@@ -533,12 +517,38 @@ export class RestaurantInterface {
 		return { roundId, roundNo };
 	}
 
-	static async sendRound(storeId:string,orderId:string,expectedVersion:number,idempotencyKey:string,actorId:string):Promise<any>{
+	private static async insertBatchDraftItems(executor: Executor, storeId: string, orderId: string, items: any[]): Promise<void> {
+		const merged = new Map<string, { product_id: string; qty: number; note: string | null }>();
+		for (const raw of items) {
+			const productId = text(raw?.product_id);
+			const qty = Math.round(number(raw?.qty));
+			const note = text(raw?.note) || null;
+			if (!productId || qty <= 0) throw ApiError.BadRequestError("invalid draft item");
+			const key = `${productId}:${note || ""}`;
+			const previous = merged.get(key);
+			merged.set(key, { product_id: productId, qty: (previous?.qty || 0) + qty, note });
+		}
+		for (const item of merged.values()) {
+			const result = await executor.execute({
+				sql: `INSERT INTO order_items(id,order_id,product_id,unit_id,qty,qty_base,price_base_at_sale,cost_base_at_sale,line_total,is_gift,promotion_id,line_status,note,cost_source_at_sale)
+					SELECT ?,o.id,p.id,p.base_unit_id,?,?,p.price_base,p.cost_base,p.price_base*?,0,NULL,'draft',?,COALESCE(p.cost_source,'purchase')
+					FROM orders o JOIN products p ON p.id=? AND p.store_id=o.store_id
+					WHERE o.id=? AND o.store_id=? AND o.status IN ('open','ready_to_pay')
+						AND p.deleted_at IS NULL AND p.active=1 AND COALESCE(p.manual_sold_out,0)=0`,
+				args: [randomUUID(), item.qty, item.qty, item.qty, item.note, item.product_id, orderId, storeId],
+			});
+			if (!result.rowsAffected) throw ApiError.BadRequestError("สินค้าไม่พร้อมขาย หรือไม่พบสินค้า");
+		}
+	}
+
+	static async sendRound(storeId:string,orderId:string,expectedVersion:number,idempotencyKey:string,actorId:string,items: any[] = []):Promise<any>{
 		if(!idempotencyKey)throw ApiError.BadRequestError("Idempotency-Key is required");await RestaurantInterface.ensureTables();const db=DbConn.getClient();const tx=await db.transaction("write");
 		try{const previous=await tx.execute({sql:"SELECT * FROM restaurant_order_rounds WHERE order_id=? AND idempotency_key=?",args:[orderId,idempotencyKey]});
 			if(previous.rows[0]){await tx.rollback();return RestaurantInterface.getOrder(storeId,orderId);}
 			await RestaurantInterface.assertVersion(tx,storeId,orderId,expectedVersion);
+			if (items.length) await RestaurantInterface.insertBatchDraftItems(tx, storeId, orderId, items);
 			const round=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,idempotencyKey,actorId,"kitchen");
+			await RestaurantInterface.recalculate(tx, orderId);
 			await tx.execute({sql:"UPDATE orders SET version=version+1 WHERE id=?",args:[orderId]});
 			await RestaurantInterface.audit(tx,storeId,actorId,"pos.restaurant.send_kitchen","order",orderId,{round_id:round.roundId,round_no:round.roundNo,idempotency_key:idempotencyKey});
 			await tx.commit();return RestaurantInterface.getOrder(storeId,orderId);

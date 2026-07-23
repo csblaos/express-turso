@@ -161,13 +161,14 @@ type ApiOrder = Record<string, unknown> & { lines?: Array<Record<string, unknown
 function mapApiOrder(order: ApiOrder): OrderRecord {
 	const serviceMode = String(order.service_mode || "walk-in");
 	const channel = serviceMode === "dine-in" ? "walk-in" : serviceMode === "pickup" ? "pickup" : String(order.channel || serviceMode || "walk-in");
-	const tableLabel = order.queue_no
-		? `คิว ${String(order.queue_no)}`
+	const queueNumber = order.queue_no ? String(order.queue_no) : "";
+	const tableLabel = queueNumber
+		? `อ้างอิง ${String(order.order_no)}`
 		: order.restaurant_table_name
 			? [ order.restaurant_zone_name, order.restaurant_table_name ].filter(Boolean).join(" · ")
 			: undefined;
 	return {
-		id: String(order.id), orderNumber: String(order.order_no), customerName: String(order.customer_name || t("orders.generalCustomer")),
+		id: String(order.id), orderNumber: queueNumber ? `คิว ${queueNumber}` : String(order.order_no), customerName: String(order.customer_name || t("orders.generalCustomer")),
 		channel: channel as FulfillmentType,
 		status: String(order.status || "completed") as OrderStatus, paymentStatus: String(order.payment_status || "paid") as PaymentStatus,
 		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), itemCount: Number(order.item_count || 0),
@@ -206,6 +207,7 @@ const filteredOrders = computed(() => {
 			order.customerName,
 			order.cashier,
 			order.phone || "",
+			order.tableLabel || "",
 		].some((value) => value.toLowerCase().includes(query));
 
 		const matchesStatus = activeStatus.value === "all" || order.status === activeStatus.value;

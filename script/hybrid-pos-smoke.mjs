@@ -14,12 +14,12 @@ try {
 	for (const sql of [
 		`CREATE TABLE products (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,name TEXT NOT NULL,sku TEXT NOT NULL,barcode TEXT,category_id TEXT,base_unit_id TEXT NOT NULL,price_base REAL NOT NULL,cost_base REAL NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)`,
 		`CREATE TABLE product_units (id TEXT PRIMARY KEY,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,enabled_for_sale INTEGER NOT NULL DEFAULT 1)`,
-		`CREATE TABLE orders (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,order_no TEXT NOT NULL,channel TEXT,status TEXT,subtotal REAL,discount REAL,vat_amount REAL,shipping_fee_charged REAL,total REAL,shipping_cost REAL,created_by TEXT,created_at TEXT,payment_currency TEXT,payment_method TEXT,payment_status TEXT,paid_at TEXT)`,
+		`CREATE TABLE orders (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,order_no TEXT NOT NULL,channel TEXT,status TEXT,subtotal REAL,discount REAL,vat_amount REAL,shipping_fee_charged REAL,total REAL,shipping_cost REAL,created_by TEXT,created_at TEXT,payment_currency TEXT,payment_method TEXT,payment_account_id TEXT,payment_slip_url TEXT,payment_proof_submitted_at TEXT,payment_status TEXT,paid_at TEXT)`,
 		`CREATE TABLE order_items (id TEXT PRIMARY KEY,order_id TEXT NOT NULL,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,qty REAL NOT NULL,qty_base REAL NOT NULL,price_base_at_sale REAL NOT NULL,cost_base_at_sale REAL NOT NULL,line_total REAL NOT NULL)`,
 		`CREATE TABLE inventory_balances (store_id TEXT NOT NULL,product_id TEXT NOT NULL,on_hand_base REAL NOT NULL,reserved_base REAL NOT NULL,available_base REAL NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(store_id,product_id))`,
 		`CREATE TABLE inventory_movements (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,product_id TEXT NOT NULL,type TEXT NOT NULL,qty_base REAL NOT NULL,ref_type TEXT,ref_id TEXT,note TEXT,created_by TEXT,created_at TEXT NOT NULL)`,
 		`CREATE TABLE cash_flow_entries (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,account_id TEXT,direction TEXT,entry_type TEXT,source_type TEXT,source_id TEXT,amount REAL,currency TEXT,reference TEXT,note TEXT,metadata TEXT,occurred_at TEXT,created_by TEXT,created_at TEXT)`,
-		`CREATE TABLE idempotency_requests (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,action TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT,status TEXT,response_body TEXT)`,
+		`CREATE TABLE idempotency_requests (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,action TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT,status TEXT,response_status INTEGER,response_body TEXT,created_by TEXT,created_at TEXT,completed_at TEXT)`,
 	]) await db.execute(sql);
 
 	const stamp = new Date().toISOString();
@@ -58,15 +58,48 @@ try {
 	const dineIn = await RestaurantInterface.changeServiceMode("smoke-store", secondWithExtra.id, { service_mode: "dine-in", table_id: table.id, guest_count: 2, expected_version: secondWithExtra.version }, "cashier");
 	assert.equal(dineIn.service_mode, "dine-in");
 	assert.equal(dineIn.items.length, 2);
-	const sent = await RestaurantInterface.sendRound("smoke-store", dineIn.id, dineIn.version, "send-2", "cashier");
+	const sent = await RestaurantInterface.sendRound("smoke-store", dineIn.id, dineIn.version, "send-2", "cashier", [
+		{ product_id: "beer", qty: 1 },
+		{ product_id: "beer", qty: 1 },
+	]);
 	assert.equal(sent.rounds[0].dispatch_mode, "kitchen");
+	assert.equal(sent.items.filter((item) => item.product_id === "beer").length, 1, "batch send merges duplicate local draft products");
+	assert.equal(sent.items.find((item) => item.product_id === "beer")?.qty, 2);
+	const sentRetry = await RestaurantInterface.sendRound("smoke-store", dineIn.id, dineIn.version, "send-2", "cashier", [{ product_id: "beer", qty: 2 }]);
+	assert.equal(sentRetry.rounds.length, 1, "batch send idempotency does not create another kitchen round");
+	const batchBeerMovements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='beer' AND ref_type='restaurant_round'");
+	assert.equal(Number(batchBeerMovements.rows[0].total), 1, "batch send writes one merged stock movement");
 	const completed = await RestaurantInterface.checkout("smoke-store", sent.id, { expected_version: sent.version, payment_method: "cash", amount_tendered: 400, dispatch_mode: "existing" }, "cashier", "checkout-2");
 	assert.equal(completed.status, "completed");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 	const pizzaMovements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='pizza'");
 	assert.equal(Number(pizzaMovements.rows[0].total), 0);
 
-	console.log("Hybrid POS smoke passed: Q001/Q002, direct checkout, table conversion, stock-once, open-order cleanup");
+	const { OrderInterface } = await import("../src/interfaces/OrderInterface.ts");
+	const quick = await OrderInterface.checkout({
+		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
+		items: [{ product_id: "beer", qty: 1 }], amount_tendered: 100,
+		idempotency_key: "quick-checkout-1", created_by: "cashier",
+	});
+	assert.equal(quick.queue_no, "Q003");
+	assert.equal(quick.receipt.lines[0].name, "Beer");
+	assert.equal(quick.receipt.lines[0].line_total, 100);
+	const quickRetry = await OrderInterface.checkout({
+		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
+		items: [{ product_id: "beer", qty: 1 }], amount_tendered: 100,
+		idempotency_key: "quick-checkout-1", created_by: "cashier",
+	});
+	assert.equal(quickRetry.queue_no, quick.queue_no);
+	const quickMovements = await db.execute({ sql: "SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id=? AND ref_id=?", args: [ "beer", quick.order_id ] });
+	assert.equal(Number(quickMovements.rows[0].total), 1);
+	const nextQuick = await OrderInterface.checkout({
+		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
+		items: [{ product_id: "beer", qty: 1 }], amount_tendered: 100, idempotency_key: "quick-checkout-2", created_by: "cashier",
+	});
+	assert.equal(nextQuick.queue_no, "Q004");
+	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
+
+	console.log("Hybrid POS smoke passed: server orders, local quick checkout Q, receipt, idempotency, stock-once, open-order cleanup");
 	db.close();
 } finally {
 	await rm(tempDirectory, { recursive: true, force: true });

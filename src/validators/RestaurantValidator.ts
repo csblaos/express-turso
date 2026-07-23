@@ -21,6 +21,15 @@ export default class RestaurantValidator extends ValidatorMiddleware {
 	static readonly addItem = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), product_id: z.string().trim().min(1), qty: z.coerce.number().int().positive().optional(), note: z.string().trim().max(280).nullable().optional(), expected_version: version }) });
 	static readonly updateItem = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), qty: z.coerce.number().int().positive(), note: z.string().trim().max(280).nullable().optional(), expected_version: version }) });
 	static readonly version = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), expected_version: version }) });
+	static readonly send = RestaurantValidator.init({ body: z.object({
+		store_id: z.string().optional(),
+		expected_version: version,
+		items: z.array(z.object({
+			product_id: z.string().trim().min(1),
+			qty: z.coerce.number().int().positive().max(10_000),
+			note: z.string().trim().max(280).nullable().optional(),
+		})).max(200).optional(),
+	}) });
 	static readonly transfer = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), table_id: z.string().trim().min(1), expected_version: version }) });
 	static readonly serviceMode = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), service_mode: z.enum(["pickup", "dine-in"]), table_id: z.string().trim().min(1).optional(), guest_count: z.coerce.number().int().positive().max(100).optional(), expected_version: version }).superRefine((value, context) => { if (value.service_mode === "dine-in" && !value.table_id) context.addIssue({ code: "custom", path: ["table_id"], message: "table_id is required for dine-in" }); }) });
 	static readonly cancel = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), expected_version: version, reason: z.string().trim().min(1).max(280) }) });
