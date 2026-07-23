@@ -234,24 +234,22 @@ Workflow `.github/workflows/deploy-pos-okhaidee.yml` ทำงานเฉพา
 | `DO_SSH_PORT` | SSH port ปกติคือ `22` |
 | `DO_SSH_PRIVATE_KEY` | Private key ของ deploy key สำหรับ GitHub Actions |
 | `DO_SSH_KNOWN_HOSTS` | ผลจาก `ssh-keyscan -H <DO_HOST>` หลังตรวจ fingerprint แล้ว |
-| `PRODUCTION_ENV_B64` | เนื้อหา `.env.production` ที่ encode ด้วย Base64 แบบบรรทัดเดียว |
+| `TURSO_DATABASE_URL` | Turso database URL |
+| `TURSO_AUTH_TOKEN` | Turso auth token |
+| `INTEGRATION_ENCRYPTION_KEY` | Encryption key สำหรับ integration |
+| `ANOUSITH_EXPRESS_BASE_URL` | Anousith Express API base URL |
+| `REDIS_DRIVER` | ใช้ `upstash` ใน production |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token |
+| `AUTH_JWT_SECRET` | JWT signing secret |
+| `R2_ACCOUNT_ID` | Cloudflare R2 account ID |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key ID |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret access key |
+| `R2_BUCKET` | Cloudflare R2 bucket name |
+| `R2_PUBLIC_BASE_URL` | Public base URL สำหรับ R2 files |
+| `R2_STORE_LOGO_PREFIX` | Object prefix สำหรับ store logos |
 
-สร้างค่า `PRODUCTION_ENV_B64` บนเครื่อง local:
-
-```bash
-base64 < .env.production | tr -d '\n'
-```
-
-ตัวอย่าง `.env.production` (ห้าม commit ไฟล์จริง):
-
-```dotenv
-TURSO_DATABASE_URL=libsql://...
-TURSO_AUTH_TOKEN=...
-REDIS_DRIVER=upstash
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
-AUTH_JWT_SECRET=...
-```
+GitHub Actions จะสร้าง `/opt/pos-okhaidee/.env.production` จาก secrets เหล่านี้ทุกครั้งที่ deploy ดังนั้นแก้ค่าใดใน GitHub Environment `production` แล้วกด **Re-run failed jobs** หรือ push backend ครั้งถัดไปได้ทันที โดยไม่ต้อง encode Base64
 
 `NODE_ENV`, `PORT` และ `NODE_OPTIONS` ถูกกำหนดใน Compose แล้ว
 

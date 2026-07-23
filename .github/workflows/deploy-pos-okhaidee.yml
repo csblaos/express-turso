@@ -118,10 +118,45 @@ jobs:
           DO_USER: ${{ secrets.DO_USER }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRODUCTION_ENV_B64: ${{ secrets.PRODUCTION_ENV_B64 }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
+          ANOUSITH_EXPRESS_BASE_URL: ${{ secrets.ANOUSITH_EXPRESS_BASE_URL }}
+          REDIS_DRIVER: ${{ secrets.REDIS_DRIVER }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          R2_STORE_LOGO_PREFIX: ${{ secrets.R2_STORE_LOGO_PREFIX }}
         run: |
+          env_file="$(mktemp)"
+          trap 'rm -f "$env_file"' EXIT
+          {
+            printf 'NODE_ENV=production\n'
+            printf 'PORT=3000\n'
+            printf 'SERVER_SELF_CHECK_HOST=127.0.0.1\n'
+            printf 'TURSO_DATABASE_URL=%s\n' "$TURSO_DATABASE_URL"
+            printf 'TURSO_AUTH_TOKEN=%s\n' "$TURSO_AUTH_TOKEN"
+            printf 'INTEGRATION_ENCRYPTION_KEY=%s\n' "$INTEGRATION_ENCRYPTION_KEY"
+            printf 'ANOUSITH_EXPRESS_BASE_URL=%s\n' "$ANOUSITH_EXPRESS_BASE_URL"
+            printf 'REDIS_DRIVER=%s\n' "$REDIS_DRIVER"
+            printf 'UPSTASH_REDIS_REST_URL=%s\n' "$UPSTASH_REDIS_REST_URL"
+            printf 'UPSTASH_REDIS_REST_TOKEN=%s\n' "$UPSTASH_REDIS_REST_TOKEN"
+            printf 'AUTH_JWT_SECRET=%s\n' "$AUTH_JWT_SECRET"
+            printf 'R2_ACCOUNT_ID=%s\n' "$R2_ACCOUNT_ID"
+            printf 'R2_ACCESS_KEY_ID=%s\n' "$R2_ACCESS_KEY_ID"
+            printf 'R2_SECRET_ACCESS_KEY=%s\n' "$R2_SECRET_ACCESS_KEY"
+            printf 'R2_BUCKET=%s\n' "$R2_BUCKET"
+            printf 'R2_PUBLIC_BASE_URL=%s\n' "$R2_PUBLIC_BASE_URL"
+            printf 'R2_STORE_LOGO_PREFIX=%s\n' "$R2_STORE_LOGO_PREFIX"
+          } > "$env_file"
           printf '%s' "$GHCR_TOKEN" | ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
-          printf '%s' "$PRODUCTION_ENV_B64" | ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" 'base64 --decode > /opt/pos-okhaidee/.env.production && chmod 600 /opt/pos-okhaidee/.env.production'
+          scp -P "${DO_PORT:-22}" "$env_file" "$DO_USER@$DO_HOST:/opt/pos-okhaidee/.env.production.tmp"
+          ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" 'chmod 600 /opt/pos-okhaidee/.env.production.tmp && mv /opt/pos-okhaidee/.env.production.tmp /opt/pos-okhaidee/.env.production'
           ssh -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "cd /opt/pos-okhaidee && API_IMAGE='$API_IMAGE' docker compose -f compose.production.yml pull && API_IMAGE='$API_IMAGE' docker compose -f compose.production.yml up -d --remove-orphans && docker image prune -f"
 
       - name: Verify health check
