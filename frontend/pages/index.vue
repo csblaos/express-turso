@@ -366,6 +366,7 @@ const posCopy = computed(() => ({
 	items: t("pos.items"),
 	sortBy: t("pos.sortBy"),
 }));
+const hasCatalogError = computed(() => Boolean(productsError.value && !productsPending.value));
 
 const activeModeLabel = computed(() => (
 	activeMode.value === "หน้าร้าน"
@@ -1400,12 +1401,14 @@ onBeforeUnmount(() => {
 
 									</div>
 
-									<div v-if="productsError" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-										{{ productsError }}
-									</div>
+									<AppInlineLoadingBar
+										v-if="productsPending && products.length"
+										minimal
+										container-class="h-0.5 bg-neutral-100 dark:bg-[#2a241d]"
+									/>
 
 									<div class="scrollbar-soft min-h-0 overflow-y-auto pb-2 xl:pr-1">
-									<div v-if="productsPending" class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5" aria-live="polite" :aria-label="posCopy.loading">
+									<div v-if="productsPending && !products.length" class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5" aria-live="polite" :aria-label="posCopy.loading">
 										<div v-for="index in 10" :key="index" class="min-h-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white p-2.5 dark:border-[#3b342c] dark:bg-[#1d1a16]">
 											<div class="flex items-center gap-2">
 												<USkeleton class="h-12 w-12 shrink-0 rounded-md" />
@@ -1414,6 +1417,28 @@ onBeforeUnmount(() => {
 											<div class="mt-6 space-y-2"><USkeleton class="h-4 w-2/5" /><USkeleton class="h-4 w-3/5" /></div>
 										</div>
 									</div>
+									<AppCard
+										v-else-if="hasCatalogError"
+										variant="empty"
+									>
+										<div class="flex min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
+											<div class="flex h-12 w-12 items-center justify-center rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+												<UIcon name="i-heroicons-wifi" class="h-6 w-6" />
+											</div>
+											<p class="mt-4 text-lg font-semibold text-stone-900">{{ posCopy.loadError }}</p>
+											<p class="mt-2 max-w-md text-sm leading-6 text-stone-500">
+												{{ productsError }}
+											</p>
+											<div class="mt-5 flex flex-wrap justify-center gap-2">
+												<AppButton color="primary" icon="i-heroicons-arrow-path" @click="loadPosProducts">
+													{{ $t('restaurantPos.retry') }}
+												</AppButton>
+												<AppButton color="neutral" variant="soft" icon="i-heroicons-shopping-cart" @click="searchQuery = ''">
+													{{ activeModeLabel }}
+												</AppButton>
+											</div>
+										</div>
+									</AppCard>
 									<div v-else class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
 										<article
 											v-for="product in filteredProducts"
@@ -1481,7 +1506,7 @@ onBeforeUnmount(() => {
 
 									<AppCard
 										variant="empty"
-										v-if="!productsPending && filteredProducts.length === 0"
+										v-if="!productsPending && !hasCatalogError && filteredProducts.length === 0"
 									>
 										<div class="py-8 text-center">
 											<p class="text-lg font-semibold text-stone-900">{{ posCopy.noProducts }}</p>

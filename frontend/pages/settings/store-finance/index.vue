@@ -679,14 +679,14 @@ onMounted(async () => {
 										<button
 											type="button"
 											class="relative inline-flex shrink-0 items-center"
-											:class="option.code === baseCurrency || !canUpdateStoreFinance || storePending || storesPending ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'"
+											:class="option.code === baseCurrency || !canUpdateStoreFinance || storePending || storesPending ? 'cursor-not-allowed' : 'cursor-pointer'"
 											:disabled="option.code === baseCurrency || !canUpdateStoreFinance || storePending || storesPending"
 											:aria-pressed="supportedCurrencies[option.code] || option.code === baseCurrency"
 											@click="toggleSupportedCurrency(option.code)"
 										>
 											<span
-												class="h-6 w-11 rounded-full bg-stone-200 transition"
-												:class="supportedCurrencies[option.code] || option.code === baseCurrency ? 'bg-primary-600 dark:bg-emerald-500' : 'bg-stone-200'"
+												class="h-6 w-11 rounded-full transition"
+												:class="supportedCurrencies[option.code] || option.code === baseCurrency ? 'bg-emerald-500 shadow-inner ring-1 ring-emerald-600/20' : 'bg-stone-200 ring-1 ring-stone-300/70'"
 											/>
 											<span
 												class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition"

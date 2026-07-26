@@ -62,6 +62,11 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "Settings", to: "/settings" },
 		{ label: "Store Payments" },
 	],
+	"/settings/printing/sales-receipt": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Printing" },
+		{ label: "Sales Receipt" },
+	],
 	"/superadmin": [
 		{ label: "Super Admin" },
 	],
@@ -169,6 +174,8 @@ const segmentLabelMap: Record<string, string> = {
 	units: "Units",
 	language: "Language",
 	stock: "Stock",
+	printing: "Printing",
+	"sales-receipt": "Sales Receipt",
 };
 
 function formatSegmentLabel(segment: string): string {

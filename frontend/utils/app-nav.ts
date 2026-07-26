@@ -8,8 +8,8 @@ export type AppNavItem = {
 
 export const appNavItems: AppNavItem[] = [
 	{ id: "pos", label: "ขายหน้าร้าน", labelKey: "nav.pos", icon: "i-heroicons-building-storefront-20-solid", to: "/" },
-	{ id: "products", label: "สินค้า", labelKey: "nav.products", icon: "i-heroicons-squares-2x2-20-solid", to: "/products" },
 	{ id: "orders", label: "ออเดอร์", labelKey: "nav.orders", icon: "i-heroicons-shopping-cart-20-solid", to: "/orders" },
+	{ id: "products", label: "สินค้า", labelKey: "nav.products", icon: "i-heroicons-squares-2x2-20-solid", to: "/products" },
 	{ id: "stock", label: "สต็อก", labelKey: "nav.inventory", icon: "i-heroicons-cube-20-solid", to: "/inventory" },
 	{ id: "purchase", label: "สั่งซื้อ", labelKey: "nav.purchaseOrders", icon: "i-heroicons-clipboard-document-list-20-solid", to: "/purchase-orders" },
 	{ id: "promotions", label: "โปรโมชั่น", labelKey: "nav.promotions", icon: "i-heroicons-gift-20-solid", to: "/promotions" },

@@ -26,6 +26,11 @@ export class RestaurantInterface {
 		await executor.execute({sql:`INSERT INTO audit_events(id,scope,store_id,actor_user_id,actor_role,action,entity_type,entity_id,result,request_id,metadata,occurred_at)
 			VALUES(?,'store',? ,?,'store_member',?,?,?,'success',NULL,?,?)`,args:[randomUUID(),storeId,actorId,action,entityType,entityId,JSON.stringify(metadata),now()]});
 	}
+	private static auditAsync(storeId:string,actorId:string,action:string,entityType:string,entityId:string,metadata:Record<string,unknown>={}):void{
+		void DbConn.getClient().execute({sql:`INSERT INTO audit_events(id,scope,store_id,actor_user_id,actor_role,action,entity_type,entity_id,result,request_id,metadata,occurred_at)
+			VALUES(?,'store',? ,?,'store_member',?,?,?,'success',NULL,?,?)`,args:[randomUUID(),storeId,actorId,action,entityType,entityId,JSON.stringify(metadata),now()]})
+			.catch((error)=>console.error(`[audit] ${action} failed`,error));
+	}
 
 	static async ensureTables(): Promise<void> {
 		if (RestaurantInterface.initialized) return;
@@ -601,7 +606,9 @@ export class RestaurantInterface {
 		const store=(await tx.execute({sql:"SELECT currency,vat_enabled,vat_rate,vat_mode FROM stores WHERE id=?",args:[storeId]})).rows[0];const subtotal=number(order.subtotal);const rawRate=number(store?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;const vat=number(store?.vat_enabled)?Math.round(String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;const total=String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;const method=text(input.payment_method);const tendered=method==="cash"?number(input.amount_tendered):total;if(tendered<total)throw ApiError.BadRequestError("amount_tendered is less than total");const stamp=now();
 		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,version=version+1 WHERE id=?`,args:[method,subtotal,vat,total,tendered,tendered-total,stamp,stamp,idempotencyKey,orderId]});
 		await tx.execute({sql:`INSERT INTO cash_flow_entries(id,store_id,account_id,direction,entry_type,source_type,source_id,amount,currency,reference,note,metadata,occurred_at,created_by,created_at) VALUES(?,?,NULL,'in','sale','order',?,?,?,?,?,?,?, ?,?)`,args:[randomUUID(),storeId,orderId,total,String(store?.currency||"LAK"),text(input.payment_reference)||null,text(input.note)||null,JSON.stringify({payment_method:method,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"}),stamp,actorId,stamp]});
-		if(directRound)await RestaurantInterface.audit(tx,storeId,actorId,"pos.restaurant.dispatch_direct","order",orderId,{round_id:directRound.roundId,round_no:directRound.roundNo});
-		await RestaurantInterface.audit(tx,storeId,actorId,"pos.restaurant.checkout","order",orderId,{payment_method:method,total,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"});await tx.commit();return RestaurantInterface.getOrder(storeId,orderId);
+		await tx.commit();
+		if(directRound)RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.dispatch_direct","order",orderId,{round_id:directRound.roundId,round_no:directRound.roundNo});
+		RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.checkout","order",orderId,{payment_method:method,total,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"});
+		return RestaurantInterface.getOrder(storeId,orderId);
 	}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
 }

@@ -103,6 +103,11 @@ export class DbConn {
 				pdf_company_name TEXT,
 				pdf_company_address TEXT,
 				pdf_company_phone TEXT,
+				receipt_show_store_address INTEGER NOT NULL DEFAULT 1,
+				receipt_show_store_phone INTEGER NOT NULL DEFAULT 1,
+				receipt_show_tendered INTEGER NOT NULL DEFAULT 1,
+				receipt_show_change INTEGER NOT NULL DEFAULT 1,
+				receipt_show_queue INTEGER NOT NULL DEFAULT 1,
 
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)

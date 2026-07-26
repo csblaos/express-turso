@@ -30,6 +30,8 @@ const breadcrumbKeys: Record<string, string> = {
 	"Store Finance": "breadcrumbs.storeFinance",
 	Rates: "breadcrumbs.rates",
 	"Store Payments": "breadcrumbs.storePayments",
+	Printing: "breadcrumbs.printing",
+	"Sales Receipt": "breadcrumbs.salesReceipt",
 	"Super Admin": "breadcrumbs.superadmin",
 	Overview: "breadcrumbs.overview",
 	"Global Config": "breadcrumbs.globalConfig",

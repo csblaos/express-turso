@@ -42,6 +42,26 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'average'");
 			}
 
+			if (!existingColumns.has("receipt_show_store_address")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_store_address INTEGER NOT NULL DEFAULT 1");
+			}
+
+			if (!existingColumns.has("receipt_show_store_phone")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_store_phone INTEGER NOT NULL DEFAULT 1");
+			}
+
+			if (!existingColumns.has("receipt_show_tendered")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_tendered INTEGER NOT NULL DEFAULT 1");
+			}
+
+			if (!existingColumns.has("receipt_show_change")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_change INTEGER NOT NULL DEFAULT 1");
+			}
+
+			if (!existingColumns.has("receipt_show_queue")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_queue INTEGER NOT NULL DEFAULT 1");
+			}
+
 			await db.execute("CREATE INDEX IF NOT EXISTS idx_stores_owner_created ON stores (owner_user_id, created_at DESC)");
 			StoreInterface.columnsEnsured = true;
 		})().catch((error) => {

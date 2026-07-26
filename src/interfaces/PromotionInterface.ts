@@ -18,7 +18,21 @@ export type PromotionInput = {
 	apply_mode?: "automatic" | "manual";
 };
 export type PromotionCartItem = { product_id: string; qty: number; is_gift?: boolean };
-export type AppliedPromotion = { promotion_id: string; name: string; type: PromotionType; applications: number; gift_product_id: string; gift_qty: number };
+export type AppliedPromotion = {
+	promotion_id: string;
+	name: string;
+	type: PromotionType;
+	apply_mode: "automatic" | "manual";
+	applications: number;
+	qualifying_product_id?: string | null;
+	qualifying_qty?: number | null;
+	gift_product_id: string;
+	gift_product_name?: string;
+	gift_qty: number;
+	eligible?: boolean;
+	remaining_qty?: number;
+	remaining_amount?: number;
+};
 
 type Executor = { execute: (statement: any) => Promise<{ rows: any[] }> };
 
@@ -98,7 +112,7 @@ export class PromotionInterface {
 		await PromotionInterface.ensureTables();
 		const db = executor || DbConn.getClient();
 		const now = new Date().toISOString();
-		const active = await db.execute({ sql: `SELECT * FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at >= ?)`, args: [ storeId, now, now ] });
+		const active = await db.execute({ sql: `SELECT p.*, gp.name AS gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at <= ?) AND (p.ends_at IS NULL OR p.ends_at >= ?)`, args: [ storeId, now, now ] });
 		// `undefined` means evaluate every active promotion for discovery. An explicit
 		// empty list means the cashier selected none; do not silently apply all promos.
 		const selected = selectedIds === undefined ? null : new Set(selectedIds);
@@ -113,7 +127,23 @@ export class PromotionInterface {
 			const applications = String(row.type) === "buy_x_get_y"
 				? Math.floor((qtyByProduct.get(String(row.qualifying_product_id)) || 0) / number(row.qualifying_qty))
 				: Math.floor(subtotal / number(row.minimum_subtotal));
-			return applications > 0 ? [{ promotion_id: String(row.id), name: String(row.name), type: String(row.type) as PromotionType, applications, gift_product_id: String(row.gift_product_id), gift_qty: applications * number(row.gift_qty) }] : [];
+			const giftQty = applications * number(row.gift_qty);
+			if (selected && applications <= 0) return [];
+			return [{
+				promotion_id: String(row.id),
+				name: String(row.name),
+				type: String(row.type) as PromotionType,
+				apply_mode: String(row.apply_mode || "manual") === "automatic" ? "automatic" : "manual",
+				applications,
+				qualifying_product_id: row.qualifying_product_id ? String(row.qualifying_product_id) : null,
+				qualifying_qty: row.qualifying_qty ? number(row.qualifying_qty) : null,
+				gift_product_id: String(row.gift_product_id),
+				gift_product_name: String(row.gift_product_name || ""),
+				gift_qty: giftQty,
+				eligible: applications > 0,
+				remaining_qty: String(row.type) === "buy_x_get_y" && applications === 0 ? Math.max(0, number(row.qualifying_qty) - (qtyByProduct.get(String(row.qualifying_product_id)) || 0)) : 0,
+				remaining_amount: String(row.type) === "cart_total_gift" && applications === 0 ? Math.max(0, number(row.minimum_subtotal) - subtotal) : 0,
+			}];
 		});
 	}
 

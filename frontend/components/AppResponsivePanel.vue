@@ -4,6 +4,7 @@ const props = withDefaults(defineProps<{
 	title?: string;
 	description?: string;
 	desktopWidth?: string;
+	desktopPlacement?: "side" | "center";
 	mobileMaxHeight?: string;
 	fillMobileHeight?: boolean;
 	showHandle?: boolean;
@@ -18,6 +19,7 @@ const props = withDefaults(defineProps<{
 	contentClass?: string;
 	}>(), {
 		desktopWidth: "680px",
+	desktopPlacement: "side",
 		mobileMaxHeight: "88vh",
 	fillMobileHeight: false,
 	showHandle: true,
@@ -83,6 +85,7 @@ const panelMotionClass = computed(() => (
 		? "transition-none"
 		: "transition-transform duration-200 ease-out"
 ));
+const isCenteredDesktop = computed(() => props.desktopPlacement === "center");
 
 function isDesktopViewport() {
 	return import.meta.client ? window.innerWidth >= 1024 : true;
@@ -331,19 +334,20 @@ onUnmounted(() => {
 	</Transition>
 
 	<Transition
-		enter-active-class="transition duration-200 ease-out"
-		enter-from-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
-		enter-to-class="translate-y-0 opacity-100 lg:translate-x-0"
-		leave-active-class="transition duration-150 ease-in"
-		leave-from-class="translate-y-0 opacity-100 lg:translate-x-0"
-		leave-to-class="translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full"
+		:enter-active-class="isCenteredDesktop ? 'transition duration-180 ease-out lg:app-responsive-panel-center-enter' : 'transition duration-200 ease-out'"
+		:enter-from-class="isCenteredDesktop ? 'translate-y-full opacity-0 lg:translate-y-0' : 'translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full'"
+		:enter-to-class="isCenteredDesktop ? 'translate-y-0 opacity-100' : 'translate-y-0 opacity-100 lg:translate-x-0'"
+		:leave-active-class="isCenteredDesktop ? 'transition duration-120 ease-in lg:app-responsive-panel-center-leave' : 'transition duration-150 ease-in'"
+		:leave-from-class="isCenteredDesktop ? 'translate-y-0 opacity-100' : 'translate-y-0 opacity-100 lg:translate-x-0'"
+		:leave-to-class="isCenteredDesktop ? 'translate-y-full opacity-0 lg:translate-y-0' : 'translate-y-full opacity-0 lg:translate-y-0 lg:translate-x-full'"
 	>
 		<div
 				v-if="modelValue"
 				ref="panelRef"
 				:style="panelStyle"
 				:class="[
-				'fixed inset-x-0 bottom-0 max-h-[var(--app-panel-mobile-max-height)] rounded-none bg-[#fffefd] shadow-[0_16px_48px_rgba(31,28,24,0.12)] ring-1 ring-[#e7e4dd] lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:w-[var(--app-panel-desktop-width)] lg:rounded-none',
+				'fixed inset-x-0 bottom-0 max-h-[var(--app-panel-mobile-max-height)] rounded-none bg-[#fffefd] shadow-[0_16px_48px_rgba(31,28,24,0.12)] ring-1 ring-[#e7e4dd] lg:w-[var(--app-panel-desktop-width)]',
+				isCenteredDesktop ? 'lg:inset-x-1/2 lg:top-1/2 lg:bottom-auto lg:max-h-[calc(100dvh-4rem)] lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-md' : 'lg:inset-y-0 lg:right-0 lg:left-auto lg:h-full lg:max-h-none lg:rounded-none',
 				fillMobileHeight ? 'h-[var(--app-panel-mobile-max-height)]' : '',
 				panelMotionClass,
 				panelZClass,
@@ -408,3 +412,39 @@ onUnmounted(() => {
 		</div>
 	</Transition>
 </template>
+
+<style scoped>
+@media (min-width: 1024px) {
+	.app-responsive-panel-center-enter {
+		animation: app-responsive-panel-pop-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	.app-responsive-panel-center-leave {
+		animation: app-responsive-panel-pop-out 90ms ease-in both;
+	}
+
+	@keyframes app-responsive-panel-pop-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, calc(-50% + 8px)) scale(0.96);
+		}
+
+		to {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1);
+		}
+	}
+
+	@keyframes app-responsive-panel-pop-out {
+		from {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1);
+		}
+
+		to {
+			opacity: 0;
+			transform: translate(-50%, calc(-50% + 4px)) scale(0.98);
+		}
+	}
+}
+</style>

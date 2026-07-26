@@ -32,6 +32,11 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"pdf_company_name",
 	"pdf_company_address",
 	"pdf_company_phone",
+	"receipt_show_store_address",
+	"receipt_show_store_phone",
+	"receipt_show_tendered",
+	"receipt_show_change",
+	"receipt_show_queue",
 ];
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];

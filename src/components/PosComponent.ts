@@ -8,6 +8,16 @@ import { InventoryComponent } from "@components/InventoryComponent";
 type PosCatalogStore = {
 	id: string;
 	name: string;
+	address: string | null;
+	phone_number: string | null;
+	pdf_company_name: string | null;
+	pdf_company_address: string | null;
+	pdf_company_phone: string | null;
+	receipt_show_store_address: number;
+	receipt_show_store_phone: number;
+	receipt_show_tendered: number;
+	receipt_show_change: number;
+	receipt_show_queue: number;
 	currency: string | null;
 	vat_enabled: number;
 	vat_rate: number;
@@ -179,6 +189,16 @@ export class PosComponent {
 			store: {
 				id: store?.id || normalizedStoreId,
 				name: store?.name || "ร้านค้า",
+				address: store?.address || null,
+				phone_number: store?.phone_number || null,
+				pdf_company_name: store?.pdf_company_name || null,
+				pdf_company_address: store?.pdf_company_address || null,
+				pdf_company_phone: store?.pdf_company_phone || null,
+				receipt_show_store_address: Number(store?.receipt_show_store_address ?? 1),
+				receipt_show_store_phone: Number(store?.receipt_show_store_phone ?? 1),
+				receipt_show_tendered: Number(store?.receipt_show_tendered ?? 1),
+				receipt_show_change: Number(store?.receipt_show_change ?? 1),
+				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
 				currency: store?.currency || null,
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),

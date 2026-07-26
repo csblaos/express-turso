@@ -29,16 +29,10 @@ type StorePaymentAccountRecord = {
 };
 
 const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string; hint: string }> = [
-	{ code: "LAK", label: "LAK", hint: "กีบ (Lao Kip)" },
-	{ code: "THB", label: "THB", hint: "บาท (Thai Baht)" },
-	{ code: "USD", label: "USD", hint: "ดอลลาร์ (US Dollar)" },
+	{ code: "LAK", label: "LAK", hint: "Lao kip" },
+	{ code: "THB", label: "THB", hint: "Thai baht" },
+	{ code: "USD", label: "USD", hint: "US dollar" },
 ];
-
-const ACCOUNT_TYPE_OPTIONS = [
-	{ id: "bank", label: "บัญชีธนาคาร", hint: "บัญชีรับเงินแบบธนาคารทั่วไป" },
-	{ id: "qr", label: "QR", hint: "ใช้รหัส QR สำหรับรับเงินหรือเช็กเอาต์" },
-	{ id: "other", label: "อื่น ๆ", hint: "ช่องทางรับเงินรูปแบบอื่น" },
-] as const;
 
 const { apiFetch } = useApiClient();
 const { t } = useI18n();
@@ -49,6 +43,7 @@ const runtimeConfig = useRuntimeConfig();
 const storesPending = ref(true);
 const accountsPending = ref(true);
 const saving = ref(false);
+const settingDefaultId = ref("");
 const deletingId = ref("");
 const accountModalOpen = ref(false);
 const deleteConfirmOpen = ref(false);
@@ -79,6 +74,7 @@ const form = reactive({
 	qr_image_url: "",
 	currency: "LAK" as CurrencyCode,
 	is_active: true,
+	is_default: false,
 });
 
 const lockedStoreId = computed(() => (
@@ -157,7 +153,10 @@ const pageSummaryText = computed(() => (
 
 const accountTypeLabel = (accountType: StorePaymentAccountRecord["account_type"]) => {
 	if (!accountType) return t("storePaymentsPage.unspecified");
-	return ACCOUNT_TYPE_OPTIONS.find((option) => option.id === accountType)?.label || t("storePaymentsPage.unspecified");
+	if (accountType === "bank") return t("storePaymentsPage.bankAccount");
+	if (accountType === "qr") return "QR";
+	if (accountType === "other") return t("storePaymentsPage.other");
+	return t("storePaymentsPage.unspecified");
 };
 
 const currentCurrency = computed(() => normalizeCurrencyCode(selectedStore.value?.currency) || "LAK");
@@ -177,13 +176,14 @@ const enabledCurrencyOptions = computed(() => (
 const qrImagePreviewUrl = computed(() => resolveQrImageUrl(form.qr_image_url));
 const qrImageSelected = computed(() => Boolean(form.qr_image_url.trim()));
 const qrPreviewImageUrl = computed(() => resolveQrImageUrl(qrPreviewAccount.value?.qr_image_url || ""));
-const qrPreviewTitle = computed(() => qrPreviewAccount.value?.display_name || "ตัวอย่างรูป QR");
+const qrPreviewTitle = computed(() => qrPreviewAccount.value?.display_name || t("storePaymentsPage.qrPreview"));
 const deleteTargetAccount = computed(() => (
 	editingAccountId.value
 		? accounts.value.find((account) => account.id === editingAccountId.value) || null
 		: null
 ));
-const deleteTargetLabel = computed(() => deleteTargetAccount.value?.display_name || form.display_name.trim() || "บัญชีรับเงิน");
+const isEditingDefaultAccount = computed(() => Number(deleteTargetAccount.value?.is_default || 0) === 1);
+const deleteTargetLabel = computed(() => deleteTargetAccount.value?.display_name || form.display_name.trim() || t("storePaymentsPage.paymentAccounts"));
 const accountCurrencyOptions = computed(() => ([
 	{ code: "all" as const, label: t("storePaymentsPage.allCurrencies") },
 	...enabledCurrencyOptions.value,
@@ -209,7 +209,7 @@ const hasActiveAccountFilters = computed(() => (
 	|| accountStatusFilter.value !== "all"
 ));
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = t("storePaymentsPage.tryAgain")) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -217,6 +217,8 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดล
 			if (typeof data === "object" && data) {
 				const message = Reflect.get(data, "message");
 				if (typeof message === "string" && message.trim()) {
+					if (message === "Store not found") return t("storePaymentsPage.storeNotFound");
+					if (message === "Store payment account not found") return t("storePaymentsPage.paymentAccountNotFound");
 					return message;
 				}
 			}
@@ -262,6 +264,7 @@ function resetForm(next?: StorePaymentAccountRecord | null) {
 		form.qr_image_url = "";
 		form.currency = targetCurrency;
 		form.is_active = true;
+		form.is_default = false;
 		return;
 	}
 
@@ -274,6 +277,7 @@ function resetForm(next?: StorePaymentAccountRecord | null) {
 	form.qr_image_url = next.qr_image_url || "";
 	form.currency = normalizeCurrencyCode(next.currency) || targetCurrency;
 	form.is_active = Number(next.is_active) === 1;
+	form.is_default = Number(next.is_default) === 1;
 }
 
 function openQrImagePicker() {
@@ -303,7 +307,7 @@ async function readFileAsDataUrl(file: Blob) {
 	return await new Promise<string>((resolve, reject) => {
 		const reader = new FileReader();
 		reader.onload = () => resolve(String(reader.result || ""));
-		reader.onerror = () => reject(reader.error || new Error("อ่านไฟล์รูปไม่สำเร็จ"));
+		reader.onerror = () => reject(reader.error || new Error(t("storePaymentsPage.readImageFailed")));
 		reader.readAsDataURL(file);
 	});
 }
@@ -320,7 +324,7 @@ async function transformQrImage(file: File) {
 	const context = canvas.getContext("2d");
 	if (!context) {
 		bitmap.close();
-		throw new Error("ไม่สามารถเตรียมภาพสำหรับอัปโหลดได้");
+		throw new Error(t("storePaymentsPage.prepareImageFailed"));
 	}
 	context.drawImage(bitmap, 0, 0, width, height);
 	bitmap.close();
@@ -335,11 +339,11 @@ async function transformQrImage(file: File) {
 	}
 
 	if (!outputBlob) {
-		throw new Error("แปลงรูปไม่สำเร็จ");
+		throw new Error(t("storePaymentsPage.convertImageFailed"));
 	}
 
 	if (outputBlob.size > 3 * 1024 * 1024) {
-		throw new Error("รูปหลังย่อยังเกิน 3 MB โปรดเลือกรูปที่เล็กลง");
+		throw new Error(t("storePaymentsPage.imageTooLarge"));
 	}
 
 	return {
@@ -358,13 +362,13 @@ async function handleQrImageChange(event: Event) {
 		form.qr_image_url = transformed.dataUrl;
 		qrImageName.value = transformed.fileName;
 		appToast.success({
-			title: "เพิ่มรูป QR แล้ว",
+			title: t("storePaymentsPage.imageAdded"),
 			description: transformed.fileName,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "เพิ่มรูป QR ไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("storePaymentsPage.imageAddFailed"),
+			description: error instanceof Error ? error.message : t("storePaymentsPage.tryAgain"),
 			timeout: 3200,
 		});
 	} finally {
@@ -406,12 +410,12 @@ async function fetchStores() {
 	try {
 		const response = await apiFetch<ApiEnvelope<StoreRecord[]>>("/stores");
 		stores.value = response.data;
-		const nextLockedStoreId = lockedStoreId.value || stores.value[0]?.id || "";
+		const nextLockedStoreId = resolveVisibleStoreId();
 		if (nextLockedStoreId) selectedStoreId.value = nextLockedStoreId;
 	} catch (err) {
 		appToast.error({
-			title: "โหลดร้านไม่สำเร็จ",
-			description: resolveApiErrorMessage(err, "โปรดลองอีกครั้ง"),
+			title: t("storePaymentsPage.loadStoresFailed"),
+			description: resolveApiErrorMessage(err, t("storePaymentsPage.tryAgain")),
 			timeout: 3200,
 		});
 		stores.value = [];
@@ -424,7 +428,7 @@ async function hydrateAccounts() {
 	if (!effectiveStoreId.value) return;
 	accountsPending.value = true;
 	try {
-		const response = await apiFetch<ApiEnvelope<StorePaymentAccountRecord[]>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts`);
+		const response = await apiFetch<ApiEnvelope<StorePaymentAccountRecord[]>>(storePaymentAccountsPath(effectiveStoreId.value));
 		accounts.value = response.data;
 
 		if (accountModalOpen.value && editingAccountId.value) {
@@ -435,8 +439,8 @@ async function hydrateAccounts() {
 		}
 	} catch (err) {
 		appToast.error({
-			title: "โหลดบัญชีรับเงินไม่สำเร็จ",
-			description: resolveApiErrorMessage(err, "โปรดลองอีกครั้ง"),
+			title: t("storePaymentsPage.loadAccountsFailed"),
+			description: resolveApiErrorMessage(err, t("storePaymentsPage.tryAgain")),
 			timeout: 3200,
 		});
 		accounts.value = [];
@@ -485,6 +489,28 @@ function normalizeOptional(value: string) {
 	return text ? text : null;
 }
 
+function normalizeStoreId(value?: string | null) {
+	return String(value || "").trim();
+}
+
+function resolveVisibleStoreId() {
+	const lockedId = normalizeStoreId(lockedStoreId.value);
+	if (lockedId && stores.value.some((store) => store.id === lockedId)) {
+		return lockedId;
+	}
+	return stores.value[0]?.id || "";
+}
+
+function accountStoreId(account?: Pick<StorePaymentAccountRecord, "store_id"> | null) {
+	return normalizeStoreId(account?.store_id) || effectiveStoreId.value;
+}
+
+function storePaymentAccountsPath(storeId: string, suffix = "") {
+	const encodedStoreId = encodeURIComponent(storeId);
+	const normalizedSuffix = suffix ? `/${suffix.replace(/^\//, "")}` : "";
+	return `/stores/${encodedStoreId}/payment-accounts${normalizedSuffix}?store_id=${encodedStoreId}`;
+}
+
 function hasIdentifier() {
 	return Boolean(form.account_number.trim() || form.qr_id.trim() || form.qr_image_url.trim());
 }
@@ -502,10 +528,11 @@ async function saveAccount() {
 	if (!canSave.value || saving.value) return;
 	saving.value = true;
 	try {
+		const targetStoreId = accountStoreId(deleteTargetAccount.value);
 		const targetCurrency = enabledCurrencyCodes.value.includes(form.currency)
 			? form.currency
 			: getPreferredCurrency();
-		const body = {
+		const body: Record<string, unknown> = {
 			display_name: form.display_name.trim(),
 			bank_name: normalizeOptional(form.bank_name),
 			account_name: form.account_name.trim(),
@@ -515,23 +542,27 @@ async function saveAccount() {
 			currency: targetCurrency,
 			is_active: form.is_active ? 1 : 0,
 		};
+		if (!editingAccountId.value || form.is_default) {
+			body.is_default = form.is_default ? 1 : 0;
+		}
+		body.store_id = editingAccountId.value ? targetStoreId : effectiveStoreId.value;
 
 		if (editingAccountId.value) {
-			await apiFetch(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts/${encodeURIComponent(editingAccountId.value)}`, {
+			await apiFetch(storePaymentAccountsPath(targetStoreId, encodeURIComponent(editingAccountId.value)), {
 				method: "PUT",
 				body,
 			});
 			appToast.success({
-				title: "บันทึกบัญชีรับเงินแล้ว",
+				title: t("storePaymentsPage.accountSaved"),
 				description: form.display_name.trim(),
 			});
 		} else {
-			await apiFetch(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts`, {
+			await apiFetch(storePaymentAccountsPath(effectiveStoreId.value), {
 				method: "POST",
 				body,
 			});
 			appToast.success({
-				title: "เพิ่มบัญชีรับเงินแล้ว",
+				title: t("storePaymentsPage.accountAdded"),
 				description: form.display_name.trim(),
 			});
 		}
@@ -539,32 +570,36 @@ async function saveAccount() {
 		await hydrateAccounts();
 		closeAccountModal();
 	} catch (err) {
-		const message = resolveApiErrorMessage(err, "บันทึกบัญชีรับเงินไม่สำเร็จ");
-		appToast.error({ title: "บันทึกไม่สำเร็จ", description: message, timeout: 3200 });
+		const message = resolveApiErrorMessage(err, t("storePaymentsPage.accountSaveFailed"));
+		appToast.error({ title: t("storePaymentsPage.saveFailed"), description: message, timeout: 3200 });
 	} finally {
 		saving.value = false;
 	}
 }
 
 async function setDefault(account: StorePaymentAccountRecord) {
-	if (!account.id || saving.value) return;
+	const targetStoreId = accountStoreId(account);
+	if (!account.id || !targetStoreId || saving.value || !canUpdateStorePayments.value || Number(account.is_default) === 1) return;
 	saving.value = true;
+	settingDefaultId.value = account.id;
 	try {
-		await apiFetch(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts/${encodeURIComponent(account.id)}`, {
+		await apiFetch(storePaymentAccountsPath(targetStoreId, encodeURIComponent(account.id)), {
 			method: "PUT",
 			body: {
 				is_default: 1,
+				store_id: targetStoreId,
 			},
 		});
 		appToast.success({
-			title: "ตั้งเป็นบัญชีหลักแล้ว",
+			title: t("storePaymentsPage.defaultAccountSaved"),
 			description: account.display_name,
 		});
 		await hydrateAccounts();
 	} catch (err) {
-		const message = resolveApiErrorMessage(err, "ตั้งค่าบัญชีหลักไม่สำเร็จ");
-		appToast.error({ title: "ตั้งค่าบัญชีหลักไม่สำเร็จ", description: message, timeout: 3200 });
+		const message = resolveApiErrorMessage(err, t("storePaymentsPage.defaultAccountSaveFailed"));
+		appToast.error({ title: t("storePaymentsPage.defaultAccountSaveFailed"), description: message, timeout: 3200 });
 	} finally {
+		settingDefaultId.value = "";
 		saving.value = false;
 	}
 }
@@ -572,13 +607,16 @@ async function setDefault(account: StorePaymentAccountRecord) {
 async function deleteAccount() {
 	const target = deleteTargetAccount.value;
 	if (!target?.id || deletingId.value) return;
+	const targetStoreId = accountStoreId(target);
+	if (!targetStoreId) return;
 	deletingId.value = target.id;
 	try {
-		await apiFetch(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts/${encodeURIComponent(target.id)}`, {
+		await apiFetch(storePaymentAccountsPath(targetStoreId, encodeURIComponent(target.id)), {
 			method: "DELETE",
+			body: { store_id: targetStoreId },
 		});
 		appToast.success({
-			title: "ลบบัญชีรับเงินแล้ว",
+			title: t("storePaymentsPage.accountDeleted"),
 			description: target.display_name,
 		});
 		if (editingAccountId.value === target.id) {
@@ -587,15 +625,15 @@ async function deleteAccount() {
 		}
 		await hydrateAccounts();
 	} catch (err) {
-		const message = resolveApiErrorMessage(err, "ลบบัญชีรับเงินไม่สำเร็จ");
-		appToast.error({ title: "ลบไม่สำเร็จ", description: message, timeout: 3200 });
+		const message = resolveApiErrorMessage(err, t("storePaymentsPage.accountDeleteFailed"));
+		appToast.error({ title: t("storePaymentsPage.deleteFailed"), description: message, timeout: 3200 });
 	} finally {
 		deletingId.value = "";
 	}
 }
 
 watch([lockedStoreId, stores], () => {
-	const nextStoreId = lockedStoreId.value || stores.value[0]?.id || "";
+	const nextStoreId = resolveVisibleStoreId();
 	if (nextStoreId && selectedStoreId.value !== nextStoreId) {
 		selectedStoreId.value = nextStoreId;
 	}
@@ -850,13 +888,13 @@ onMounted(async () => {
 								<table v-else class="min-w-[1180px] w-full border-separate border-spacing-0">
 									<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 										<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">รูป QR</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ชื่อบัญชี</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สกุลเงิน</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ธนาคาร</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เลขบัญชีธนาคาร</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เบอร์โทร</th>
-											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.qrImage') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.accountName') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.currency') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.bankName') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.bankAccountNumber') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.phone') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('storePaymentsPage.action') }}</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -876,12 +914,12 @@ onMounted(async () => {
 														v-if="account.qr_image_url"
 														type="button"
 														class="group flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 transition hover:border-primary-300 hover:bg-primary-50 dark:border-[#3a332a] dark:bg-[#2a241d] dark:hover:border-primary-500 dark:hover:bg-[#2f2620]"
-														:aria-label="`ดูรูป QR ของ ${account.display_name}`"
+														:aria-label="t('storePaymentsPage.viewQrImage', { account: account.display_name })"
 														@click.stop="openQrPreview(account)"
 													>
 														<img
 															:src="resolveQrImageUrl(account.qr_image_url)"
-															alt="QR ของบัญชี"
+															:alt="t('storePaymentsPage.qrAccountAlt')"
 															class="h-full w-full object-cover transition group-hover:scale-[1.02]"
 														>
 													</button>
@@ -897,9 +935,9 @@ onMounted(async () => {
 												<div class="flex min-w-0 flex-col gap-1">
 													<div class="flex flex-wrap items-center gap-2">
 														<p class="truncate text-sm font-semibold text-stone-900">{{ account.display_name }}</p>
-														<UBadge v-if="Number(account.is_default) === 1" color="success" variant="soft" label="ค่าหลัก" />
+														<UBadge v-if="Number(account.is_default) === 1" color="success" variant="soft" :label="t('storePaymentsPage.defaultAccount')" />
 													</div>
-													<p class="text-xs text-stone-500">บัญชีรับเงินของร้าน</p>
+													<p class="text-xs text-stone-500">{{ t('storePaymentsPage.accountDescription') }}</p>
 												</div>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
@@ -912,33 +950,48 @@ onMounted(async () => {
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
 												<div class="space-y-1 text-sm text-stone-700">
 													<p class="font-medium text-stone-900">{{ account.bank_name || "-" }}</p>
-													<p class="text-xs text-stone-500">ธนาคารรับเงินของบัญชีนี้</p>
+													<p class="text-xs text-stone-500">{{ t('storePaymentsPage.bankDescription') }}</p>
 												</div>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
 												<div class="space-y-1 text-sm text-stone-700">
 													<p class="font-medium text-stone-900">{{ account.account_number || "-" }}</p>
-													<p class="text-xs text-stone-500">เลขบัญชีที่ใช้รับเงิน</p>
+													<p class="text-xs text-stone-500">{{ t('storePaymentsPage.accountNumberDescription') }}</p>
 												</div>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
 												<div class="space-y-1 text-sm text-stone-700">
 													<p class="font-medium text-stone-900">{{ account.qr_id || "-" }}</p>
-													<p class="text-xs text-stone-500">เบอร์โทรที่ผูกกับบัญชี/QR</p>
+													<p class="text-xs text-stone-500">{{ t('storePaymentsPage.phoneQrDescription') }}</p>
 												</div>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 text-right dark:border-[#342d26]">
-												<AppButton
-													color="neutral"
-													variant="soft"
-													size="md"
-													class="rounded-md"
-													icon="i-heroicons-chevron-right-20-solid"
-													:disabled="!canUpdateStorePayments"
-													@click.stop="openAccountModal(account)"
-												>
-													จัดการ
-												</AppButton>
+												<div class="flex items-center justify-end gap-2">
+													<AppButton
+														v-if="Number(account.is_default) !== 1"
+														color="success"
+														variant="soft"
+														size="md"
+														class="rounded-md"
+														icon="i-heroicons-star-20-solid"
+														:loading="settingDefaultId === account.id"
+														:disabled="!canUpdateStorePayments || saving"
+														@click.stop="setDefault(account)"
+													>
+														{{ t('storePaymentsPage.setDefaultAccount') }}
+													</AppButton>
+													<AppButton
+														color="neutral"
+														variant="soft"
+														size="md"
+														class="rounded-md"
+														icon="i-heroicons-chevron-right-20-solid"
+														:disabled="!canUpdateStorePayments"
+														@click.stop="openAccountModal(account)"
+													>
+														{{ t('storePaymentsPage.manage') }}
+													</AppButton>
+												</div>
 											</td>
 										</tr>
 									</tbody>
@@ -959,7 +1012,7 @@ onMounted(async () => {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('storePaymentsPage.rowsPerPage') }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-100"
@@ -979,11 +1032,11 @@ onMounted(async () => {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || accountsPending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="t('storePaymentsPage.previousPage')"
+												:title="t('storePaymentsPage.previousPage')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ t('storePaymentsPage.previous') }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -992,11 +1045,11 @@ onMounted(async () => {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || accountsPending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="t('storePaymentsPage.nextPage')"
+												:title="t('storePaymentsPage.nextPage')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ t('storePaymentsPage.next') }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -1129,7 +1182,7 @@ onMounted(async () => {
 												v-model="form.bank_name"
 												size="lg"
 												color="neutral"
-												placeholder="เช่น BIC, BCEL"
+												:placeholder="t('storePaymentsPage.bankNamePlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 											/>
 										</div>
@@ -1153,7 +1206,7 @@ onMounted(async () => {
 												v-model="form.qr_id"
 												size="lg"
 												color="neutral"
-												placeholder="เช่น 020 55 123 456"
+												:placeholder="t('storePaymentsPage.phoneOrQrPlaceholder')"
 												class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
 											/>
 										</div>
@@ -1170,6 +1223,30 @@ onMounted(async () => {
 													<span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5 dark:bg-[#fcfbf8]" />
 												</label>
 											</div>
+										</div>
+									</div>
+
+									<div class="rounded-md border border-emerald-100 bg-emerald-50/70 px-4 py-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+										<div class="flex items-start justify-between gap-4">
+											<span class="min-w-0">
+												<span class="block text-sm font-medium text-stone-900">{{ t('storePaymentsPage.defaultAccount') }}</span>
+												<span class="mt-1 block text-xs leading-5 text-stone-500">
+													{{ isEditingDefaultAccount ? t('storePaymentsPage.alreadyDefaultAccount') : t('storePaymentsPage.defaultAccountHint') }}
+												</span>
+											</span>
+											<label
+												class="relative inline-flex shrink-0 items-center"
+												:class="(!canUpdateStorePayments || saving || isEditingDefaultAccount) ? 'cursor-not-allowed' : 'cursor-pointer'"
+											>
+												<input
+													v-model="form.is_default"
+													type="checkbox"
+													class="peer sr-only"
+													:disabled="!canUpdateStorePayments || saving || isEditingDefaultAccount"
+												>
+												<span class="h-6 w-11 rounded-full bg-stone-200 transition peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-200 peer-checked:bg-emerald-500 peer-disabled:opacity-100" />
+												<span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5 dark:bg-[#fcfbf8]" />
+											</label>
 										</div>
 									</div>
 								</div>

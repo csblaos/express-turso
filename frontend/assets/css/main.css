@@ -64,6 +64,12 @@
 		font: inherit;
 	}
 
+	[data-sonner-toaster],
+	[data-sonner-toast],
+	[data-sonner-toast] * {
+		font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif !important;
+	}
+
 	:is(html.dark, html.dark-mode) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
 	:is(html.dark, html.dark-mode) textarea,
 	:is(html.dark, html.dark-mode) select {

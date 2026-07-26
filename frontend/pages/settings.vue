@@ -50,11 +50,11 @@ const settingsSections: SettingsSection[] = [
 		titleKey: "settings.title",
 		descriptionKey: "settings.description",
 		entries: [
-			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "pdf", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "shipping", "branchSwitch", "branchConfig" ] as const).map((key, index) => ({
+			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "printing", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "shipping", "branchSwitch", "branchConfig" ] as const).map((key, index) => ({
 				id: key, titleKey: `settings.entries.${key}.title`, descriptionKey: `settings.entries.${key}.description`,
-				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-document-text", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-truck", "i-heroicons-arrows-right-left", "i-heroicons-adjustments-horizontal" ][index]!,
-				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", undefined, undefined, undefined, undefined, "/settings/store-finance", "/settings/stock", "/settings/store-payments", undefined, undefined, undefined ][index],
-				availability: ([ 2, 7, 8, 9, 10, 14, 15, 16 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
+				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-truck", "i-heroicons-arrows-right-left", "i-heroicons-adjustments-horizontal" ][index]!,
+				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", undefined, "/settings/printing/sales-receipt", undefined, undefined, "/settings/store-finance", "/settings/stock", "/settings/store-payments", undefined, undefined, undefined ][index],
+				availability: ([ 2, 7, 9, 10, 14, 15, 16 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
 			})),
 		],
 	},

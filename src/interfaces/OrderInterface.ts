@@ -287,16 +287,16 @@ export class OrderInterface {
 					payload.payment_reference || null, payload.note || null, json({ payment_method: payload.payment_method, amount_tendered: amountTendered, change_amount: amountTendered - total }), now, payload.created_by, now ],
 			});
 			await transaction.execute({
-				sql: `INSERT INTO audit_events (id, scope, store_id, actor_user_id, actor_role, action, entity_type, entity_id, result, request_id, metadata, occurred_at)
-					VALUES (?, 'store', ?, ?, 'cashier', 'pos.checkout', 'order', ?, 'success', ?, ?, ?)`,
-				args: [ randomUUID(), payload.store_id, payload.created_by, orderId, payload.request_id || null, json(result), now ],
-			});
-			await transaction.execute({
 				sql: `UPDATE idempotency_requests SET status='completed', response_status=201, response_body=?, completed_at=?
 					WHERE store_id=? AND action='pos.checkout' AND idempotency_key=?`,
 				args: [ json(result), now, payload.store_id, payload.idempotency_key ],
 			});
 			await transaction.commit();
+			void db.execute({
+				sql: `INSERT INTO audit_events (id, scope, store_id, actor_user_id, actor_role, action, entity_type, entity_id, result, request_id, metadata, occurred_at)
+					VALUES (?, 'store', ?, ?, 'cashier', 'pos.checkout', 'order', ?, 'success', ?, ?, ?)`,
+				args: [ randomUUID(), payload.store_id, payload.created_by, orderId, payload.request_id || null, json(result), now ],
+			}).catch((error) => console.error("[audit] pos.checkout failed", error));
 			mark("checkout-writes", writesStartedAt);
 			mark("checkout-total", startedAt);
 			return result;
