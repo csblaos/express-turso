@@ -489,7 +489,7 @@ onMounted(loadSettings);
 									<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
 										<div v-if="showQueue" class="mb-3">
 											<p class="font-sans text-[11px] text-stone-500">{{ copy.queue }}</p>
-											<p class="text-lg font-bold leading-tight text-stone-950">Q004</p>
+											<p class="text-lg font-bold leading-tight text-stone-950">004</p>
 										</div>
 										<p class="font-sans text-[11px] text-stone-500">ຂອບໃຈທີ່ອຸດໜູນ</p>
 										<p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>

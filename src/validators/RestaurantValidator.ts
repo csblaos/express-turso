@@ -28,6 +28,8 @@ export default class RestaurantValidator extends ValidatorMiddleware {
 			product_id: z.string().trim().min(1),
 			qty: z.coerce.number().int().positive().max(10_000),
 			note: z.string().trim().max(280).nullable().optional(),
+			is_gift: z.boolean().optional(),
+			promotion_id: z.string().trim().min(1).nullable().optional(),
 		})).max(200).optional(),
 	}) });
 	static readonly transfer = RestaurantValidator.init({ body: z.object({ store_id: z.string().optional(), table_id: z.string().trim().min(1), expected_version: version }) });
