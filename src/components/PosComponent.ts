@@ -18,6 +18,7 @@ type PosCatalogStore = {
 	receipt_show_tendered: number;
 	receipt_show_change: number;
 	receipt_show_queue: number;
+	pickup_queue_enabled: number;
 	currency: string | null;
 	vat_enabled: number;
 	vat_rate: number;
@@ -199,6 +200,7 @@ export class PosComponent {
 				receipt_show_tendered: Number(store?.receipt_show_tendered ?? 1),
 				receipt_show_change: Number(store?.receipt_show_change ?? 1),
 				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
+				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
 				currency: store?.currency || null,
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),

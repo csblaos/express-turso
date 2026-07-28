@@ -108,6 +108,7 @@ export class DbConn {
 				receipt_show_tendered INTEGER NOT NULL DEFAULT 1,
 				receipt_show_change INTEGER NOT NULL DEFAULT 1,
 				receipt_show_queue INTEGER NOT NULL DEFAULT 1,
+				pickup_queue_enabled INTEGER NOT NULL DEFAULT 0,
 
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)

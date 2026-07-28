@@ -25,8 +25,15 @@ export class RestaurantController {
 	static createTable = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.created(res,req.requestId,{data:await RestaurantInterface.saveTable(storeId(req),req.body)}));
 	static updateTable = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.saveTable(storeId(req),req.body,String(req.params.id))}));
 	static deleteTable = SyncFunction.handler(async (req: Request,res: Response)=>{await RestaurantInterface.deleteTable(storeId(req),String(req.params.id));SuccessHandler.send(res,req.requestId);});
-	static dashboard = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:{zones:await RestaurantInterface.listZones(storeId(req)),tables:await RestaurantInterface.listTables(storeId(req))}}));
+	static dashboard = SyncFunction.handler(async (req: Request,res: Response)=>{
+		const id=storeId(req);
+		const [zones,tables,pickupQueueEnabled]=await Promise.all([RestaurantInterface.listZones(id),RestaurantInterface.listTables(id),RestaurantInterface.pickupQueueEnabled(id)]);
+		SuccessHandler.send(res,req.requestId,{data:{zones,tables,pickup_queue_enabled:pickupQueueEnabled?1:0}});
+	});
 	static openOrders = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.listOpenOrders(storeId(req))}));
+	static pickupQueue = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.listPickupQueue(storeId(req))}));
+	static pickupQueueHistory = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.listPickupQueueHistory(storeId(req))}));
+	static pickupCollected = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.markPickupCollected(storeId(req),String(req.params.id),actor(req))}));
 	static availability = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.setMenuAvailability(storeId(req),String(req.params.productId),Boolean(req.body.sold_out))}));
 	static profitability = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.profitability(storeId(req),typeof req.query.from==="string"?req.query.from:undefined)}));
 	static open = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.created(res,req.requestId,{data:await RestaurantInterface.createOrder(storeId(req),{...req.body,idempotency_key:String(req.header("Idempotency-Key")||"")},actor(req))}));

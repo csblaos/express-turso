@@ -5,12 +5,14 @@ import { resolveApiErrorMessage } from "~/utils/api-errors";
 type Zone={id:string;name:string;sort_order:number;is_active:number;table_count:number};
 type DiningTable={id:string;zone_id:string;name:string;code:string|null;capacity:number;sort_order:number;is_active:number;zone_name:string;order_id?:string|null};
 type Envelope<T>={data:T};
+type StoreSettings={id:string;pickup_queue_enabled?:number};
 
 const {apiFetch}=useApiClient();
 const {currentStoreId}=useAuthSession();
 const {t}=useI18n();
 const toast=useAppToast();
 const zones=ref<Zone[]>([]);const tables=ref<DiningTable[]>([]);const pending=ref(false);const saving=ref(false);
+const pickupQueueEnabled=ref(false);const queueSettingSaving=ref(false);
 const reordering=ref(false);
 const panelOpen=ref(false);const formKind=ref<"zone"|"table">("zone");const editingId=ref("");
 const form=reactive({name:"",zone_id:"",code:"",capacity:2,is_active:true});
@@ -22,7 +24,8 @@ const draggingOverZoneId=ref("");
 const draggingOverTableId=ref("");
 const panelTitle=computed(()=>t(`restaurantSettingsPage.panel.${editingId.value?"edit":"add"}${formKind.value==="zone"?"Zone":"Table"}`));
 
-async function load(){if(!currentStoreId.value)return;pending.value=true;try{const [z,tablesResponse]=await Promise.all([apiFetch<Envelope<Zone[]>>(`/restaurant/zones?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<DiningTable[]>>(`/restaurant/tables?store_id=${encodeURIComponent(currentStoreId.value)}`)]);zones.value=z.data;tables.value=tablesResponse.data;}catch(error){toast.error({title:t("restaurantSettingsPage.toast.loadFailed"),description:resolveApiErrorMessage(error)});}finally{pending.value=false;}}
+async function load(){if(!currentStoreId.value)return;pending.value=true;try{const [z,tablesResponse,storeResponse]=await Promise.all([apiFetch<Envelope<Zone[]>>(`/restaurant/zones?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<DiningTable[]>>(`/restaurant/tables?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`)]);zones.value=z.data;tables.value=tablesResponse.data;pickupQueueEnabled.value=Number(storeResponse.data.pickup_queue_enabled||0)!==0;}catch(error){toast.error({title:t("restaurantSettingsPage.toast.loadFailed"),description:resolveApiErrorMessage(error)});}finally{pending.value=false;}}
+async function savePickupQueueSetting(enabled:boolean){if(!currentStoreId.value||queueSettingSaving.value)return;pickupQueueEnabled.value=enabled;queueSettingSaving.value=true;try{const response=await apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`,{method:"PUT",body:{pickup_queue_enabled:enabled?1:0}});pickupQueueEnabled.value=Number(response.data.pickup_queue_enabled||0)!==0;toast.success({title:t("restaurantSettingsPage.toast.queueSettingSaved")});}catch(error){pickupQueueEnabled.value=!enabled;toast.error({title:t("restaurantSettingsPage.toast.saveFailed"),description:resolveApiErrorMessage(error)});}finally{queueSettingSaving.value=false;}}
 function normalizeName(value:string){return value.trim().replace(/\s+/g," ").toLocaleLowerCase();}
 function tableCodeFromName(value:string){return value.trim().replace(/\s+/g," ");}
 function isDuplicateZoneName(name:string){const normalized=normalizeName(name);return zones.value.some(zone=>zone.id!==editingId.value&&normalizeName(zone.name)===normalized);}
@@ -53,6 +56,22 @@ watch(currentStoreId,()=>void load(),{immediate:true});
 	>
 		<template #default>
 			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
+			<section id="pickup-queue" class="scroll-mt-4 flex flex-col gap-4 rounded-none border border-emerald-200 bg-emerald-50/40 p-4 shadow-sm sm:rounded-md sm:flex-row sm:items-center sm:justify-between">
+				<div class="flex min-w-0 items-start gap-3">
+					<span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700"><UIcon name="i-lucide-list-ordered" class="size-5" /></span>
+					<div>
+						<div class="flex flex-wrap items-center gap-2">
+							<h2 class="text-sm font-semibold text-stone-950">{{ t("restaurantSettingsPage.pickupQueue") }}</h2>
+							<UBadge :color="pickupQueueEnabled ? 'success' : 'neutral'" variant="soft">{{ t(pickupQueueEnabled ? "restaurantSettingsPage.queueEnabled" : "restaurantSettingsPage.queueDisabled") }}</UBadge>
+						</div>
+						<p class="mt-1 text-xs leading-5 text-stone-600">{{ t("restaurantSettingsPage.pickupQueueHint") }}</p>
+					</div>
+				</div>
+				<label class="flex min-h-11 shrink-0 cursor-pointer items-center justify-between gap-3 rounded-md border border-emerald-200 bg-white px-3 py-2 sm:justify-start" :class="(pending || queueSettingSaving) && 'cursor-wait opacity-70'">
+					<span class="text-sm font-medium text-stone-800">{{ t("restaurantSettingsPage.enablePickupQueue") }}</span>
+					<USwitch :model-value="pickupQueueEnabled" :disabled="pending || queueSettingSaving" @update:model-value="savePickupQueueSetting(Boolean($event))" />
+				</label>
+			</section>
 				<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 					<div class="relative">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#ece6dc] px-4 py-3">

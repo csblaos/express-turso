@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { Loader } from "@lucide/vue";
+import { Banknote, Loader } from "@lucide/vue";
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 import { formatMoneyWithSymbol } from "~/utils/currency";
 
 type Envelope<T> = { data: T };
-type PosView = "quick" | "tables" | "open";
+type PosView = "quick" | "tables" | "open" | "pickupQueue";
 type Zone = { id: string; name: string; sort_order: number; is_active: number };
 type DiningTable = { id: string; zone_id: string; zone_name: string; name: string; capacity: number; is_active: number; order_id?: string | null; order_status?: string | null; total?: number; guest_count?: number; guest_count_specified?: number; opened_at?: string; draft_count?: number };
 type Product = { id: string; name: string; sku: string; price_base: number; inventory_mode: "tracked" | "untracked"; manual_sold_out: number; stock_state: string; available_base: number; image_url?: string | null };
+type PosCatalog = { store: Record<string, unknown>; items: Product[] };
 type OrderItem = { id: string; product_id: string; name: string; sku: string; qty: number; line_total: number; line_status: "draft" | "sent" | "cancelled"; is_gift: number; promotion_id?: string | null; note?: string | null; round_no?: number | null };
 type Promotion = { promotion_id: string; name: string; type?: "buy_x_get_y" | "cart_total_gift"; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id?: string | null; gift_product_name: string; gift_qty: number; eligible: boolean; remaining_qty: number; remaining_amount: number };
 type Round = { id: string; round_no: number; dispatch_mode: "kitchen" | "direct"; sent_at: string };
 type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
 type OpenOrder = Pick<Order, "id" | "order_no" | "service_mode" | "queue_no" | "status" | "total" | "guest_count" | "guest_count_specified" | "opened_at" | "version" | "table_name" | "zone_name"> & { draft_count: number; sent_count: number };
+type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
 type LocalCartEntry = { product_id: string; qty: number; note?: string | null };
 type TableDraftEntry = { product_id: string; qty: number; note?: string | null; is_gift?: boolean; promotion_id?: string | null };
 type PaymentAccount = { id: string; display_name: string; is_active: number };
@@ -25,7 +27,7 @@ type CheckoutResult = {
 	receipt: { lines: Array<{ product_id: string; name: string; sku: string; qty: number; unit_price: number; line_total: number; is_gift: boolean; promotion_id: string | null }> };
 };
 
-const props = defineProps<{ storeId: string }>();
+const props = defineProps<{ storeId: string; initialCatalog?: PosCatalog | null }>();
 const { apiFetch } = useApiClient();
 const toast = useAppToast();
 const { locale, t } = useI18n();
@@ -33,15 +35,24 @@ const { can } = useAuthSession();
 const runtimeConfig = useRuntimeConfig();
 
 const view = ref<PosView>("quick");
+const pickupQueueEnabled = ref(false);
+const pickupQueue = ref<PickupQueueOrder[]>([]);
+const pickupQueueHistory = ref<PickupQueueOrder[]>([]);
+const pickupQueueDetail = ref<PickupQueueOrder | null>(null);
+const pickupQueueDetailOpen = ref(false);
+const pickupQueueHistoryOpen = ref(false);
+const pickupQueueHistoryPending = ref(false);
+const collectingOrderId = ref("");
 const mobileTicketOpen = ref(false);
 const moreActionsOpen = ref(false);
+const tableActionsOpen = ref(false);
 const promotionPanelOpen = ref(false);
-const expandedRounds = ref<number[]>([]);
 const zones = ref<Zone[]>([]);
 const tables = ref<DiningTable[]>([]);
 const products = ref<Product[]>([]);
 const openOrders = ref<OpenOrder[]>([]);
 const order = ref<Order | null>(null);
+const completedOrder = ref<Order | null>(null);
 const localCart = ref<LocalCartEntry[]>([]);
 const tableDraft = ref<TableDraftEntry[]>([]);
 const checkoutReceipt = ref<CheckoutResult | null>(null);
@@ -68,6 +79,7 @@ const pendingItemIds = ref<string[]>([]);
 const loadError = ref("");
 const guestPanel = ref(false);
 const selectedTable = ref<DiningTable | null>(null);
+const tableSelectionMode = ref<"browse" | "move" | "cart">("browse");
 const guestCount = ref<number | null>(null);
 const checkoutPanel = ref(false);
 const checkoutStep = ref<"payment" | "processing" | "success" | "receipt">("payment");
@@ -77,24 +89,32 @@ const cashTendered = ref(0);
 const cashTenderedHistory = ref<number[]>([]);
 const paymentAccounts = ref<PaymentAccount[]>([]);
 const paymentAccountId = ref("");
-const paymentSlipUrl = ref("");
 const cancelPanel = ref(false);
 const cancelReason = ref("");
 const clearCartPanel = ref(false);
 const sentItemPanel = ref(false);
 const cancellingItem = ref<OrderItem | null>(null);
-const printKind = ref<"kitchen" | "check" | "receipt">("kitchen");
+const sentItemQty = ref(0);
+const sentItemReasonPreset = ref("");
+const printKind = ref<"kitchen" | "check" | "estimate" | "receipt">("kitchen");
 const printRound = ref<number | null>(null);
+const printPreviewOpen = ref(false);
 let sendKey = "";
 let checkoutKey = "";
 let desktopMedia: MediaQueryList | null = null;
 let promotionTimer: ReturnType<typeof setTimeout> | null = null;
 let checkoutSuccessTimer: ReturnType<typeof setTimeout> | null = null;
-const paymentMethodOptions = [
-	{ id: "cash", label: "เงินสด", icon: "i-heroicons-banknotes" },
-	{ id: "qr_transfer", label: "เงินโอน", icon: "i-heroicons-qr-code" },
-	{ id: "credit_card", label: "บัตรเครดิต", icon: "i-heroicons-credit-card" },
-] as const;
+const paymentMethodOptions = computed(() => [
+	{ id: "cash" as const, label: t("pos.cash"), icon: "i-heroicons-banknotes" },
+	{ id: "qr_transfer" as const, label: t("pos.qr"), icon: "i-heroicons-qr-code" },
+	{ id: "credit_card" as const, label: t("pos.card"), icon: "i-heroicons-credit-card" },
+]);
+const sentItemReasonPresets = computed(() => [
+	t("posPanels.reasonSoldOut"),
+	t("posPanels.reasonChangedMind"),
+	t("posPanels.reasonMistake"),
+	t("posPanels.reasonOther"),
+]);
 
 const filteredProducts = computed(() => {
 	const query = search.value.trim().toLowerCase();
@@ -186,7 +206,7 @@ function displayQueueNo(queueNo: string | null | undefined) {
 	return /^\d+$/.test(numeric) ? numeric.padStart(3, "0") : normalized;
 }
 function displayGuestCount(value: number | null | undefined, specified: number | null | undefined) {
-	return specified ? `${Math.max(1, Math.round(Number(value || 1)))} คน` : "ไม่ระบุจำนวนลูกค้า";
+	return specified ? t("restaurantPos.people", { count: Math.max(1, Math.round(Number(value || 1))) }) : t("restaurantPos.unspecified");
 }
 function setGuestCount(value: number | null) {
 	guestCount.value = value === null ? null : Math.min(100, Math.max(1, Math.round(Number(value || 1))));
@@ -204,12 +224,15 @@ const promotionOptions = computed(() => availablePromotions.value.filter(isManua
 const promotionOptionCount = computed(() => promotionOptions.value.length);
 const selectedPromotionTotal = computed(() => selectedPromotionIds.value.reduce((total, id) => total + Math.max(1, selectedPromotionCounts.value[id] || 1), 0));
 const canClearCartDraft = computed(() => order.value ? tableDraft.value.length > 0 : localCart.value.length > 0);
-const clearCartTitle = computed(() => order.value ? "ລ້າງລາຍການໃໝ່?" : "ລ້າງກະຕ່າທັງໝົດ?");
+const clearCartTitle = computed(() => t(order.value ? "posPanels.clearNewTitle" : "posPanels.clearCartTitle"));
 const clearCartDescription = computed(() => order.value
-	? "ຈະລຶບສະເພາະລາຍການໃໝ່ທີ່ຍັງບໍ່ບັນທຶກ. ລາຍການທີ່ບັນທຶກແລ້ວຈະຍັງຢູ່ເດີມ."
-	: "ຈະລຶບສິນຄ້າ ແລະ ໂປຣໂມຊັນທີ່ເລືອກໄວ້ໃນກະຕ່ານີ້.");
-const clearCartCountLabel = computed(() => order.value ? `${tableDraft.value.length} ລາຍການໃໝ່` : `${localCart.value.length} ລາຍການ`);
-const suggestedLocalPromotions = computed(() => availablePromotions.value.filter((promotion) => isManualPromotion(promotion) && promotion.eligible !== false && (selectedPromotionCounts.value[promotion.promotion_id] || 0) < Number(promotion.applications || 0) && !promotionBlockedReason(promotion)));
+	? t("posPanels.clearNewDescription")
+	: t("posPanels.clearCartDescription"));
+const clearCartCountLabel = computed(() => t(order.value ? "posPanels.newItemCount" : "posPanels.itemCount", { count: order.value ? tableDraft.value.length : localCart.value.length }));
+const suggestedLocalPromotions = computed(() => {
+	if (order.value || localCart.value.length === 0) return [];
+	return availablePromotions.value.filter((promotion) => isManualPromotion(promotion) && promotion.eligible !== false && (selectedPromotionCounts.value[promotion.promotion_id] || 0) < Number(promotion.applications || 0) && !promotionBlockedReason(promotion));
+});
 const guestQuickCounts = computed(() => {
 	const capacity = Math.max(1, Math.round(Number(selectedTable.value?.capacity || 4)));
 	return [ ...new Set([1, 2, capacity, Math.min(100, capacity + 2)]) ];
@@ -234,31 +257,34 @@ const receiptItems = computed<OrderItem[]>(() => checkoutReceipt.value?.receipt.
 	id: `receipt:${index}`, product_id: item.product_id, name: item.name, sku: item.sku, qty: item.qty,
 	line_total: item.line_total, line_status: "sent", is_gift: item.is_gift ? 1 : 0,
 })) || []);
+const printOrder = computed(() => completedOrder.value || order.value);
 const printItems = computed(() => checkoutReceipt.value
 	? receiptItems.value
 	: printKind.value === "kitchen"
-		? order.value?.items.filter((item) => item.line_status === "sent" && Number(item.round_no) === printRound.value) || []
-		: order.value?.items.filter((item) => item.line_status !== "cancelled") || []);
+		? printOrder.value?.items.filter((item) => item.line_status === "sent" && Number(item.round_no) === printRound.value) || []
+		: printOrder.value?.items.filter((item) => item.line_status !== "cancelled") || localItems.value);
 const orderLabel = computed(() => order.value?.service_mode === "pickup"
 	? `คิว ${displayQueueNo(order.value.queue_no)}`
 	: `${order.value?.zone_name || ""} · ${order.value?.table_name || "โต๊ะ"}`);
-const printLabel = computed(() => checkoutReceipt.value ? `คิว ${displayQueueNo(checkoutReceipt.value.queue_no)} · ซื้อกลับบ้าน` : orderLabel.value);
-const printQueueText = computed(() => checkoutReceipt.value?.queue_no ? displayQueueNo(checkoutReceipt.value.queue_no) : (order.value?.service_mode === "pickup" && order.value.queue_no ? displayQueueNo(order.value.queue_no) : ""));
-const printOrderNo = computed(() => checkoutReceipt.value?.order_no || order.value?.order_no || "");
-const printSubtotal = computed(() => checkoutReceipt.value?.subtotal ?? order.value?.subtotal ?? 0);
-const printVat = computed(() => checkoutReceipt.value?.vat_amount ?? order.value?.vat_amount ?? 0);
+const printLabel = computed(() => checkoutReceipt.value
+	? `คิว ${displayQueueNo(checkoutReceipt.value.queue_no)} · ซื้อกลับบ้าน`
+	: printOrder.value ? (printOrder.value.service_mode === "pickup" ? `คิว ${displayQueueNo(printOrder.value.queue_no)}` : `${printOrder.value.zone_name || ""} · ${printOrder.value.table_name || "โต๊ะ"}`) : "ขายด่วน · ยังไม่ชำระ");
+const printQueueText = computed(() => checkoutReceipt.value?.queue_no ? displayQueueNo(checkoutReceipt.value.queue_no) : (printOrder.value?.service_mode === "pickup" && printOrder.value.queue_no ? displayQueueNo(printOrder.value.queue_no) : ""));
+const printOrderNo = computed(() => checkoutReceipt.value?.order_no || printOrder.value?.order_no || (printKind.value === "estimate" ? "ใบประเมินยอด" : ""));
+const printSubtotal = computed(() => checkoutReceipt.value?.subtotal ?? printOrder.value?.subtotal ?? 0);
+const printVat = computed(() => checkoutReceipt.value?.vat_amount ?? printOrder.value?.vat_amount ?? 0);
 const printNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, printSubtotal.value - printVat.value) : printSubtotal.value);
-const printTotal = computed(() => checkoutReceipt.value?.total ?? order.value?.total ?? 0);
-const printPaymentMethod = computed(() => checkoutReceipt.value?.payment_method || order.value?.payment_method || "");
-const printTendered = computed(() => checkoutReceipt.value?.amount_tendered ?? order.value?.amount_tendered ?? 0);
-const printChange = computed(() => checkoutReceipt.value?.change_amount ?? order.value?.change_amount ?? 0);
+const printTotal = computed(() => checkoutReceipt.value?.total ?? printOrder.value?.total ?? displayTotal.value);
+const printPaymentMethod = computed(() => checkoutReceipt.value?.payment_method || printOrder.value?.payment_method || "");
+const printTendered = computed(() => checkoutReceipt.value?.amount_tendered ?? printOrder.value?.amount_tendered ?? 0);
+const printChange = computed(() => checkoutReceipt.value?.change_amount ?? printOrder.value?.change_amount ?? 0);
 const receiptStoreLines = computed(() => [
 	storeName.value,
 	receiptShowStoreAddress.value ? storeAddress.value : "",
 	receiptShowStorePhone.value && storePhone.value ? `ໂທ: ${storePhone.value}` : "",
 ].filter(Boolean));
-const checkoutTitle = computed(() => checkoutStep.value === "processing" ? "ກຳລັງຊຳລະ" : checkoutStep.value === "success" ? "ຊຳລະສຳເລັດ" : checkoutStep.value === "receipt" ? "ຕົວຢ່າງບິນ" : "ชำระเงิน");
-const checkoutDescription = computed(() => checkoutStep.value === "receipt" ? "ກວດບິນແລ້ວເລືອກພິມ ຫຼື ຈົບເລີຍ" : checkoutStep.value === "success" || checkoutStep.value === "processing" ? "" : (order.value ? orderLabel.value : ""));
+const checkoutTitle = computed(() => t(checkoutStep.value === "processing" ? "posPanels.processing" : checkoutStep.value === "success" ? "posPanels.success" : checkoutStep.value === "receipt" ? "posPanels.receiptPreview" : "posPanels.payment"));
+const checkoutDescription = computed(() => checkoutStep.value === "receipt" ? t("posPanels.receiptPreviewHint") : checkoutStep.value === "success" || checkoutStep.value === "processing" ? "" : (order.value ? orderLabel.value : ""));
 
 function money(value: number) { return formatMoneyWithSymbol(value, currency.value, locale.value); }
 function isProductUnavailable(product: Product) {
@@ -303,7 +329,16 @@ function localizedApiError(error: unknown) {
 function elapsed(value?: string) {
 	if (!value) return "";
 	const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
-	return minutes < 60 ? `${minutes} นาที` : `${Math.floor(minutes / 60)} ชม. ${minutes % 60} นาที`;
+	return minutes < 60 ? t("pickupQueueHistory.minutes", { count: minutes }) : t("pickupQueueHistory.hoursMinutes", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+}
+function queueHistoryTime(value?: string | null) {
+	if (!value) return "-";
+	return new Intl.DateTimeFormat(locale.value, { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+function queueWaitDuration(start?: string | null, end?: string | null) {
+	if (!start || !end) return "-";
+	const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
+	return minutes < 60 ? t("pickupQueueHistory.minutes", { count: minutes }) : t("pickupQueueHistory.hoursMinutes", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
 }
 function tableTone(table: DiningTable) {
 	if (table.order_status === "ready_to_pay") return "border-amber-300 bg-amber-50 shadow-amber-100/70";
@@ -312,10 +347,10 @@ function tableTone(table: DiningTable) {
 	return "border-neutral-200 bg-white shadow-neutral-100/80 hover:border-emerald-200 hover:bg-emerald-50/20";
 }
 function tableStatusLabel(table: DiningTable) {
-	if (table.order_status === "ready_to_pay") return "ພ້ອມຊຳລະ";
-	if (table.order_id && table.draft_count) return "ມີລາຍການໃໝ່";
-	if (table.order_id) return "ກຳລັງເປີດ";
-	return "ວ່າງ";
+	if (table.order_status === "ready_to_pay") return t("restaurantPos.readyToPay");
+	if (table.order_id && table.draft_count) return t("restaurantPos.unsavedCount", { count: table.draft_count });
+	if (table.order_id) return t("restaurantPos.open");
+	return t("restaurantPos.available");
 }
 function tableStatusClasses(table: DiningTable) {
 	if (table.order_status === "ready_to_pay") return "bg-amber-100 text-amber-800 ring-amber-200";
@@ -346,13 +381,6 @@ function openOrderIcon(opened: OpenOrder) {
 function openOrderTitle(opened: OpenOrder) {
 	return opened.service_mode === "pickup" ? `คิว ${displayQueueNo(opened.queue_no)}` : `${opened.zone_name} · ${opened.table_name}`;
 }
-function defaultExpandedRounds(nextOrder: Order) {
-	const rounds = [ ...new Set(nextOrder.items
-		.filter((item) => item.line_status === "sent")
-		.map((item) => Number(item.round_no || 0))
-		.filter((roundNo) => roundNo > 0)) ].sort((a, b) => b - a);
-	expandedRounds.value = rounds.length ? [ rounds[0] ] : [];
-}
 function roundMode(roundNo: number) { return order.value?.rounds.find((round) => Number(round.round_no) === roundNo)?.dispatch_mode || "kitchen"; }
 function isItemPending(itemId: string) { return pendingItemIds.value.includes(itemId); }
 function cloneOrder(value: Order): Order { return JSON.parse(JSON.stringify(value)) as Order; }
@@ -370,44 +398,82 @@ function beginItemMutation(itemId: string): boolean {
 	return true;
 }
 function endItemMutation(itemId: string) { pendingItemIds.value = pendingItemIds.value.filter((id) => id !== itemId); }
-function isRoundExpanded(roundNo: number) { return expandedRounds.value.includes(roundNo); }
-function toggleRound(roundNo: number) {
-	expandedRounds.value = expandedRounds.value.includes(roundNo)
-		? expandedRounds.value.filter((value) => value !== roundNo)
-		: [ ...expandedRounds.value, roundNo ];
+function applyCatalog(catalog: PosCatalog) {
+	products.value = catalog.items;
+	const store = catalog.store || {};
+	storeName.value = String(store.pdf_company_name || store.name || "ร้านค้า");
+	storeAddress.value = String(store.pdf_company_address || store.address || "");
+	storePhone.value = String(store.pdf_company_phone || store.phone_number || "");
+	receiptShowStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
+	receiptShowStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
+	receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
+	receiptShowChange.value = Number(store.receipt_show_change ?? 1) !== 0;
+	receiptShowQueue.value = Number(store.receipt_show_queue ?? 1) !== 0;
+	pickupQueueEnabled.value = Number(store.pickup_queue_enabled ?? 0) !== 0;
+	currency.value = String(store.currency || "LAK");
+	vatEnabled.value = Boolean(Number(store.vat_enabled));
+	vatRate.value = Number(store.vat_rate || 0);
+	vatMode.value = String(store.vat_mode || "EXCLUSIVE").toUpperCase();
 }
 
 async function loadDashboard() {
 	pending.value = true;
 	loadError.value = "";
 	try {
-		const [ dashboard, catalog, opened ] = await Promise.all([
-			apiFetch<Envelope<{ zones: Zone[]; tables: DiningTable[] }>>(`/pos/restaurant/tables?store_id=${encodeURIComponent(props.storeId)}`),
-			apiFetch<Envelope<any>>(`/pos/products?store_id=${encodeURIComponent(props.storeId)}`),
+		if (props.initialCatalog) applyCatalog(props.initialCatalog);
+		const [ dashboard, opened, catalog ] = await Promise.all([
+			apiFetch<Envelope<{ zones: Zone[]; tables: DiningTable[]; pickup_queue_enabled: number }>>(`/pos/restaurant/tables?store_id=${encodeURIComponent(props.storeId)}`),
 			apiFetch<Envelope<OpenOrder[]>>(`/pos/restaurant/orders/open?store_id=${encodeURIComponent(props.storeId)}`),
+			props.initialCatalog
+				? Promise.resolve(null)
+				: apiFetch<Envelope<PosCatalog>>(`/pos/products?store_id=${encodeURIComponent(props.storeId)}`),
 		]);
 		zones.value = dashboard.data.zones.filter((zone) => zone.is_active);
 		tables.value = dashboard.data.tables;
-		products.value = catalog.data.items;
+		pickupQueueEnabled.value = Number(dashboard.data.pickup_queue_enabled || 0) !== 0;
 		openOrders.value = opened.data;
-		const store = catalog.data.store || {};
-		storeName.value = String(store.pdf_company_name || store.name || "ร้านค้า");
-		storeAddress.value = String(store.pdf_company_address || store.address || "");
-		storePhone.value = String(store.pdf_company_phone || store.phone_number || "");
-		receiptShowStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
-		receiptShowStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
-		receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
-		receiptShowChange.value = Number(store.receipt_show_change ?? 1) !== 0;
-		receiptShowQueue.value = Number(store.receipt_show_queue ?? 1) !== 0;
-		currency.value = store.currency || "LAK";
-		vatEnabled.value = Boolean(Number(store.vat_enabled));
-		vatRate.value = Number(store.vat_rate || 0);
-		vatMode.value = String(store.vat_mode || "EXCLUSIVE").toUpperCase();
+		if (catalog) applyCatalog(catalog.data);
+		if (pickupQueueEnabled.value) await loadPickupQueue(); else pickupQueue.value = [];
 		activeZone.value = zones.value.some((zone) => zone.id === activeZone.value) ? activeZone.value : "";
 	} catch (error) {
 		loadError.value = localizedApiError(error);
 		toast.error({ title: t("restaurantPos.loadFailed"), description: loadError.value });
 	} finally { pending.value = false; }
+}
+
+async function loadPickupQueue() {
+	if (!pickupQueueEnabled.value) return;
+	const response = await apiFetch<Envelope<PickupQueueOrder[]>>(`/pos/restaurant/pickup-queue?store_id=${encodeURIComponent(props.storeId)}`);
+	pickupQueue.value = response.data;
+}
+
+async function openPickupQueueHistory() {
+	pickupQueueHistoryOpen.value = true;
+	pickupQueueHistoryPending.value = true;
+	try {
+		const response = await apiFetch<Envelope<PickupQueueOrder[]>>(`/pos/restaurant/pickup-queue/history?store_id=${encodeURIComponent(props.storeId)}`);
+		pickupQueueHistory.value = response.data;
+	} catch (error) {
+		toast.error({ title: t("pickupQueueHistory.loadFailed"), description: localizedApiError(error) });
+	} finally { pickupQueueHistoryPending.value = false; }
+}
+
+function openPickupQueueDetail(queued: PickupQueueOrder) {
+	if (queued.collected_at) pickupQueueHistoryOpen.value = false;
+	pickupQueueDetail.value = queued;
+	pickupQueueDetailOpen.value = true;
+}
+
+async function markPickupCollected(orderId: string) {
+	if (collectingOrderId.value) return;
+	collectingOrderId.value = orderId;
+	try {
+		await apiFetch(`/pos/restaurant/pickup-queue/${encodeURIComponent(orderId)}/collected`, { method: "POST", body: { store_id: props.storeId } });
+		pickupQueue.value = pickupQueue.value.filter((item) => item.id !== orderId);
+		if (pickupQueueHistoryOpen.value) void openPickupQueueHistory();
+		toast.success({ title: t("restaurantPos.collectedSuccess") });
+	} catch (error) { toast.error({ title: t("restaurantPos.collectFailed"), description: localizedApiError(error) }); }
+	finally { collectingOrderId.value = ""; }
 }
 
 function cartStorageKey() { return `restaurant-pos:quick-cart:${props.storeId}`; }
@@ -524,6 +590,13 @@ async function evaluateLocalPromotions() {
 	}
 	try {
 		const evaluationItems = promotionEvaluationItems();
+		if (!evaluationItems.length) {
+			const catalog = await loadActivePromotionCatalog();
+			availablePromotions.value = catalog;
+			selectedPromotionIds.value = [];
+			selectedPromotionCounts.value = {};
+			return;
+		}
 		const response = await apiFetch<Envelope<AvailablePromotion[]>>("/promotions/evaluate", { method: "POST", body: { store_id: props.storeId, items: evaluationItems } });
 		if (response.data.length || evaluationItems.length) {
 			availablePromotions.value = response.data;
@@ -558,7 +631,6 @@ async function loadOrder(id: string) {
 	try {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${id}?store_id=${encodeURIComponent(props.storeId)}`);
 		order.value = response.data;
-		defaultExpandedRounds(response.data);
 		restoreTableDraft(response.data.id);
 		cashTendered.value = Number(response.data.total || 0);
 		view.value = "quick";
@@ -586,6 +658,13 @@ async function addProduct(product: Product) {
 	const existing = tableDraft.value.find((item) => item.product_id === product.id && !item.note);
 	if (existing) existing.qty += 1;
 	else tableDraft.value.unshift({ product_id: product.id, qty: 1 });
+}
+
+function productCartQty(productId: string) {
+	const entries = order.value ? tableDraft.value : localCart.value;
+	return entries
+		.filter((item) => item.product_id === productId && !item.is_gift)
+		.reduce((total, item) => total + Number(item.qty || 0), 0);
 }
 
 function applyLocalPromotion(promotion: AvailablePromotion) {
@@ -725,10 +804,53 @@ async function removeItem(item: OrderItem) {
 	finally { endItemMutation(item.id); actionPending.value = false; }
 }
 
+function showTables() {
+	tableSelectionMode.value = "browse";
+	selectedTable.value = null;
+	guestPanel.value = false;
+	mobileTicketOpen.value = false;
+	view.value = "tables";
+}
+
+function beginMoveTable() {
+	if (!order.value) return showTables();
+	tableSelectionMode.value = "move";
+	selectedTable.value = null;
+	guestPanel.value = false;
+	mobileTicketOpen.value = false;
+	view.value = "tables";
+}
+
+function beginCartTable() {
+	if (order.value || !localCart.value.length) return;
+	tableSelectionMode.value = "cart";
+	selectedTable.value = null;
+	guestPanel.value = false;
+	mobileTicketOpen.value = false;
+	moreActionsOpen.value = false;
+	view.value = "tables";
+}
+
+function cancelTableSelection() {
+	tableSelectionMode.value = "browse";
+	selectedTable.value = null;
+	guestPanel.value = false;
+	activeZone.value = "";
+	view.value = "quick";
+}
+
 function chooseTable(table: DiningTable) {
 	if (table.order_id) {
-		if (order.value && table.order_id !== order.value.id) {
-			toast.error({ title: "โต๊ะนี้มีออเดอร์แล้ว", description: "พักออเดอร์ปัจจุบันก่อนเปิดออเดอร์ของโต๊ะอื่น" });
+		if (tableSelectionMode.value === "move" || tableSelectionMode.value === "cart") {
+			if (tableSelectionMode.value === "cart") {
+				toast.error({ title: "โต๊ะนี้มีออเดอร์แล้ว", description: "เลือกโต๊ะว่างสำหรับตะกร้านี้" });
+				return;
+			}
+			if (order.value && table.order_id === order.value.id) {
+				toast.info({ title: "โต๊ะปัจจุบัน", description: "เลือกโต๊ะว่างเพื่อย้ายออเดอร์" });
+			} else {
+				toast.error({ title: "โต๊ะนี้มีออเดอร์แล้ว", description: "เลือกโต๊ะว่างสำหรับย้ายออเดอร์" });
+			}
 			return;
 		}
 		void loadOrder(table.order_id);
@@ -744,25 +866,40 @@ async function confirmTable() {
 	actionPending.value = true;
 	try {
 		const guestPayload = guestCount.value ? { guest_count: guestCount.value } : {};
-		if (order.value) {
+		if (tableSelectionMode.value === "move" && order.value) {
 			const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/service-mode`, {
 				method: "POST", body: { store_id: props.storeId, service_mode: "dine-in", table_id: selectedTable.value.id, expected_version: order.value.version, ...guestPayload },
 			});
 			order.value = response.data;
 		} else {
-			const cartSnapshot = [ ...localCart.value ];
+			const transferringCart = tableSelectionMode.value === "cart";
+			const cartSnapshot: TableDraftEntry[] = transferringCart
+				? localItems.value.map((item) => ({ product_id: item.product_id, qty: item.qty, note: item.note || null, is_gift: Boolean(item.is_gift), promotion_id: item.promotion_id || null }))
+				: [];
 			const response = await apiFetch<Envelope<Order>>("/pos/restaurant/orders", {
 				method: "POST", body: { store_id: props.storeId, service_mode: "dine-in", table_id: selectedTable.value.id, ...guestPayload },
 			});
 			order.value = response.data;
 			tableDraft.value = cartSnapshot;
-			localCart.value = [];
+			if (transferringCart) {
+				localCart.value = [];
+				selectedPromotionIds.value = [];
+				selectedPromotionCounts.value = {};
+			}
 		}
+		tableSelectionMode.value = "browse";
 		guestPanel.value = false;
 		view.value = "quick";
+		// The order is ready for local item entry; dashboard refreshes are informational.
+		actionPending.value = false;
 		await loadDashboard();
 		toast.success({ title: `ผูกออเดอร์กับโต๊ะ ${selectedTable.value.name} แล้ว` });
-	} catch (error) { toast.error({ title: "เลือกโต๊ะไม่สำเร็จ", description: localizedApiError(error) }); await refreshOrder(); }
+	} catch (error) {
+		const description = localizedApiError(error);
+		toast.error({ title: tableSelectionMode.value === "move" ? "เปลี่ยนโต๊ะไม่สำเร็จ" : "เลือกโต๊ะไม่สำเร็จ", description });
+		if (description.includes("open restaurant order not found")) tableSelectionMode.value = "browse";
+		await loadDashboard();
+	}
 	finally { actionPending.value = false; }
 }
 
@@ -789,7 +926,6 @@ async function sendKitchen(options: { print: boolean; park: boolean; pay: boolea
 			method: "POST", headers: { "Idempotency-Key": sendKey }, body: { store_id: props.storeId, expected_version: order.value.version, items: tableDraft.value.map(({ product_id, qty, note, is_gift, promotion_id }) => ({ product_id, qty, note: note || null, is_gift: Boolean(is_gift), promotion_id: promotion_id || null })) },
 		});
 		order.value = response.data;
-		defaultExpandedRounds(response.data);
 		clearTableDraft(response.data.id);
 		sendKey = "";
 		const round = Number(response.data.rounds.at(-1)?.round_no || 0);
@@ -811,12 +947,13 @@ function openCheckout(dispatch: "existing" | "direct") {
 	if (checkoutSuccessTimer) clearTimeout(checkoutSuccessTimer);
 	checkoutStep.value = "payment";
 	checkoutReceipt.value = null;
+	completedOrder.value = null;
 	checkoutDispatch.value = dispatch;
 	cashTendered.value = 0;
 	cashTenderedHistory.value = [];
-	paymentSlipUrl.value = "";
 	checkoutKey ||= crypto.randomUUID();
 	checkoutPanel.value = true;
+	if (!paymentAccounts.value.length) void loadPaymentAccounts();
 }
 
 function setCashTendered(amount: number) {
@@ -864,13 +1001,29 @@ function finishCheckoutFlow() {
 	checkoutPanel.value = false;
 	checkoutStep.value = "payment";
 	checkoutReceipt.value = null;
+	completedOrder.value = null;
 	order.value = null;
 	mobileTicketOpen.value = false;
 	void loadDashboard();
 }
 
+function releaseCompletedOrder(completed: Order) {
+	clearTableDraft(completed.id);
+	openOrders.value = openOrders.value.filter((opened) => opened.id !== completed.id);
+	tables.value = tables.value.map((table) => table.order_id === completed.id
+		? { ...table, order_id: null, order_status: null, total: 0, guest_count: undefined, guest_count_specified: undefined, opened_at: undefined, draft_count: 0 }
+		: table);
+	order.value = null;
+	mobileTicketOpen.value = false;
+	view.value = completed.service_mode === "dine-in" ? "tables" : "quick";
+	void loadDashboard();
+}
+
 function printReceiptAndFinish() {
-	printDocument("receipt");
+	if (!canPrintDocument("receipt")) return toast.error({ title: "ไม่มีสิทธิ์พิมพ์เอกสาร" });
+	printKind.value = "receipt";
+	printRound.value = null;
+	nextTick(() => window.print());
 	setTimeout(finishCheckoutFlow, 350);
 }
 
@@ -888,9 +1041,10 @@ async function checkout() {
 		if (!order.value) {
 			const response = await apiFetch<Envelope<CheckoutResult>>("/pos/checkout", {
 				method: "POST", headers: { "Idempotency-Key": checkoutKey },
-				body: { store_id: props.storeId, service_mode: "pickup", payment_method: paymentMethod.value, items: localCart.value.map(({ product_id, qty }) => ({ product_id, qty })), promotion_ids: checkoutPromotionIds.value, amount_tendered: paymentMethod.value === "cash" ? cashTendered.value : null, payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null, payment_slip_url: paymentSlipUrl.value || null },
+				body: { store_id: props.storeId, service_mode: "pickup", payment_method: paymentMethod.value, items: localCart.value.map(({ product_id, qty }) => ({ product_id, qty })), promotion_ids: checkoutPromotionIds.value, amount_tendered: paymentMethod.value === "cash" ? cashTendered.value : null, payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null },
 			});
 			checkoutReceipt.value = response.data;
+			if (pickupQueueEnabled.value) void loadPickupQueue();
 			checkoutKey = "";
 			localCart.value = [];
 			selectedPromotionIds.value = [];
@@ -903,9 +1057,10 @@ async function checkout() {
 			method: "POST", headers: { "Idempotency-Key": checkoutKey },
 			body: { store_id: props.storeId, expected_version: order.value.version, payment_method: paymentMethod.value, amount_tendered: paymentMethod.value === "cash" ? cashTendered.value : null, dispatch_mode: checkoutDispatch.value },
 		});
-		order.value = response.data;
+		completedOrder.value = response.data;
+		printKind.value = "receipt";
 		checkoutKey = "";
-		clearTableDraft(response.data.id);
+		releaseCompletedOrder(response.data);
 		toast.success({ title: "ชำระเงินและปิดออเดอร์แล้ว" });
 		showCheckoutReceipt();
 	} catch (error) {
@@ -969,21 +1124,34 @@ async function applyPromotion(promotion: Promotion) {
 	finally { actionPending.value = false; }
 }
 
-async function cancelSentItem() {
-	if (!order.value || !cancellingItem.value || !cancelReason.value.trim()) return;
+function editSentItem(item: OrderItem) {
+	cancellingItem.value = item;
+	sentItemQty.value = Number(item.qty || 0);
+	sentItemReasonPreset.value = "";
+	cancelReason.value = "";
+	sentItemPanel.value = true;
+}
+
+async function adjustSentItem() {
+	if (!order.value || !cancellingItem.value || sentItemQty.value >= Number(cancellingItem.value.qty)) return;
 	actionPending.value = true;
 	try {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/items/${cancellingItem.value.id}/cancel`, {
-			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, reason: cancelReason.value.trim() },
+			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, qty: sentItemQty.value, reason: (sentItemReasonPreset.value === "ອື່ນໆ" ? cancelReason.value : sentItemReasonPreset.value).trim() || undefined },
 		});
 		order.value = response.data;
 		sentItemPanel.value = false;
-	} catch (error) { toast.error({ title: "ยกเลิกรายการไม่สำเร็จ", description: localizedApiError(error) }); await refreshOrder(); }
+		toast.success({ title: sentItemQty.value === 0 ? "ຍົກເລີກລາຍການແລ້ວ" : "ແກ້ໄຂຈຳນວນແລ້ວ" });
+	} catch (error) { toast.error({ title: "ແກ້ໄຂລາຍການບໍ່ສຳເລັດ", description: localizedApiError(error) }); await refreshOrder(); }
 	finally { actionPending.value = false; }
 }
 
 async function markReady() {
 	if (!order.value || draftItems.value.length) return;
+	if (order.value.status === "ready_to_pay") {
+		printDocument("check");
+		return;
+	}
 	actionPending.value = true;
 	try {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/ready`, { method: "POST", body: { store_id: props.storeId, expected_version: order.value.version } });
@@ -993,11 +1161,25 @@ async function markReady() {
 	finally { actionPending.value = false; }
 }
 
+function openEstimate() {
+	if (!localCart.value.length) return;
+	moreActionsOpen.value = false;
+	printDocument("estimate");
+}
+
 function refreshOrder() { if (order.value) return loadOrder(order.value.id); }
-function printDocument(kind: "kitchen" | "check" | "receipt", round?: number) {
-	if (!can("pos.restaurant.print")) return toast.error({ title: "ไม่มีสิทธิ์พิมพ์เอกสาร" });
+function canPrintDocument(kind: "kitchen" | "check" | "estimate" | "receipt") {
+	// Kitchen slips only contain order data already visible on this POS screen.
+	return kind !== "receipt" || can("pos.restaurant.print");
+}
+function printDocument(kind: "kitchen" | "check" | "estimate" | "receipt", round?: number) {
+	if (!canPrintDocument(kind)) return toast.error({ title: "ไม่มีสิทธิ์พิมพ์เอกสาร" });
 	printKind.value = kind;
 	printRound.value = round || null;
+	printPreviewOpen.value = true;
+}
+function confirmPrintDocument() {
+	printPreviewOpen.value = false;
 	nextTick(() => window.print());
 }
 
@@ -1006,7 +1188,6 @@ watch(() => props.storeId, () => {
 	mobileTicketOpen.value = false;
 	view.value = "quick";
 	restoreLocalCart();
-	void loadPaymentAccounts();
 	void loadDashboard();
 	void evaluateLocalPromotions();
 }, { immediate: true });
@@ -1018,6 +1199,9 @@ watch(localCart, () => {
 }, { deep: true });
 watch(selectedPromotionIds, persistLocalCart, { deep: true });
 watch(selectedPromotionCounts, persistLocalCart, { deep: true });
+watch(promotionPanelOpen, (opened) => {
+	if (opened) void evaluateLocalPromotions();
+});
 watch(tableDraft, () => {
 	persistTableDraft();
 	if (promotionTimer) clearTimeout(promotionTimer);
@@ -1032,6 +1216,7 @@ function syncTicketScrollLock() {
 watch(mobileTicketOpen, syncTicketScrollLock);
 watch(view, (nextView) => {
 	if (nextView !== "quick") mobileTicketOpen.value = false;
+	tableActionsOpen.value = false;
 });
 
 onMounted(() => {
@@ -1054,14 +1239,20 @@ onBeforeUnmount(() => {
 				<div class="relative flex items-center gap-2">
 					<div class="restaurant-pos-tab-scroll flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
 						<AppButton class="shrink-0" size="sm" :color="view === 'quick' ? 'primary' : 'neutral'" :variant="view === 'quick' ? 'solid' : 'soft'" icon="i-heroicons-bolt" @click="view = 'quick'">{{ t('restaurantPos.quickSale') }}</AppButton>
-						<AppButton class="shrink-0" size="sm" :color="view === 'tables' ? 'primary' : 'neutral'" :variant="view === 'tables' ? 'solid' : 'soft'" icon="i-heroicons-table-cells" @click="view = 'tables'">{{ t('restaurantPos.selectTable') }}</AppButton>
+						<AppButton class="shrink-0" size="sm" :color="view === 'tables' ? 'primary' : 'neutral'" :variant="view === 'tables' ? 'solid' : 'soft'" icon="i-heroicons-table-cells" @click="showTables">{{ t('restaurantPos.selectTable') }}</AppButton>
 						<AppButton class="shrink-0" size="sm" :color="view === 'open' ? 'primary' : 'neutral'" :variant="view === 'open' ? 'solid' : 'soft'" icon="i-heroicons-queue-list" @click="view = 'open'">{{ t('restaurantPos.openOrders') }} <span v-if="openOrders.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ openOrders.length }}</span></AppButton>
+						<AppButton v-if="pickupQueueEnabled" class="shrink-0" size="sm" :color="view === 'pickupQueue' ? 'primary' : 'neutral'" :variant="view === 'pickupQueue' ? 'solid' : 'soft'" icon="i-lucide-list-ordered" @click="view = 'pickupQueue'">{{ t('restaurantPos.pickupQueue') }} <span v-if="pickupQueue.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ pickupQueue.length }}</span></AppButton>
 					</div>
-					<AppButton class="shrink-0 shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-gift" aria-label="โปรโมชั่น" title="โปรโมชั่น" @click="promotionPanelOpen = true">
-						<span class="hidden sm:inline">โปรโมชั่น</span>
+					<AppButton v-if="view === 'quick'" class="shrink-0 shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-gift" :aria-label="t('restaurantPos.promotions')" :title="t('restaurantPos.promotions')" @click="promotionPanelOpen = true">
+						<span class="hidden sm:inline">{{ t('restaurantPos.promotions') }}</span>
 						<span v-if="promotionOptionCount" class="ml-1 hidden min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold tabular-nums sm:inline-flex">{{ promotionOptionCount }}</span>
 					</AppButton>
-					<AppButton class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-path" :loading="pending" :aria-label="t('restaurantPos.reload')" :title="t('restaurantPos.reload')" @click="loadDashboard" />
+					<AppButton v-else-if="view === 'pickupQueue'" class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-clock" :aria-label="t('pickupQueueHistory.title')" :title="t('pickupQueueHistory.title')" @click="openPickupQueueHistory">
+						<span class="hidden sm:inline">{{ t('pickupQueueHistory.title') }}</span>
+					</AppButton>
+					<AppButton class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-path" :loading="pending" :aria-label="t('restaurantPos.reload')" :title="t('restaurantPos.reload')" @click="loadDashboard">
+						<span class="hidden lg:inline">{{ t('restaurantPos.reload') }}</span>
+					</AppButton>
 					<AppInlineLoadingBar
 						v-if="pending && products.length"
 						minimal
@@ -1073,40 +1264,54 @@ onBeforeUnmount(() => {
 					<section class="rounded-md border border-neutral-200 bg-white p-3"><USkeleton class="h-10 w-full rounded-md" /><div class="mt-3 grid content-start grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"><div v-for="index in 10" :key="index" class="min-h-[118px] rounded-md border border-neutral-100 p-2"><div class="flex gap-2"><USkeleton class="size-10 shrink-0 rounded-md" /><div class="flex-1 space-y-2"><USkeleton class="h-3.5 w-4/5" /><USkeleton class="h-2.5 w-2/5" /></div></div><USkeleton class="mt-5 h-3.5 w-2/5" /><USkeleton class="mt-1.5 h-3.5 w-3/5" /></div></div></section>
 					<aside class="hidden rounded-md border border-neutral-200 bg-white p-3 lg:block"><USkeleton class="h-5 w-32" /><USkeleton class="mt-2 h-3 w-52" /><USkeleton class="mt-6 h-20 w-full rounded-md" /><USkeleton class="mt-3 h-11 w-full rounded-md" /></aside>
 				</div>
-				<div v-else-if="loadError && !products.length" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-red-200 bg-red-50 p-8 text-center"><UIcon name="i-heroicons-exclamation-triangle" class="size-9 text-red-600" /><h2 class="mt-3 font-semibold text-red-950">{{ t('restaurantPos.loadFailed') }}</h2><p class="mt-1 text-sm text-red-700">{{ loadError }}</p><AppButton class="mt-4" color="error" variant="soft" @click="loadDashboard">{{ t('restaurantPos.retry') }}</AppButton></div>
-
 				<div v-else-if="view === 'quick'" class="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
 					<section class="min-h-0 rounded-md border border-neutral-200 bg-white p-3 pb-24 lg:flex lg:flex-col lg:pb-3">
-						<div v-if="order?.service_mode === 'dine-in'" class="mb-3 overflow-hidden rounded-md border border-emerald-300 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-100">
-							<div class="flex flex-wrap items-center justify-between gap-2 border-l-[6px] border-emerald-600 px-3 py-2">
+						<div v-if="order?.service_mode === 'dine-in'" class="relative mb-2 overflow-visible rounded-md border border-emerald-300 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-100 lg:mb-3">
+							<div class="flex items-center justify-between gap-2 border-l-4 border-emerald-600 px-2.5 py-2 lg:border-l-[6px] lg:px-3">
 								<div class="flex min-w-0 items-center gap-2.5">
-									<span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white shadow-sm shadow-emerald-900/10">
+									<span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white shadow-sm shadow-emerald-900/10 lg:size-9">
 										<UIcon name="i-heroicons-table-cells" class="size-4" />
 									</span>
 									<div class="min-w-0">
 										<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-											<p class="truncate text-sm font-bold text-emerald-950">ກຳລັງຂາຍໃຫ້ໂຕະ {{ order.zone_name }} · {{ order.table_name }}</p>
-											<UBadge color="success" variant="soft">ເປີດຢູ່</UBadge>
+											<p class="truncate text-sm font-bold text-emerald-950">{{ t('restaurantPos.sellingTable', { table: `${order.zone_name} · ${order.table_name}` }) }}</p>
+											<UBadge color="success" variant="soft">{{ t('restaurantPos.open') }}</UBadge>
 										</div>
 										<p class="mt-0.5 text-xs text-emerald-700">{{ displayGuestCount(order.guest_count, order.guest_count_specified) }} · {{ elapsed(order.opened_at) }}</p>
 									</div>
 								</div>
-								<div class="grid w-full grid-cols-3 gap-2 sm:w-auto sm:grid-cols-none sm:grid-flow-col">
-									<AppButton class="min-h-9 border border-emerald-200 bg-white px-3 text-emerald-800 shadow-sm hover:bg-emerald-50" size="sm" color="neutral" variant="ghost" icon="i-heroicons-table-cells" @click="mobileTicketOpen = false; view = 'tables'">ປ່ຽນໂຕະ</AppButton>
-									<AppButton class="min-h-9 border border-sky-200 bg-sky-50 px-3 text-sky-800 shadow-sm hover:bg-sky-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bolt" @click="parkOrder">ຂາຍດ່ວນ</AppButton>
-									<AppButton class="min-h-9 border border-amber-200 bg-amber-50 px-3 text-amber-800 shadow-sm hover:bg-amber-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bookmark" @click="parkOrder">ພັກບິນ</AppButton>
+								<div class="hidden grid-cols-none grid-flow-col gap-2 lg:grid">
+									<AppButton class="min-h-9 border border-sky-200 bg-sky-50 px-3 text-sky-800 shadow-sm hover:bg-sky-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bolt" @click="parkOrder">{{ t('restaurantPos.quickSale') }}</AppButton>
+									<AppButton class="min-h-9 border border-emerald-200 bg-white px-3 text-emerald-800 shadow-sm hover:bg-emerald-50" size="sm" color="neutral" variant="ghost" icon="i-heroicons-table-cells" @click="beginMoveTable">{{ t('restaurantPos.moveTable') }}</AppButton>
+									<AppButton class="min-h-9 border border-amber-200 bg-amber-50 px-3 text-amber-800 shadow-sm hover:bg-amber-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bookmark" @click="parkOrder">{{ t('restaurantPos.parkOrder') }}</AppButton>
 								</div>
+								<AppButton class="shrink-0 lg:hidden" size="sm" color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.tableActions')" @click="tableActionsOpen = !tableActionsOpen" />
+							</div>
+							<div v-if="tableActionsOpen" class="absolute right-2 top-[calc(100%-2px)] z-40 w-52 overflow-hidden rounded-md border border-neutral-200 bg-white p-1.5 shadow-xl lg:hidden">
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-sky-800 hover:bg-sky-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bolt" class="size-4" />ຂາຍດ່ວນ</button>
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-emerald-800 hover:bg-emerald-50" @click="tableActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4" />ປ່ຽນໂຕະ</button>
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-800 hover:bg-amber-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark" class="size-4" />ພັກບິນ</button>
 							</div>
 						</div>
-						<UInput v-model="search" class="w-full shrink-0" size="lg" icon="i-heroicons-magnifying-glass" :placeholder="t('restaurantPos.search')" />
-						<div class="mt-3 grid content-start grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3 lg:min-h-0 lg:flex-1 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+						<div class="sticky top-0 z-20 -mx-1 bg-white/95 px-1 pb-2 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
+							<UInput v-model="search" class="w-full shrink-0" size="lg" icon="i-heroicons-magnifying-glass" :placeholder="t('restaurantPos.search')" />
+						</div>
+						<div class="mt-1 grid content-start grid-cols-2 gap-2 overflow-y-auto sm:mt-3 sm:grid-cols-3 lg:min-h-0 lg:flex-1 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+							<div v-if="loadError && !products.length" class="col-span-full flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-amber-300 bg-amber-50/40 p-8 text-center">
+								<span class="flex size-11 items-center justify-center rounded-md border border-amber-200 bg-white text-amber-600 shadow-sm">
+									<UIcon name="i-heroicons-wifi" class="size-5" />
+								</span>
+								<h2 class="mt-3 font-semibold text-stone-900">{{ t('restaurantPos.loadFailed') }}</h2>
+								<p class="mt-1 max-w-md text-sm text-stone-500">{{ locale === 'lo' ? 'ອາດເກີດຈາກສັນຍານບໍ່ດີ ຫຼື server ບໍ່ພ້ອມ ກະລຸນາລອງໃໝ່' : 'The connection may be unstable or the server may be unavailable. Please try again.' }}</p>
+								<AppButton class="mt-4" color="success" variant="solid" icon="i-heroicons-arrow-path" :loading="pending" @click="loadDashboard">{{ t('restaurantPos.retry') }}</AppButton>
+							</div>
 							<article
 								v-for="product in filteredProducts"
 								:key="product.id"
-								class="min-h-[118px] self-start rounded-md border bg-white p-2 shadow-sm transition hover:border-primary-300 hover:shadow-md"
+								class="relative min-h-[108px] self-start rounded-md border bg-white p-2 shadow-sm transition hover:border-primary-300 hover:shadow-md sm:min-h-[118px]"
 								:class="isProductUnavailable(product) ? 'border-neutral-200 opacity-65 grayscale-[0.35]' : 'border-neutral-200'"
 							>
-								<button class="flex min-h-[100px] w-full flex-col text-left disabled:cursor-wait disabled:opacity-60" :disabled="Boolean(order) && actionPending" @click="addProduct(product)">
+								<button type="button" class="flex min-h-[90px] w-full touch-manipulation flex-col text-left disabled:cursor-wait disabled:opacity-60 sm:min-h-[100px]" :disabled="Boolean(order) && actionPending" @click="addProduct(product)">
 									<div class="flex min-w-0 items-start gap-2">
 										<div class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100">
 											<img
@@ -1133,6 +1338,9 @@ onBeforeUnmount(() => {
 										</UBadge>
 									</div>
 								</button>
+								<span v-if="productCartQty(product.id)" class="pointer-events-none absolute right-1.5 top-1.5 flex min-w-5 items-center justify-center rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white shadow-sm">
+									{{ productCartQty(product.id) }}
+								</span>
 								<AppButton v-if="product.inventory_mode === 'untracked' && can('products.update')" class="mt-1.5" block size="xs" :color="product.manual_sold_out ? 'success' : 'neutral'" variant="soft" @click="toggleAvailability(product)">
 									{{ product.manual_sold_out ? t('restaurantPos.available') : t('restaurantPos.soldOut') }}
 								</AppButton>
@@ -1140,10 +1348,10 @@ onBeforeUnmount(() => {
 						</div>
 					</section>
 
-					<button class="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-neutral-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-left shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur lg:hidden" @click="mobileTicketOpen = true"><div><p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">{{ t('restaurantPos.quickCart') }}</p><p class="mt-0.5 text-sm text-stone-600">{{ t('common.itemCount', { count: cartItemCount }) }}</p></div><div class="flex items-center gap-3"><strong class="text-lg tabular-nums">{{ money(displayTotal) }}</strong><span class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white">ดูบิล</span></div></button>
+					<button v-if="view === 'quick'" class="restaurant-mobile-ticket-bar fixed inset-x-2 bottom-2 z-30 flex min-h-[64px] items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white/95 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-left shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur lg:hidden" @click="mobileTicketOpen = true"><div class="min-w-0"><p class="truncate text-xs font-semibold text-stone-800">{{ order ? orderLabel : t('restaurantPos.quickCart') }}</p><p class="mt-0.5 text-xs text-stone-500">{{ t('common.itemCount', { count: cartItemCount }) }}</p></div><div class="flex shrink-0 items-center gap-3"><strong class="text-base tabular-nums sm:text-lg">{{ money(displayTotal) }}</strong><span class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white">{{ t('restaurantPos.viewBill') }}</span></div></button>
 
-					<div class="fixed inset-0 z-50 items-end bg-black/45 p-3 lg:static lg:z-auto lg:contents lg:bg-transparent lg:p-0" :class="mobileTicketOpen ? 'flex' : 'hidden lg:contents'" @click.self="mobileTicketOpen = false">
-					<aside class="flex max-h-[88dvh] w-full min-h-0 flex-col overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl lg:max-h-none lg:shadow-none">
+					<div class="fixed inset-0 z-50 items-end bg-black/45 p-0 sm:p-3 lg:static lg:z-auto lg:contents lg:bg-transparent lg:p-0" :class="mobileTicketOpen ? 'flex' : 'hidden lg:contents'" @click.self="mobileTicketOpen = false">
+					<aside class="flex max-h-[92dvh] w-full min-h-0 flex-col overflow-hidden rounded-t-md border border-neutral-200 bg-white shadow-2xl sm:rounded-md lg:max-h-none lg:shadow-none">
 						<header class="border-b p-3">
 							<div class="flex items-start justify-between gap-2">
 								<template v-if="order">
@@ -1152,7 +1360,7 @@ onBeforeUnmount(() => {
 										<p class="mt-0.5 truncate text-xs text-stone-500">{{ order.service_mode === 'pickup' ? t('restaurantPos.takeaway') : t('restaurantPos.dineIn') }} · {{ elapsed(order.opened_at) }}</p>
 									</div>
 									<div class="flex shrink-0 items-center gap-2">
-										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">ລ້າງ</AppButton>
+										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">{{ t('restaurantPos.clear') }}</AppButton>
 										<UBadge :color="order.status === 'ready_to_pay' ? 'warning' : 'success'" variant="soft">{{ order.status === 'ready_to_pay' ? t('restaurantPos.readyToPay') : t('restaurantPos.open') }}</UBadge>
 										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" aria-label="ปิดบิล" @click="mobileTicketOpen = false" />
 									</div>
@@ -1163,8 +1371,8 @@ onBeforeUnmount(() => {
 										<p class="text-xs text-stone-500">{{ t('restaurantPos.quickCartHint') }}</p>
 									</div>
 									<div class="flex shrink-0 items-center gap-2">
-										<UBadge v-if="selectedPromotionTotal" color="success" variant="soft">{{ selectedPromotionTotal }} เลือกแล้ว</UBadge>
-										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">ລ້າງ</AppButton>
+										<UBadge v-if="selectedPromotionTotal" color="success" variant="soft">{{ t('restaurantPos.selectedCount', { count: selectedPromotionTotal }) }}</UBadge>
+										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">{{ t('restaurantPos.clear') }}</AppButton>
 										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" aria-label="ปิดบิล" @click="mobileTicketOpen = false" />
 									</div>
 								</template>
@@ -1195,7 +1403,7 @@ onBeforeUnmount(() => {
 													<UIcon v-else name="i-heroicons-cube" class="size-4" />
 												</div>
 												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm font-semibold">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· ฟรี</span></p>
+											<p class="truncate text-sm font-semibold">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ t('restaurantPos.free') }}</span></p>
 													<p v-if="item.note" class="mt-0.5 truncate text-[11px] text-stone-500">{{ item.note }}</p>
 												</div>
 											</div>
@@ -1213,25 +1421,25 @@ onBeforeUnmount(() => {
 									</div>
 								</div>
 							</section>
-							<section v-for="([round, items]) in sentGroups" :key="round" class="rounded-md border border-neutral-200">
-								<button class="flex w-full items-center justify-between px-2.5 py-2 text-left" @click="toggleRound(round)">
-									<span class="text-xs font-semibold text-stone-600">{{ roundMode(round) === 'direct' ? 'ขายตรง' : `บันทึกรอบ ${round}` }} · {{ items.length }} รายการ</span>
-									<UIcon :name="isRoundExpanded(round) ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="size-4 text-stone-400" />
-								</button>
-								<div v-if="isRoundExpanded(round)" class="divide-y divide-neutral-100 border-t">
+							<section v-for="([round, items], roundIndex) in sentGroups" :key="round" class="rounded-md border" :class="roundIndex === 0 ? 'border-emerald-200 bg-emerald-50/20' : 'border-neutral-200 bg-white'">
+								<div class="flex w-full items-center justify-between gap-2 px-2.5 py-2">
+									<span class="text-xs font-semibold text-stone-600">{{ roundMode(round) === 'direct' ? t('restaurantPosCompact.directSale') : t('restaurantPosCompact.kitchenRound', { round }) }} · {{ t('common.itemCount', { count: items.length }) }}</span>
+									<span v-if="roundIndex === 0" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{{ t('restaurantPos.latest') }}</span>
+								</div>
+								<div class="divide-y divide-neutral-100 border-t">
 									<div v-for="item in items" :key="item.id" class="flex items-center justify-between gap-2 px-2.5 py-2 text-sm">
 										<div class="flex min-w-0 flex-1 items-center gap-2">
 											<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-neutral-100 bg-neutral-50 text-stone-400">
 												<img v-if="productImageForItem(item)" :src="productImageForItem(item) || undefined" :alt="item.name" class="h-full w-full object-cover">
 												<UIcon v-else name="i-heroicons-cube" class="size-4" />
 											</div>
-											<span class="min-w-0 flex-1 truncate">{{ item.name }} <em v-if="item.is_gift" class="text-emerald-600">ฟรี</em></span>
+											<span class="min-w-0 flex-1 truncate">{{ item.name }} <em v-if="item.is_gift" class="text-emerald-600">{{ t('restaurantPos.free') }}</em></span>
 										</div>
 										<div class="shrink-0 text-right">
 											<p class="font-semibold tabular-nums">{{ money(item.line_total) }}</p>
 											<p class="text-xs text-stone-500">× {{ item.qty }}</p>
 										</div>
-										<AppButton v-if="can('pos.restaurant.cancel_sent')" size="xs" color="error" variant="ghost" icon="i-heroicons-x-mark" @click="cancellingItem = item; cancelReason = ''; sentItemPanel = true" />
+									<AppButton v-if="!item.is_gift" size="xs" color="primary" variant="soft" icon="i-heroicons-pencil-square" aria-label="ແກ້ໄຂຈຳນວນ" title="ແກ້ໄຂຈຳນວນ" @click="editSentItem(item)" />
 									</div>
 									<AppButton v-if="roundMode(round) === 'kitchen'" class="m-2" size="xs" color="neutral" variant="soft" icon="i-heroicons-printer" @click="printDocument('kitchen', round)">พิมพ์รายการ</AppButton>
 								</div>
@@ -1244,33 +1452,52 @@ onBeforeUnmount(() => {
 									<strong class="text-xl tabular-nums">{{ money(displayTotal) }}</strong>
 								</div>
 								<template v-if="!order">
-									<AppButton block color="primary" icon="i-heroicons-receipt-percent" :loading="actionPending" @click="openCheckout('direct')">{{ t('restaurantPos.payDirect') }}</AppButton>
+									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
+										<AppButton class="w-full justify-center" color="primary" :loading="actionPending" @click="openCheckout('direct')">
+											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
+										</AppButton>
+										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-table-cells" :disabled="actionPending" @click="beginCartTable">{{ t('restaurantPos.openTableWithCart') }}</AppButton>
+										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
+									</div>
 								</template>
 								<template v-else-if="draftItems.length">
-									<p v-if="hasLocalTableDraft" class="text-xs text-orange-700">ກົດບັນທຶກກ່ອນຊຳລະ ເພື່ອໃຫ້ server ກວດສະຕັອກ</p>
-									<AppButton v-if="!hasLocalTableDraft" block color="primary" icon="i-heroicons-receipt-percent" :loading="actionPending" @click="openCheckout('direct')">{{ t('restaurantPos.payDirect') }}</AppButton>
+									<div v-if="hasLocalTableDraft" class="flex min-w-0 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800" title="ມີລາຍການໃໝ່ ກະລຸນາບັນທຶກກ່ອນຊຳລະ">
+										<UIcon name="i-heroicons-exclamation-circle" class="size-3.5 shrink-0" />
+										<p class="truncate text-[11px] font-medium leading-none">ມີລາຍການໃໝ່ · ບັນທຶກກ່ອນຊຳລະ</p>
+									</div>
+									<AppButton v-if="!hasLocalTableDraft" block color="primary" :loading="actionPending" @click="openCheckout('direct')">
+										<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
+									</AppButton>
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
-										<AppButton color="primary" variant="solid" :loading="actionPending" @click="sendKitchen({ print: false, park: false, pay: false })">ບັນທຶກ</AppButton>
-										<AppButton color="neutral" variant="soft" icon="i-heroicons-receipt-percent" :disabled="hasLocalTableDraft" @click="openCheckout('existing')">ຊຳລະເງິນ</AppButton>
+										<AppButton class="w-full justify-center" color="primary" variant="solid" icon="i-heroicons-check-circle" :loading="actionPending" @click="sendKitchen({ print: false, park: false, pay: false })">{{ t('restaurantPos.save') }}</AppButton>
+										<AppButton class="w-full justify-center" color="neutral" variant="soft" :disabled="hasLocalTableDraft" @click="openCheckout('existing')">
+											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
+										</AppButton>
 										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
 								</template>
 								<template v-else>
-									<div class="grid grid-cols-[minmax(0,1fr)_44px] gap-2">
-										<AppButton color="primary" icon="i-heroicons-receipt-percent" :loading="actionPending" @click="openCheckout('existing')">ຊຳລະເງິນ</AppButton>
+									<div class="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_44px] gap-2">
+										<AppButton v-if="order.service_mode === 'dine-in'" class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-document-text" :loading="actionPending" @click="markReady">{{ t('restaurantPos.checkBill') }}</AppButton>
+										<AppButton class="w-full justify-center" color="primary" :loading="actionPending" @click="openCheckout('existing')">
+											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
+										</AppButton>
 										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
 								</template>
 							</div>
 							<div v-if="moreActionsOpen" class="absolute inset-x-3 bottom-[calc(100%-0.25rem)] z-30 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl ring-1 ring-black/5">
-								<div class="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-xs font-semibold text-stone-500">ຄຳສັ່ງເພີ່ມເຕີມ</div>
+								<div class="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-xs font-semibold text-stone-500">{{ t('restaurantPos.additionalActions') }}</div>
 								<div class="p-1.5">
-									<button v-if="draftItems.length" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-amber-50 hover:text-amber-800" @click="moreActionsOpen = false; sendKitchen({ print: false, park: true, pay: false })"><UIcon name="i-heroicons-bookmark" class="size-4 text-amber-600" />ບັນທຶກແລ້ວພັກບິນ</button>
-									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark-square" class="size-4 text-stone-500" />ພັກບິນ</button>
-									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-emerald-50 hover:text-emerald-800" @click="moreActionsOpen = false; mobileTicketOpen = false; view = 'tables'"><UIcon name="i-heroicons-table-cells" class="size-4 text-emerald-600" />{{ order.service_mode === 'pickup' ? t('restaurantPos.selectTable') : t('restaurantPos.moveTable') }}</button>
+									<button v-if="!order" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="openEstimate"><UIcon name="i-heroicons-document-text" class="size-4 text-stone-500" />{{ t('restaurantPos.printEstimate') }}</button>
+									<template v-else>
+									<button v-if="draftItems.length" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-amber-50 hover:text-amber-800" @click="moreActionsOpen = false; sendKitchen({ print: false, park: true, pay: false })"><UIcon name="i-heroicons-bookmark" class="size-4 text-amber-600" />{{ t('restaurantPos.saveAndPark') }}</button>
+									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark-square" class="size-4 text-stone-500" />{{ t('restaurantPos.parkOrder') }}</button>
+									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-emerald-50 hover:text-emerald-800" @click="moreActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4 text-emerald-600" />{{ order.service_mode === 'pickup' ? t('restaurantPos.selectTable') : t('restaurantPos.moveTable') }}</button>
 									<button v-if="order.service_mode === 'dine-in'" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; changeToPickup()"><UIcon name="i-heroicons-shopping-bag" class="size-4 text-stone-500" />{{ t('restaurantPos.changeToTakeaway') }}</button>
 									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; refreshOrder()"><UIcon name="i-heroicons-arrow-path" class="size-4 text-stone-500" />{{ t('restaurantPos.reload') }}</button>
 									<button class="mt-1 flex min-h-10 w-full items-center gap-2 rounded-md border-t border-neutral-100 px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50" @click="moreActionsOpen = false; cancelReason = ''; cancelPanel = true"><UIcon name="i-heroicons-trash" class="size-4" />{{ t('restaurantPos.cancelOrder') }}</button>
+									</template>
 								</div>
 							</div>
 						</footer>
@@ -1278,22 +1505,59 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 
-				<div v-else-if="view === 'tables'" class="space-y-3">
-					<div v-if="order" class="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">กำลังเลือกโต๊ะให้ <strong>{{ orderLabel }}</strong> — รายการสินค้าและโปรโมชั่นเดิมจะไม่หาย</div>
+				<div v-else-if="view === 'pickupQueue'" class="min-h-0 flex-1 overflow-y-auto px-2 sm:px-3 lg:px-0">
+					<div v-if="!pickupQueue.length" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white p-8 text-center">
+						<span class="flex size-11 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><UIcon name="i-heroicons-check-circle" class="size-6" /></span>
+						<h2 class="mt-3 font-semibold text-stone-900">{{ t('restaurantPos.noPickupQueue') }}</h2><p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.noPickupQueueHint') }}</p>
+					</div>
+					<div v-else class="flex flex-wrap content-start items-stretch gap-2">
+						<article v-for="queued in pickupQueue" :key="queued.id" class="flex min-h-[190px] w-full flex-col overflow-hidden rounded-md border border-amber-200 bg-white shadow-sm sm:w-[340px]">
+							<header class="flex items-start justify-between gap-3 border-b border-amber-100 bg-amber-50/60 px-3 py-2"><div><p class="text-[11px] font-medium text-amber-700">{{ t('restaurantPos.queueNumber') }}</p><p class="text-lg font-bold leading-tight tabular-nums text-stone-950">{{ displayQueueNo(queued.queue_no) }}</p></div><div class="text-right"><p class="text-[11px] text-stone-500">{{ t('restaurantPos.waitingFor', { time: elapsed(queued.paid_at || queued.created_at) }) }}</p><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ money(queued.total) }}</p></div></header>
+							<div class="space-y-1 px-3 py-2"><div v-for="item in queued.items.slice(0, 3)" :key="item.product_id" class="flex items-start justify-between gap-3 text-sm"><span class="min-w-0 truncate">{{ item.name }}<span v-if="item.is_gift" class="ml-1 text-xs text-emerald-600">{{ t('restaurantPos.free') }}</span></span><strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong></div><button v-if="queued.items.length > 3" type="button" class="inline-flex min-h-7 items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800" @click="openPickupQueueDetail(queued)"><UIcon name="i-heroicons-eye" class="size-4" />{{ t('restaurantPos.viewBill') }} · {{ queued.items.length }}</button></div>
+							<footer class="mt-auto border-t border-neutral-100 p-2.5"><AppButton block size="sm" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === queued.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(queued.id)">{{ t('restaurantPos.customerCollected') }}</AppButton></footer>
+						</article>
+					</div>
+				</div>
+
+				<div v-else-if="view === 'tables'" class="space-y-3 px-2 sm:px-3 lg:px-0">
+					<div v-if="tableSelectionMode === 'cart'" class="flex items-center justify-between gap-3 rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-sky-950">
+						<div class="flex min-w-0 items-center gap-2.5">
+							<div class="flex size-9 shrink-0 items-center justify-center rounded-md border border-sky-200 bg-white text-sky-700">
+								<UIcon name="i-heroicons-shopping-cart" class="size-4.5" />
+							</div>
+							<div class="min-w-0">
+								<p class="truncate text-sm font-semibold">{{ t('restaurantPos.selectTableForCart', { count: cartItemCount }) }}</p>
+								<p class="truncate text-xs text-sky-700">{{ t('restaurantPos.selectTableForCartHint') }}</p>
+							</div>
+						</div>
+						<AppButton class="shrink-0" size="sm" color="neutral" variant="soft" @click="cancelTableSelection">{{ t('common.cancel') }}</AppButton>
+					</div>
+					<div v-if="tableSelectionMode === 'move' && order" class="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-emerald-950">
+						<div class="flex min-w-0 items-center gap-2.5">
+							<div class="flex size-9 shrink-0 items-center justify-center rounded-md border border-emerald-200 bg-white text-emerald-700">
+								<UIcon name="i-heroicons-arrows-right-left" class="size-4.5" />
+							</div>
+							<div class="min-w-0">
+								<p class="truncate text-sm font-semibold">{{ t('restaurantPos.selectingTableFor', { order: orderLabel }) }}</p>
+								<p class="truncate text-xs text-emerald-700">{{ t('restaurantPos.moveTableHint') }}</p>
+							</div>
+						</div>
+						<AppButton class="shrink-0" size="sm" color="neutral" variant="soft" @click="cancelTableSelection">{{ t('common.cancel') }}</AppButton>
+					</div>
 					<div v-if="zones.length" class="restaurant-pos-tab-scroll flex gap-2 overflow-x-auto">
-						<AppButton class="shrink-0" :color="!activeZone ? 'primary' : 'neutral'" :variant="!activeZone ? 'solid' : 'soft'" @click="activeZone = ''">ທັງໝົດ</AppButton>
+						<AppButton class="shrink-0" :color="!activeZone ? 'primary' : 'neutral'" :variant="!activeZone ? 'solid' : 'soft'" @click="activeZone = ''">{{ t('restaurantPos.allZones') }}</AppButton>
 						<AppButton v-for="zone in zones" :key="zone.id" class="shrink-0" :color="activeZone === zone.id ? 'primary' : 'neutral'" :variant="activeZone === zone.id ? 'solid' : 'soft'" @click="activeZone = zone.id">{{ zone.name }}</AppButton>
 					</div>
 					<div v-if="!zones.length" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white p-8 text-center">
 						<UIcon name="i-heroicons-table-cells" class="size-10 text-stone-400" />
-						<h2 class="mt-3 font-semibold">ยังไม่มีโซนและโต๊ะ</h2>
-						<p class="mt-1 text-sm text-stone-500">ยังขายด่วนและรับชำระได้ตามปกติ โดยไม่ต้องตั้งค่าโต๊ะ</p>
+						<h2 class="mt-3 font-semibold">{{ t('restaurantPos.noTablesTitle') }}</h2>
+						<p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.noTablesDescription') }}</p>
 						<div class="mt-4 flex gap-2">
-							<AppButton color="neutral" variant="soft" @click="view = 'quick'">กลับไปขายด่วน</AppButton>
-							<AppButton v-if="can('settings.restaurant.update')" to="/settings/restaurant">ตั้งค่าโต๊ะ</AppButton>
+							<AppButton color="neutral" variant="soft" @click="view = 'quick'">{{ t('restaurantPos.backToQuickSale') }}</AppButton>
+							<AppButton v-if="can('settings.restaurant.update')" to="/settings/restaurant">{{ t('restaurantPos.tableSettings') }}</AppButton>
 						</div>
 					</div>
-					<div v-else-if="!zoneTables.length" class="rounded-md border border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-stone-500">โซนนี้ยังไม่มีโต๊ะที่เปิดใช้งาน</div>
+					<div v-else-if="!zoneTables.length" class="rounded-md border border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-stone-500">{{ t('restaurantPos.emptyZone') }}</div>
 					<div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 						<button
 							v-for="table in zoneTables"
@@ -1306,7 +1570,7 @@ onBeforeUnmount(() => {
 							<div class="flex items-start justify-between gap-3 pt-1">
 								<div class="min-w-0">
 									<p class="truncate text-lg font-bold text-stone-950">{{ table.name }}</p>
-									<p class="mt-0.5 text-xs text-stone-500">{{ table.zone_name }} · {{ table.capacity }} ที่นั่ง</p>
+									<p class="mt-0.5 text-xs text-stone-500">{{ table.zone_name }} · {{ t('restaurantPos.seats', { count: table.capacity }) }}</p>
 								</div>
 								<span class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ring-1" :class="tableStatusClasses(table)">
 									<UIcon :name="table.order_id ? 'i-heroicons-user-group' : 'i-heroicons-check-circle'" class="size-3.5" />
@@ -1317,7 +1581,7 @@ onBeforeUnmount(() => {
 							<div v-if="table.order_id" class="mt-4 space-y-2">
 								<div class="flex items-end justify-between gap-2">
 									<div>
-										<p class="text-[11px] font-medium uppercase tracking-[0.12em] text-stone-400">ຍອດໂຕະ</p>
+										<p class="text-[11px] font-medium uppercase tracking-[0.12em] text-stone-400">{{ t('restaurantPos.tableTotal') }}</p>
 										<p class="mt-0.5 text-xl font-bold tabular-nums text-stone-950">{{ money(Number(table.total || 0)) }}</p>
 									</div>
 									<UIcon name="i-heroicons-chevron-right" class="size-5 text-stone-400 transition group-hover:translate-x-0.5" />
@@ -1326,26 +1590,26 @@ onBeforeUnmount(() => {
 									<span class="inline-flex items-center gap-1.5"><UIcon name="i-heroicons-clock" class="size-3.5 text-stone-400" />{{ elapsed(table.opened_at) }}</span>
 									<span class="inline-flex items-center gap-1.5"><UIcon name="i-heroicons-users" class="size-3.5 text-stone-400" />{{ displayGuestCount(table.guest_count, table.guest_count_specified) }}</span>
 								</div>
-								<UBadge v-if="table.draft_count" class="mt-1 w-fit" color="warning" variant="soft">{{ table.draft_count }} ລາຍການຍັງບໍ່ບັນທຶກ</UBadge>
+								<UBadge v-if="table.draft_count" class="mt-1 w-fit" color="warning" variant="soft">{{ t('restaurantPos.unsavedCount', { count: table.draft_count }) }}</UBadge>
 							</div>
 							<div v-else class="mt-4 flex flex-1 flex-col justify-between gap-4">
 								<div class="flex min-h-14 items-center justify-center rounded-md border border-dashed border-emerald-200 bg-emerald-50/60 text-emerald-700">
 									<UIcon name="i-heroicons-plus-circle" class="size-6" />
 								</div>
 								<p class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm">
-									ເປີດໂຕະນີ້
+									{{ t('restaurantPos.openThisTable') }}
 								</p>
 							</div>
 						</button>
 					</div>
 				</div>
 
-				<div v-else class="space-y-3">
+				<div v-else class="space-y-3 px-2 sm:px-3 lg:px-0">
 					<div v-if="!openOrders.length" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white p-8 text-center">
 						<UIcon name="i-heroicons-check-circle" class="size-10 text-emerald-500" />
-						<h2 class="mt-3 font-semibold">ไม่มีออเดอร์ที่เปิด</h2>
-						<p class="mt-1 text-sm text-stone-500">ออเดอร์ที่พักไว้และโต๊ะที่ใช้งานจะแสดงที่นี่</p>
-						<AppButton class="mt-4" @click="view = 'quick'">เริ่มขายด่วน</AppButton>
+						<h2 class="mt-3 font-semibold">{{ t('restaurantPos.noOpenOrders') }}</h2>
+						<p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.noOpenOrdersDescription') }}</p>
+						<AppButton class="mt-4" @click="view = 'quick'">{{ t('restaurantPos.startQuickSale') }}</AppButton>
 					</div>
 					<div v-else class="grid max-w-5xl gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
 						<button
@@ -1363,18 +1627,18 @@ onBeforeUnmount(() => {
 									</span>
 									<div class="min-w-0">
 										<p class="truncate text-sm font-bold text-stone-950">{{ openOrderTitle(opened) }}</p>
-										<p class="mt-0.5 truncate text-xs text-stone-500">{{ opened.service_mode === 'pickup' ? 'ซื้อกลับบ้าน' : 'ทานที่ร้าน' }} · {{ elapsed(opened.opened_at) }}</p>
+										<p class="mt-0.5 truncate text-xs text-stone-500">{{ opened.service_mode === 'pickup' ? t('restaurantPos.takeaway') : t('restaurantPos.dineIn') }} · {{ elapsed(opened.opened_at) }}</p>
 									</div>
 								</div>
-								<UBadge class="shrink-0" :color="opened.status === 'ready_to_pay' ? 'warning' : 'success'" variant="soft">{{ opened.status === 'ready_to_pay' ? 'ພ້ອມຊຳລະ' : 'ເປີດຢູ່' }}</UBadge>
+								<UBadge class="shrink-0" :color="opened.status === 'ready_to_pay' ? 'warning' : 'success'" variant="soft">{{ opened.status === 'ready_to_pay' ? t('restaurantPos.readyToPay') : t('restaurantPos.open') }}</UBadge>
 							</div>
 							<div class="mt-3 flex items-end justify-between gap-3 pl-1.5">
 								<div class="flex min-w-0 flex-wrap gap-1.5">
-									<span class="rounded-md bg-white/80 px-2 py-1 text-[11px] font-medium text-stone-600 ring-1 ring-neutral-100">ຍັງບໍ່ບັນທຶກ {{ opened.draft_count }}</span>
-									<span class="rounded-md bg-white/80 px-2 py-1 text-[11px] font-medium text-stone-600 ring-1 ring-neutral-100">ບັນທຶກແລ້ວ {{ opened.sent_count }}</span>
+									<span class="rounded-md bg-white/80 px-2 py-1 text-[11px] font-medium text-stone-600 ring-1 ring-neutral-100">{{ t('restaurantPos.unsaved', { count: opened.draft_count }) }}</span>
+									<span class="rounded-md bg-white/80 px-2 py-1 text-[11px] font-medium text-stone-600 ring-1 ring-neutral-100">{{ t('restaurantPos.saved', { count: opened.sent_count }) }}</span>
 								</div>
 								<div class="shrink-0 text-right">
-									<p class="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-400">ຍອດ</p>
+									<p class="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-400">{{ t('restaurantPos.amount') }}</p>
 									<p class="text-lg font-bold tabular-nums text-stone-950">{{ money(opened.total) }}</p>
 								</div>
 							</div>
@@ -1384,6 +1648,34 @@ onBeforeUnmount(() => {
 			</div>
 		</template>
 	</AppSidebarShell>
+
+	<AppResponsivePanel v-model="pickupQueueHistoryOpen" :title="t('pickupQueueHistory.title')" :description="t('pickupQueueHistory.hint')" desktop-width="680px" desktop-placement="center" mobile-max-height="90vh" fill-mobile-height panel-class="lg:h-[560px]" content-class="flex flex-col !overflow-hidden">
+		<div class="min-h-0 flex-1">
+			<div v-if="pickupQueueHistoryPending" class="scrollbar-soft h-full space-y-2 overflow-y-auto pr-1"><USkeleton v-for="index in 3" :key="index" class="h-24 w-full rounded-md" /></div>
+			<div v-else-if="!pickupQueueHistory.length" class="flex h-full flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center">
+				<UIcon name="i-heroicons-clock" class="size-8 text-stone-300" />
+				<p class="mt-3 text-sm font-semibold text-stone-700">{{ t('pickupQueueHistory.empty') }}</p>
+			</div>
+			<div v-else class="scrollbar-soft h-full space-y-2 overflow-y-auto pr-1">
+				<button v-for="queued in pickupQueueHistory" :key="queued.id" type="button" class="w-full rounded-md border border-neutral-200 bg-white p-3 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/30" @click="openPickupQueueDetail(queued)">
+					<div class="flex items-start justify-between gap-3"><div><p class="text-xs text-stone-500">{{ t('restaurantPos.queueNumber') }}</p><p class="text-lg font-bold tabular-nums text-stone-950">{{ displayQueueNo(queued.queue_no) }}</p></div><div class="text-right"><p class="font-semibold tabular-nums text-stone-950">{{ money(queued.total) }}</p><p class="mt-0.5 text-xs text-emerald-700">{{ t('pickupQueueHistory.waitDuration', { time: queueWaitDuration(queued.paid_at || queued.created_at, queued.collected_at) }) }}</p></div></div>
+					<div class="mt-2 grid gap-1 border-t border-neutral-100 pt-2 text-xs text-stone-500 sm:grid-cols-2"><span>{{ t('pickupQueueHistory.paidAt', { time: queueHistoryTime(queued.paid_at || queued.created_at) }) }}</span><span>{{ t('pickupQueueHistory.collectedAt', { time: queueHistoryTime(queued.collected_at) }) }}</span><span v-if="queued.collected_by_name" class="sm:col-span-2">{{ t('pickupQueueHistory.handledBy', { name: queued.collected_by_name }) }}</span></div>
+				</button>
+			</div>
+		</div>
+	</AppResponsivePanel>
+
+	<AppResponsivePanel v-model="pickupQueueDetailOpen" :title="`${t('restaurantPos.queueNumber')} ${displayQueueNo(pickupQueueDetail?.queue_no)}`" :description="pickupQueueDetail ? `${pickupQueueDetail.collected_at ? t('pickupQueueHistory.collectedAt', { time: queueHistoryTime(pickupQueueDetail.collected_at) }) : t('restaurantPos.waitingFor', { time: elapsed(pickupQueueDetail.paid_at || pickupQueueDetail.created_at) })} · ${money(pickupQueueDetail.total)}` : ''" desktop-width="520px" desktop-placement="center" mobile-max-height="88vh">
+		<div v-if="pickupQueueDetail" class="flex min-h-0 flex-col gap-3">
+			<div class="scrollbar-soft max-h-[min(60vh,520px)] space-y-1.5 overflow-y-auto pr-1">
+				<div v-for="(item, index) in pickupQueueDetail.items" :key="`${item.product_id}-${index}`" class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+					<span class="min-w-0 font-medium text-stone-800">{{ item.name }}<UBadge v-if="item.is_gift" class="ml-2" color="success" variant="soft">{{ t('restaurantPos.free') }}</UBadge></span>
+					<strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong>
+				</div>
+			</div>
+			<AppButton v-if="!pickupQueueDetail.collected_at" block color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === pickupQueueDetail.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(pickupQueueDetail.id); pickupQueueDetailOpen = false">{{ t('restaurantPos.customerCollected') }}</AppButton>
+		</div>
+	</AppResponsivePanel>
 
 	<Teleport to="body">
 		<Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
@@ -1441,14 +1733,14 @@ onBeforeUnmount(() => {
 		</Transition>
 	</Teleport>
 
-	<AppResponsivePanel v-model="guestPanel" title="เลือกโต๊ะ" :description="selectedTable ? `${selectedTable.zone_name} · ${selectedTable.name}` : ''" desktop-width="520px" desktop-placement="center" mobile-max-height="88vh">
+	<AppResponsivePanel v-model="guestPanel" :title="t('restaurantPos.chooseTable')" :description="selectedTable ? `${selectedTable.zone_name} · ${selectedTable.name}` : ''" desktop-width="520px" desktop-placement="center" mobile-max-height="88vh">
 		<div class="space-y-4">
 			<div class="rounded-md border border-emerald-100 bg-emerald-50/70 p-4">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">ໂຕະ</p>
+						<p class="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">{{ t('restaurantPos.table') }}</p>
 						<h3 class="mt-1 text-xl font-bold text-emerald-950">{{ selectedTable?.name || '-' }}</h3>
-						<p class="mt-1 text-sm text-emerald-700">{{ selectedTable?.zone_name || '-' }} · {{ selectedTable?.capacity || 1 }} ที่นั่ง</p>
+						<p class="mt-1 text-sm text-emerald-700">{{ selectedTable?.zone_name || '-' }} · {{ t('restaurantPos.seats', { count: selectedTable?.capacity || 1 }) }}</p>
 					</div>
 					<UIcon name="i-heroicons-table-cells" class="size-7 text-emerald-600" />
 				</div>
@@ -1457,10 +1749,10 @@ onBeforeUnmount(() => {
 			<section class="rounded-md border border-neutral-200 bg-white p-4">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<h4 class="font-semibold text-stone-950">จำนวนลูกค้า</h4>
-						<p class="mt-1 text-sm text-stone-500">ระบุได้ถ้าต้องการ หรือไม่ระบุก็เปิดโต๊ะได้ทันที</p>
+						<h4 class="font-semibold text-stone-950">{{ t('restaurantPos.guestCount') }}</h4>
+						<p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.guestCountHint') }}</p>
 					</div>
-					<AppButton size="sm" color="neutral" :variant="guestCount === null ? 'solid' : 'soft'" @click="setGuestCount(null)">ไม่ระบุ</AppButton>
+					<AppButton size="sm" color="neutral" :variant="guestCount === null ? 'solid' : 'soft'" @click="setGuestCount(null)">{{ t('restaurantPos.unspecified') }}</AppButton>
 				</div>
 
 				<div class="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
@@ -1471,7 +1763,7 @@ onBeforeUnmount(() => {
 						:class="guestCount === null ? 'border-neutral-200 bg-neutral-50 text-stone-500' : 'border-emerald-200 bg-emerald-50 text-emerald-950'"
 						@click="setGuestCount(guestCount || selectedTable?.capacity || 1)"
 					>
-						{{ guestCount === null ? 'ไม่ระบุ' : `${guestCount} คน` }}
+						{{ guestCount === null ? t('restaurantPos.unspecified') : t('restaurantPos.people', { count: guestCount }) }}
 					</button>
 					<AppButton color="neutral" variant="soft" icon="i-heroicons-plus" :disabled="guestCount !== null && guestCount >= 100" aria-label="เพิ่มจำนวนลูกค้า" @click="setGuestCount((guestCount || 0) + 1)" />
 				</div>
@@ -1484,8 +1776,8 @@ onBeforeUnmount(() => {
 			</section>
 
 			<div class="grid grid-cols-2 gap-2">
-				<AppButton color="neutral" variant="soft" block @click="guestPanel = false">ยกเลิก</AppButton>
-				<AppButton block :loading="actionPending" @click="confirmTable">ยืนยันโต๊ะ</AppButton>
+				<AppButton color="neutral" variant="soft" block @click="guestPanel = false">{{ t('common.cancel') }}</AppButton>
+				<AppButton block :loading="actionPending" @click="confirmTable">{{ t('restaurantPos.confirmTable') }}</AppButton>
 			</div>
 		</div>
 	</AppResponsivePanel>
@@ -1501,8 +1793,8 @@ onBeforeUnmount(() => {
 			<div class="grid size-16 place-items-center rounded-full bg-white shadow-sm">
 				<Loader class="size-8 animate-spin text-emerald-600" :stroke-width="2.4" />
 			</div>
-			<h3 class="mt-5 text-lg font-bold text-emerald-900">ກຳລັງຊຳລະ...</h3>
-			<p class="mt-1 max-w-xs text-sm text-emerald-700">ລະບົບກຳລັງກວດສະຕັອກ, ຄິດ VAT ແລະ ປິດການຂາຍ</p>
+			<h3 class="mt-5 text-lg font-bold text-emerald-900">{{ t('posPanels.processing') }}...</h3>
+			<p class="mt-1 max-w-xs text-sm text-emerald-700">{{ t('posPanels.processingHint') }}</p>
 		</div>
 		<div v-else-if="checkoutStep === 'success'" class="flex min-h-[326px] flex-col items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-6 py-8 text-center">
 			<div class="checkout-success-burst">
@@ -1510,12 +1802,12 @@ onBeforeUnmount(() => {
 					<UIcon name="i-heroicons-check" class="checkout-success-check" />
 				</div>
 			</div>
-			<h3 class="mt-5 text-xl font-bold text-emerald-900">ຊຳລະສຳເລັດ</h3>
-			<p class="mt-1 text-sm text-emerald-700">ກຳລັງສ້າງຕົວຢ່າງບິນ...</p>
+			<h3 class="mt-5 text-xl font-bold text-emerald-900">{{ t('posPanels.success') }}</h3>
+			<p class="mt-1 text-sm text-emerald-700">{{ t('posPanels.generatingReceipt') }}</p>
 		</div>
 		<div v-else-if="checkoutStep === 'receipt'" class="flex min-h-0 flex-col space-y-3 md:max-h-[calc(100vh-190px)]">
 			<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-				<p class="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">ເງິນທອນ</p>
+				<p class="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">{{ t('pos.change') }}</p>
 				<p class="mt-1 text-3xl font-bold tabular-nums text-emerald-950">{{ money(printChange) }}</p>
 			</div>
 			<div class="scrollbar-soft min-h-[220px] flex-1 overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 px-3 py-4 md:min-h-0">
@@ -1529,7 +1821,7 @@ onBeforeUnmount(() => {
 					<div class="space-y-2">
 						<div v-for="item in printItems" :key="item.id" class="flex justify-between gap-3">
 							<div class="min-w-0">
-								<p class="truncate font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="font-sans text-emerald-600">· ฟรี</span></p>
+							<p class="truncate font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="font-sans text-emerald-600">· {{ t('posPanels.free') }}</span></p>
 								<p class="text-[11px] text-stone-500">× {{ item.qty }}</p>
 							</div>
 							<span class="shrink-0 font-mono tabular-nums">{{ money(item.line_total) }}</span>
@@ -1538,43 +1830,43 @@ onBeforeUnmount(() => {
 					<div class="my-3 border-t border-dashed border-neutral-300" />
 					<div class="space-y-2">
 						<div class="flex justify-between gap-3">
-							<span>{{ vatEnabled && vatMode === 'INCLUSIVE' ? 'ລາຄາສິນຄ້າກ່ອນ VAT' : 'ຍອດສິນຄ້າ' }}</span>
+						<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printNetSubtotal) }}</span>
 						</div>
 						<div v-if="printVat" class="flex justify-between gap-3">
-							<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ' (ລວມໃນລາຄາ)' : '' }}</span>
+						<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${t('posPanels.vatIncluded')})` : '' }}</span>
 							<span class="font-mono tabular-nums">{{ money(printVat) }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold">
-							<span>ຍອດຊຳລະ</span>
+						<span>{{ t('posPanels.amountDue') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printTotal) }}</span>
 						</div>
 						<div class="flex justify-between gap-3 text-stone-600">
-							<span>ວິທີຊຳລະ</span>
+						<span>{{ t('posPanels.paymentMethod') }}</span>
 							<span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span>
 						</div>
 						<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="flex justify-between gap-3 text-stone-600">
-							<span>ຮັບເງິນ</span>
+						<span>{{ t('posPanels.cashReceived') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printTendered) }}</span>
 						</div>
 						<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="flex justify-between gap-3 text-stone-600">
-							<span>ເງິນທອນ</span>
+						<span>{{ t('pos.change') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printChange) }}</span>
 						</div>
 					</div>
 					<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
 						<div v-if="receiptShowQueue && printQueueText" class="mb-3">
-							<p class="font-sans text-[11px] text-stone-500">ຄິວ</p>
+						<p class="font-sans text-[11px] text-stone-500">{{ t('posPanels.queue') }}</p>
 							<p class="text-lg font-bold leading-tight text-stone-950">{{ printQueueText }}</p>
 						</div>
-						<p class="font-sans text-[11px] text-stone-500">ຂອບໃຈທີ່ອຸດໜູນ</p>
+					<p class="font-sans text-[11px] text-stone-500">{{ t('posPanels.thankYou') }}</p>
 						<p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
 					</div>
 				</div>
 			</div>
 			<div class="grid grid-cols-2 gap-2 md:gap-3">
-				<AppButton color="neutral" variant="soft" size="lg" block @click="finishCheckoutFlow">ບໍ່ພິມ</AppButton>
-				<AppButton color="primary" size="lg" block icon="i-heroicons-printer" @click="printReceiptAndFinish">ພິມບິນ</AppButton>
+				<AppButton color="neutral" variant="soft" size="lg" block @click="finishCheckoutFlow">{{ t('posPanels.noPrint') }}</AppButton>
+				<AppButton color="primary" size="lg" block icon="i-heroicons-printer" @click="printReceiptAndFinish">{{ t('posPanels.printReceipt') }}</AppButton>
 			</div>
 		</div>
 		<div v-else class="flex min-h-[326px] flex-col space-y-3">
@@ -1595,13 +1887,13 @@ onBeforeUnmount(() => {
 				<div v-if="paymentMethod === 'cash'" class="space-y-2">
 					<div class="rounded-md border border-neutral-200 bg-white px-3 py-2">
 						<div class="flex items-center justify-between gap-3">
-							<p class="text-[11px] font-semibold uppercase text-stone-400">รับเงิน</p>
+							<p class="text-[11px] font-semibold uppercase text-stone-400">{{ t('posPanels.cashReceived') }}</p>
 							<div class="flex items-center gap-1.5">
-								<button type="button" class="grid size-8 place-items-center rounded-md bg-neutral-100 text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!cashTenderedHistory.length" aria-label="ย้อนกลับยอดรับเงิน" @click="undoCashTendered">
+								<button type="button" class="grid size-8 place-items-center rounded-md bg-neutral-100 text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!cashTenderedHistory.length" :aria-label="t('posPanels.undoCash')" @click="undoCashTendered">
 									<UIcon name="i-heroicons-arrow-uturn-left" class="size-4" />
 								</button>
 								<button type="button" class="min-h-8 rounded-md bg-neutral-100 px-2 text-xs font-semibold text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="cashTendered <= 0" @click="setCashTendered(0)">
-									ล้าง
+									{{ t('posPanels.clear') }}
 								</button>
 							</div>
 						</div>
@@ -1629,20 +1921,20 @@ onBeforeUnmount(() => {
 							{{ digit }}
 						</button>
 						<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-sm font-semibold text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="setCashTendered(0)">
-							ล้าง
+							{{ t('posPanels.clear') }}
 						</button>
 						<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-base font-semibold tabular-nums text-stone-900 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="appendCashDigit('0')">
 							0
 						</button>
-						<button type="button" class="flex min-h-10 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" aria-label="ลบตัวเลข" @click="backspaceCashTendered">
+						<button type="button" class="flex min-h-10 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" :aria-label="t('posPanels.deleteDigit')" @click="backspaceCashTendered">
 							<UIcon name="i-heroicons-backspace" class="size-5" />
 						</button>
 					</div>
 				</div>
 				<template v-if="paymentMethod === 'qr_transfer' && !order">
-					<UFormField label="บัญชีรับเงิน">
+					<UFormField :label="t('pos.paymentAccount')">
 						<select v-model="paymentAccountId" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm md:min-h-11">
-							<option value="">เลือกบัญชี</option>
+							<option value="">{{ t('posPanels.selectAccount') }}</option>
 							<option v-for="account in paymentAccounts" :key="account.id" :value="account.id">{{ account.display_name }}</option>
 						</select>
 					</UFormField>
@@ -1650,19 +1942,19 @@ onBeforeUnmount(() => {
 			</div>
 			<div class="mt-auto rounded-md border border-neutral-200 bg-neutral-50 p-3">
 				<div class="flex justify-between gap-3 text-sm">
-					<span>{{ vatEnabled && vatMode === 'INCLUSIVE' ? 'ราคาสินค้าก่อน VAT' : 'ยอดสินค้า' }}</span>
+					<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
 					<span class="tabular-nums">{{ money(billingNetSubtotal) }}</span>
 				</div>
 				<div v-if="vatEnabled" class="mt-2 flex justify-between gap-3 text-sm">
-					<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ' (รวมในราคา)' : '' }}</span>
+					<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${t('posPanels.vatIncluded')})` : '' }}</span>
 					<span class="tabular-nums">{{ money(billingVat) }}</span>
 				</div>
 				<div class="mt-2 flex justify-between gap-3 border-t border-neutral-200 pt-2">
-					<span>ยอดชำระ</span>
+					<span>{{ t('posPanels.amountDue') }}</span>
 					<strong class="tabular-nums">{{ money(displayTotal) }}</strong>
 				</div>
 				<div v-if="paymentMethod === 'cash'" class="mt-2 flex justify-between gap-3 text-sm">
-					<span>เงินทอน</span>
+					<span>{{ t('pos.change') }}</span>
 					<span class="tabular-nums">{{ money(Math.max(0, cashTendered - displayTotal)) }}</span>
 				</div>
 			</div>
@@ -1674,7 +1966,7 @@ onBeforeUnmount(() => {
 				:disabled="paymentMethod === 'cash' ? cashTendered < displayTotal : paymentMethod === 'qr_transfer' && !order ? !paymentAccountId : false"
 				@click="checkout"
 			>
-				ยืนยันชำระเงิน
+				{{ t('pos.confirmPayment') }}
 			</AppButton>
 		</div>
 	</AppResponsivePanel>
@@ -1682,46 +1974,134 @@ onBeforeUnmount(() => {
 		<div class="space-y-4">
 			<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
 				<p class="font-semibold">{{ clearCartCountLabel }}</p>
-				<p class="mt-1">{{ order ? "ລາຍການທີ່ບັນທຶກແລ້ວຈະບໍ່ຖືກລຶບ." : "ການລ້າງນີ້ຈະເລີ່ມກະຕ່າໃໝ່ທັນທີ." }}</p>
+				<p class="mt-1">{{ t(order ? 'posPanels.savedItemsRemain' : 'posPanels.cartStartsNew') }}</p>
 			</div>
 			<div class="grid grid-cols-2 gap-2">
-				<AppButton color="neutral" variant="soft" block @click="clearCartPanel = false">ຍົກເລີກ</AppButton>
-				<AppButton color="error" block icon="i-heroicons-trash" @click="confirmClearCart">ລ້າງ</AppButton>
+				<AppButton color="neutral" variant="soft" block @click="clearCartPanel = false">{{ t('common.cancel') }}</AppButton>
+				<AppButton color="error" block icon="i-heroicons-trash" @click="confirmClearCart">{{ t('posPanels.clear') }}</AppButton>
 			</div>
 		</div>
 	</AppResponsivePanel>
-	<AppResponsivePanel v-model="cancelPanel" title="ยกเลิกออเดอร์" :description="orderLabel" desktop-width="520px"><div class="space-y-4"><div v-if="order?.items.some((item) => item.line_status === 'sent')" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">ອອເດີນີ້ບັນທຶກແລ້ວ ต้องใช้สิทธิ์ Manager และระบุเหตุผล ระบบจะไม่คืนสต็อกอัตโนมัติ</div><UFormField label="เหตุผล"><UTextarea v-model="cancelReason" class="w-full" :rows="3" maxlength="280" /></UFormField><div class="flex justify-end gap-2"><AppButton color="neutral" variant="soft" @click="cancelPanel = false">กลับ</AppButton><AppButton color="error" :loading="actionPending" :disabled="Boolean(order?.items.some((item) => item.line_status === 'sent')) && !cancelReason.trim()" @click="cancelOrder">ยืนยันยกเลิก</AppButton></div></div></AppResponsivePanel>
-	<AppResponsivePanel v-model="sentItemPanel" title="ຍົກເລີກລາຍການທີ່ບັນທຶກແລ້ວ" :description="cancellingItem?.name || ''" desktop-width="520px"><div class="space-y-4"><div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">ระบบจะบันทึกผู้ยกเลิกและไม่คืนสต็อกอัตโนมัติ</div><UFormField label="เหตุผล (บังคับ)"><UTextarea v-model="cancelReason" class="w-full" :rows="3" maxlength="280" /></UFormField><div class="flex justify-end gap-2"><AppButton color="neutral" variant="soft" @click="sentItemPanel = false">กลับ</AppButton><AppButton color="error" :loading="actionPending" :disabled="!cancelReason.trim()" @click="cancelSentItem">ยืนยัน</AppButton></div></div></AppResponsivePanel>
+	<AppResponsivePanel
+		v-model="cancelPanel"
+		:title="t('posPanels.cancelOrder')"
+		:description="orderLabel"
+		desktop-width="480px"
+		desktop-placement="center"
+		mobile-max-height="88vh"
+	>
+		<div class="space-y-4">
+			<div v-if="order?.items.some((item) => item.line_status === 'sent')" class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+				<UIcon name="i-heroicons-exclamation-triangle" class="mt-0.5 size-5 shrink-0 text-amber-600" />
+				<p>{{ t('posPanels.sentOrderWarning') }}</p>
+			</div>
+			<UFormField :label="t('posPanels.reason')">
+				<UTextarea v-model="cancelReason" class="w-full" :rows="3" maxlength="280" autofocus />
+			</UFormField>
+			<div class="grid grid-cols-2 gap-2">
+				<AppButton color="neutral" variant="soft" block @click="cancelPanel = false">{{ t('posPanels.back') }}</AppButton>
+				<AppButton color="error" block icon="i-heroicons-trash" :loading="actionPending" :disabled="Boolean(order?.items.some((item) => item.line_status === 'sent')) && !cancelReason.trim()" @click="cancelOrder">{{ t('posPanels.confirmCancel') }}</AppButton>
+			</div>
+		</div>
+	</AppResponsivePanel>
+	<AppResponsivePanel v-model="sentItemPanel" :title="t('posPanels.editItem')" :description="cancellingItem?.name || ''" desktop-width="520px" desktop-placement="center">
+		<div class="space-y-4">
+			<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{{ t('posPanels.editItemWarning') }}</div>
+			<div class="rounded-md border border-neutral-200 bg-white p-3">
+				<div class="flex items-center justify-between gap-3">
+					<div><p class="text-sm font-semibold">{{ t('posPanels.newQuantity') }}</p><p class="text-xs text-stone-500">{{ t('posPanels.oldQuantity', { count: cancellingItem?.qty || 0 }) }}</p></div>
+					<div class="grid grid-cols-[44px_72px_44px] items-center gap-2">
+						<AppButton color="neutral" variant="soft" icon="i-heroicons-minus" :aria-label="t('posPanels.decrease')" :disabled="sentItemQty <= 0" @click="sentItemQty = Math.max(0, sentItemQty - 1)" />
+						<div class="flex h-10 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-lg font-bold tabular-nums">{{ sentItemQty }}</div>
+						<AppButton color="neutral" variant="soft" icon="i-heroicons-plus" :aria-label="t('posPanels.increase')" :disabled="sentItemQty >= Number(cancellingItem?.qty || 0) - 1" @click="sentItemQty = Math.min(Number(cancellingItem?.qty || 0) - 1, sentItemQty + 1)" />
+					</div>
+				</div>
+				<p v-if="sentItemQty === 0" class="mt-2 text-xs font-medium text-red-600">{{ t('posPanels.itemWillCancel') }}</p>
+			</div>
+			<div>
+				<p class="text-sm font-semibold">{{ t('posPanels.reason') }} <span class="font-normal text-stone-400">({{ t('posPanels.optional') }})</span></p>
+				<div class="mt-2 grid grid-cols-2 gap-2">
+					<AppButton v-for="reason in sentItemReasonPresets" :key="reason" color="neutral" :variant="sentItemReasonPreset === reason ? 'solid' : 'soft'" @click="sentItemReasonPreset = sentItemReasonPreset === reason ? '' : reason; cancelReason = ''">{{ reason }}</AppButton>
+				</div>
+				<UTextarea v-if="sentItemReasonPreset === t('posPanels.reasonOther')" v-model="cancelReason" class="mt-2 w-full" :rows="2" maxlength="280" :placeholder="t('posPanels.reasonPlaceholder')" />
+			</div>
+			<div class="grid grid-cols-2 gap-2">
+				<AppButton color="neutral" variant="soft" block @click="sentItemPanel = false">{{ t('posPanels.back') }}</AppButton>
+				<AppButton :color="sentItemQty === 0 ? 'error' : 'primary'" block :loading="actionPending" :disabled="sentItemQty >= Number(cancellingItem?.qty || 0)" @click="adjustSentItem">{{ t(sentItemQty === 0 ? 'posPanels.confirmCancel' : 'posPanels.saveChanges') }}</AppButton>
+			</div>
+		</div>
+	</AppResponsivePanel>
+	<AppResponsivePanel
+		v-model="printPreviewOpen"
+		:title="t('posPanels.printPreview')"
+		:description="printKind === 'kitchen' ? t('posPanels.round', { round: printRound || '-' }) : printKind === 'check' ? `${t('posPanels.checkBill')} · ${t('posPanels.unpaid')}` : printKind === 'estimate' ? `${t('posPanels.estimate')} · ${t('posPanels.unpaid')}` : t('posPanels.receipt')"
+		desktop-width="520px"
+		desktop-placement="center"
+		mobile-max-height="92vh"
+	>
+		<div class="flex min-h-0 flex-col gap-3">
+			<div class="scrollbar-soft max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
+				<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
+					<div class="text-center">
+						<p class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
+						<p class="mt-1 font-semibold">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
+						<p v-if="printKind === 'check' || printKind === 'estimate'" class="mt-1 font-bold text-red-600">{{ t('posPanels.unpaid') }}</p>
+						<p v-if="printKind !== 'receipt'" class="mt-1 text-[11px] text-stone-500">{{ printLabel }}</p>
+						<p class="mt-0.5 text-[11px] text-stone-500">{{ printOrderNo }}<template v-if="printRound"> · {{ t('posPanels.round', { round: printRound }) }}</template></p>
+					</div>
+					<div class="my-3 border-t border-dashed border-neutral-300" />
+					<div class="space-y-2">
+						<div v-for="item in printItems" :key="item.id" class="flex justify-between gap-3">
+							<div class="min-w-0">
+								<p class="font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ t('posPanels.free') }}</span></p>
+								<p v-if="item.note" class="text-[10px] text-stone-500">{{ item.note }}</p>
+							</div>
+							<span class="shrink-0 font-mono tabular-nums">× {{ item.qty }}<template v-if="printKind !== 'kitchen'"> · {{ money(item.line_total) }}</template></span>
+						</div>
+					</div>
+					<p v-if="!printItems.length" class="py-5 text-center text-stone-500">{{ t('posPanels.noRoundItems') }}</p>
+					<template v-if="printKind !== 'kitchen'">
+						<div class="my-3 border-t border-dashed border-neutral-300" />
+						<div class="flex justify-between gap-3 text-[13px] font-bold"><span>{{ t('posPanels.total') }}</span><span class="font-mono tabular-nums">{{ money(printTotal) }}</span></div>
+					</template>
+				</div>
+			</div>
+			<div class="grid grid-cols-2 gap-2">
+				<AppButton color="neutral" variant="soft" block @click="printPreviewOpen = false">{{ t('common.cancel') }}</AppButton>
+				<AppButton color="primary" block icon="i-heroicons-printer" :disabled="!printItems.length" @click="confirmPrintDocument">{{ t('posPanels.print') }}</AppButton>
+			</div>
+		</div>
+	</AppResponsivePanel>
 
 	<div class="restaurant-print-root">
 		<div class="print-sheet">
 			<h1>{{ storeName }}</h1>
 			<p v-for="line in receiptStoreLines.slice(1)" :key="line">{{ line }}</p>
-			<p class="print-kind">{{ printKind === 'kitchen' ? 'รายการบิล' : printKind === 'check' ? 'ใบเช็กบิล' : 'ใบเสร็จรับเงิน' }}</p>
-			<p v-if="printKind === 'check'" class="print-unpaid">ยังไม่ชำระ</p>
+			<p class="print-kind">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
+			<p v-if="printKind === 'check' || printKind === 'estimate'" class="print-unpaid">{{ t('posPanels.unpaid') }}</p>
 			<p v-if="printKind !== 'receipt'">{{ printLabel }}</p>
-			<p>{{ printOrderNo }}<template v-if="printRound"> · รอบ {{ printRound }}</template></p>
+			<p>{{ printOrderNo }}<template v-if="printRound"> · {{ t('posPanels.round', { round: printRound }) }}</template></p>
 			<hr>
 			<div v-for="item in printItems" :key="item.id">
 				<div class="print-line">
-					<span>{{ item.name }} <b v-if="item.is_gift">(ฟรี)</b></span>
+					<span>{{ item.name }} <b v-if="item.is_gift">({{ t('posPanels.free') }})</b></span>
 					<span>× {{ item.qty }}<template v-if="printKind !== 'kitchen'"> · {{ money(item.line_total) }}</template></span>
 				</div>
-				<p v-if="item.note" class="print-note">หมายเหตุ: {{ item.note }}</p>
+				<p v-if="item.note" class="print-note">{{ t('posPanels.note') }}: {{ item.note }}</p>
 			</div>
 			<template v-if="printKind !== 'kitchen'">
 				<hr>
-				<div class="print-line"><span>{{ vatEnabled && vatMode === 'INCLUSIVE' ? 'ยอดก่อน VAT' : 'ยอดสินค้า' }}</span><span>{{ money(printNetSubtotal) }}</span></div>
-				<div v-if="printVat" class="print-line"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> (รวมในราคา)</template></span><span>{{ money(printVat) }}</span></div>
-				<div class="print-total"><strong>รวม</strong><strong>{{ money(printTotal) }}</strong></div>
+				<div class="print-line"><span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span><span>{{ money(printNetSubtotal) }}</span></div>
+				<div v-if="printVat" class="print-line"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> ({{ t('posPanels.vatIncluded') }})</template></span><span>{{ money(printVat) }}</span></div>
+				<div class="print-total"><strong>{{ t('posPanels.total') }}</strong><strong>{{ money(printTotal) }}</strong></div>
 				<template v-if="printKind === 'receipt'">
-					<div class="print-line"><span>วิธีชำระ</span><span>{{ printPaymentMethod }}</span></div>
-					<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="print-line"><span>รับเงิน</span><span>{{ money(printTendered) }}</span></div>
-					<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="print-line"><span>เงินทอน</span><span>{{ money(printChange) }}</span></div>
-					<div v-if="receiptShowQueue && printQueueText" class="print-queue"><span>คิว</span><strong>{{ printQueueText }}</strong></div>
+					<div class="print-line"><span>{{ t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span></div>
+					<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="print-line"><span>{{ t('posPanels.cashReceived') }}</span><span>{{ money(printTendered) }}</span></div>
+					<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="print-line"><span>{{ t('pos.change') }}</span><span>{{ money(printChange) }}</span></div>
+					<div v-if="receiptShowQueue && printQueueText" class="print-queue"><span>{{ t('posPanels.queue') }}</span><strong>{{ printQueueText }}</strong></div>
 				</template>
 			</template>
-			<p class="print-time">{{ new Date().toLocaleString('th-TH') }}</p>
+			<p class="print-time">{{ new Date().toLocaleString(locale) }}</p>
 			<p class="print-powered">Powered by O KhaiDee+</p>
 		</div>
 	</div>
@@ -1729,6 +2109,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .restaurant-pos-tab-scroll{scrollbar-width:none;-ms-overflow-style:none}.restaurant-pos-tab-scroll::-webkit-scrollbar{display:none}
+@media (min-width:1024px){.restaurant-mobile-ticket-bar{display:none!important}}
 .checkout-success-burst{position:relative;display:grid;place-items:center;width:112px;height:112px;border-radius:999px;background:radial-gradient(circle,rgba(16,185,129,.24),rgba(16,185,129,0) 68%);animation:checkout-burst .85s ease-out both}.checkout-success-burst::before{content:"";position:absolute;inset:10px;border-radius:999px;background:rgba(16,185,129,.12);animation:checkout-pulse .85s ease-out both}.checkout-success-ring{position:relative;display:grid;place-items:center;width:76px;height:76px;border-radius:999px;background:#10b981;color:white;box-shadow:0 18px 36px rgba(16,185,129,.32);animation:checkout-pop .38s cubic-bezier(.2,1.35,.35,1) both}.checkout-success-check{width:42px;height:42px;stroke-width:3;animation:checkout-check .48s .18s ease-out both}
 @keyframes checkout-burst{0%{opacity:0;transform:scale(.72)}55%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}@keyframes checkout-pulse{0%{opacity:0;transform:scale(.35)}65%{opacity:1;transform:scale(1.18)}100%{opacity:0;transform:scale(1.55)}}@keyframes checkout-pop{0%{opacity:0;transform:scale(.42) rotate(-8deg)}100%{opacity:1;transform:scale(1) rotate(0)}}@keyframes checkout-check{0%{opacity:0;transform:scale(.5)}100%{opacity:1;transform:scale(1)}}
 .receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.receipt-preview-sheet .font-sans{font-family:inherit}

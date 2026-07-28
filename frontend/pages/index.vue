@@ -57,6 +57,7 @@ type ApiPosCatalogResponse = {
 		vat_rate: number;
 		vat_mode: string;
 		store_type: string;
+		pickup_queue_enabled: number;
 	};
 	categories: Array<{
 		id: string;
@@ -299,7 +300,6 @@ const checkoutError = ref<string | null>(null);
 const cashTendered = ref("");
 const paymentAccountId = ref("");
 const paymentReference = ref("");
-const paymentSlipUrl = ref("");
 const paymentAccounts = ref<PaymentAccount[]>([]);
 const checkoutIdempotencyKey = ref("");
 const paymentModalBodyOverflowSnapshot = ref<string | null>(null);
@@ -314,6 +314,7 @@ const vatEnabled = ref(false);
 const vatRate = ref(0);
 const vatMode = ref<"EXCLUSIVE" | "INCLUSIVE">("EXCLUSIVE");
 const catalogStoreType = ref("");
+const restaurantInitialCatalog = shallowRef<ApiPosCatalogResponse | null>(null);
 const isRestaurantStore = computed(() => catalogStoreType.value === "RESTAURANT");
 const posExperience = computed<"loading" | "restaurant" | "retail">(() => {
 	if (productsPending.value && !catalogStoreType.value) return "loading";
@@ -1045,11 +1046,11 @@ function openPaymentModal() {
 	checkoutError.value = null;
 	cashTendered.value = String(total.value);
 	paymentReference.value = "";
-	paymentSlipUrl.value = "";
 	checkoutIdempotencyKey.value = crypto.randomUUID();
 	paymentCheckoutStep.value = 1;
 	paymentModalOpen.value = true;
 	lockPaymentModalScroll();
+	if (!paymentAccounts.value.length) void loadPaymentAccounts();
 }
 
 function closePaymentModal() {
@@ -1093,7 +1094,6 @@ async function continuePaymentCheckout() {
 				amount_tendered: selectedPaymentMethod.value === "cash" ? Number(cashTendered.value) : null,
 				payment_account_id: selectedPaymentMethod.value === "qr_transfer" ? paymentAccountId.value : null,
 				payment_reference: paymentReference.value || null,
-				payment_slip_url: paymentSlipUrl.value || null,
 				note: orderNote.value || null,
 			},
 		});
@@ -1152,8 +1152,10 @@ async function loadPosProducts() {
 		const response = await apiFetch<ApiEnvelope<ApiPosCatalogResponse>>(
 			`/pos/products?store_id=${encodeURIComponent(effectiveStoreId.value)}`,
 		);
+		restaurantInitialCatalog.value = response.data;
 		catalogCurrency.value = response.data.store.currency || "THB";
 		catalogStoreType.value = String(response.data.store.store_type || "OTHER").toUpperCase();
+		if (import.meta.client) localStorage.setItem(`pos.store-type:${effectiveStoreId.value}`, catalogStoreType.value);
 		vatEnabled.value = Boolean(response.data.store.vat_enabled);
 		vatRate.value = Number(response.data.store.vat_rate || 0);
 		vatMode.value = String(response.data.store.vat_mode || "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
@@ -1169,6 +1171,20 @@ async function loadPosProducts() {
 		products.value = response.data.items.map(mapCatalogProduct);
 	} catch (error) {
 		productsError.value = resolveApiErrorMessage(error, t("pos.loadProductsFailed"));
+		const cachedStoreType = import.meta.client
+			? localStorage.getItem(`pos.store-type:${effectiveStoreId.value}`)
+			: null;
+		if (cachedStoreType) {
+			catalogStoreType.value = cachedStoreType;
+		} else {
+			try {
+				const storeResponse = await apiFetch<ApiEnvelope<{ store_type?: string }>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
+				catalogStoreType.value = String(storeResponse.data.store_type || "OTHER").toUpperCase();
+				if (import.meta.client) localStorage.setItem(`pos.store-type:${effectiveStoreId.value}`, catalogStoreType.value);
+			} catch {
+				catalogStoreType.value = "OTHER";
+			}
+		}
 		seedFallbackCategoryOptions();
 	} finally {
 		productsPending.value = false;
@@ -1177,9 +1193,9 @@ async function loadPosProducts() {
 
 watch(effectiveStoreId, () => {
 	catalogStoreType.value = "";
+	restaurantInitialCatalog.value = null;
 	products.value = [];
 	void loadPosProducts();
-	void loadPaymentAccounts();
 	void evaluatePromotions();
 }, { immediate: true });
 
@@ -1238,7 +1254,11 @@ onBeforeUnmount(() => {
 			</div>
 		</template>
 	</AppSidebarShell>
-	<RestaurantPos v-else-if="posExperience === 'restaurant' && effectiveStoreId" :store-id="effectiveStoreId" />
+	<RestaurantPos
+		v-else-if="posExperience === 'restaurant' && effectiveStoreId"
+		:store-id="effectiveStoreId"
+		:initial-catalog="restaurantInitialCatalog"
+	/>
 	<AppSidebarShell
 		v-else
 		:nav-items="appNavItems"
@@ -1674,7 +1694,7 @@ onBeforeUnmount(() => {
 		</template>
 	</AppSidebarShell>
 
-		<div class="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6dc] bg-[rgba(255,255,253,0.96)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:hidden">
+		<div v-if="posExperience !== 'restaurant'" class="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6dc] bg-[rgba(255,255,253,0.96)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:hidden">
 			<div class="flex items-center justify-between gap-4">
 				<div>
 					<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">{{ $t('pos.currentBill') }}</p>
@@ -1688,7 +1708,7 @@ onBeforeUnmount(() => {
 		</div>
 
 		<div
-			v-if="mobileTicketOpen"
+			v-if="posExperience !== 'restaurant' && mobileTicketOpen"
 			class="fixed inset-0 z-50 flex items-end bg-black/45 p-3 xl:hidden"
 			@click.self="mobileTicketOpen = false"
 		>
@@ -2006,9 +2026,6 @@ onBeforeUnmount(() => {
 												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.reference') }}
 											<input v-model="paymentReference" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" placeholder="Transaction reference">
 										</label>
-												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50 sm:col-span-2">{{ $t('pos.proofUrl') }}
-											<input v-model="paymentSlipUrl" type="url" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" placeholder="https://...">
-										</label>
 									</div>
 									<div v-else class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-sm text-stone-600 dark:border-[#3b342c] dark:bg-[#1d1a16] dark:text-stone-300">
 										ยืนยันว่าได้รับชำระผ่านเครื่องรูดภายนอกแล้ว ระบบจะไม่จัดเก็บเลขบัตรหรือ CVV
@@ -2130,7 +2147,7 @@ onBeforeUnmount(() => {
 										:block="true"
 										:icon="paymentModalPrimaryAction.icon"
 										:loading="checkoutSaving"
-										:disabled="checkoutSaving || (paymentCheckoutStep === 1 ? !selectedPaymentMethod : selectedPaymentMethod === 'cash' ? Number(cashTendered || 0) < total : selectedPaymentMethod === 'qr_transfer' ? !paymentAccountId || !paymentSlipUrl : false)"
+										:disabled="checkoutSaving || (paymentCheckoutStep === 1 ? !selectedPaymentMethod : selectedPaymentMethod === 'cash' ? Number(cashTendered || 0) < total : selectedPaymentMethod === 'qr_transfer' ? !paymentAccountId : false)"
 										@click="continuePaymentCheckout"
 									>
 										{{ paymentModalPrimaryAction.label }}

@@ -37,6 +37,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"receipt_show_tendered",
 	"receipt_show_change",
 	"receipt_show_queue",
+	"pickup_queue_enabled",
 ];
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];

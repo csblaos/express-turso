@@ -34,7 +34,10 @@ export type AppliedPromotion = {
 	remaining_amount?: number;
 };
 
-type Executor = { execute: (statement: any) => Promise<{ rows: any[] }> };
+type Executor = {
+	execute: (statement: any) => Promise<{ rows: any[] }>;
+	batch?: (statements: any[]) => Promise<Array<{ rows: any[] }>>;
+};
 
 function text(value: unknown): string { return String(value || "").trim(); }
 function number(value: unknown): number { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
@@ -112,14 +115,24 @@ export class PromotionInterface {
 		await PromotionInterface.ensureTables();
 		const db = executor || DbConn.getClient();
 		const now = new Date().toISOString();
-		const active = await db.execute({ sql: `SELECT p.*, gp.name AS gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at <= ?) AND (p.ends_at IS NULL OR p.ends_at >= ?)`, args: [ storeId, now, now ] });
+		const activeStatement = { sql: `SELECT p.*, gp.name AS gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at <= ?) AND (p.ends_at IS NULL OR p.ends_at >= ?)`, args: [ storeId, now, now ] };
 		// `undefined` means evaluate every active promotion for discovery. An explicit
 		// empty list means the cashier selected none; do not silently apply all promos.
 		const selected = selectedIds === undefined ? null : new Set(selectedIds);
 		const paidItems = items.filter((item) => !item.is_gift && number(item.qty) > 0);
 		const qtyByProduct = new Map<string, number>();
 		for (const item of paidItems) qtyByProduct.set(item.product_id, (qtyByProduct.get(item.product_id) || 0) + number(item.qty));
-		const productRows = paidItems.length ? await db.execute({ sql: `SELECT id, price_base FROM products WHERE store_id=? AND id IN (${[ ...qtyByProduct.keys() ].map(() => "?").join(",")})`, args: [ storeId, ...qtyByProduct.keys() ] }) : { rows: [] };
+		const productStatement = paidItems.length
+			? { sql: `SELECT id, price_base FROM products WHERE store_id=? AND id IN (${[ ...qtyByProduct.keys() ].map(() => "?").join(",")})`, args: [ storeId, ...qtyByProduct.keys() ] }
+			: null;
+		let active: { rows: any[] };
+		let productRows: { rows: any[] };
+		if (productStatement && db.batch) {
+			[ active, productRows ] = await db.batch([ activeStatement, productStatement ]);
+		} else {
+			active = await db.execute(activeStatement);
+			productRows = productStatement ? await db.execute(productStatement) : { rows: [] };
+		}
 		const priceByProduct = new Map(productRows.rows.map((row: any) => [ String(row.id), number(row.price_base) ]));
 		const subtotal = [ ...qtyByProduct.entries() ].reduce((sum, [ id, qty ]) => sum + (priceByProduct.get(id) || 0) * qty, 0);
 		return (active.rows as any[]).flatMap((row) => {

@@ -2,7 +2,7 @@ type QueueExecutor = {
 	execute: (statement: any) => Promise<any>;
 };
 
-function restaurantDate(): string {
+export function restaurantDate(): string {
 	return new Intl.DateTimeFormat("en-CA", {
 		timeZone: process.env.APP_TIMEZONE || "Asia/Vientiane",
 		year: "numeric",

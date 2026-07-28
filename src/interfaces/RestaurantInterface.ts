@@ -6,7 +6,7 @@ import { OrderInterface } from "@interfaces/OrderInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { ApiError } from "@middlewares/ApiError";
-import { allocateRestaurantQueue } from "@utils/RestaurantQueue";
+import { allocateRestaurantQueue, restaurantDate } from "@utils/RestaurantQueue";
 
 type Executor = {
 	execute: (statement: any) => Promise<any>;
@@ -64,6 +64,7 @@ export class RestaurantInterface {
 			["guest_count_specified", "INTEGER NOT NULL DEFAULT 0"],
 			["opened_at", "TEXT"], ["closed_at", "TEXT"], ["version", "INTEGER NOT NULL DEFAULT 1"],
 			["checkout_idempotency_key", "TEXT"], ["open_idempotency_key", "TEXT"], ["queue_no", "TEXT"], ["queue_date", "TEXT"],
+			["fulfillment_status", "TEXT"], ["collected_at", "TEXT"], ["collected_by", "TEXT"],
 		] as const) if (!orderColumns.has(name)) await db.execute(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
 		const roundInfo = await db.execute("PRAGMA table_info(restaurant_order_rounds)");
 		const roundColumns = new Set(roundInfo.rows.map((row: any) => String(row.name)));
@@ -91,8 +92,74 @@ export class RestaurantInterface {
 			ON orders(store_id, queue_date, queue_no)
 			WHERE queue_date IS NOT NULL AND queue_no IS NOT NULL`);
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_open_pickup ON orders(store_id, service_mode, status, opened_at)");
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_storefront_pickup_queue ON orders(store_id, fulfillment_status, paid_at)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_items_order_status ON order_items(order_id, line_status)");
 		RestaurantInterface.initialized = true;
+	}
+
+	static async listPickupQueue(storeId: string): Promise<any[]> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const orders = await db.execute({ sql: `SELECT id,order_no,queue_no,total,payment_method,paid_at,created_at
+			FROM orders WHERE store_id=? AND service_mode='pickup' AND payment_status='paid'
+			AND fulfillment_status='waiting_pickup' ORDER BY COALESCE(paid_at,created_at),created_at`, args: [storeId] });
+		if (!orders.rows.length) return [];
+		const ids = orders.rows.map((row: any) => String(row.id));
+		const items = await db.execute({ sql: `SELECT oi.order_id,oi.product_id,p.name,oi.qty,oi.line_total,oi.is_gift
+			FROM order_items oi JOIN products p ON p.id=oi.product_id
+			WHERE oi.order_id IN (${ids.map(() => "?").join(",")}) ORDER BY oi.rowid`, args: ids });
+		const byOrder = new Map<string, any[]>();
+		for (const item of items.rows as any[]) {
+			const orderItems = byOrder.get(String(item.order_id)) || [];
+			orderItems.push(item);
+			byOrder.set(String(item.order_id), orderItems);
+		}
+		return (orders.rows as any[]).map((order) => ({ ...order, items: byOrder.get(String(order.id)) || [] }));
+	}
+
+	static async listPickupQueueHistory(storeId: string): Promise<any[]> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const orders = await db.execute({ sql: `SELECT o.id,o.order_no,o.queue_no,o.total,o.payment_method,o.paid_at,o.created_at,
+			o.collected_at,o.collected_by,u.name AS collected_by_name
+			FROM orders o LEFT JOIN users u ON CAST(u.id AS TEXT)=CAST(o.collected_by AS TEXT)
+			WHERE o.store_id=? AND o.service_mode='pickup' AND o.payment_status='paid'
+			AND o.fulfillment_status='collected' AND o.queue_date=?
+			ORDER BY o.collected_at DESC,o.paid_at DESC`, args: [storeId, restaurantDate()] });
+		if (!orders.rows.length) return [];
+		const ids = orders.rows.map((row: any) => String(row.id));
+		const items = await db.execute({ sql: `SELECT oi.order_id,oi.product_id,p.name,oi.qty,oi.line_total,oi.is_gift
+			FROM order_items oi JOIN products p ON p.id=oi.product_id
+			WHERE oi.order_id IN (${ids.map(() => "?").join(",")}) ORDER BY oi.rowid`, args: ids });
+		const byOrder = new Map<string, any[]>();
+		for (const item of items.rows as any[]) {
+			const orderItems = byOrder.get(String(item.order_id)) || [];
+			orderItems.push(item);
+			byOrder.set(String(item.order_id), orderItems);
+		}
+		return (orders.rows as any[]).map((order) => ({ ...order, items: byOrder.get(String(order.id)) || [] }));
+	}
+
+	static async pickupQueueEnabled(storeId: string): Promise<boolean> {
+		await RestaurantInterface.ensureTables();
+		const result = await DbConn.getClient().execute({ sql: "SELECT pickup_queue_enabled FROM stores WHERE id=? LIMIT 1", args: [storeId] });
+		return Number(result.rows[0]?.pickup_queue_enabled || 0) !== 0;
+	}
+
+	static async markPickupCollected(storeId: string, orderId: string, actorId: string): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const stamp = now();
+		const result = await db.execute({ sql: `UPDATE orders SET fulfillment_status='collected',collected_at=?,collected_by=?
+			WHERE id=? AND store_id=? AND service_mode='pickup' AND payment_status='paid' AND fulfillment_status='waiting_pickup'`, args: [stamp, actorId, orderId, storeId] });
+		if (!result.rowsAffected) {
+			const existing = await db.execute({ sql: "SELECT id,fulfillment_status,collected_at,collected_by FROM orders WHERE id=? AND store_id=?", args: [orderId, storeId] });
+			if (!existing.rows[0]) throw ApiError.NotFoundError("queue order not found");
+			if (String(existing.rows[0].fulfillment_status) !== "collected") throw conflict("order is not waiting for pickup");
+			return existing.rows[0];
+		}
+		await RestaurantInterface.audit(db as Executor, storeId, actorId, "pos.pickup.collected", "order", orderId, { collected_at: stamp });
+		return { id: orderId, fulfillment_status: "collected", collected_at: stamp, collected_by: actorId };
 	}
 
 	static async listZones(storeId: string): Promise<any[]> {
@@ -274,10 +341,9 @@ export class RestaurantInterface {
 		if(number(order.version)!==expectedVersion) throw conflict("ออเดอร์ถูกแก้ไขจากอีกเครื่อง กรุณาโหลดใหม่"); return order;
 	}
 
-	static async getOrder(storeId:string,orderId:string):Promise<any>{
-		await RestaurantInterface.ensureTables(); const db=DbConn.getClient();
+	private static orderReadStatements(storeId:string,orderId:string):any[]{
 		const stamp = now();
-		const [order, items, rounds, promotionLines, promotions, gifts] = await db.batch([
+		return [
 			{sql:`SELECT o.*,t.name AS table_name,t.code AS table_code,z.name AS zone_name FROM orders o
 				LEFT JOIN restaurant_tables t ON t.id=o.restaurant_table_id LEFT JOIN restaurant_zones z ON z.id=t.zone_id WHERE o.id=? AND o.store_id=?`,args:[orderId,storeId]},
 			{sql:`SELECT oi.*,p.name,p.sku,p.inventory_mode,p.manual_sold_out,r.round_no
@@ -287,9 +353,18 @@ export class RestaurantInterface {
 			{sql:"SELECT product_id,SUM(qty) qty,SUM(line_total) amount FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=0 GROUP BY product_id",args:[orderId]},
 			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
 			{sql:"SELECT promotion_id,SUM(qty) qty FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=1 GROUP BY promotion_id",args:[orderId]},
-		], "read");
+		];
+	}
+
+	private static mapOrderResults(results:any[]):any{
+		const [order,items,rounds,promotionLines,promotions,gifts]=results;
 		if(!order.rows[0]) throw ApiError.NotFoundError("restaurant order not found");
 		return {...order.rows[0],items:items.rows,rounds:rounds.rows,promotions:RestaurantInterface.mapPromotionState(promotionLines,promotions,gifts)};
+	}
+
+	static async getOrder(storeId:string,orderId:string):Promise<any>{
+		await RestaurantInterface.ensureTables(); const db=DbConn.getClient();
+		return RestaurantInterface.mapOrderResults(await db.batch(RestaurantInterface.orderReadStatements(storeId,orderId),"read"));
 	}
 
 	static async listOpenOrders(storeId: string): Promise<any[]> {
@@ -374,14 +449,27 @@ export class RestaurantInterface {
 		}
 	}
 
-	private static async recalculate(executor:Executor,orderId:string):Promise<void>{
-		const result=await executor.execute({sql:`SELECT COALESCE(SUM(oi.line_total),0) subtotal,s.vat_enabled,s.vat_rate,s.vat_mode
-			FROM orders o JOIN stores s ON s.id=o.store_id LEFT JOIN order_items oi ON oi.order_id=o.id AND oi.line_status!='cancelled'
-			WHERE o.id=? GROUP BY o.id,s.vat_enabled,s.vat_rate,s.vat_mode`,args:[orderId]});
-		const row=result.rows[0];const subtotal=number(row?.subtotal);const rawRate=number(row?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;
-		const vat=number(row?.vat_enabled)?Math.round(String(row?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;
-		const total=String(row?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;
-		await executor.execute({sql:"UPDATE orders SET subtotal=?,vat_amount=?,total=?,version=version+1 WHERE id=?",args:[subtotal,vat,total,orderId]});
+	private static recalculateStatement(orderId:string,versionIncrement=1):any{return {sql:`WITH totals AS (
+				SELECT COALESCE(SUM(oi.line_total),0) subtotal,s.vat_enabled,
+					CASE WHEN s.vat_rate>100 THEN s.vat_rate/100.0 ELSE s.vat_rate END vat_rate,
+					UPPER(s.vat_mode) vat_mode
+				FROM orders o JOIN stores s ON s.id=o.store_id
+				LEFT JOIN order_items oi ON oi.order_id=o.id AND oi.line_status!='cancelled'
+				WHERE o.id=? GROUP BY o.id,s.vat_enabled,s.vat_rate,s.vat_mode
+			), calculated AS (
+				SELECT subtotal,
+					CASE WHEN vat_enabled THEN ROUND(CASE WHEN vat_mode='INCLUSIVE' THEN subtotal*vat_rate/(100+vat_rate) ELSE subtotal*vat_rate/100 END) ELSE 0 END vat,
+					vat_mode FROM totals
+			)
+			UPDATE orders SET
+				subtotal=COALESCE((SELECT subtotal FROM calculated),0),
+				vat_amount=COALESCE((SELECT vat FROM calculated),0),
+				total=COALESCE((SELECT CASE WHEN vat_mode='INCLUSIVE' THEN subtotal ELSE subtotal+vat END FROM calculated),0),
+				version=version+?
+			WHERE id=?`,args:[orderId,versionIncrement,orderId]};}
+
+	private static async recalculate(executor:Executor,orderId:string,versionIncrement=1):Promise<void>{
+		await executor.execute(RestaurantInterface.recalculateStatement(orderId,versionIncrement));
 	}
 
 	static async addItem(storeId:string,orderId:string,input:any,actorId:string):Promise<any>{
@@ -471,32 +559,38 @@ export class RestaurantInterface {
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
 
 	static async cancelSentItem(storeId:string,orderId:string,itemId:string,input:any,actorId:string):Promise<any>{
-		await RestaurantInterface.ensureTables();const reason=text(input.reason);if(!reason)throw ApiError.BadRequestError("cancel reason is required");const db=DbConn.getClient();const tx=await db.transaction("write");try{await RestaurantInterface.assertVersion(tx,storeId,orderId,number(input.expected_version));
-			const result=await tx.execute({sql:"UPDATE order_items SET line_status='cancelled',cancelled_at=?,cancelled_by=?,cancel_reason=? WHERE id=? AND order_id=? AND line_status='sent'",args:[now(),actorId,reason,itemId,orderId]});if(!result.rowsAffected)throw conflict("ยกเลิกได้เฉพาะรายการที่ส่งครัวแล้ว");
+		await RestaurantInterface.ensureTables();const reason=text(input.reason)||null;const db=DbConn.getClient();const tx=await db.transaction("write");try{await RestaurantInterface.assertVersion(tx,storeId,orderId,number(input.expected_version));
+			const found=await tx.execute({sql:"SELECT qty,is_gift FROM order_items WHERE id=? AND order_id=? AND line_status='sent' LIMIT 1",args:[itemId,orderId]});const item=found.rows[0];if(!item)throw conflict("แก้ไขได้เฉพาะรายการที่บันทึกแล้ว");if(number(item.is_gift))throw conflict("ไม่สามารถแก้จำนวนของแถมจากรายการนี้ได้");
+			const previousQty=Math.round(number(item.qty));const nextQty=input.qty===undefined?0:Math.round(number(input.qty));if(nextQty<0||nextQty>=previousQty)throw ApiError.BadRequestError("new quantity must be lower than current quantity");
+			if(nextQty===0)await tx.execute({sql:"UPDATE order_items SET line_status='cancelled',cancelled_at=?,cancelled_by=?,cancel_reason=? WHERE id=? AND order_id=? AND line_status='sent'",args:[now(),actorId,reason,itemId,orderId]});
+			else await tx.execute({sql:"UPDATE order_items SET qty=?,qty_base=?,line_total=price_base_at_sale*? WHERE id=? AND order_id=? AND line_status='sent'",args:[nextQty,nextQty,nextQty,itemId,orderId]});
 			const invalid=(await RestaurantInterface.promotionState(tx,storeId,orderId)).find((promotion:any)=>promotion.over_granted_qty>0);if(invalid)throw conflict(`รายการนี้ทำให้สิทธิ์ ${invalid.name} หาย กรุณาให้ Manager จัดการของแถมก่อน`);
-			await RestaurantInterface.audit(tx,storeId,actorId,"pos.restaurant.cancel_sent","order_item",itemId,{order_id:orderId,reason});
+			await RestaurantInterface.audit(tx,storeId,actorId,nextQty===0?"pos.restaurant.cancel_sent":"pos.restaurant.adjust_sent_quantity","order_item",itemId,{order_id:orderId,previous_qty:previousQty,new_qty:nextQty,reason});
 			await RestaurantInterface.recalculate(tx,orderId);await tx.commit();return RestaurantInterface.getOrder(storeId,orderId);
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
 
-	private static async dispatchDraftItems(executor: Executor, storeId: string, orderId: string, idempotencyKey: string, actorId: string, dispatchMode: "kitchen" | "direct"): Promise<{ roundId: string; roundNo: number }> {
-		await RestaurantInterface.syncAutomaticPromotions(executor, storeId, orderId);
-		const draft = await executor.execute({
-			sql: `SELECT oi.*,p.name,p.inventory_mode,p.active,p.manual_sold_out,
+	private static async dispatchDraftItems(executor: Executor, storeId: string, orderId: string, idempotencyKey: string, actorId: string, dispatchMode: "kitchen" | "direct", options: { syncAutomatic?: boolean; recalculateVersionIncrement?: number; returnOrder?: boolean } = {}): Promise<{ roundId: string; roundNo: number; order?: any }> {
+		if (options.syncAutomatic !== false) await RestaurantInterface.syncAutomaticPromotions(executor, storeId, orderId);
+		const reads = [
+			{sql: `SELECT oi.*,p.name,p.inventory_mode,p.active,p.manual_sold_out,
 				COALESCE(b.on_hand_base,0) on_hand_base,COALESCE(b.reserved_base,0) reserved_base
 				FROM order_items oi JOIN products p ON p.id=oi.product_id
 				LEFT JOIN inventory_balances b ON b.store_id=? AND b.product_id=p.id
 				WHERE oi.order_id=? AND oi.line_status='draft'`,
-			args: [storeId, orderId],
-		});
+			args: [storeId, orderId]},
+			{sql: "SELECT COALESCE(MAX(round_no),0)+1 next_no FROM restaurant_order_rounds WHERE order_id=?", args: [orderId]},
+		];
+		const [draft, roundResult] = executor.batch
+			? await executor.batch(reads)
+			: await Promise.all(reads.map((statement) => executor.execute(statement)));
 		if (!draft.rows.length) throw ApiError.BadRequestError("ไม่มีรายการใหม่สำหรับดำเนินการ");
-		const roundResult = await executor.execute({ sql: "SELECT COALESCE(MAX(round_no),0)+1 next_no FROM restaurant_order_rounds WHERE order_id=?", args: [orderId] });
 		const roundNo = number(roundResult.rows[0]?.next_no) || 1;
 		const roundId = randomUUID();
 		const stamp = now();
-		await executor.execute({
+		const writes: any[] = [{
 			sql: "INSERT INTO restaurant_order_rounds(id,order_id,round_no,sent_by,sent_at,idempotency_key,dispatch_mode) VALUES(?,?,?,?,?,?,?)",
 			args: [roundId, orderId, roundNo, actorId, stamp, idempotencyKey, dispatchMode],
-		});
+		}];
 		const consumed = new Map<string, number>();
 		for (const row of draft.rows as any[]) {
 			if (!number(row.active) || number(row.manual_sold_out)) throw ApiError.BadRequestError(`${row.name} is unavailable`);
@@ -506,26 +600,33 @@ export class RestaurantInterface {
 				if (available < number(row.qty_base)) throw ApiError.BadRequestError(`${row.name} has insufficient stock`);
 				const nextOnHand = number(row.on_hand_base) - used - number(row.qty_base);
 				const reserved = number(row.reserved_base);
-				await executor.execute({
+				writes.push({
 					sql: `INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)
 						ON CONFLICT(store_id,product_id) DO UPDATE SET on_hand_base=excluded.on_hand_base,available_base=excluded.available_base,updated_at=excluded.updated_at`,
 					args: [storeId, row.product_id, nextOnHand, reserved, nextOnHand - reserved, stamp],
 				});
-				await executor.execute({
+				writes.push({
 					sql: "INSERT INTO inventory_movements(id,store_id,product_id,type,qty_base,ref_type,ref_id,note,created_by,created_at) VALUES(?,?,?,'SALE_OUT',?,'restaurant_round',?,?,?,?)",
 					args: [randomUUID(), storeId, row.product_id, -number(row.qty_base), roundId, row.note || null, actorId, stamp],
 				});
 				consumed.set(String(row.product_id), used + number(row.qty_base));
 			}
-			await executor.execute({
+			writes.push({
 				sql: "UPDATE order_items SET round_id=?,line_status='sent',sent_at=?,inventory_applied_at=? WHERE id=?",
 				args: [roundId, stamp, String(row.inventory_mode || "tracked") === "tracked" ? stamp : null, row.id],
 			});
 		}
-		return { roundId, roundNo };
+		if (options.recalculateVersionIncrement) writes.push(RestaurantInterface.recalculateStatement(orderId, options.recalculateVersionIncrement));
+		const readStatements=options.returnOrder?RestaurantInterface.orderReadStatements(storeId,orderId):[];
+		const statements=[...writes,...readStatements];
+		let results:any[];
+		if(executor.batch)results=await executor.batch(statements);
+		else{results=[];for(const statement of statements)results.push(await executor.execute(statement));}
+		const order=readStatements.length?RestaurantInterface.mapOrderResults(results.slice(-readStatements.length)):undefined;
+		return { roundId, roundNo, order };
 	}
 
-	private static async insertBatchDraftItems(executor: Executor, storeId: string, orderId: string, items: any[]): Promise<void> {
+	private static draftItemStatements(storeId: string, orderId: string, items: any[], guard?: { expectedVersion: number; idempotencyKey: string }): any[] {
 		const merged = new Map<string, { product_id: string; qty: number; note: string | null; is_gift: boolean; promotion_id: string | null }>();
 		for (const raw of items) {
 			const productId = text(raw?.product_id);
@@ -538,31 +639,43 @@ export class RestaurantInterface {
 			const previous = merged.get(key);
 			merged.set(key, { product_id: productId, qty: (previous?.qty || 0) + qty, note, is_gift: isGift, promotion_id: promotionId });
 		}
-		for (const item of merged.values()) {
-			const result = await executor.execute({
+		return [...merged.values()].map((item) => ({
 				sql: `INSERT INTO order_items(id,order_id,product_id,unit_id,qty,qty_base,price_base_at_sale,cost_base_at_sale,line_total,is_gift,promotion_id,line_status,note,cost_source_at_sale)
 					SELECT ?,o.id,p.id,p.base_unit_id,?,?,CASE WHEN ? THEN 0 ELSE p.price_base END,p.cost_base,CASE WHEN ? THEN 0 ELSE p.price_base*? END,?,?, 'draft',?,COALESCE(p.cost_source,'purchase')
 					FROM orders o JOIN products p ON p.id=? AND p.store_id=o.store_id
 					WHERE o.id=? AND o.store_id=? AND o.status IN ('open','ready_to_pay')
+						${guard ? "AND o.version=? AND NOT EXISTS(SELECT 1 FROM restaurant_order_rounds WHERE order_id=o.id AND idempotency_key=?)" : ""}
 						AND p.deleted_at IS NULL AND p.active=1 AND COALESCE(p.manual_sold_out,0)=0`,
-				args: [randomUUID(), item.qty, item.qty, item.is_gift ? 1 : 0, item.is_gift ? 1 : 0, item.qty, item.is_gift ? 1 : 0, item.promotion_id, item.note, item.product_id, orderId, storeId],
-			});
-			if (!result.rowsAffected) throw ApiError.BadRequestError("สินค้าไม่พร้อมขาย หรือไม่พบสินค้า");
-		}
+				args: [randomUUID(), item.qty, item.qty, item.is_gift ? 1 : 0, item.is_gift ? 1 : 0, item.qty, item.is_gift ? 1 : 0, item.promotion_id, item.note, item.product_id, orderId, storeId, ...(guard ? [guard.expectedVersion, guard.idempotencyKey] : [])],
+			}));
+	}
+
+	private static async insertBatchDraftItems(executor: Executor, storeId: string, orderId: string, items: any[]): Promise<void> {
+		const statements = RestaurantInterface.draftItemStatements(storeId, orderId, items);
+		const results = executor.batch
+			? await executor.batch(statements)
+			: await Promise.all(statements.map((statement) => executor.execute(statement)));
+		if (results.some((result) => !result.rowsAffected)) throw ApiError.BadRequestError("สินค้าไม่พร้อมขาย หรือไม่พบสินค้า");
 	}
 
 	static async sendRound(storeId:string,orderId:string,expectedVersion:number,idempotencyKey:string,actorId:string,items: any[] = []):Promise<any>{
 		if(!idempotencyKey)throw ApiError.BadRequestError("Idempotency-Key is required");await RestaurantInterface.ensureTables();const db=DbConn.getClient();const tx=await db.transaction("write");
-		try{const previous=await tx.execute({sql:"SELECT * FROM restaurant_order_rounds WHERE order_id=? AND idempotency_key=?",args:[orderId,idempotencyKey]});
+		try{const itemStatements=items.length?RestaurantInterface.draftItemStatements(storeId,orderId,items,{expectedVersion,idempotencyKey}):[];
+			const [previous,current,automatic,...inserted]=await tx.batch([
+			{sql:"SELECT * FROM restaurant_order_rounds WHERE order_id=? AND idempotency_key=?",args:[orderId,idempotencyKey]},
+			{sql:"SELECT * FROM orders WHERE id=? AND store_id=? AND status IN ('open','ready_to_pay')",args:[orderId,storeId]},
+			{sql:"SELECT 1 FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND apply_mode='automatic' LIMIT 1",args:[storeId]},
+			...itemStatements,
+		]);
 			if(previous.rows[0]){await tx.rollback();return RestaurantInterface.getOrder(storeId,orderId);}
-			await RestaurantInterface.assertVersion(tx,storeId,orderId,expectedVersion);
-			if (items.length) await RestaurantInterface.insertBatchDraftItems(tx, storeId, orderId, items);
-			const round=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,idempotencyKey,actorId,"kitchen");
-			await RestaurantInterface.recalculate(tx, orderId);
-			await tx.execute({sql:"UPDATE orders SET version=version+1 WHERE id=?",args:[orderId]});
+			const activeOrder=current.rows[0];if(!activeOrder)throw ApiError.NotFoundError("open restaurant order not found");
+			if(number(activeOrder.version)!==expectedVersion)throw conflict("ออเดอร์ถูกแก้ไขจากอีกเครื่อง กรุณาโหลดใหม่");
+			if(inserted.some((result)=>!result.rowsAffected))throw ApiError.BadRequestError("สินค้าไม่พร้อมขาย หรือไม่พบสินค้า");
+			if (automatic.rows.length) await RestaurantInterface.syncAutomaticPromotions(tx,storeId,orderId,true);
+			const round=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,idempotencyKey,actorId,"kitchen",{syncAutomatic:false,recalculateVersionIncrement:2,returnOrder:true});
 			await tx.commit();
 			RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.send_kitchen","order",orderId,{round_id:round.roundId,round_no:round.roundNo,idempotency_key:idempotencyKey});
-			return RestaurantInterface.getOrder(storeId,orderId);
+			return round.order;
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
 
 	static async transfer(storeId:string,orderId:string,targetTableId:string,expectedVersion:number,actorId:string):Promise<any>{await RestaurantInterface.ensureTables();const db=DbConn.getClient();const tx=await db.transaction("write");try{const order=await RestaurantInterface.assertVersion(tx,storeId,orderId,expectedVersion);
@@ -589,12 +702,31 @@ export class RestaurantInterface {
 		return RestaurantInterface.mapPromotionState(lines,promos,gifts);
 	}
 
-	private static async syncAutomaticPromotions(executor:Executor,storeId:string,orderId:string):Promise<void>{
-		const automatic = await executor.execute({sql:"SELECT 1 FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND apply_mode='automatic' LIMIT 1",args:[storeId]});
-		if (!automatic.rows.length) return;
-		await executor.execute({sql:"DELETE FROM order_items WHERE order_id=? AND line_status='draft' AND is_gift=1 AND promotion_id IN (SELECT id FROM promotions WHERE apply_mode='automatic')",args:[orderId]});const states=await RestaurantInterface.promotionState(executor,storeId,orderId);
-		for(const state of states.filter((p:any)=>p.apply_mode==="automatic"&&p.eligible)){const product=await executor.execute({sql:"SELECT * FROM products WHERE id=? AND store_id=? AND active=1",args:[state.gift_product_id,storeId]});const p=product.rows[0];if(!p||number(p.manual_sold_out))continue;await executor.execute({sql:`INSERT INTO order_items(id,order_id,product_id,unit_id,qty,qty_base,price_base_at_sale,cost_base_at_sale,line_total,is_gift,promotion_id,line_status,cost_source_at_sale)
-			VALUES(?,?,?,?,?,?,0,?,0,1,?,'draft',?)`,args:[randomUUID(),orderId,p.id,p.base_unit_id,state.gift_qty,state.gift_qty,number(p.cost_base),state.promotion_id,String(p.cost_source||"purchase")]});}
+	private static async syncAutomaticPromotions(executor:Executor,storeId:string,orderId:string,knownEnabled=false):Promise<void>{
+		const checks = [
+			{sql:"SELECT 1 FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND apply_mode='automatic' LIMIT 1",args:[storeId]},
+			{sql:"DELETE FROM order_items WHERE order_id=? AND line_status='draft' AND is_gift=1 AND promotion_id IN (SELECT id FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND apply_mode='automatic')",args:[orderId,storeId]},
+		];
+		const results = knownEnabled
+			? [null, await executor.execute(checks[1])]
+			: executor.batch
+				? await executor.batch(checks)
+				: await Promise.all(checks.map((statement) => executor.execute(statement)));
+		const automatic = results[0];
+		if (!knownEnabled && !automatic?.rows.length) return;
+		const states=await RestaurantInterface.promotionState(executor,storeId,orderId);
+		const eligible=states.filter((p:any)=>p.apply_mode==="automatic"&&p.eligible);
+		if (!eligible.length) return;
+		const productStatements=eligible.map((state:any)=>({sql:"SELECT * FROM products WHERE id=? AND store_id=? AND active=1",args:[state.gift_product_id,storeId]}));
+		const products=executor.batch
+			? await executor.batch(productStatements)
+			: await Promise.all(productStatements.map((statement) => executor.execute(statement)));
+		const inserts=eligible.flatMap((state:any,index:number)=>{const p=products[index]?.rows[0];if(!p||number(p.manual_sold_out))return[];return[{sql:`INSERT INTO order_items(id,order_id,product_id,unit_id,qty,qty_base,price_base_at_sale,cost_base_at_sale,line_total,is_gift,promotion_id,line_status,cost_source_at_sale)
+			VALUES(?,?,?,?,?,?,0,?,0,1,?,'draft',?)`,args:[randomUUID(),orderId,p.id,p.base_unit_id,state.gift_qty,state.gift_qty,number(p.cost_base),state.promotion_id,String(p.cost_source||"purchase")]}];});
+		if (inserts.length) {
+			if (executor.batch) await executor.batch(inserts);
+			else await Promise.all(inserts.map((statement) => executor.execute(statement)));
+		}
 	}
 
 	static async applyPromotion(storeId:string,orderId:string,promotionId:string,expectedVersion:number):Promise<any>{await RestaurantInterface.ensureTables();const db=DbConn.getClient();const tx=await db.transaction("write");try{await RestaurantInterface.assertVersion(tx,storeId,orderId,expectedVersion);const state=(await RestaurantInterface.promotionState(tx,storeId,orderId)).find((p:any)=>p.promotion_id===promotionId);if(!state||!state.eligible)throw ApiError.BadRequestError("promotion is not eligible");

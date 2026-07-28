@@ -90,6 +90,9 @@ export class OrderInterface {
 			[ "note", "TEXT" ],
 			[ "queue_no", "TEXT" ],
 			[ "queue_date", "TEXT" ],
+			[ "fulfillment_status", "TEXT" ],
+			[ "collected_at", "TEXT" ],
+			[ "collected_by", "TEXT" ],
 		] as const) {
 			if (!columns.has(name)) await db.execute(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
 		}
@@ -128,36 +131,45 @@ export class OrderInterface {
 
 		const requestHash = createHash("sha256").update(json({ ...payload, request_id: undefined, timing: undefined })).digest("hex");
 		const db = DbConn.getClient();
-		const previous = await db.execute({
-			sql: "SELECT request_hash, status, response_body FROM idempotency_requests WHERE store_id = ? AND action = 'pos.checkout' AND idempotency_key = ? LIMIT 1",
-			args: [ payload.store_id, payload.idempotency_key ],
-		});
-		const previousRow = previous.rows[0] as Record<string, unknown> | undefined;
-		if (previousRow) {
-			if (String(previousRow.request_hash) !== requestHash) throw ApiError.BadRequestError("Idempotency-Key was already used with different data");
-			if (String(previousRow.status) === "completed" && previousRow.response_body) return JSON.parse(String(previousRow.response_body)) as CheckoutResult;
-			throw ApiError.BadRequestError("checkout with this Idempotency-Key is already processing");
-		}
-
 		const transaction = await db.transaction("write");
 		try {
 			const catalogStartedAt = performance.now();
-			const storeResult = await transaction.execute({
-				sql: "SELECT currency, vat_enabled, vat_rate, vat_mode, allow_negative_stock, store_type FROM stores WHERE id = ? LIMIT 1",
-				args: [ payload.store_id ],
-			});
-			const store = storeResult.rows[0] as Record<string, unknown> | undefined;
-			if (!store) throw ApiError.NotFoundError("store not found");
-
 			const ids = [ ...merged.keys() ];
-			const productsResult = await transaction.execute({
+			const catalogStatements: Array<{ sql: string; args: InValue[] }> = [ {
+				sql: "SELECT request_hash, status, response_body FROM idempotency_requests WHERE store_id = ? AND action = 'pos.checkout' AND idempotency_key = ? LIMIT 1",
+				args: [ payload.store_id, payload.idempotency_key ],
+			}, {
+				sql: "SELECT currency, vat_enabled, vat_rate, vat_mode, allow_negative_stock, store_type, pickup_queue_enabled FROM stores WHERE id = ? LIMIT 1",
+				args: [ payload.store_id ],
+			}, {
 				sql: `SELECT p.id, p.sku, p.name, p.base_unit_id, p.price_base, p.cost_base, p.active,
 					COALESCE(ib.on_hand_base, 0) AS on_hand_base, COALESCE(ib.reserved_base, 0) AS reserved_base
 					FROM products p LEFT JOIN inventory_balances ib ON ib.store_id = p.store_id AND ib.product_id = p.id
 					WHERE p.store_id = ? AND p.id IN (${ids.map(() => "?").join(",")})`,
 				args: [ payload.store_id, ...ids ],
-			});
+			} ];
+			const paymentAccountId = payload.payment_method === "qr_transfer" ? String(payload.payment_account_id || "").trim() : null;
+			if (payload.payment_method === "qr_transfer") {
+				if (!paymentAccountId) throw ApiError.BadRequestError("payment_account_id is required for QR / transfer");
+				catalogStatements.push({
+					sql: "SELECT id FROM store_payment_accounts WHERE id = ? AND store_id = ? AND is_active = 1 LIMIT 1",
+					args: [ paymentAccountId, payload.store_id ],
+				});
+			}
+			const [ previousResult, storeResult, productsResult, accountResult ] = await transaction.batch(catalogStatements);
+			const previousRow = previousResult.rows[0] as Record<string, unknown> | undefined;
+			if (previousRow) {
+				if (String(previousRow.request_hash) !== requestHash) throw ApiError.BadRequestError("Idempotency-Key was already used with different data");
+				if (String(previousRow.status) === "completed" && previousRow.response_body) {
+					await transaction.rollback();
+					return JSON.parse(String(previousRow.response_body)) as CheckoutResult;
+				}
+				throw ApiError.BadRequestError("checkout with this Idempotency-Key is already processing");
+			}
+			const store = storeResult.rows[0] as Record<string, unknown> | undefined;
+			if (!store) throw ApiError.NotFoundError("store not found");
 			if (productsResult.rows.length !== ids.length) throw ApiError.BadRequestError("some products were not found in this store");
+			if (payload.payment_method === "qr_transfer" && !accountResult?.rows.length) throw ApiError.BadRequestError("payment account is invalid or inactive");
 			mark("checkout-catalog", catalogStartedAt);
 
 			const lines = productsResult.rows.map((raw) => {
@@ -196,20 +208,6 @@ export class OrderInterface {
 			const amountTendered = payload.payment_method === "cash" ? Number(payload.amount_tendered) : total;
 			if (!Number.isFinite(amountTendered) || amountTendered < total) throw ApiError.BadRequestError("amount_tendered is less than total");
 
-			let paymentAccountId: string | null = null;
-			if (payload.payment_method === "qr_transfer") {
-				paymentAccountId = String(payload.payment_account_id || "").trim();
-				if (!paymentAccountId) throw ApiError.BadRequestError("payment_account_id is required for QR / transfer");
-				const account = await transaction.execute({
-					sql: "SELECT id FROM store_payment_accounts WHERE id = ? AND store_id = ? AND is_active = 1 LIMIT 1",
-					args: [ paymentAccountId, payload.store_id ],
-				});
-				if (!account.rows.length) throw ApiError.BadRequestError("payment account is invalid or inactive");
-				const config = await transaction.execute("SELECT payment_require_slip_for_lao_qr FROM system_config WHERE id = 'global' LIMIT 1");
-				const requireSlip = Number((config.rows[0] as Record<string, unknown> | undefined)?.payment_require_slip_for_lao_qr ?? 0) === 1;
-				if (requireSlip && !String(payload.payment_slip_url || "").trim()) throw ApiError.BadRequestError("payment slip is required for QR / transfer");
-			}
-
 			const now = new Date().toISOString();
 			const orderId = randomUUID();
 			const orderNo = `POS-${now.slice(0, 10).replace(/-/g, "")}-${orderId.slice(0, 6).toUpperCase()}`;
@@ -231,24 +229,24 @@ export class OrderInterface {
 			};
 
 			const writesStartedAt = performance.now();
-			await transaction.execute({
+			const writeStatements: Array<{ sql: string; args: InValue[] }> = [ {
 				sql: `INSERT INTO idempotency_requests (id, store_id, action, idempotency_key, request_hash, status, created_by, created_at)
 					VALUES (?, ?, 'pos.checkout', ?, ?, 'processing', ?, ?)`,
 				args: [ randomUUID(), payload.store_id, payload.idempotency_key, requestHash, payload.created_by, now ],
-			});
-			await transaction.execute({
+			}, {
 				sql: `INSERT INTO orders (id, store_id, order_no, channel, status, subtotal, discount, vat_amount,
 					shipping_fee_charged, total, shipping_cost, paid_at, created_by, created_at, payment_currency,
 					payment_method, payment_account_id, payment_slip_url, payment_proof_submitted_at, payment_status,
-					service_mode, amount_tendered, change_amount, payment_reference, note, queue_no, queue_date)
-					VALUES (?, ?, ?, ?, 'completed', ?, 0, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)`,
+					service_mode, amount_tendered, change_amount, payment_reference, note, queue_no, queue_date, fulfillment_status)
+					VALUES (?, ?, ?, ?, 'completed', ?, 0, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)`,
 				args: [ orderId, payload.store_id, orderNo, payload.service_mode, subtotal, vatAmount, total, now,
 					payload.created_by, now, String(store.currency || "LAK"), payload.payment_method, paymentAccountId,
 					payload.payment_slip_url || null, payload.payment_slip_url ? now : null, payload.service_mode,
-					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null, queue.queueNo, queue.queueDate ],
-			});
+					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null, queue.queueNo, queue.queueDate,
+					Number(store.pickup_queue_enabled) && payload.service_mode === "pickup" ? "waiting_pickup" : null ],
+			} ];
 			for (const promotion of appliedPromotions) {
-				await transaction.execute({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id, promotion.gift_qty, now ] });
+				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id, promotion.gift_qty, now ] });
 			}
 
 			const consumedByProduct = new Map<string, number>();
@@ -257,7 +255,7 @@ export class OrderInterface {
 				const consumed = consumedByProduct.get(productId) || 0;
 				const available = Number(line.row.on_hand_base) - Number(line.row.reserved_base) - consumed;
 				if (!Number(store.allow_negative_stock) && available < line.qty) throw ApiError.BadRequestError(`${String(line.row.name)} has insufficient stock`);
-				await transaction.execute({
+				writeStatements.push({
 					sql: `INSERT INTO order_items (id, order_id, product_id, unit_id, qty, qty_base, price_base_at_sale, cost_base_at_sale, line_total, is_gift, promotion_id)
 						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					args: [ randomUUID(), orderId, productId, String(line.row.base_unit_id), line.qty, line.qty,
@@ -265,32 +263,33 @@ export class OrderInterface {
 				});
 				const nextOnHand = Number(line.row.on_hand_base) - consumed - line.qty;
 				const reserved = Number(line.row.reserved_base);
-				await transaction.execute({
+				writeStatements.push({
 					sql: `INSERT INTO inventory_balances (store_id, product_id, on_hand_base, reserved_base, available_base, updated_at)
 						VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(store_id, product_id) DO UPDATE SET
 						on_hand_base=excluded.on_hand_base, available_base=excluded.available_base, updated_at=excluded.updated_at`,
 					args: [ payload.store_id, productId, nextOnHand, reserved, nextOnHand - reserved, now ],
 				});
 				consumedByProduct.set(productId, consumed + line.qty);
-				await transaction.execute({
+				writeStatements.push({
 					sql: `INSERT INTO inventory_movements (id, store_id, product_id, type, qty_base, ref_type, ref_id, note, created_by, created_at)
 						VALUES (?, ?, ?, 'SALE_OUT', ?, 'order', ?, ?, ?, ?)`,
 					args: [ randomUUID(), payload.store_id, productId, -line.qty, orderId, payload.note || null, payload.created_by, now ],
 				});
 			}
 
-			await transaction.execute({
-				sql: `INSERT INTO cash_flow_entries (id, store_id, account_id, direction, entry_type, source_type, source_id,
-					amount, currency, reference, note, metadata, occurred_at, created_by, created_at)
-					VALUES (?, ?, ?, 'in', 'sale', 'order', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				args: [ randomUUID(), payload.store_id, paymentAccountId, orderId, total, String(store.currency || "LAK"),
-					payload.payment_reference || null, payload.note || null, json({ payment_method: payload.payment_method, amount_tendered: amountTendered, change_amount: amountTendered - total }), now, payload.created_by, now ],
-			});
-			await transaction.execute({
+				writeStatements.push({
+					sql: `INSERT INTO cash_flow_entries (id, store_id, account_id, direction, entry_type, source_type, source_id,
+						amount, currency, reference, note, metadata, occurred_at, created_by, created_at)
+						VALUES (?, ?, NULL, 'in', 'sale', 'order', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					args: [ randomUUID(), payload.store_id, orderId, total, String(store.currency || "LAK"),
+						payload.payment_reference || null, payload.note || null, json({ payment_method: payload.payment_method, amount_tendered: amountTendered, change_amount: amountTendered - total }), now, payload.created_by, now ],
+				});
+			writeStatements.push({
 				sql: `UPDATE idempotency_requests SET status='completed', response_status=201, response_body=?, completed_at=?
 					WHERE store_id=? AND action='pos.checkout' AND idempotency_key=?`,
 				args: [ json(result), now, payload.store_id, payload.idempotency_key ],
 			});
+			await transaction.batch(writeStatements);
 			await transaction.commit();
 			void db.execute({
 				sql: `INSERT INTO audit_events (id, scope, store_id, actor_user_id, actor_role, action, entity_type, entity_id, result, request_id, metadata, occurred_at)
