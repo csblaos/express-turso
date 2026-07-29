@@ -36,6 +36,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"receipt_show_store_phone",
 	"receipt_show_tendered",
 	"receipt_show_change",
+	"receipt_show_payment_method",
 	"receipt_show_queue",
 	"pickup_queue_enabled",
 ];

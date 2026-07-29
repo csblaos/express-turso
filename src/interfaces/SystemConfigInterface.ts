@@ -2,6 +2,7 @@ import { DbConn } from "@connections/DbConn";
 import { SystemConfig, SystemConfigUpdateInput } from "@models/SystemConfig";
 
 const DEFAULT_SYSTEM_CONFIG_ID = "default";
+const SYSTEM_CONFIG_CACHE_TTL_MS = 30_000;
 const AUTH_POLICY_COLUMNS = [
 	{
 		name: "auth_access_token_ttl_minutes",
@@ -55,41 +56,66 @@ function getDefaultPayload(now: string): SystemConfig {
 }
 
 export class SystemConfigInterface {
-	private static async ensurePolicyColumns(): Promise<void> {
-		const db = DbConn.getClient();
-		const pragmaResult = await db.execute("PRAGMA table_info(system_config)");
-		const existingColumns = new Set(
-			pragmaResult.rows
-				.map((row) => String(row.name || "")),
-		);
+	private static policyColumnsEnsured = false;
+	private static ensurePolicyColumnsPromise: Promise<void> | null = null;
+	private static cachedConfig: SystemConfig | null = null;
+	private static cachedConfigExpiresAt = 0;
+	private static getConfigPromise: Promise<SystemConfig> | null = null;
 
-		for (const column of AUTH_POLICY_COLUMNS) {
-			if (existingColumns.has(column.name)) continue;
-			await db.execute(column.sql);
+	private static async ensurePolicyColumns(): Promise<void> {
+		if (SystemConfigInterface.policyColumnsEnsured) return;
+		if (SystemConfigInterface.ensurePolicyColumnsPromise) {
+			return SystemConfigInterface.ensurePolicyColumnsPromise;
 		}
+
+		SystemConfigInterface.ensurePolicyColumnsPromise = (async () => {
+			const db = DbConn.getClient();
+			const pragmaResult = await db.execute("PRAGMA table_info(system_config)");
+			const existingColumns = new Set(
+				pragmaResult.rows.map((row) => String(row.name || "")),
+			);
+
+			for (const column of AUTH_POLICY_COLUMNS) {
+				if (existingColumns.has(column.name)) continue;
+				await db.execute(column.sql);
+			}
+
+			SystemConfigInterface.policyColumnsEnsured = true;
+		})().catch((error) => {
+			SystemConfigInterface.ensurePolicyColumnsPromise = null;
+			throw error;
+		});
+
+		return SystemConfigInterface.ensurePolicyColumnsPromise;
 	}
 
 	static async getConfig(): Promise<SystemConfig> {
-		await SystemConfigInterface.ensurePolicyColumns();
-		const db = DbConn.getClient();
-		const result = await db.execute({
-			sql: `
-				SELECT *
-				FROM system_config
-				ORDER BY updated_at DESC
-				LIMIT 1
-			`,
-		});
-
-		if (result.rows.length > 0) {
-			return result.rows[0] as unknown as SystemConfig;
+		if (SystemConfigInterface.cachedConfig && SystemConfigInterface.cachedConfigExpiresAt > Date.now()) {
+			return SystemConfigInterface.cachedConfig;
 		}
+		if (SystemConfigInterface.getConfigPromise) return SystemConfigInterface.getConfigPromise;
 
-		const now = new Date().toISOString();
-		const fallback = getDefaultPayload(now);
+		SystemConfigInterface.getConfigPromise = (async () => {
+			await SystemConfigInterface.ensurePolicyColumns();
+			const db = DbConn.getClient();
+			const result = await db.execute({
+				sql: `
+					SELECT *
+					FROM system_config
+					ORDER BY updated_at DESC
+					LIMIT 1
+				`,
+			});
 
-		await db.execute({
-			sql: `
+			if (result.rows.length > 0) {
+				return result.rows[0] as unknown as SystemConfig;
+			}
+
+			const now = new Date().toISOString();
+			const fallback = getDefaultPayload(now);
+
+			await db.execute({
+				sql: `
 				INSERT INTO system_config (
 					id,
 					default_can_create_branches,
@@ -113,7 +139,7 @@ export class SystemConfigInterface {
 					auth_allow_multi_session
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
-			args: [
+				args: [
 				fallback.id,
 				fallback.default_can_create_branches,
 				fallback.default_max_branches_per_store,
@@ -134,10 +160,21 @@ export class SystemConfigInterface {
 				fallback.auth_max_failed_attempts,
 				fallback.auth_lockout_minutes,
 				fallback.auth_allow_multi_session,
-			],
+				],
+			});
+
+			return fallback;
+		})().then((config) => {
+			SystemConfigInterface.cachedConfig = config;
+			SystemConfigInterface.cachedConfigExpiresAt = Date.now() + SYSTEM_CONFIG_CACHE_TTL_MS;
+			SystemConfigInterface.getConfigPromise = null;
+			return config;
+		}).catch((error) => {
+			SystemConfigInterface.getConfigPromise = null;
+			throw error;
 		});
 
-		return fallback;
+		return SystemConfigInterface.getConfigPromise;
 	}
 
 	static async updateConfig(data: SystemConfigUpdateInput): Promise<SystemConfig> {
@@ -162,6 +199,8 @@ export class SystemConfigInterface {
 			args: [ ...values, updatedAt, current.id ],
 		});
 
+		SystemConfigInterface.cachedConfig = null;
+		SystemConfigInterface.cachedConfigExpiresAt = 0;
 		return SystemConfigInterface.getConfig();
 	}
 }

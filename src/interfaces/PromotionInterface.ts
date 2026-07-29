@@ -76,7 +76,9 @@ export class PromotionInterface {
 		await PromotionInterface.ensureTables();
 		const db = DbConn.getClient();
 		const result = await db.execute({ sql: `SELECT p.*, gp.name AS gift_product_name, qp.name AS qualifying_product_name,
-			COALESCE((SELECT COUNT(*) FROM order_promotions op WHERE op.promotion_id = p.id), 0) AS order_count
+			COALESCE((SELECT COUNT(DISTINCT op.order_id) FROM order_promotions op WHERE op.promotion_id = p.id), 0) AS order_count,
+			COALESCE((SELECT SUM(op.applications) FROM order_promotions op WHERE op.promotion_id = p.id), 0) AS application_count,
+			COALESCE((SELECT SUM(op.gift_qty) FROM order_promotions op WHERE op.promotion_id = p.id), 0) AS gift_quantity
 			FROM promotions p JOIN products gp ON gp.id = p.gift_product_id LEFT JOIN products qp ON qp.id = p.qualifying_product_id
 			WHERE p.store_id = ? AND p.deleted_at IS NULL ORDER BY p.created_at DESC`, args: [ storeId ] });
 		return result.rows as Array<Record<string, unknown>>;

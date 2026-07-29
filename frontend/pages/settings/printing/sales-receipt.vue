@@ -19,7 +19,9 @@ type StoreRecord = {
 	receipt_show_store_phone: number;
 	receipt_show_tendered: number;
 	receipt_show_change: number;
+	receipt_show_payment_method: number;
 	receipt_show_queue: number;
+	pickup_queue_enabled: number;
 };
 
 const { apiFetch } = useApiClient();
@@ -48,7 +50,11 @@ const copy = computed(() => {
 			showPhone: "Show store phone",
 			showTendered: "Show amount received",
 			showChange: "Show change",
+			showPaymentMethod: "Show payment method",
 			showQueue: "Show queue number",
+			queueFollowsSetting: "Follows the storefront queue setting",
+			queueEnabled: "Queue enabled",
+			queueDisabled: "Queue disabled",
 			queue: "Queue",
 			preview: "Receipt preview",
 			previewHint: "80 mm receipt preview",
@@ -65,6 +71,7 @@ const copy = computed(() => {
 			done: "Receipt settings saved",
 			saveFailed: "Unable to save receipt settings",
 			loadFailed: "Unable to load receipt settings",
+			networkError: "Unable to connect to the server. Check your internet connection and try again.",
 			noPermission: "You do not have permission to update this store.",
 		};
 	}
@@ -88,7 +95,11 @@ const copy = computed(() => {
 			showPhone: "แสดงเบอร์โทรร้าน",
 			showTendered: "แสดงยอดรับเงิน",
 			showChange: "แสดงเงินทอน",
+			showPaymentMethod: "แสดงวิธีชำระเงิน",
 			showQueue: "แสดงเลขคิว",
+			queueFollowsSetting: "แสดงตามการตั้งค่าคิวหน้าร้านโดยอัตโนมัติ",
+			queueEnabled: "เปิดระบบคิว",
+			queueDisabled: "ปิดระบบคิว",
 			queue: "คิว",
 			preview: "ตัวอย่างบิล",
 			previewHint: "ตัวอย่างบิลขนาด 80 มม.",
@@ -105,6 +116,7 @@ const copy = computed(() => {
 			done: "บันทึกการตั้งค่าบิลแล้ว",
 			saveFailed: "บันทึกการตั้งค่าบิลไม่สำเร็จ",
 			loadFailed: "โหลดการตั้งค่าบิลไม่สำเร็จ",
+			networkError: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง",
 			noPermission: "คุณไม่มีสิทธิ์แก้ไขร้านนี้",
 		};
 	}
@@ -127,7 +139,11 @@ const copy = computed(() => {
 		showPhone: "ສະແດງເບີໂທຮ້ານ",
 		showTendered: "ສະແດງຍອດຮັບເງິນ",
 		showChange: "ສະແດງເງິນທອນ",
+		showPaymentMethod: "ສະແດງວິທີຊຳລະ",
 		showQueue: "ສະແດງເລກຄິວ",
+		queueFollowsSetting: "ສະແດງຕາມການຕັ້ງຄ່າຄິວໜ້າຮ້ານອັດຕະໂນມັດ",
+		queueEnabled: "ເປີດລະບົບຄິວ",
+		queueDisabled: "ປິດລະບົບຄິວ",
 		queue: "ຄິວ",
 		preview: "ຕົວຢ່າງບິນ",
 		previewHint: "ຕົວຢ່າງບິນຂະໜາດ 80 ມມ.",
@@ -144,12 +160,12 @@ const copy = computed(() => {
 		done: "ບັນທຶກການຕັ້ງຄ່າບິນແລ້ວ",
 		saveFailed: "ບັນທຶກການຕັ້ງຄ່າບິນບໍ່ສຳເລັດ",
 		loadFailed: "ໂຫຼດການຕັ້ງຄ່າບິນບໍ່ສຳເລັດ",
+		networkError: "ບໍ່ສາມາດເຊື່ອມຕໍ່ເຊີບເວີໄດ້ ກະລຸນາກວດສອບອິນເຕີເນັດ ແລ້ວລອງໃໝ່ອີກຄັ້ງ",
 		noPermission: "ທ່ານບໍ່ມີສິດແກ້ໄຂຮ້ານນີ້",
 	};
 });
 
-const stores = ref<StoreRecord[]>([]);
-const selectedStoreId = ref("");
+const selectedStore = ref<StoreRecord | null>(null);
 const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
@@ -161,13 +177,13 @@ const showStoreAddress = ref(true);
 const showStorePhone = ref(true);
 const showTendered = ref(true);
 const showChange = ref(true);
-const showQueue = ref(true);
+const showPaymentMethod = ref(true);
+const showQueue = computed(() => Number(selectedStore.value?.pickup_queue_enabled || 0) !== 0);
 
 const initialSnapshot = ref("");
 
 const lockedStoreId = computed(() => currentStoreId.value || currentAccess.value?.store_id || currentAccess.value?.memberships?.[0]?.store_id || "");
-const selectedStore = computed(() => stores.value.find((store) => store.id === effectiveStoreId.value) || null);
-const effectiveStoreId = computed(() => selectedStoreId.value || lockedStoreId.value || stores.value[0]?.id || "");
+const effectiveStoreId = computed(() => lockedStoreId.value);
 const isElevatedStoreManager = computed(() => currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin");
 const canUpdateReceiptSettings = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
 const canShowPermissionWarning = computed(() => !loading.value && Boolean(selectedStore.value) && Boolean(currentUser.value || currentAccess.value) && !canUpdateReceiptSettings.value);
@@ -189,23 +205,34 @@ const currentSnapshot = computed(() => JSON.stringify({
 	showStorePhone: showStorePhone.value,
 	showTendered: showTendered.value,
 	showChange: showChange.value,
-	showQueue: showQueue.value,
+	showPaymentMethod: showPaymentMethod.value,
 }));
 const hasChanges = computed(() => initialSnapshot.value !== currentSnapshot.value);
 const canSave = computed(() => Boolean(selectedStore.value && canUpdateReceiptSettings.value && hasChanges.value && !saving.value));
 
 function resolveApiErrorMessage(errorValue: unknown, fallback: string) {
+	const localizedNetworkMessage = (message: string) => {
+		const normalized = message.toLowerCase();
+		return normalized.includes("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")
+			|| normalized.includes("failed to fetch")
+			|| normalized.includes("fetch failed")
+			|| normalized.includes("networkerror")
+			|| normalized.includes("econnrefused")
+			|| normalized.includes("load failed")
+				? copy.value.networkError
+				: message;
+	};
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
 			const data = Reflect.get(response, "_data") || Reflect.get(response, "data");
 			if (typeof data === "object" && data) {
 				const message = Reflect.get(data, "message");
-				if (typeof message === "string" && message.trim()) return message;
+				if (typeof message === "string" && message.trim()) return localizedNetworkMessage(message);
 			}
 		}
 	}
-	if (errorValue instanceof Error && errorValue.message.trim()) return errorValue.message;
+	if (errorValue instanceof Error && errorValue.message.trim()) return localizedNetworkMessage(errorValue.message);
 	return fallback;
 }
 
@@ -217,7 +244,7 @@ function hydrateForm(store: StoreRecord) {
 	showStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	showTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
 	showChange.value = Number(store.receipt_show_change ?? 1) !== 0;
-	showQueue.value = Number(store.receipt_show_queue ?? 1) !== 0;
+	showPaymentMethod.value = Number(store.receipt_show_payment_method ?? 1) !== 0;
 	initialSnapshot.value = currentSnapshot.value;
 }
 
@@ -225,17 +252,10 @@ async function loadSettings() {
 	loading.value = true;
 	error.value = "";
 	try {
-		const response = await apiFetch<ApiEnvelope<StoreRecord[]>>("/stores");
-		stores.value = response.data;
-		const nextStoreId = lockedStoreId.value || stores.value[0]?.id || "";
-		if (nextStoreId) selectedStoreId.value = nextStoreId;
 		if (effectiveStoreId.value) {
 			const storeResponse = await apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
-			const store = storeResponse.data;
-			const index = stores.value.findIndex((item) => item.id === store.id);
-			if (index >= 0) stores.value[index] = store;
-			else stores.value.unshift(store);
-			hydrateForm(store);
+			selectedStore.value = storeResponse.data;
+			hydrateForm(storeResponse.data);
 		}
 	} catch (err) {
 		error.value = resolveApiErrorMessage(err, copy.value.loadFailed);
@@ -250,11 +270,8 @@ async function reloadStore() {
 	error.value = "";
 	try {
 		const storeResponse = await apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
-		const store = storeResponse.data;
-		const index = stores.value.findIndex((item) => item.id === store.id);
-		if (index >= 0) stores.value[index] = store;
-		else stores.value.unshift(store);
-		hydrateForm(store);
+		selectedStore.value = storeResponse.data;
+		hydrateForm(storeResponse.data);
 	} catch (err) {
 		error.value = resolveApiErrorMessage(err, copy.value.loadFailed);
 	} finally {
@@ -277,7 +294,7 @@ async function saveSettings() {
 				receipt_show_store_phone: showStorePhone.value ? 1 : 0,
 				receipt_show_tendered: showTendered.value ? 1 : 0,
 				receipt_show_change: showChange.value ? 1 : 0,
-				receipt_show_queue: showQueue.value ? 1 : 0,
+				receipt_show_payment_method: showPaymentMethod.value ? 1 : 0,
 			},
 		});
 		appToast.success({ title: copy.value.done, description: selectedStore.value.name });
@@ -290,11 +307,6 @@ async function saveSettings() {
 		saving.value = false;
 	}
 }
-
-watch(effectiveStoreId, async (value, oldValue) => {
-	if (!value || value === oldValue || loading.value) return;
-	await reloadStore();
-});
 
 onMounted(loadSettings);
 </script>
@@ -332,12 +344,12 @@ onMounted(loadSettings);
 				<UAlert v-else-if="canShowPermissionWarning" color="warning" variant="soft" icon="i-heroicons-lock-closed" :title="copy.noPermission" />
 
 				<div class="grid gap-3 md:grid-cols-3">
-					<NuxtLink to="/settings/printing/sales-receipt" class="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+					<NuxtLink to="/settings/printing/sales-receipt" class="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 transition dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-1 dark:ring-emerald-400/20">
 						<div class="flex items-center gap-3">
 							<UIcon name="i-heroicons-receipt-percent" class="h-5 w-5" />
 							<div>
 								<p class="text-sm font-semibold">{{ copy.salesReceipt }}</p>
-								<p class="text-xs text-emerald-700">{{ copy.previewHint }}</p>
+								<p class="text-xs text-emerald-700 dark:text-emerald-300">{{ copy.previewHint }}</p>
 							</div>
 						</div>
 					</NuxtLink>
@@ -368,13 +380,6 @@ onMounted(loadSettings);
 								</div>
 
 								<label class="block space-y-1">
-									<span class="text-sm font-medium text-stone-700">{{ copy.store }}</span>
-									<select v-model="selectedStoreId" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100">
-										<option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
-									</select>
-								</label>
-
-								<label class="block space-y-1">
 									<span class="text-sm font-medium text-stone-700">{{ copy.storeName }}</span>
 									<input v-model="companyName" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100">
 								</label>
@@ -403,7 +408,7 @@ onMounted(loadSettings);
 										{ key: 'phone', label: copy.showPhone },
 										{ key: 'tendered', label: copy.showTendered },
 										{ key: 'change', label: copy.showChange },
-										{ key: 'queue', label: copy.showQueue },
+										{ key: 'paymentMethod', label: copy.showPaymentMethod },
 									]" :key="option.key" class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
 										<span class="text-sm font-medium text-stone-800">{{ option.label }}</span>
 										<input
@@ -424,19 +429,26 @@ onMounted(loadSettings);
 											type="checkbox"
 											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
 										>
-										<input
-											v-else-if="option.key === 'change'"
+									<input
+										v-else-if="option.key === 'change'"
 											v-model="showChange"
 											type="checkbox"
 											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
-										>
-										<input
-											v-else
-											v-model="showQueue"
-											type="checkbox"
-											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
-										>
+									>
+									<input
+										v-else-if="option.key === 'paymentMethod'"
+										v-model="showPaymentMethod"
+										type="checkbox"
+										class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+									>
 									</label>
+									<div class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 sm:col-span-2">
+										<div>
+											<p class="text-sm font-medium text-stone-800">{{ copy.showQueue }}</p>
+											<p class="mt-1 text-xs text-stone-500">{{ copy.queueFollowsSetting }}</p>
+										</div>
+										<UBadge :color="showQueue ? 'success' : 'neutral'" variant="soft" :label="showQueue ? copy.queueEnabled : copy.queueDisabled" />
+									</div>
 								</div>
 							</div>
 						</UCard>
@@ -473,7 +485,7 @@ onMounted(loadSettings);
 											<span>{{ copy.total }}</span>
 											<span class="font-mono tabular-nums">80,000₭</span>
 										</div>
-										<div class="flex justify-between gap-3 text-stone-600">
+										<div v-if="showPaymentMethod" class="flex justify-between gap-3 text-stone-600">
 											<span>{{ copy.method }}</span>
 											<span>{{ copy.cash }}</span>
 										</div>

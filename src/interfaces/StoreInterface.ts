@@ -58,6 +58,10 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_change INTEGER NOT NULL DEFAULT 1");
 			}
 
+			if (!existingColumns.has("receipt_show_payment_method")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_payment_method INTEGER NOT NULL DEFAULT 1");
+			}
+
 			if (!existingColumns.has("receipt_show_queue")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_queue INTEGER NOT NULL DEFAULT 1");
 			}

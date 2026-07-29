@@ -958,7 +958,7 @@ export class RbacInterface {
 			scopedArgs.push(storeId);
 		}
 
-		const membershipsResult = await db.execute({
+		const membershipsQuery = {
 			sql: `
 				SELECT
 					sm.store_id,
@@ -978,9 +978,9 @@ export class RbacInterface {
 				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
 			`,
 			args: [ userId ],
-		});
+		};
 
-		const scopedPermissionsResult = await db.execute({
+		const scopedPermissionsQuery = {
 			sql: `
 				SELECT
 					sm.store_id,
@@ -1000,7 +1000,14 @@ export class RbacInterface {
 				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
 			`,
 			args: scopedArgs,
-		});
+		};
+
+		const [ membershipsResult, scopedPermissionsResult ] = storeId
+			? await db.batch([ membershipsQuery, scopedPermissionsQuery ], "read")
+			: await (async () => {
+				const result = await db.execute(membershipsQuery);
+				return [ result, result ] as const;
+			})();
 
 		const membershipMap = new Map<string, UserAccessMembership>();
 		const permissionMap = new Map<string, Permission>();

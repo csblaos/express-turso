@@ -76,11 +76,16 @@ function json(value: unknown): string {
 
 export class OrderInterface {
 	private static initialized = false;
+	private static initializationPromise: Promise<void> | null = null;
+	private static orderListSchema: { hasRestaurantTables: boolean; hasLineStatus: boolean } | null = null;
 
 	static async ensureTables(): Promise<void> {
 		if (OrderInterface.initialized) return;
-		const db = DbConn.getClient();
-		const info = await db.execute("PRAGMA table_info(orders)");
+		if (OrderInterface.initializationPromise) return OrderInterface.initializationPromise;
+
+		OrderInterface.initializationPromise = (async () => {
+			const db = DbConn.getClient();
+			const info = await db.execute("PRAGMA table_info(orders)");
 		const columns = new Set(info.rows.map((row) => String((row as Record<string, unknown>).name)));
 		for (const [ name, definition ] of [
 			[ "service_mode", "TEXT NOT NULL DEFAULT 'walk-in'" ],
@@ -98,6 +103,7 @@ export class OrderInterface {
 		}
 		await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_store_order_no ON orders (store_id, order_no)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders (store_id, created_at DESC)");
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id)");
 		await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_idempotency_store_action_key ON idempotency_requests (store_id, action, idempotency_key)");
 		await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_daily_sequences (
 			store_id TEXT NOT NULL, sequence_date TEXT NOT NULL, last_queue_no INTEGER NOT NULL DEFAULT 0,
@@ -105,7 +111,13 @@ export class OrderInterface {
 		)`);
 		await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS uq_restaurant_queue_per_day
 			ON orders(store_id, queue_date, queue_no) WHERE queue_date IS NOT NULL AND queue_no IS NOT NULL`);
-		OrderInterface.initialized = true;
+			OrderInterface.initialized = true;
+		})().catch((error) => {
+			OrderInterface.initializationPromise = null;
+			throw error;
+		});
+
+		return OrderInterface.initializationPromise;
 	}
 
 	static async checkout(payload: PosCheckoutPayload): Promise<CheckoutResult> {
@@ -211,7 +223,9 @@ export class OrderInterface {
 			const now = new Date().toISOString();
 			const orderId = randomUUID();
 			const orderNo = `POS-${now.slice(0, 10).replace(/-/g, "")}-${orderId.slice(0, 6).toUpperCase()}`;
-			const queue = String(store.store_type) === "RESTAURANT" && payload.service_mode === "pickup"
+			const queue = String(store.store_type) === "RESTAURANT"
+				&& payload.service_mode === "pickup"
+				&& Number(store.pickup_queue_enabled) !== 0
 				? await allocateRestaurantQueue(transaction, payload.store_id)
 				: { queueNo: null, queueDate: null };
 			const result: CheckoutResult = {
@@ -310,10 +324,17 @@ export class OrderInterface {
 	static async list(filters: OrderListFilters): Promise<Record<string, unknown>[]> {
 		await OrderInterface.ensureTables();
 		const db = DbConn.getClient();
-		const tableCheck = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='restaurant_tables'");
-		const hasRestaurantTables = tableCheck.rows.length > 0;
-		const itemInfo = await db.execute("PRAGMA table_info(order_items)");
-		const hasLineStatus = itemInfo.rows.some((row) => String(row.name) === "line_status");
+		if (!OrderInterface.orderListSchema) {
+			const [ tableCheck, itemInfo ] = await db.batch([
+				"SELECT name FROM sqlite_master WHERE type='table' AND name='restaurant_tables'",
+				"PRAGMA table_info(order_items)",
+			], "read");
+			OrderInterface.orderListSchema = {
+				hasRestaurantTables: tableCheck.rows.length > 0,
+				hasLineStatus: itemInfo.rows.some((row) => String(row.name) === "line_status"),
+			};
+		}
+		const { hasRestaurantTables, hasLineStatus } = OrderInterface.orderListSchema;
 		const restaurantSelect = hasRestaurantTables
 			? ", t.name AS restaurant_table_name, z.name AS restaurant_zone_name"
 			: ", NULL AS restaurant_table_name, NULL AS restaurant_zone_name";

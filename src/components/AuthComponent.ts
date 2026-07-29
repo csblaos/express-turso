@@ -381,22 +381,39 @@ export class AuthComponent {
 			refreshExpiresAt,
 		};
 
-		await setJsonValue(getSessionKey(sessionId), sessionRecord, refreshTtlDays * 24 * 60 * 60);
-		const existingSessionIds = await AuthComponent.getSessionIds(userId);
+		const [ , existingSessionIds ] = await Promise.all([
+			setJsonValue(getSessionKey(sessionId), sessionRecord, refreshTtlDays * 24 * 60 * 60),
+			AuthComponent.getSessionIds(userId),
+		]);
 		await AuthComponent.saveSessionIds(userId, [ ...existingSessionIds, sessionId ]);
 
 		if (String(user.system_role || "").toLowerCase() === "superadmin") {
 			await RbacInterface.ensureOwnerMemberships(userId);
 		}
 
-		const unscopedAccess = await RbacInterface.getUserPermissions(userId);
+		const [ unscopedAccess, userSummary ] = await Promise.all([
+			RbacInterface.getUserPermissions(userId),
+			buildUserSummaryWithOnboarding(user),
+		]);
 		const preferredStoreId = resolvePreferredStoreId(unscopedAccess);
-		const access = preferredStoreId
-			? await RbacInterface.getUserPermissions(userId, preferredStoreId)
-			: unscopedAccess;
+		const preferredMemberships = preferredStoreId
+			? unscopedAccess.memberships.filter((membership) => membership.store_id === preferredStoreId)
+			: [];
+		const preferredPermissionMap = new Map(
+			preferredMemberships.flatMap((membership) => membership.permissions).map((permission) => [ permission.id, permission ]),
+		);
+		const access = preferredStoreId ? {
+			...unscopedAccess,
+			store_id: preferredStoreId,
+			permissions: Array.from(preferredPermissionMap.values()),
+			memberships: unscopedAccess.memberships.map((membership) => ({
+				...membership,
+				permissions: membership.store_id === preferredStoreId ? membership.permissions : [],
+			})),
+		} : unscopedAccess;
 
 		return {
-			user: await buildUserSummaryWithOnboarding(user),
+			user: userSummary,
 			session: sessionRecord,
 			access,
 			tokens: {
@@ -471,8 +488,10 @@ export class AuthComponent {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
 		}
 
-		await AuthComponent.clearFailedAttempts(identifier);
-		await AuthComponent.enforceSessionLimit(user, policy);
+		await Promise.all([
+			AuthComponent.clearFailedAttempts(identifier),
+			AuthComponent.enforceSessionLimit(user, policy),
+		]);
 		SystemRuntimeTelemetry.recordAuthEvent("login_success");
 		return AuthComponent.createTokensAndSession(user, policy, rememberMe);
 	}
@@ -519,7 +538,10 @@ export class AuthComponent {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_TOKEN_INVALID);
 		}
 
-		const user = await AuthInterface.findUserById(token.sub);
+		const [user, session] = await Promise.all([
+			AuthInterface.findUserById(token.sub),
+			getJsonValue<SessionRecord>(getSessionKey(token.sid)),
+		]);
 		if (!user) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
 		}
@@ -532,16 +554,18 @@ export class AuthComponent {
 			await RbacInterface.ensureOwnerMemberships(getUserId(user));
 		}
 
-		const session = await getJsonValue<SessionRecord>(getSessionKey(token.sid));
 		if (!session) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_SESSION_INVALID);
 		}
 
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
-		const access = await RbacInterface.getUserPermissions(getUserId(user), storeId);
+		const [access, userSummary] = await Promise.all([
+			RbacInterface.getUserPermissions(getUserId(user), storeId),
+			buildUserSummaryWithOnboarding(user),
+		]);
 
 		return {
-			user: await buildUserSummaryWithOnboarding(user),
+			user: userSummary,
 			session,
 			access,
 		};

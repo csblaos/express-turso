@@ -20,6 +20,8 @@ const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
 const profileMenuOpen = ref(false);
 const storeSwitcherOpen = ref(false);
+const logoutConfirmOpen = ref(false);
+const logoutPending = ref(false);
 const shellError = ref<string | null>(null);
 const requestHeaders = import.meta.server ? useRequestHeaders([ "user-agent" ]) : {};
 const initialUserAgent = import.meta.server ? requestHeaders["user-agent"] || "" : "";
@@ -28,7 +30,7 @@ const isDesktopViewport = ref(import.meta.server
 	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
-const { currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
+const { currentUser, currentAccess, currentStoreId, switchStore, logout } = useAuthSession();
 const { apiFetch } = useApiClient();
 const appToast = useAppToast();
 const colorMode = useColorMode();
@@ -267,6 +269,23 @@ function toggleColorMode() {
 async function navigateToProfile() {
 	profileMenuOpen.value = false;
 	await navigateTo("/profile");
+}
+
+function openLogoutConfirm() {
+	profileMenuOpen.value = false;
+	logoutConfirmOpen.value = true;
+}
+
+async function confirmLogout() {
+	if (logoutPending.value) return;
+	logoutPending.value = true;
+	try {
+		await logout();
+		logoutConfirmOpen.value = false;
+		await navigateTo("/login", { replace: true });
+	} finally {
+		logoutPending.value = false;
+	}
 }
 
 async function openStoreSwitcher() {
@@ -621,6 +640,20 @@ onErrorCaptured((error) => {
 																			<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('shell.profileSettingsHint') }}</span>
 																</span>
 															</button>
+															<div class="my-2 border-t border-[#efece4] dark:border-[#2d382d]" />
+															<button
+																type="button"
+																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 hover:text-red-700 dark:text-red-300 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+																@click="openLogoutConfirm"
+															>
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 group-hover:bg-red-100 dark:bg-red-500/10 dark:text-red-300">
+																	<UIcon name="i-heroicons-arrow-right-on-rectangle-20-solid" class="h-5 w-5" />
+																</span>
+																<span class="min-w-0 flex-1">
+																	<span class="block font-medium">{{ $t('shell.signOut') }}</span>
+																	<span class="block truncate text-xs text-stone-500">{{ $t('shell.signOutHint') }}</span>
+																</span>
+															</button>
 														</div>
 													</div>
 												</template>
@@ -712,6 +745,14 @@ onErrorCaptured((error) => {
 				</div>
 			</div>
 		</AppResponsivePanel>
+		<Teleport to="body">
+			<LogoutConfirmModal
+				:open="logoutConfirmOpen"
+				:pending="logoutPending"
+				@close="logoutConfirmOpen = false"
+				@confirm="confirmLogout"
+			/>
+		</Teleport>
 		<AppFloatingGoTop :hidden="mobileSidebarOpen" />
 	</main>
 </template>

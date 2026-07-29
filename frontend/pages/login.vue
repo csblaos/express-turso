@@ -3,6 +3,7 @@ import { needsAuthOnboarding } from "~/utils/auth-onboarding";
 const { login, currentAccess } = useAuthSession();
 const appToast = useAppToast();
 const route = useRoute();
+const { t } = useI18n();
 
 const DEV_PASSWORD = "dev123456";
 const DEV_LOGINS = [
@@ -11,42 +12,42 @@ const DEV_LOGINS = [
 		role: "preset_user",
 		email: "alex@gmail.com",
 		password: "1234567",
-		description: "preset สำหรับทดสอบการเข้าสู่ระบบด้วยบัญชีของ Alex",
+		descriptionKey: "loginPage.devDescriptions.alex",
 	},
 	{
 		label: "System Admin",
 		role: "system_admin",
 		email: "dev@codesabai.local",
 		password: DEV_PASSWORD,
-		description: "สิทธิ์ระดับระบบกลางสำหรับตรวจ flow admin ทั้งแพลตฟอร์ม",
+		descriptionKey: "loginPage.devDescriptions.systemAdmin",
 	},
 	{
 		label: "Owner",
 		role: "owner",
 		email: "owner@codesabai.local",
 		password: DEV_PASSWORD,
-		description: "เจ้าของร้านสำหรับเช็กหน้ารายงาน, ตั้งค่า และการจัดการร้าน",
+		descriptionKey: "loginPage.devDescriptions.owner",
 	},
 	{
 		label: "Manager",
 		role: "manager",
 		email: "manager@codesabai.local",
 		password: DEV_PASSWORD,
-		description: "ผู้จัดการร้านสำหรับตรวจ workflow กลางของร้าน",
+		descriptionKey: "loginPage.devDescriptions.manager",
 	},
 	{
 		label: "Cashier",
 		role: "cashier",
 		email: "cashier@codesabai.local",
 		password: DEV_PASSWORD,
-		description: "แคชเชียร์สำหรับเช็กประสบการณ์ใช้งานฝั่ง POS",
+		descriptionKey: "loginPage.devDescriptions.cashier",
 	},
 	{
 		label: "Stock",
 		role: "inventory_staff",
 		email: "stock@codesabai.local",
 		password: DEV_PASSWORD,
-		description: "พนักงานสต็อกสำหรับเช็ก inventory และงานรับของ",
+		descriptionKey: "loginPage.devDescriptions.stock",
 	},
 ] as const;
 
@@ -77,7 +78,7 @@ onMounted(() => {
 		}
 
 	if (error instanceof Error && error.message) return error.message;
-	return "เข้าสู่ระบบไม่สำเร็จ";
+	return t("loginPage.loginFailed");
 }
 
 function resolvePostLoginPath(systemRole?: string | null) {
@@ -114,7 +115,7 @@ async function loginToPos() {
 	} catch (err) {
 		const message = extractLoginErrorMessage(err);
 		appToast.error({
-			title: "เข้าสู่ระบบไม่สำเร็จ",
+			title: t("loginPage.loginFailed"),
 			description: message,
 			timeout: 3600,
 		});
@@ -127,8 +128,8 @@ function fillDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 	form.email = loginPreset.email;
 	form.password = loginPreset.password;
 	appToast.info({
-		title: "เติมข้อมูลแล้ว",
-		description: `${loginPreset.label} พร้อมเข้าสู่ระบบ`,
+		title: t("loginPage.filled"),
+		description: t("loginPage.readyToLogin", { name: loginPreset.label }),
 	});
 }
 
@@ -139,8 +140,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 		if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
 			await navigator.clipboard.writeText(payload);
 			appToast.success({
-				title: "คัดลอกบัญชีแล้ว",
-				description: `${loginPreset.label} ถูกคัดลอกแล้ว`,
+				title: t("loginPage.copied"),
+				description: t("loginPage.copiedDescription", { name: loginPreset.label }),
 			});
 			return;
 		}
@@ -149,7 +150,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 	}
 
 	appToast.error({
-		title: "คัดลอกอัตโนมัติไม่สำเร็จ",
+		title: t("loginPage.copyFailed"),
 		description: `${loginPreset.email} / ${loginPreset.password}`,
 		timeout: 4200,
 	});
@@ -168,45 +169,39 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 						</div>
 						<div>
 							<p class="text-xs uppercase tracking-[0.24em] text-stone-400">Retail POS</p>
-							<h1 class="mt-1 text-2xl font-semibold tracking-[-0.04em] text-stone-950">Codesabai Commerce</h1>
+							<h1 class="mt-1 text-2xl font-semibold tracking-[-0.04em] text-stone-950">O Khaidee<span class="text-primary-600">+</span></h1>
 						</div>
 					</div>
 
 					<div class="max-w-2xl space-y-6">
-						<UBadge color="primary" variant="soft" label="Login preview" />
 						<div class="space-y-4">
 							<h2 class="text-5xl leading-tight font-semibold tracking-[-0.05em] text-stone-950">
-								ระบบขายหน้าร้าน, สินค้า, สต็อก และรายงานในหน้าจอเดียวกัน
+								{{ t('loginPage.heroTitle') }}
 							</h2>
 							<p class="max-w-xl text-base leading-7 text-stone-500">
-								หน้า login นี้แยกออกจากแอปหลักเพื่อให้ flow ชัดเจนขึ้น เมื่อเข้าสู่ระบบแล้วจึงค่อยพาเข้า shell ของ POS
-								และ backoffice
+								{{ t('loginPage.heroDescription') }}
 							</p>
 						</div>
 
 						<div class="grid gap-4 sm:grid-cols-3">
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">POS</p>
-								<p class="mt-3 text-2xl font-semibold text-stone-950">ขายเร็ว</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">สแกน, ค้นหา, เพิ่มลงบิล และชำระเงินได้จาก flow เดียว</p>
+								<p class="mt-3 text-2xl font-semibold text-stone-950">{{ t('loginPage.posTitle') }}</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('loginPage.posDescription') }}</p>
 							</UCard>
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Inventory</p>
-								<p class="mt-3 text-2xl font-semibold text-stone-950">คุมสต็อก</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">ดูคงเหลือ, ปรับยอด และเช็กความเคลื่อนไหวสต็อกได้ชัดเจน</p>
+								<p class="mt-3 text-2xl font-semibold text-stone-950">{{ t('loginPage.inventoryTitle') }}</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('loginPage.inventoryDescription') }}</p>
 							</UCard>
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Reports</p>
-								<p class="mt-3 text-2xl font-semibold text-stone-950">ดูรายงาน</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">สรุปยอดขาย, top products, staff ranking และสัญญาณหน้างาน</p>
+								<p class="mt-3 text-2xl font-semibold text-stone-950">{{ t('loginPage.reportsTitle') }}</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('loginPage.reportsDescription') }}</p>
 							</UCard>
 						</div>
 					</div>
 
-					<div class="flex items-center justify-between text-sm text-stone-400">
-						<p>Development login</p>
-						<p>เชื่อม auth API แล้ว</p>
-					</div>
 				</div>
 			</section>
 
@@ -219,17 +214,14 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 										<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
 									</div>
 								<div>
-									<UBadge color="neutral" variant="soft" label="เข้าสู่ระบบ" />
-									<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">เข้าสู่ระบบร้านค้า</h2>
-									<p class="mt-2 text-sm leading-6 text-stone-500">
-										โหมด dev จะ prefill บัญชีทดสอบไว้ให้และสามารถเข้าสู่ระบบผ่าน backend auth API ได้ทันที
-									</p>
+									<UBadge color="neutral" variant="soft" :label="t('loginPage.signIn')" />
+									<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{{ t('loginPage.signInStore') }}</h2>
 									</div>
 								</div>
 
 								<form class="space-y-4 px-4 sm:px-0" @submit.prevent="loginToPos">
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">อีเมลหรือชื่อผู้ใช้</label>
+										<label class="text-sm font-medium text-stone-700">{{ t('loginPage.emailOrUsername') }}</label>
 										<UInput
 										v-model="form.email"
 										size="lg"
@@ -241,7 +233,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 								</div>
 
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">รหัสผ่าน</label>
+									<label class="text-sm font-medium text-stone-700">{{ t('loginPage.password') }}</label>
 									<div class="relative">
 										<UInput
 											v-model="form.password"
@@ -259,8 +251,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											tabindex="-1"
 											class="absolute top-1/2 right-2.5 z-10 flex h-8.5 w-8.5 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900 [&_svg]:h-[18px] [&_svg]:w-[18px]"
 											:icon="showPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'"
-											:aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-											:title="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+											:aria-label="showPassword ? t('loginPage.hidePassword') : t('loginPage.showPassword')"
+											:title="showPassword ? t('loginPage.hidePassword') : t('loginPage.showPassword')"
 											@click="showPassword = !showPassword"
 										/>
 									</div>
@@ -272,11 +264,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											type="checkbox"
 											class="h-4 w-4 rounded border-[#d6d3d1] text-[#c97745] focus:ring-[#c97745]"
 										/>
-										<span>จดจำอุปกรณ์นี้</span>
+										<span>{{ t('loginPage.rememberDevice') }}</span>
 									</label>
-									<button type="button" class="text-sm font-medium text-[#97532c] transition hover:text-[#7d4322]">
-										ลืมรหัสผ่าน
-										</button>
 									</div>
 
 									<div class="space-y-3 pt-2">
@@ -292,18 +281,7 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 											:block="true"
 											class="min-h-11 font-semibold shadow-sm"
 										>
-											{{ submitting ? "กำลังเข้าสู่ระบบ" : "เข้าสู่ระบบ" }}
-										</AppButton>
-										<AppButton
-											to="/"
-											color="neutral"
-											variant="soft"
-											size="md"
-											icon="i-heroicons-home-20-solid"
-											:block="true"
-											class="min-h-11 font-medium"
-										>
-											ข้ามไปหน้า POS
+											{{ submitting ? t('loginPage.signingIn') : t('loginPage.signIn') }}
 										</AppButton>
 									</div>
 								</form>
@@ -311,8 +289,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 								<div class="space-y-3 rounded-none border-y border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600 sm:rounded-md sm:border">
 									<div class="flex items-start justify-between gap-4">
 										<div>
-											<p class="font-medium text-stone-800">บัญชี dev ตาม role</p>
-										<p class="mt-1 leading-6 text-stone-500">ใช้ปุ่ม Fill เพื่อเติมลงฟอร์มทันที หรือ Copy เพื่อคัดลอก credential สำหรับทดสอบ role ต่าง ๆ</p>
+											<p class="font-medium text-stone-800">{{ t('loginPage.devAccounts') }}</p>
+										<p class="mt-1 leading-6 text-stone-500">{{ t('loginPage.devAccountsHint') }}</p>
 									</div>
 									<UBadge color="primary" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
 								</div>
@@ -329,15 +307,15 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 													<p class="text-sm font-semibold text-stone-900">{{ loginPreset.label }}</p>
 													<UBadge color="neutral" variant="soft" :label="loginPreset.role" />
 												</div>
-													<p class="mt-1 text-xs leading-5 text-stone-500">{{ loginPreset.description }}</p>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ t(loginPreset.descriptionKey) }}</p>
 													<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
 												</div>
 												<div class="flex shrink-0 items-center gap-2">
 													<AppButton color="neutral" variant="soft" size="sm" @click="copyDevLogin(loginPreset)">
-														Copy
+												{{ t('loginPage.copy') }}
 													</AppButton>
 													<AppButton color="primary" variant="soft" size="sm" @click="fillDevLogin(loginPreset)">
-														Fill
+												{{ t('loginPage.fill') }}
 													</AppButton>
 												</div>
 											</div>

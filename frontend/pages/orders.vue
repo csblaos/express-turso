@@ -3,9 +3,10 @@ import { appNavItems } from "~/utils/app-nav";
 import { formatMoneyWithSymbol } from "~/utils/currency";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 
-type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "completed" | "cancelled";
-type FulfillmentType = "walk-in" | "pickup" | "delivery";
+type OrderStatus = "open" | "ready_to_pay" | "pending" | "confirmed" | "preparing" | "ready" | "completed" | "cancelled";
+type OrderType = "quick-sale" | "dine-in";
 type PaymentStatus = "unpaid" | "partial" | "paid" | "refunded";
+type DatePreset = "all" | "today" | "yesterday" | "this-week" | "last-week" | "custom";
 
 type OrderLine = {
 	id: string;
@@ -25,11 +26,20 @@ type OrderRecord = {
 	id: string;
 	orderNumber: string;
 	customerName: string;
-	channel: FulfillmentType;
+	hasCustomer: boolean;
+	orderType: OrderType;
+	orderNo: string;
+	queueNo?: string;
+	fulfillmentStatus?: string;
 	status: OrderStatus;
 	paymentStatus: PaymentStatus;
 	paymentMethod?: "cash" | "qr_transfer" | "credit_card" | string;
 	total: number;
+	subtotal: number;
+	discount: number;
+	vatAmount: number;
+	amountTendered: number;
+	changeAmount: number;
 	itemCount: number;
 	createdAt: string;
 	updatedAt: string;
@@ -42,138 +52,66 @@ type OrderRecord = {
 
 const searchQuery = ref("");
 const activeStatus = ref<"all" | OrderStatus>("all");
-const activeChannel = ref<"all" | FulfillmentType>("all");
+const activeOrderType = ref<"all" | OrderType>("all");
 const activePaymentStatus = ref<"all" | PaymentStatus>("all");
 const activePaymentMethod = ref<"all" | "cash" | "qr_transfer" | "credit_card">("all");
-const dateFrom = ref("");
-const dateTo = ref("");
-const activeView = ref<"all" | "attention" | "completed">("all");
+const initialOrderDate = toLocalDateInput(new Date());
+const dateFrom = ref(initialOrderDate);
+const dateTo = ref(initialOrderDate);
+const activeDatePreset = ref<DatePreset>("today");
+const activeView = ref<"all" | "attention" | "open-tables" | "open-queue" | "completed">("all");
 const detailOpen = ref(false);
+const printPreviewOpen = ref(false);
 const selectedOrderId = ref("");
 const ordersPending = ref(false);
 const ordersError = ref<string | null>(null);
 const storeCurrency = ref("LAK");
+const queueEnabled = ref(false);
+const receiptStore = ref({
+	name: "", address: "", phone: "", showAddress: true, showPhone: true,
+	showTendered: true, showChange: true, showPaymentMethod: true,
+});
+const currentPage = ref(1);
+const pageSize = ref(20);
 const { apiFetch } = useApiClient();
 const { t } = useI18n();
 const { intlLocale } = useAppLocale();
 const { currentStoreId, currentAccess } = useAuthSession();
 const effectiveStoreId = computed(() => currentStoreId.value?.trim() || currentAccess.value?.store_id?.trim() || "");
+let ordersRequestSequence = 0;
 
 
-const orders = ref<OrderRecord[]>([
-	{
-		id: "1",
-		orderNumber: "A-102",
-		customerName: "ลูกค้าทั่วไป",
-		channel: "walk-in",
-		status: "preparing",
-		paymentStatus: "paid",
-		total: 422,
-		itemCount: 4,
-		createdAt: "2026-05-06T09:20:00.000Z",
-		updatedAt: "2026-05-06T09:29:00.000Z",
-		cashier: "Lina Punk",
-		tableLabel: "โต๊ะ 6",
-		note: "ไม่ใส่น้ำตาลในรายการชา",
-		lines: [
-			{ id: "1", name: "ลาเต้เย็น", sku: "CF-LAT-16", qty: 2, price: 95 },
-			{ id: "2", name: "ครอฟเฟิลเนยสด", sku: "BK-CRF-01", qty: 1, price: 85 },
-			{ id: "3", name: "ยูซุโซดา", sku: "TE-YUZ-16", qty: 1, price: 105 },
-			{ id: "4", name: "Service", sku: "SV-0001", qty: 1, price: 42 },
-		],
-	},
-	{
-		id: "2",
-		orderNumber: "D-214",
-		customerName: "Mina Phone",
-		channel: "delivery",
-		status: "confirmed",
-		paymentStatus: "paid",
-		total: 560,
-		itemCount: 5,
-		createdAt: "2026-05-06T08:54:00.000Z",
-		updatedAt: "2026-05-06T09:10:00.000Z",
-		cashier: "Noy Chan",
-		phone: "020 55 221 889",
-		note: "โทรก่อนถึง",
-		lines: [
-			{ id: "1", name: "ชาไทยนมสด", sku: "TE-THM-16", qty: 2, price: 90 },
-			{ id: "2", name: "ยูซุโซดา", sku: "TE-YUZ-16", qty: 2, price: 105 },
-			{ id: "3", name: "ครอฟเฟิลเนยสด", sku: "BK-CRF-01", qty: 1, price: 85 },
-		],
-	},
-	{
-		id: "3",
-		orderNumber: "P-078",
-		customerName: "Anya Dee",
-		channel: "pickup",
-		status: "ready",
-		paymentStatus: "partial",
-		total: 280,
-		itemCount: 3,
-		createdAt: "2026-05-06T07:42:00.000Z",
-		updatedAt: "2026-05-06T08:01:00.000Z",
-		cashier: "Ked Phone",
-		phone: "020 77 339 221",
-		lines: [
-			{ id: "1", name: "อเมริกาโน่", sku: "CF-AMR-16", qty: 2, price: 80 },
-			{ id: "2", name: "ชามัทฉะคลาวด์", sku: "TE-MAT-16", qty: 1, price: 120 },
-		],
-	},
-	{
-		id: "4",
-		orderNumber: "A-101",
-		customerName: "ลูกค้าทั่วไป",
-		channel: "walk-in",
-		status: "completed",
-		paymentStatus: "paid",
-		total: 180,
-		itemCount: 2,
-		createdAt: "2026-05-06T06:55:00.000Z",
-		updatedAt: "2026-05-06T07:04:00.000Z",
-		cashier: "Ann Dee",
-		lines: [
-			{ id: "1", name: "ลาเต้เย็น", sku: "CF-LAT-16", qty: 1, price: 95 },
-			{ id: "2", name: "ครอฟเฟิลเนยสด", sku: "BK-CRF-01", qty: 1, price: 85 },
-		],
-	},
-	{
-		id: "5",
-		orderNumber: "D-213",
-		customerName: "Khamla Sip",
-		channel: "delivery",
-		status: "cancelled",
-		paymentStatus: "refunded",
-		total: 210,
-		itemCount: 2,
-		createdAt: "2026-05-06T05:15:00.000Z",
-		updatedAt: "2026-05-06T05:26:00.000Z",
-		cashier: "Lina Punk",
-		note: "ลูกค้ายกเลิกก่อนจัดส่ง",
-		lines: [
-			{ id: "1", name: "ยูซุโซดา", sku: "TE-YUZ-16", qty: 2, price: 105 },
-		],
-	},
-]);
+const orders = ref<OrderRecord[]>([]);
 
 type ApiOrder = Record<string, unknown> & { lines?: Array<Record<string, unknown>> };
 
+function localDateBoundary(value: string, endOfDay = false) {
+	const [ year, month, day ] = value.split("-").map(Number);
+	return new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0).toISOString();
+}
+
+function formatQueueNumber(value: string) {
+	return value.replace(/^Q/i, "").padStart(3, "0");
+}
+
 function mapApiOrder(order: ApiOrder): OrderRecord {
 	const serviceMode = String(order.service_mode || "walk-in");
-	const channel = serviceMode === "dine-in" ? "walk-in" : serviceMode === "pickup" ? "pickup" : String(order.channel || serviceMode || "walk-in");
+	const orderType: OrderType = serviceMode === "dine-in" ? "dine-in" : "quick-sale";
 	const queueNumber = order.queue_no ? String(order.queue_no) : "";
-	const tableLabel = queueNumber
-		? `อ้างอิง ${String(order.order_no)}`
-		: order.restaurant_table_name
+	const customerName = String(order.customer_name || "").trim();
+	const tableLabel = order.restaurant_table_name
 			? [ order.restaurant_zone_name, order.restaurant_table_name ].filter(Boolean).join(" · ")
 			: undefined;
 	return {
-		id: String(order.id), orderNumber: queueNumber ? `คิว ${queueNumber}` : String(order.order_no), customerName: String(order.customer_name || t("orders.generalCustomer")),
-		channel: channel as FulfillmentType,
+		id: String(order.id), orderNumber: queueNumber ? formatQueueNumber(queueNumber) : String(order.order_no), orderNo: String(order.order_no), queueNo: queueNumber || undefined,
+		customerName: customerName || t("orders.generalCustomer"), hasCustomer: Boolean(customerName), orderType,
 		status: String(order.status || "completed") as OrderStatus, paymentStatus: String(order.payment_status || "paid") as PaymentStatus,
-		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), itemCount: Number(order.item_count || 0),
-		createdAt: String(order.created_at), updatedAt: String(order.created_at), cashier: String(order.cashier_name || t("orders.user")),
+		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), subtotal: Number(order.subtotal || 0),
+		discount: Number(order.discount || 0), vatAmount: Number(order.vat_amount || 0),
+		amountTendered: Number(order.amount_tendered || 0), changeAmount: Number(order.change_amount || 0), itemCount: Number(order.item_count || 0),
+		createdAt: String(order.created_at), updatedAt: String(order.updated_at || order.closed_at || order.paid_at || order.created_at), cashier: String(order.cashier_name || t("orders.user")),
 		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined, tableLabel,
+		fulfillmentStatus: order.fulfillment_status ? String(order.fulfillment_status) : undefined,
 		lines: (order.lines || []).map((line) => ({
 			id: String(line.id), name: String(line.name), sku: String(line.sku), qty: Number(line.qty), price: Number(line.price_base_at_sale),
 			note: line.note ? String(line.note) : undefined, lineStatus: line.line_status ? String(line.line_status) : undefined,
@@ -186,17 +124,40 @@ function mapApiOrder(order: ApiOrder): OrderRecord {
 
 async function loadOrders() {
 	if (!effectiveStoreId.value) return;
+	const requestSequence = ++ordersRequestSequence;
 	ordersPending.value = true; ordersError.value = null;
 	try {
-		const response = await apiFetch<{ data: ApiOrder[] }>(`/pos/orders?store_id=${encodeURIComponent(effectiveStoreId.value)}`);
+		const params = new URLSearchParams({ store_id: effectiveStoreId.value });
+		if (dateFrom.value) params.set("from", localDateBoundary(dateFrom.value));
+		if (dateTo.value) params.set("to", localDateBoundary(dateTo.value, true));
+		const [ response, storeResponse ] = await Promise.all([
+			apiFetch<{ data: ApiOrder[] }>(`/pos/orders?${params.toString()}`),
+			apiFetch<{ data: Record<string, unknown> }>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`),
+		]);
+		if (requestSequence !== ordersRequestSequence) return;
 		orders.value = response.data.map(mapApiOrder);
+		queueEnabled.value = Number(storeResponse.data.pickup_queue_enabled || 0) !== 0;
+		const store = storeResponse.data;
+		receiptStore.value = {
+			name: String(store.pdf_company_name || store.name || "O KhaiDee+"),
+			address: String(store.pdf_company_address || store.address || ""),
+			phone: String(store.pdf_company_phone || store.phone_number || ""),
+			showAddress: Number(store.receipt_show_store_address ?? 1) !== 0,
+			showPhone: Number(store.receipt_show_store_phone ?? 1) !== 0,
+			showTendered: Number(store.receipt_show_tendered ?? 1) !== 0,
+			showChange: Number(store.receipt_show_change ?? 1) !== 0,
+			showPaymentMethod: Number(store.receipt_show_payment_method ?? 1) !== 0,
+		};
 		const currency = response.data[0]?.payment_currency;
 		if (currency) storeCurrency.value = String(currency);
-	} catch (error) { orders.value = []; ordersError.value = resolveApiErrorMessage(error, t("orders.loadError")); }
-	finally { ordersPending.value = false; }
+	} catch (error) {
+		if (requestSequence === ordersRequestSequence) { orders.value = []; ordersError.value = resolveApiErrorMessage(error, t("orders.loadError")); }
+	}
+	finally { if (requestSequence === ordersRequestSequence) ordersPending.value = false; }
 }
 
 watch(effectiveStoreId, () => { void loadOrders(); }, { immediate: true });
+watch([ dateFrom, dateTo ], () => { void loadOrders(); }, { flush: "post" });
 
 const filteredOrders = computed(() => {
 	const query = searchQuery.value.trim().toLowerCase();
@@ -204,6 +165,7 @@ const filteredOrders = computed(() => {
 	return orders.value.filter((order) => {
 		const matchesQuery = !query || [
 			order.orderNumber,
+			order.orderNo,
 			order.customerName,
 			order.cashier,
 			order.phone || "",
@@ -211,20 +173,29 @@ const filteredOrders = computed(() => {
 		].some((value) => value.toLowerCase().includes(query));
 
 		const matchesStatus = activeStatus.value === "all" || order.status === activeStatus.value;
-		const matchesChannel = activeChannel.value === "all" || order.channel === activeChannel.value;
+		const matchesOrderType = activeOrderType.value === "all" || order.orderType === activeOrderType.value;
 		const matchesPayment = activePaymentStatus.value === "all" || order.paymentStatus === activePaymentStatus.value;
 		const matchesPaymentMethod = activePaymentMethod.value === "all" || order.paymentMethod === activePaymentMethod.value;
-		const createdDay = order.createdAt.slice(0, 10);
+		const createdDay = toLocalDateInput(new Date(order.createdAt));
 		const matchesDate = (!dateFrom.value || createdDay >= dateFrom.value) && (!dateTo.value || createdDay <= dateTo.value);
 
+		const isOpenTable = order.orderType === "dine-in" && ["open", "ready_to_pay"].includes(order.status);
+		const isWaitingQueue = order.orderType === "quick-sale" && Boolean(order.queueNo) && order.fulfillmentStatus === "waiting_pickup";
 		const matchesView =
 			activeView.value === "all"
-			|| (activeView.value === "attention" && ["pending", "confirmed", "preparing", "ready"].includes(order.status))
+			|| (activeView.value === "attention" && (["pending", "confirmed", "preparing", "ready"].includes(order.status) || ["partial", "refunded"].includes(order.paymentStatus)))
+			|| (activeView.value === "open-tables" && isOpenTable)
+			|| (activeView.value === "open-queue" && isWaitingQueue)
 			|| (activeView.value === "completed" && ["completed", "cancelled"].includes(order.status));
 
-		return matchesQuery && matchesStatus && matchesChannel && matchesPayment && matchesPaymentMethod && matchesDate && matchesView;
+		return matchesQuery && matchesStatus && matchesOrderType && matchesPayment && matchesPaymentMethod && matchesDate && matchesView;
 	});
 });
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredOrders.value.length / pageSize.value)));
+const paginatedOrders = computed(() => filteredOrders.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value));
+const pageStart = computed(() => filteredOrders.value.length ? (currentPage.value - 1) * pageSize.value + 1 : 0);
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredOrders.value.length));
 
 const selectedOrder = computed(() =>
 	filteredOrders.value.find((order) => order.id === selectedOrderId.value)
@@ -232,15 +203,39 @@ const selectedOrder = computed(() =>
 	?? null,
 );
 
-const totalOrders = computed(() => orders.value.length);
-const openOrders = computed(() => orders.value.filter((order) => ["pending", "confirmed", "preparing", "ready"].includes(order.status)).length);
-const deliveryOrders = computed(() => orders.value.filter((order) => order.channel === "delivery").length);
-const avgTicket = computed(() => {
-	if (!orders.value.length) return 0;
-	return Math.round(orders.value.reduce((sum, order) => sum + order.total, 0) / orders.value.length);
-});
+const dateScopedOrders = computed(() => orders.value.filter((order) => {
+	const createdDay = toLocalDateInput(new Date(order.createdAt));
+	return (!dateFrom.value || createdDay >= dateFrom.value) && (!dateTo.value || createdDay <= dateTo.value);
+}));
+const totalOrders = computed(() => dateScopedOrders.value.length);
+const openTables = computed(() => dateScopedOrders.value.filter((order) => order.orderType === "dine-in" && ["open", "ready_to_pay"].includes(order.status)).length);
+const openQueue = computed(() => dateScopedOrders.value.filter((order) => order.orderType === "quick-sale" && order.queueNo && order.fulfillmentStatus === "waiting_pickup").length);
+const attentionCount = computed(() => dateScopedOrders.value.filter((order) => ["pending", "confirmed", "preparing", "ready"].includes(order.status) || ["partial", "refunded"].includes(order.paymentStatus)).length);
+const completedPaidOrders = computed(() => dateScopedOrders.value.filter((order) => order.status === "completed" && order.paymentStatus === "paid"));
+const netSales = computed(() => completedPaidOrders.value.reduce((sum, order) => sum + order.total, 0));
+const avgTicket = computed(() => completedPaidOrders.value.length ? Math.round(netSales.value / completedPaidOrders.value.length) : 0);
+const activeFilterCount = computed(() => [
+	Boolean(searchQuery.value.trim()),
+	activeStatus.value !== "all",
+	activeOrderType.value !== "all",
+	activePaymentStatus.value !== "all",
+	activePaymentMethod.value !== "all",
+	activeDatePreset.value !== "all",
+	activeView.value !== "all",
+].filter(Boolean).length);
+
+function clearFilters() {
+	searchQuery.value = "";
+	activeStatus.value = "all";
+	activeOrderType.value = "all";
+	activePaymentStatus.value = "all";
+	activePaymentMethod.value = "all";
+	activeView.value = "all";
+	applyDatePreset("all");
+}
 
 watch(filteredOrders, (value) => {
+	currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(value.length / pageSize.value)));
 	if (!value.length) {
 		selectedOrderId.value = "";
 		detailOpen.value = false;
@@ -251,12 +246,45 @@ watch(filteredOrders, (value) => {
 	}
 }, { immediate: true });
 
+watch([ searchQuery, activeStatus, activeOrderType, activePaymentStatus, activePaymentMethod, dateFrom, dateTo, activeView, pageSize ], () => { currentPage.value = 1; });
+
 function formatDate(value: string) {
 	try {
 		return new Intl.DateTimeFormat(intlLocale.value, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 	} catch {
 		return value;
 	}
+}
+
+function toLocalDateInput(date: Date) {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
+function startOfLocalWeek(value: Date) {
+	const date = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+	const mondayOffset = (date.getDay() + 6) % 7;
+	date.setDate(date.getDate() - mondayOffset);
+	return date;
+}
+
+function applyDatePreset(preset: DatePreset) {
+	activeDatePreset.value = preset;
+	if (preset === "custom") return;
+	if (preset === "all") { dateFrom.value = ""; dateTo.value = ""; return; }
+	const today = new Date();
+	if (preset === "today") { dateFrom.value = toLocalDateInput(today); dateTo.value = dateFrom.value; return; }
+	if (preset === "yesterday") {
+		const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+		dateFrom.value = toLocalDateInput(yesterday); dateTo.value = dateFrom.value; return;
+	}
+	const thisMonday = startOfLocalWeek(today);
+	if (preset === "this-week") { dateFrom.value = toLocalDateInput(thisMonday); dateTo.value = toLocalDateInput(today); return; }
+	const lastMonday = new Date(thisMonday); lastMonday.setDate(lastMonday.getDate() - 7);
+	const lastSunday = new Date(thisMonday); lastSunday.setDate(lastSunday.getDate() - 1);
+	dateFrom.value = toLocalDateInput(lastMonday); dateTo.value = toLocalDateInput(lastSunday);
 }
 
 function formatMoney(value: number) {
@@ -272,6 +300,8 @@ function paymentMethodLabel(method: string) {
 
 function statusColor(status: OrderStatus) {
 	if (status === "completed") return "success";
+	if (status === "open") return "info";
+	if (status === "ready_to_pay") return "warning";
 	if (status === "ready") return "info";
 	if (status === "cancelled") return "error";
 	if (status === "preparing") return "warning";
@@ -285,19 +315,20 @@ function paymentColor(status: PaymentStatus) {
 	return "neutral";
 }
 
-function channelLabel(channel: FulfillmentType) {
-	if (channel === "walk-in") return t("orders.walkIn");
-	if (channel === "pickup") return t("orders.pickup");
-	return t("orders.delivery");
+function orderTypeLabel(orderType: OrderType) {
+	return orderType === "dine-in" ? t("orders.dineIn") : t("orders.quickSale");
 }
 
 function statusLabel(status: OrderStatus) {
+	if (status === "open") return t("orders.open");
+	if (status === "ready_to_pay") return t("orders.readyToPay");
 	if (status === "pending") return t("orders.pending");
 	if (status === "confirmed") return t("orders.confirmed");
 	if (status === "preparing") return t("orders.preparing");
 	if (status === "ready") return t("orders.ready");
 	if (status === "completed") return t("orders.completed");
-	return t("orders.cancelled");
+	if (status === "cancelled") return t("orders.cancelled");
+	return status;
 }
 
 function paymentLabel(status: PaymentStatus) {
@@ -314,6 +345,20 @@ function openDetail(orderId: string) {
 
 function closeDetail() {
 	detailOpen.value = false;
+}
+
+function openPrintPreview() {
+	if (!selectedOrder.value || (selectedOrder.value.status === "cancelled" && selectedOrder.value.paymentStatus !== "paid" && selectedOrder.value.itemCount === 0)) return;
+	printPreviewOpen.value = true;
+}
+
+function canPrintOrder(order: OrderRecord) {
+	return !(order.status === "cancelled" && order.paymentStatus !== "paid" && order.itemCount === 0);
+}
+
+function confirmPrintReceipt() {
+	printPreviewOpen.value = false;
+	nextTick(() => window.print());
 }
 </script>
 
@@ -355,22 +400,22 @@ function closeDetail() {
 					</div>
 				</AppPageHeader>
 
-				<div class="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:pr-1">
-					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.totalOrders') }}</p>
-						<p class="mt-1 text-xl font-semibold text-stone-950">{{ totalOrders }}</p>
+				<div class="grid grid-cols-3 gap-2 px-3 sm:gap-3 sm:px-0 lg:grid-cols-4 lg:pr-1">
+					<div class="min-w-0 rounded-md border border-neutral-200 bg-white p-2.5 sm:p-3">
+						<p class="text-[9px] font-semibold uppercase leading-tight tracking-[0.06em] text-stone-400 sm:text-[11px] sm:tracking-[0.18em]">{{ $t('orders.totalOrders') }}</p>
+						<p class="mt-1 text-lg font-semibold text-stone-950 sm:text-xl">{{ totalOrders }}</p>
 					</div>
-					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.openQueue') }}</p>
-						<p class="mt-1 text-xl font-semibold text-stone-950">{{ openOrders }}</p>
+					<div class="min-w-0 rounded-md border border-neutral-200 bg-white p-2.5 sm:p-3">
+						<p class="text-[9px] font-semibold uppercase leading-tight tracking-[0.06em] text-stone-400 sm:text-[11px] sm:tracking-[0.18em]">{{ $t('orders.openTables') }}</p>
+						<p class="mt-1 text-lg font-semibold text-stone-950 sm:text-xl">{{ openTables }}</p>
 					</div>
-					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.delivery') }}</p>
-						<p class="mt-1 text-xl font-semibold text-stone-950">{{ deliveryOrders }}</p>
+					<div class="min-w-0 rounded-md border border-neutral-200 bg-white p-2.5 sm:p-3">
+						<p class="text-[9px] font-semibold uppercase leading-tight tracking-[0.06em] text-stone-400 sm:text-[11px] sm:tracking-[0.18em]">{{ queueEnabled ? $t('orders.openQueue') : $t('orders.averageBill') }}</p>
+						<p class="mt-1 truncate text-lg font-semibold text-stone-950 sm:text-xl">{{ queueEnabled ? openQueue : formatMoney(avgTicket) }}</p>
 					</div>
-					<div class="rounded-md border border-neutral-200 bg-white p-3">
-						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.averageBill') }}</p>
-						<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(avgTicket) }}</p>
+					<div class="col-span-3 min-w-0 rounded-md border border-neutral-200 bg-white p-3 lg:col-span-1">
+						<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t('orders.netSales') }}</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ formatMoney(netSales) }}</p>
 					</div>
 				</div>
 
@@ -379,15 +424,18 @@ function closeDetail() {
 						<div>
 							<p class="text-sm font-semibold text-stone-950">{{ $t('orders.filters') }}</p>
 						</div>
-						<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-							{{ filteredOrders.length }} {{ $t('common.items') }}
+						<div class="flex items-center gap-2">
+							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">{{ filteredOrders.length }} {{ $t('common.items') }}</div>
+							<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-path-20-solid" :loading="ordersPending" :label="$t('orders.refresh')" @click="loadOrders" />
 						</div>
 					</div>
 
 					<div class="grid gap-2 px-4 py-3">
-						<div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 md:items-end">
+						<div class="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6 md:items-end">
 							<select v-model="activeStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<option value="all">{{ $t('orders.allStatuses') }}</option>
+								<option value="open">{{ $t('orders.open') }}</option>
+								<option value="ready_to_pay">{{ $t('orders.readyToPay') }}</option>
 								<option value="pending">{{ $t('orders.pending') }}</option>
 								<option value="confirmed">{{ $t('orders.confirmed') }}</option>
 								<option value="preparing">{{ $t('orders.preparing') }}</option>
@@ -396,11 +444,10 @@ function closeDetail() {
 								<option value="cancelled">{{ $t('orders.cancelled') }}</option>
 							</select>
 
-							<select v-model="activeChannel" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-								<option value="all">{{ $t('orders.allChannels') }}</option>
-								<option value="walk-in">{{ $t('orders.walkIn') }}</option>
-								<option value="pickup">{{ $t('orders.pickup') }}</option>
-								<option value="delivery">{{ $t('orders.delivery') }}</option>
+							<select v-model="activeOrderType" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<option value="all">{{ $t('orders.allOrderTypes') }}</option>
+								<option value="quick-sale">{{ $t('orders.quickSale') }}</option>
+								<option value="dine-in">{{ $t('orders.dineIn') }}</option>
 							</select>
 
 							<select v-model="activePaymentStatus" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
@@ -413,13 +460,33 @@ function closeDetail() {
 							<select v-model="activePaymentMethod" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<option value="all">{{ $t('orders.allMethods') }}</option><option value="cash">{{ $t('pos.cash') }}</option><option value="qr_transfer">{{ $t('pos.qr') }}</option><option value="credit_card">{{ $t('pos.card') }}</option>
 							</select>
-							<input v-model="dateFrom" type="date" :aria-label="$t('orders.fromDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-							<input v-model="dateTo" type="date" :aria-label="$t('orders.toDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+							<input v-model="dateFrom" type="date" :aria-label="$t('orders.fromDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @input="activeDatePreset = 'custom'">
+							<input v-model="dateTo" type="date" :aria-label="$t('orders.toDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @input="activeDatePreset = 'custom'">
 						</div>
 
-						<div class="flex flex-wrap gap-2 overflow-x-auto pb-1 md:justify-end">
-							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" :label="$t('common.all')" @click="activeView = 'all'" />
-							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" :label="$t('orders.attention')" @click="activeView = 'attention'" />
+						<div class="flex items-center justify-between gap-3">
+							<p class="shrink-0 text-xs font-semibold text-stone-500">{{ $t('orders.dateRange') }}</p>
+							<span v-if="activeDatePreset === 'custom'" class="rounded-md bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700">{{ $t('orders.customDate') }}</span>
+						</div>
+						<div class="flex gap-2 overflow-x-auto pb-1">
+							<AppButton v-for="preset in ([
+								{ value: 'all', label: $t('orders.allDates') },
+								{ value: 'today', label: $t('orders.today') },
+								{ value: 'yesterday', label: $t('orders.yesterday') },
+								{ value: 'this-week', label: $t('orders.thisWeek') },
+								{ value: 'last-week', label: $t('orders.lastWeek') },
+							] as const)" :key="preset.value" size="sm" class="shrink-0 whitespace-nowrap rounded-md" :color="activeDatePreset === preset.value ? 'primary' : 'neutral'" :variant="activeDatePreset === preset.value ? 'solid' : 'soft'" :label="preset.label" @click="applyDatePreset(preset.value)" />
+						</div>
+
+						<div class="flex items-center justify-between gap-3">
+							<p class="text-xs font-semibold text-stone-500">{{ $t('orders.quickViews') }}</p>
+							<AppButton v-if="activeFilterCount" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" :label="`${$t('orders.clearFilters')} (${activeFilterCount})`" @click="clearFilters" />
+						</div>
+						<div class="flex flex-nowrap justify-start gap-2 overflow-x-auto pb-1">
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'all' ? 'primary' : 'neutral'" :variant="activeView === 'all' ? 'solid' : 'soft'" :label="`${$t('orders.totalOrders')} ${totalOrders}`" @click="activeView = 'all'" />
+							<AppButton v-if="attentionCount" size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'attention' ? 'primary' : 'neutral'" :variant="activeView === 'attention' ? 'solid' : 'soft'" :label="`${$t('orders.attention')} ${attentionCount}`" @click="activeView = 'attention'" />
+							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'open-tables' ? 'primary' : 'neutral'" :variant="activeView === 'open-tables' ? 'solid' : 'soft'" :label="`${$t('orders.openTables')} ${openTables}`" @click="activeView = 'open-tables'" />
+							<AppButton v-if="queueEnabled" size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'open-queue' ? 'primary' : 'neutral'" :variant="activeView === 'open-queue' ? 'solid' : 'soft'" :label="`${$t('orders.waitingPickupQueue')} ${openQueue}`" @click="activeView = 'open-queue'" />
 							<AppButton size="md" class="rounded-md whitespace-nowrap" :color="activeView === 'completed' ? 'primary' : 'neutral'" :variant="activeView === 'completed' ? 'solid' : 'soft'" :label="$t('orders.completedCancelled')" @click="activeView = 'completed'" />
 						</div>
 					</div>
@@ -429,7 +496,7 @@ function closeDetail() {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
-								<p class="text-sm font-semibold text-stone-950">Orders list</p>
+								<p class="text-sm font-semibold text-stone-950">{{ $t('orders.list') }}</p>
 								<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('orders.listHint') }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
@@ -437,8 +504,12 @@ function closeDetail() {
 							</div>
 						</div>
 
-						<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
-							<div v-if="ordersPending" class="flex min-h-[280px] items-center justify-center text-sm text-stone-500">{{ $t('common.loading') }}</div>
+						<div class="min-h-0 flex-1 overflow-x-auto">
+							<div v-if="ordersPending" class="min-w-[1080px] divide-y divide-[#f1ede6]" aria-live="polite">
+								<div v-for="index in 7" :key="index" class="grid grid-cols-[150px_220px_150px_130px_160px_160px_110px] gap-4 px-4 py-4">
+									<div v-for="cell in 7" :key="cell" class="h-4 animate-pulse rounded bg-neutral-100" />
+								</div>
+							</div>
 							<div v-else-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 								<div class="space-y-3">
 									<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
@@ -453,39 +524,40 @@ function closeDetail() {
 
 							<div v-else>
 								<div class="overflow-x-auto">
-									<table class="min-w-[1120px] w-full border-separate border-spacing-0">
+									<table class="min-w-[1080px] w-full border-separate border-spacing-0">
 										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 											<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.time') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.title') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('common.status') }}</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.channel') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.orderType') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.payment') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.quantityTotal') }}</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.updated') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.actions') }}</th>
 											</tr>
 										</thead>
 										<tbody>
 											<tr
-												v-for="order in filteredOrders"
+											v-for="order in paginatedOrders"
 												:key="order.id"
-												class="cursor-pointer bg-white transition hover:bg-primary-50"
-												:class="selectedOrderId === order.id ? 'bg-primary-50' : ''"
+								class="cursor-pointer bg-white transition hover:bg-primary-50"
+								:class="[selectedOrderId === order.id ? 'bg-primary-50' : '', order.status === 'cancelled' ? 'bg-red-50/35 text-stone-500' : '']"
 												@click="openDetail(order.id)"
 											>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
 													{{ formatDate(order.createdAt) }}
 												</td>
-												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
-													<p class="text-sm font-semibold text-stone-950">{{ order.orderNumber }}</p>
-													<p class="mt-1 text-sm text-stone-500">{{ order.customerName }}</p>
+											<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+												<p class="text-sm font-semibold text-stone-950">{{ order.orderNumber }}</p>
+												<p v-if="order.queueNo" class="mt-1 font-mono text-xs text-stone-400">{{ order.orderNo }}</p>
+											<p v-if="order.hasCustomer" class="mt-1 text-sm text-stone-500">{{ order.customerName }}</p>
 													<p v-if="order.note" class="mt-1 text-xs text-stone-400">{{ order.note }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
 													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
-													<p>{{ channelLabel(order.channel) }}</p>
+												<p class="font-medium text-stone-800">{{ orderTypeLabel(order.orderType) }}</p>
 													<p class="mt-1 text-xs text-stone-400">
 														{{ order.cashier }}
 														<span v-if="order.phone">· {{ order.phone }}</span>
@@ -500,8 +572,8 @@ function closeDetail() {
 													<p class="text-sm font-semibold text-stone-900">{{ order.itemCount }} {{ $t('common.items') }}</p>
 													<p class="mt-1 text-sm font-semibold text-stone-900">{{ formatMoney(order.total) }}</p>
 												</td>
-												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
-													{{ formatDate(order.updatedAt) }}
+											<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-right">
+												<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-eye-20-solid" :label="$t('orders.viewDetails')" @click.stop="openDetail(order.id)" />
 												</td>
 											</tr>
 										</tbody>
@@ -510,10 +582,17 @@ function closeDetail() {
 							</div>
 						</div>
 
-						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-							<div class="flex items-center justify-between gap-2 text-xs text-stone-500 sm:text-sm">
-								<div>{{ openOrders }} {{ $t('orders.openQueue') }}</div>
-								<div>{{ deliveryOrders }} {{ $t('orders.delivery') }} • {{ $t('orders.averageBill') }} {{ formatMoney(avgTicket) }}</div>
+					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-3 backdrop-blur-sm">
+							<div class="flex flex-wrap items-center justify-between gap-3 text-xs text-stone-500 sm:text-sm">
+								<div>{{ $t('orders.pageSummary', { start: pageStart, end: pageEnd, total: filteredOrders.length }) }}</div>
+								<div class="flex items-center gap-2">
+									<select v-model.number="pageSize" :aria-label="$t('orders.pageSize')" class="rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm">
+										<option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
+									</select>
+									<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-chevron-left-20-solid" :disabled="currentPage <= 1" @click="currentPage--" />
+									<span class="min-w-16 text-center">{{ currentPage }} / {{ totalPages }}</span>
+									<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-chevron-right-20-solid" :disabled="currentPage >= totalPages" @click="currentPage++" />
+								</div>
 							</div>
 						</div>
 					</div>
@@ -552,7 +631,7 @@ function closeDetail() {
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentColor(selectedOrder.paymentStatus)" variant="soft" :label="paymentLabel(selectedOrder.paymentStatus)" />
 											<UBadge color="neutral" variant="soft" :label="paymentMethodLabel(selectedOrder.paymentMethod || '')" />
-											<UBadge color="neutral" variant="soft" :label="channelLabel(selectedOrder.channel)" />
+											<UBadge color="neutral" variant="soft" :label="orderTypeLabel(selectedOrder.orderType)" />
 											<UBadge color="neutral" variant="soft" :label="selectedOrder.cashier" />
 										</div>
 									</div>
@@ -561,10 +640,17 @@ function closeDetail() {
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<h3 class="text-sm font-semibold text-stone-950">{{ $t('orders.summary') }}</h3>
+								<div v-if="selectedOrder.status === 'cancelled' && selectedOrder.orderType === 'dine-in'" class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ $t('orders.cancelledTableHint') }}</div>
 								<dl class="mt-4 space-y-3 text-sm">
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">{{ $t('orders.channel') }}</dt>
-										<dd class="text-right font-medium text-stone-900">{{ channelLabel(selectedOrder.channel) }}</dd>
+										<dt class="text-stone-500">{{ $t('orders.orderType') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ orderTypeLabel(selectedOrder.orderType) }}</dd>
+									</div>
+									<div v-if="selectedOrder.queueNo" class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+										<dt class="text-stone-500">{{ $t('orders.queueNumber') }}</dt><dd class="text-right font-semibold text-stone-900">{{ formatQueueNumber(selectedOrder.queueNo) }}</dd>
+									</div>
+									<div v-if="selectedOrder.tableLabel" class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+										<dt class="text-stone-500">{{ $t('orders.table') }}</dt><dd class="text-right font-medium text-stone-900">{{ selectedOrder.tableLabel }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 										<dt class="text-stone-500">{{ $t('orders.createdAt') }}</dt>
@@ -587,24 +673,33 @@ function closeDetail() {
 									<UBadge color="neutral" variant="soft" :label="`${selectedOrder.lines.length} ${$t('common.items')}`" />
 								</div>
 
-								<div class="mt-4 space-y-3">
+								<div class="mt-4 overflow-hidden rounded-md border border-neutral-200 bg-white">
 									<div
 										v-for="line in selectedOrder.lines"
 										:key="line.id"
-										class="rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200"
+										class="border-b border-neutral-100 px-4 py-3 last:border-b-0"
+										:class="line.lineStatus === 'cancelled' ? 'bg-red-50/60 opacity-75' : ''"
 									>
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ line.name }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ line.sku }} · {{ line.qty }} x {{ formatMoney(line.price) }}</p>
+												<p class="truncate text-sm font-semibold text-stone-900" :class="line.lineStatus === 'cancelled' ? 'line-through text-stone-500' : ''">{{ line.name }}</p>
+												<p class="mt-1 font-mono text-[11px] text-stone-400">{{ line.sku }}</p>
+												<p class="mt-1 text-xs text-stone-500">{{ formatMoney(line.price) }} × {{ line.qty }}</p>
 												<div v-if="line.isGift || line.roundNo || line.lineStatus === 'cancelled'" class="mt-2 flex flex-wrap gap-1"><UBadge v-if="line.isGift" color="success" variant="soft" label="สินค้าฟรี" /><UBadge v-if="line.roundNo" color="neutral" variant="soft" :label="line.dispatchMode === 'direct' ? `ขายตรงรอบ ${line.roundNo}` : `ครัวรอบ ${line.roundNo}`" /><UBadge v-if="line.lineStatus === 'cancelled'" color="error" variant="soft" label="ยกเลิกแล้ว" /></div>
 												<p v-if="line.note" class="mt-2 text-xs text-stone-400">{{ line.note }}</p>
 												<p v-if="line.cancelReason" class="mt-1 text-xs text-red-500">เหตุผล: {{ line.cancelReason }}</p>
 											</div>
-											<p class="text-sm font-semibold text-stone-900">{{ formatMoney(line.qty * line.price) }}</p>
+											<p class="shrink-0 font-mono text-sm font-semibold tabular-nums text-stone-900" :class="line.lineStatus === 'cancelled' ? 'line-through text-stone-400' : ''">{{ formatMoney(line.qty * line.price) }}</p>
 										</div>
 									</div>
 								</div>
+
+								<dl class="mt-4 space-y-2 border-t border-dashed border-neutral-300 pt-4 text-sm">
+									<div class="flex justify-between gap-4 text-stone-600"><dt>{{ $t('orders.subtotal') }}</dt><dd class="font-mono tabular-nums">{{ formatMoney(selectedOrder.subtotal) }}</dd></div>
+									<div v-if="selectedOrder.discount" class="flex justify-between gap-4 text-stone-600"><dt>{{ $t('orders.discount') }}</dt><dd class="font-mono tabular-nums text-emerald-700">−{{ formatMoney(selectedOrder.discount) }}</dd></div>
+									<div v-if="selectedOrder.vatAmount" class="flex justify-between gap-4 text-stone-600"><dt>{{ $t('orders.vat') }}</dt><dd class="font-mono tabular-nums">{{ formatMoney(selectedOrder.vatAmount) }}</dd></div>
+									<div class="flex justify-between gap-4 border-t border-neutral-200 pt-3 text-base font-bold text-stone-950"><dt>{{ $t('orders.netTotal') }}</dt><dd class="font-mono tabular-nums">{{ formatMoney(selectedOrder.total) }}</dd></div>
+								</dl>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -628,13 +723,73 @@ function closeDetail() {
 
 						<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true">{{ $t('orders.print') }}</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" icon="i-heroicons-printer" :disabled="!canPrintOrder(selectedOrder)" :title="!canPrintOrder(selectedOrder) ? $t('orders.printUnavailable') : undefined" @click="openPrintPreview">{{ $t('orders.print') }}</AppButton>
 								<AppButton color="primary" variant="solid" size="md" :block="true">{{ $t('orders.updateStatus') }}</AppButton>
 							</div>
 						</div>
 					</div>
 				</template>
 			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-if="selectedOrder"
+				v-model="printPreviewOpen"
+				:title="$t('posPanels.printPreview')"
+				:description="$t('posPanels.receipt')"
+				desktop-width="520px"
+				desktop-placement="center"
+				mobile-max-height="92vh"
+			>
+				<div class="flex min-h-0 flex-col gap-3">
+					<div class="scrollbar-soft max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
+						<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
+							<div class="text-center">
+								<p class="text-[13px] font-bold text-stone-950">{{ receiptStore.name }}</p>
+								<p v-if="receiptStore.showAddress && receiptStore.address" class="mt-0.5 text-[11px] text-stone-500">{{ receiptStore.address }}</p>
+								<p v-if="receiptStore.showPhone && receiptStore.phone" class="mt-0.5 text-[11px] text-stone-500">{{ receiptStore.phone }}</p>
+								<p class="mt-1 text-[11px] text-stone-500">{{ selectedOrder.orderNo }}</p>
+							</div>
+							<div class="my-3 border-t border-dashed border-neutral-300" />
+							<div class="space-y-2">
+								<div v-for="line in selectedOrder.lines.filter((item) => item.lineStatus !== 'cancelled')" :key="line.id" class="flex justify-between gap-3">
+									<div class="min-w-0"><p class="font-medium text-stone-900">{{ line.name }}</p><p class="text-[11px] text-stone-500">× {{ line.qty }}</p></div>
+									<span class="shrink-0 font-mono tabular-nums">{{ formatMoney(line.qty * line.price) }}</span>
+								</div>
+							</div>
+							<div class="my-3 border-t border-dashed border-neutral-300" />
+							<div class="space-y-2">
+								<div class="flex justify-between gap-3"><span>{{ $t('orders.subtotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.subtotal) }}</span></div>
+								<div v-if="selectedOrder.discount" class="flex justify-between gap-3"><span>{{ $t('orders.discount') }}</span><span class="font-mono tabular-nums">−{{ formatMoney(selectedOrder.discount) }}</span></div>
+								<div v-if="selectedOrder.vatAmount" class="flex justify-between gap-3"><span>{{ $t('orders.vat') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.vatAmount) }}</span></div>
+								<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold"><span>{{ $t('orders.netTotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.total) }}</span></div>
+								<div v-if="receiptStore.showPaymentMethod" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div>
+								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('posPanels.cashReceived') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.amountTendered) }}</span></div>
+								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('pos.change') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
+							</div>
+							<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
+								<div v-if="queueEnabled && selectedOrder.queueNo" class="mb-3"><p class="text-[11px] text-stone-500">{{ $t('posPanels.queue') }}</p><p class="text-lg font-bold text-stone-950">{{ formatQueueNumber(selectedOrder.queueNo) }}</p></div>
+								<p class="text-[11px] text-stone-500">{{ $t('posPanels.thankYou') }}</p><p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
+							</div>
+						</div>
+					</div>
+					<div class="grid grid-cols-2 gap-2"><AppButton color="neutral" variant="soft" block @click="printPreviewOpen = false">{{ $t('common.cancel') }}</AppButton><AppButton color="primary" block icon="i-heroicons-printer" @click="confirmPrintReceipt">{{ $t('orders.print') }}</AppButton></div>
+				</div>
+			</AppResponsivePanel>
+
+			<div v-if="selectedOrder" class="orders-print-root">
+				<div class="orders-print-sheet">
+					<h1>{{ receiptStore.name }}</h1><p v-if="receiptStore.showAddress && receiptStore.address">{{ receiptStore.address }}</p><p v-if="receiptStore.showPhone && receiptStore.phone">{{ receiptStore.phone }}</p><p>{{ selectedOrder.orderNo }}</p><hr>
+					<div v-for="line in selectedOrder.lines.filter((item) => item.lineStatus !== 'cancelled')" :key="line.id" class="orders-print-line"><span>{{ line.name }} × {{ line.qty }}</span><span>{{ formatMoney(line.qty * line.price) }}</span></div><hr>
+					<div class="orders-print-line"><span>{{ $t('orders.subtotal') }}</span><span>{{ formatMoney(selectedOrder.subtotal) }}</span></div><div v-if="selectedOrder.discount" class="orders-print-line"><span>{{ $t('orders.discount') }}</span><span>−{{ formatMoney(selectedOrder.discount) }}</span></div><div v-if="selectedOrder.vatAmount" class="orders-print-line"><span>{{ $t('orders.vat') }}</span><span>{{ formatMoney(selectedOrder.vatAmount) }}</span></div><div class="orders-print-total"><strong>{{ $t('orders.netTotal') }}</strong><strong>{{ formatMoney(selectedOrder.total) }}</strong></div>
+					<div v-if="receiptStore.showPaymentMethod" class="orders-print-line"><span>{{ $t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="orders-print-line"><span>{{ $t('posPanels.cashReceived') }}</span><span>{{ formatMoney(selectedOrder.amountTendered) }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="orders-print-line"><span>{{ $t('pos.change') }}</span><span>{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
+					<div v-if="queueEnabled && selectedOrder.queueNo" class="orders-print-queue"><span>{{ $t('posPanels.queue') }}</span><strong>{{ formatQueueNumber(selectedOrder.queueNo) }}</strong></div><p>{{ $t('posPanels.thankYou') }}</p><p class="orders-print-powered">Powered by O KhaiDee+</p>
+				</div>
+			</div>
 		</template>
 	</AppSidebarShell>
 </template>
+
+<style scoped>
+.receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.orders-print-root{display:none}.orders-print-line,.orders-print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.orders-print-sheet h1,.orders-print-sheet>p{text-align:center}.orders-print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.orders-print-queue span,.orders-print-queue strong{display:block}.orders-print-queue strong{font-size:20px}.orders-print-powered{font-size:10px;color:#555}
+@media print{body *{visibility:hidden!important}.orders-print-root,.orders-print-root *{visibility:visible!important}.orders-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm}.orders-print-sheet{width:72mm;margin:0 auto;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif;font-size:12px}.orders-print-sheet h1{font-size:18px}.orders-print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
+</style>

@@ -1,429 +1,49 @@
 <script setup lang="ts">
+import type { EChartsCoreOption } from "echarts/core";
+import { formatMoneyWithSymbol } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
 
-type MetricCard = {
-	id: string;
-	labelKey: string;
-	value: string;
-	change: string;
-	tone: "success" | "warning" | "info" | "neutral";
-};
-
-type PaymentMix = {
-	id: string;
-	labelKey: string;
-	amount: string;
-	percent: number;
-	colorClass: string;
-};
-
-type TopProduct = {
-	id: string;
-	name: string;
-	sku: string;
-	qty: number;
-	revenue: string;
-	trend: string;
-};
-
-type LowStockItem = {
-	id: string;
-	name: string;
-	remaining: number;
-	threshold: number;
-	status: string;
-};
-
-type HourlyPoint = {
-	hour: string;
-	value: number;
-};
-
-type StaffRank = {
-	id: string;
-	name: string;
-	orders: number;
-	sales: string;
-	avgTicket: string;
-};
-
-type ProfitabilitySummary = {
-	revenue: number;
-	known_cost_revenue: number;
-	known_cost: number;
-	known_gross_profit: number;
-	unknown_cost_revenue: number;
-	unknown_cost_bills: number;
-	bill_count: number;
-};
-
-const activeRange = ref<"today" | "week" | "month">("today");
-const activeBranch = ref("all");
-const activeReportView = ref<"sales" | "products" | "operations">("sales");
-const { t } = useI18n();
-const { apiFetch } = useApiClient();
-const { currentStoreId } = useAuthSession();
-const profitability = ref<ProfitabilitySummary | null>(null);
-
-function reportFrom(): string {
-	const date = new Date();
-	date.setHours(0, 0, 0, 0);
-	if (activeRange.value === "week") date.setDate(date.getDate() - 6);
-	if (activeRange.value === "month") date.setDate(date.getDate() - 29);
-	return date.toISOString();
-}
-
-async function loadProfitability() {
-	if (!currentStoreId.value) return;
-	try {
-		const response = await apiFetch<{ data: ProfitabilitySummary }>(`/pos/restaurant/reports/profitability?store_id=${encodeURIComponent(currentStoreId.value)}&from=${encodeURIComponent(reportFrom())}`);
-		profitability.value = response.data;
-	} catch {
-		profitability.value = null;
-	}
-}
-
-watch([activeRange, currentStoreId], () => void loadProfitability(), { immediate: true });
-
-const metricCards = computed<MetricCard[]>(() => {
-	if (activeRange.value === "today") {
-		return [
-			{ id: "sales", labelKey: "reports.salesToday", value: "฿48,920", change: "+12.4%", tone: "success" },
-			{ id: "orders", labelKey: "reports.billCount", value: "186", change: t("reports.moreBills", { count: 8 }), tone: "info" },
-			{ id: "avg", labelKey: "reports.averageBill", value: "฿263", change: "+฿14", tone: "warning" },
-			{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 3 }), change: t("reports.unchanged"), tone: "neutral" },
-		];
-	}
-
-	if (activeRange.value === "week") {
-		return [
-			{ id: "sales", labelKey: "reports.sales7Days", value: "฿312,440", change: "+9.2%", tone: "success" },
-			{ id: "orders", labelKey: "reports.billCount", value: "1,084", change: t("reports.moreBills", { count: 72 }), tone: "info" },
-			{ id: "avg", labelKey: "reports.averageBill", value: "฿288", change: "+฿11", tone: "warning" },
-			{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 12 }), change: t("reports.fewerItems", { count: 1 }), tone: "neutral" },
-		];
-	}
-
-	return [
-		{ id: "sales", labelKey: "reports.sales30Days", value: "฿1,284,600", change: "+15.8%", tone: "success" },
-		{ id: "orders", labelKey: "reports.billCount", value: "4,012", change: t("reports.moreBills", { count: 264 }), tone: "info" },
-		{ id: "avg", labelKey: "reports.averageBill", value: "฿320", change: "+฿26", tone: "warning" },
-		{ id: "refund", labelKey: "reports.cancelRefund", value: t("common.itemCount", { count: 41 }), change: t("reports.moreItems", { count: 4 }), tone: "neutral" },
-	];
-});
-
-const paymentMix: PaymentMix[] = [
-	{ id: "cash", labelKey: "pos.cash", amount: "฿18,240", percent: 37, colorClass: "bg-[#c97745]" },
-	{ id: "qr", labelKey: "pos.qr", amount: "฿20,180", percent: 41, colorClass: "bg-[#73b06f]" },
-	{ id: "card", labelKey: "pos.card", amount: "฿7,540", percent: 15, colorClass: "bg-[#729ad8]" },
-	{ id: "other", labelKey: "reports.other", amount: "฿2,960", percent: 7, colorClass: "bg-[#b6ada1]" },
-];
-
-const topProducts: TopProduct[] = [
-	{ id: "1", name: "ลาเต้เย็น", sku: "CF-LAT-16", qty: 84, revenue: "฿7,980", trend: "+14%" },
-	{ id: "2", name: "ชาไทยนมสด", sku: "TE-THM-16", qty: 70, revenue: "฿6,300", trend: "+9%" },
-	{ id: "3", name: "อเมริกาโน่", sku: "CF-AMR-16", qty: 62, revenue: "฿4,960", trend: "+6%" },
-	{ id: "4", name: "ครอฟเฟิลเนยสด", sku: "BK-CRF-01", qty: 49, revenue: "฿4,165", trend: "+18%" },
-	{ id: "5", name: "ยูซุโซดา", sku: "TE-YUZ-16", qty: 38, revenue: "฿3,990", trend: "-3%" },
-	];
-
-const lowStockItems: LowStockItem[] = [
-	{ id: "1", name: "ชามัทฉะคลาวด์", remaining: 9, threshold: 12, status: "ต่ำกว่าจุดเตือน" },
-	{ id: "2", name: "ครอฟเฟิลเนยสด", remaining: 6, threshold: 8, status: "ใกล้หมด" },
-	{ id: "3", name: "เมล็ดกาแฟคั่วพิเศษ 250 กรัม", remaining: 3, threshold: 5, status: "ต้องเติมสต็อก" },
-	{ id: "4", name: "นมโอ๊ตสำหรับเพิ่ม", remaining: 0, threshold: 4, status: "หมดสต็อก" },
-];
-
-const hourlySales: HourlyPoint[] = [
-	{ hour: "08:00", value: 18 },
-	{ hour: "09:00", value: 32 },
-	{ hour: "10:00", value: 46 },
-	{ hour: "11:00", value: 62 },
-	{ hour: "12:00", value: 78 },
-	{ hour: "13:00", value: 72 },
-	{ hour: "14:00", value: 58 },
-	{ hour: "15:00", value: 64 },
-	{ hour: "16:00", value: 55 },
-	{ hour: "17:00", value: 43 },
-	];
-
-const staffRanks: StaffRank[] = [
-	{ id: "1", name: "Lina Punk", orders: 48, sales: "฿12,860", avgTicket: "฿268" },
-	{ id: "2", name: "Noy Chan", orders: 42, sales: "฿10,920", avgTicket: "฿260" },
-	{ id: "3", name: "Ked Phone", orders: 37, sales: "฿9,480", avgTicket: "฿256" },
-	{ id: "4", name: "Ann Dee", orders: 29, sales: "฿7,140", avgTicket: "฿246" },
-];
-
-function metricToneClass(tone: MetricCard["tone"]) {
-	if (tone === "success") return "text-emerald-700 bg-emerald-50 ring-emerald-100";
-	if (tone === "warning") return "text-orange-700 bg-orange-50 ring-orange-100";
-	if (tone === "info") return "text-blue-700 bg-blue-50 ring-blue-100";
-	return "text-stone-600 bg-stone-50 ring-stone-200";
-}
-
-function barHeight(value: number) {
-	return `${Math.max(14, value)}%`;
-}
+type Comparison={value:number|null;available:boolean};type Preset="today"|"yesterday"|"this_week"|"last_week"|"this_month"|"last_month"|"custom";
+type Dashboard={currency:string;generated_at:string;period:{date_from:string;date_to:string;days:number};summary:{revenue:number;bill_count:number;average_bill:number;cancelled_refunded_count:number;gross_profit:number;gross_margin_percent:number;comparison:Record<string,Comparison>};profitability:{known_cost:number;known_gross_profit:number;gross_margin_percent:number;unknown_cost_revenue:number;unknown_cost_bills:number};sales_series:Array<{label:string;revenue:number;bill_count:number;known_cost:number;gross_profit:number;unknown_cost_revenue:number}>;payment_mix:Array<{method:string;amount:number;bill_count:number;percent:number}>;top_products:Array<{id:string;name:string;sku:string;quantity:number;revenue:number;comparison:Comparison}>;order_type_mix:Array<{type:string;revenue:number;bill_count:number}>;order_type_series:Array<{label:string;type:string;revenue:number;bill_count:number}>;heatmap:Array<{weekday:number;hour:number;revenue:number;bill_count:number}>;staff_ranking:Array<{id:string;name:string;bill_count:number;revenue:number;average_bill:number}>;low_stock:Array<{id:string;name:string;sku:string;available_base:number;threshold:number}>;operational_signals:{peak_period:string|null;peak_revenue:number;primary_payment_method:string|null;primary_payment_percent:number;restock_sku_count:number}};
+type ProductRow={id:string;name:string;sku:string;category_name:string;quantity:number;average_price:number;revenue:number;known_cost:number;gross_profit:number;margin:number;bill_count:number;comparison:Comparison};
+type ProductReport={items:ProductRow[];categories:Array<{id:string;name:string}>;pagination:{page:number;limit:number;total:number;pages:number}};
+const {apiFetch}=useApiClient(),{currentStoreId}=useAuthSession(),{locale}=useI18n();
+const activePreset=ref<Preset>("today"),activeView=ref<"sales"|"products"|"operations">("sales"),dateFrom=ref(""),dateTo=ref("");const dashboard=ref<Dashboard|null>(null),loading=ref(false),errorMessage=ref(""),version=ref(0);
+const productMetric=ref<"revenue"|"quantity">("revenue"),heatMetric=ref<"revenue"|"bill_count">("revenue"),productReport=ref<ProductReport|null>(null),productLoading=ref(false),productSearch=ref(""),productCategory=ref(""),productSort=ref("revenue"),productOrder=ref<"asc"|"desc">("desc"),productPage=ref(1),selectedProduct=ref<ProductRow|null>(null),productTrend=ref<Array<{label:string;quantity:number;revenue:number}>>([]),trendLoading=ref(false);
+const intlLocale=computed(()=>locale.value==="lo"?"lo-LA":locale.value==="en"?"en-US":"th-TH"),money=(value:number)=>formatMoneyWithSymbol(value,dashboard.value?.currency||"LAK",{locale:intlLocale.value,maximumFractionDigits:0}),num=(value:number)=>new Intl.NumberFormat(intlLocale.value,{maximumFractionDigits:2}).format(value);
+const presets=[{id:"today",label:"ມື້ນີ້"},{id:"yesterday",label:"ມື້ວານ"},{id:"this_week",label:"ອາທິດນີ້"},{id:"last_week",label:"ອາທິດກ່ອນ"},{id:"this_month",label:"ເດືອນນີ້"},{id:"last_month",label:"ເດືອນກ່ອນ"},{id:"custom",label:"ກຳນົດເອງ"}] as const;
+const paymentLabel=(method:string|null)=>!method?"-":method==="cash"?"ເງິນສົດ":["qr","qr_transfer","transfer","bank_transfer"].includes(method)?"QR / ໂອນ":["card","credit_card"].includes(method)?"ບັດເຄຣດິດ":method;
+const orderTypeLabel=(type:string)=>["restaurant","dine_in","table"].includes(type)?"ກິນຢູ່ຮ້ານ":["quick_sale","counter","pos"].includes(type)?"ຂາຍດ່ວນ":type==="other"?"ອື່ນໆ":type;
+function query(){const params=new URLSearchParams({store_id:currentStoreId.value||"",preset:activePreset.value,timezone_offset:String(-new Date().getTimezoneOffset())});if(activePreset.value==="custom"){params.set("date_from",dateFrom.value);params.set("date_to",dateTo.value);}return params;}
+async function loadDashboard(){if(!currentStoreId.value)return;if(activePreset.value==="custom"&&(!dateFrom.value||!dateTo.value))return;const token=++version.value;loading.value=true;errorMessage.value="";try{const response=await apiFetch<{data:Dashboard}>(`/reports/dashboard?${query()}`);if(token===version.value)dashboard.value=response.data;}catch(error:any){if(token===version.value)errorMessage.value=String(error?.data?.message||error?.message||"Unable to load reports");}finally{if(token===version.value)loading.value=false;}}
+async function loadProducts(){if(!currentStoreId.value||activeView.value!=="products")return;productLoading.value=true;try{const params=query();if(productSearch.value)params.set("search",productSearch.value);if(productCategory.value)params.set("category_id",productCategory.value);params.set("sort",productSort.value);params.set("order",productOrder.value);params.set("page",String(productPage.value));params.set("limit","20");productReport.value=(await apiFetch<{data:ProductReport}>(`/reports/products?${params}`)).data;}finally{productLoading.value=false;}}
+let searchTimer:ReturnType<typeof setTimeout>|undefined;watch([activePreset,dateFrom,dateTo,currentStoreId],()=>void loadDashboard(),{immediate:true});watch([activePreset,dateFrom,dateTo,currentStoreId,activeView,productCategory,productSort,productOrder,productPage],()=>void loadProducts());watch(productSearch,()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{productPage.value=1;void loadProducts();},300);});
+async function openProduct(item:ProductRow){selectedProduct.value=item;trendLoading.value=true;try{productTrend.value=(await apiFetch<{data:{items:typeof productTrend.value}}>(`/reports/products/${encodeURIComponent(item.id)}/trend?${query()}`)).data.items;}finally{trendLoading.value=false;}}
+const periodText=computed(()=>dashboard.value?dashboard.value.period.date_from===dashboard.value.period.date_to?dashboard.value.period.date_from:`${dashboard.value.period.date_from} – ${dashboard.value.period.date_to}`:"-");
+const metricCards=computed(()=>dashboard.value?[{label:"ຍອດຂາຍສຸດທິ",value:money(dashboard.value.summary.revenue),compare:dashboard.value.summary.comparison.revenue,tone:"emerald"},{label:"ຈຳນວນບິນ",value:num(dashboard.value.summary.bill_count),compare:dashboard.value.summary.comparison.bill_count,tone:"blue"},{label:"ບິນສະເລ່ຍ",value:money(dashboard.value.summary.average_bill),compare:dashboard.value.summary.comparison.average_bill,tone:"violet"},{label:"ຍົກເລີກ / ຄືນເງິນ",value:num(dashboard.value.summary.cancelled_refunded_count),compare:dashboard.value.summary.comparison.cancelled_refunded_count,tone:"rose"},{label:"ກຳໄລຂັ້ນຕົ້ນ",value:money(dashboard.value.summary.gross_profit),tone:"amber"},{label:"Margin",value:`${dashboard.value.summary.gross_margin_percent.toFixed(1)}%`,tone:"stone"}]:[]);
+const comparisonText=(item?:Comparison)=>item?.available&&item.value!==null?`${item.value>=0?"+":""}${item.value.toFixed(1)}%`:"—";
+const commonTooltip={trigger:"axis",backgroundColor:"#fff",borderColor:"#e7e5e4",textStyle:{color:"#292524"}};
+const salesOption=computed<EChartsCoreOption>(()=>({color:["#10b981","#3b82f6"],tooltip:commonTooltip,legend:{bottom:0,data:["ຍອດຂາຍ","ຈຳນວນບິນ"]},grid:{left:12,right:18,top:24,bottom:54,containLabel:true},xAxis:{type:"category",data:dashboard.value?.sales_series.map(x=>x.label)||[],axisLine:{lineStyle:{color:"#d6d3d1"}}},yAxis:[{type:"value",axisLabel:{formatter:(v:number)=>Intl.NumberFormat("en",{notation:"compact"}).format(v)},splitLine:{lineStyle:{color:"#f5f5f4"}}},{type:"value",splitLine:{show:false}}],dataZoom:(dashboard.value?.sales_series.length||0)>14?[{type:"inside"},{type:"slider",height:14,bottom:28}]:[],series:[{name:"ຍອດຂາຍ",type:"line",smooth:true,symbol:"circle",symbolSize:7,areaStyle:{color:"rgba(16,185,129,.14)"},data:dashboard.value?.sales_series.map(x=>x.revenue)||[]},{name:"ຈຳນວນບິນ",type:"bar",yAxisIndex:1,barMaxWidth:18,itemStyle:{color:"rgba(59,130,246,.35)",borderRadius:[4,4,0,0]},data:dashboard.value?.sales_series.map(x=>x.bill_count)||[]}]}));
+const profitOption=computed<EChartsCoreOption>(()=>({color:["#f59e0b","#10b981","#a8a29e"],tooltip:commonTooltip,legend:{bottom:0},grid:{left:10,right:10,top:24,bottom:48,containLabel:true},xAxis:{type:"category",data:dashboard.value?.sales_series.map(x=>x.label)||[]},yAxis:{type:"value",axisLabel:{formatter:(v:number)=>Intl.NumberFormat("en",{notation:"compact"}).format(v)},splitLine:{lineStyle:{color:"#f5f5f4"}}},series:[["ຕົ້ນທຶນ","known_cost"],["ກຳໄລ","gross_profit"],["ບໍ່ຮູ້ຕົ້ນທຶນ","unknown_cost_revenue"]].map(([name,key])=>({name,type:"bar",stack:"total",barMaxWidth:26,data:dashboard.value?.sales_series.map(x=>x[key as keyof typeof x])||[]}))}));
+const donutOption=computed<EChartsCoreOption>(()=>({color:["#10b981","#3b82f6","#8b5cf6","#f59e0b","#a8a29e"],tooltip:{trigger:"item",formatter:(p:any)=>`${p.name}<br/>${money(p.value)} · ${p.percent}%`},legend:{bottom:0,type:"scroll"},series:[{type:"pie",radius:["48%","72%"],center:["50%","43%"],padAngle:2,itemStyle:{borderRadius:5,borderColor:"#fff",borderWidth:2},label:{show:false},data:dashboard.value?.payment_mix.map(x=>({name:paymentLabel(x.method),value:x.amount}))||[]}]}));
+const productOption=computed<EChartsCoreOption>(()=>{const rows=[...(dashboard.value?.top_products||[])].slice(0,8).reverse();return{color:["#10b981"],tooltip:{trigger:"axis",axisPointer:{type:"shadow"}},grid:{left:8,right:24,top:8,bottom:20,containLabel:true},xAxis:{type:"value",splitLine:{lineStyle:{color:"#f5f5f4"}}},yAxis:{type:"category",data:rows.map(x=>x.name),axisLabel:{width:110,overflow:"truncate"}},series:[{type:"bar",barMaxWidth:18,itemStyle:{borderRadius:[0,5,5,0]},data:rows.map(x=>productMetric.value==="revenue"?x.revenue:x.quantity)}]};});
+const orderOption=computed<EChartsCoreOption>(()=>{const labels=dashboard.value?.sales_series.map(x=>x.label)||[],types=[...new Set(dashboard.value?.order_type_series.map(x=>x.type)||[])];return{color:["#10b981","#3b82f6","#8b5cf6","#f59e0b"],tooltip:{trigger:"axis",axisPointer:{type:"shadow"}},legend:{bottom:0},grid:{left:8,right:16,top:28,bottom:48,containLabel:true},xAxis:{type:"category",data:labels},yAxis:{type:"value",splitLine:{lineStyle:{color:"#f5f5f4"}}},series:types.map(type=>({name:orderTypeLabel(type),type:"bar",stack:"orders",barMaxWidth:26,data:labels.map(label=>dashboard.value?.order_type_series.find(x=>x.label===label&&x.type===type)?.revenue||0)}))};});
+const heatOption=computed<EChartsCoreOption>(()=>{const values=dashboard.value?.heatmap.map(x=>[x.hour,x.weekday,heatMetric.value==="revenue"?x.revenue:x.bill_count])||[],max=Math.max(1,...values.map(x=>Number(x[2])));return{tooltip:{formatter:(p:any)=>`${["ອາທິດ","ຈັນ","ອັງຄານ","ພຸດ","ພະຫັດ","ສຸກ","ເສົາ"][p.value[1]]} ${String(p.value[0]).padStart(2,"0")}:00<br/>${heatMetric.value==="revenue"?money(p.value[2]):`${p.value[2]} ບິນ`}`},grid:{left:12,right:20,top:10,bottom:42,containLabel:true},xAxis:{type:"category",data:Array.from({length:24},(_,i)=>String(i).padStart(2,"0")),splitArea:{show:true}},yAxis:{type:"category",data:["ອາທິດ","ຈັນ","ອັງຄານ","ພຸດ","ພະຫັດ","ສຸກ","ເສົາ"],splitArea:{show:true}},visualMap:{min:0,max,calculable:false,orient:"horizontal",left:"center",bottom:0,inRange:{color:["#ecfdf5","#6ee7b7","#059669"]}},series:[{type:"heatmap",data:values,itemStyle:{borderColor:"#fff",borderWidth:2}}]};});
+const trendOption=computed<EChartsCoreOption>(()=>({color:["#10b981"],tooltip:commonTooltip,grid:{left:8,right:12,top:16,bottom:28,containLabel:true},xAxis:{type:"category",data:productTrend.value.map(x=>x.label)},yAxis:{type:"value",splitLine:{lineStyle:{color:"#f5f5f4"}}},series:[{type:"line",smooth:true,areaStyle:{color:"rgba(16,185,129,.14)"},data:productTrend.value.map(x=>x.revenue)}]}));
 </script>
 
-<template>
-	<AppSidebarShell
-		:nav-items="appNavItems"
-		:active-ids="['reports']"
-		sidebar-eyebrow="Reports"
-		:sidebar-title="$t('reports.title')"
-		sidebar-compact-title="REP"
-		:sidebar-description="$t('reports.description')"
-	>
-		<template #default="{ openSidebar }">
-			<section class="min-w-0 flex-1 px-0 py-3 sm:py-4 lg:min-h-0 lg:overflow-hidden">
-				<div class="space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-3">
-					<AppPageHeader
-						class="hidden md:block"
-						:title-badge="false"
-						compact
-						@menu="openSidebar"
-					>
-						<div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
-							<div class="flex flex-wrap gap-2">
-								<AppButton :color="activeRange === 'today' ? 'primary' : 'neutral'" :variant="activeRange === 'today' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.today')" @click="activeRange = 'today'" />
-								<AppButton :color="activeRange === 'week' ? 'primary' : 'neutral'" :variant="activeRange === 'week' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.sevenDays')" @click="activeRange = 'week'" />
-								<AppButton :color="activeRange === 'month' ? 'primary' : 'neutral'" :variant="activeRange === 'month' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.thirtyDays')" @click="activeRange = 'month'" />
-							</div>
-
-							<div class="flex flex-wrap gap-2">
-								<AppButton :color="activeReportView === 'sales' ? 'primary' : 'neutral'" :variant="activeReportView === 'sales' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.sales')" @click="activeReportView = 'sales'" />
-								<AppButton :color="activeReportView === 'products' ? 'primary' : 'neutral'" :variant="activeReportView === 'products' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('nav.products')" @click="activeReportView = 'products'" />
-								<AppButton :color="activeReportView === 'operations' ? 'primary' : 'neutral'" :variant="activeReportView === 'operations' ? 'solid' : 'soft'" size="md" class="rounded-md" :label="$t('reports.operations')" @click="activeReportView = 'operations'" />
-							</div>
-
-							<div class="grid gap-3 sm:grid-cols-2">
-								<select v-model="activeBranch" class="rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="all">{{ $t('reports.allBranches') }}</option>
-									<option value="main">{{ $t('reports.mainBranch') }}</option>
-									<option value="mall">{{ $t('reports.mallBranch') }}</option>
-								</select>
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-stone-500">
-									{{ $t('reports.selectedRange') }}: {{ activeRange === "today" ? $t('reports.today') : activeRange === "week" ? $t('reports.lastSevenDays') : $t('reports.lastThirtyDays') }}
-								</div>
-							</div>
-
-							<div class="flex flex-wrap gap-2 xl:justify-end">
-								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-arrow-down-tray" :label="$t('reports.exportPdf')" />
-								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" icon="i-heroicons-table-cells" :label="$t('reports.exportExcel')" />
-							</div>
-						</div>
-					</AppPageHeader>
-
-					<div class="scrollbar-soft min-h-0 space-y-3 overflow-y-auto lg:pr-1">
-						<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-							<div
-								v-for="metric in metricCards"
-								:key="metric.id"
-								class="rounded-none border border-neutral-200 bg-white p-4 shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md"
-							>
-								<div class="flex items-start justify-between gap-3">
-									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t(metric.labelKey) }}</p>
-										<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{{ metric.value }}</p>
-									</div>
-									<div class="rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="metricToneClass(metric.tone)">
-										{{ metric.change }}
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div v-if="profitability" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">รายได้จากข้อมูลจริง</p><p class="mt-1 text-xl font-semibold">{{ profitability.revenue.toLocaleString() }}</p></div>
-							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">ต้นทุนที่ระบุแล้ว</p><p class="mt-1 text-xl font-semibold">{{ profitability.known_cost.toLocaleString() }}</p></div>
-							<div class="rounded-md border border-emerald-200 bg-emerald-50 p-4"><p class="text-xs text-emerald-700">กำไรขั้นต้นเฉพาะรายการที่ทราบต้นทุน</p><p class="mt-1 text-xl font-semibold text-emerald-900">{{ profitability.known_gross_profit.toLocaleString() }}</p></div>
-							<div class="rounded-md border border-amber-300 bg-amber-50 p-4"><p class="text-xs text-amber-800">ยอดขายที่ยังไม่ทราบต้นทุน</p><p class="mt-1 text-xl font-semibold text-amber-950">{{ profitability.unknown_cost_revenue.toLocaleString() }}</p><p class="mt-1 text-xs text-amber-700">{{ profitability.unknown_cost_bills }} บิล · ไม่นับเป็นกำไร 100%</p></div>
-						</div>
-
-						<div class="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Sales trend</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.salesTrend') }}</h2>
-										</div>
-										<UBadge color="neutral" variant="soft" label="Mock chart" />
-									</div>
-
-									<div class="grid h-[280px] grid-cols-10 items-end gap-3 rounded-md bg-neutral-50 p-4 ring-1 ring-neutral-200">
-										<div v-for="point in hourlySales" :key="point.hour" class="flex h-full flex-col justify-end gap-2">
-											<div class="relative flex-1 overflow-hidden rounded-md bg-white ring-1 ring-[#ece6dc]">
-												<div class="absolute inset-x-1 bottom-1 rounded-md bg-gradient-to-t from-[#c97745] to-[#f3c7a7]" :style="{ height: barHeight(point.value) }" />
-											</div>
-											<p class="text-center text-[11px] font-medium text-stone-500">{{ point.hour }}</p>
-										</div>
-									</div>
-								</div>
-							</UCard>
-
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Payment mix</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.paymentMix') }}</h2>
-										</div>
-									<UBadge color="neutral" variant="soft" :label="$t('reports.channels', { count: 4 })" />
-									</div>
-
-									<div class="space-y-3">
-										<div class="flex h-4 overflow-hidden rounded-full bg-[#f3f2ee]">
-											<div
-												v-for="item in paymentMix"
-												:key="item.id"
-												:class="item.colorClass"
-												:style="{ width: `${item.percent}%` }"
-											/>
-										</div>
-
-										<div class="space-y-3">
-											<div v-for="item in paymentMix" :key="item.id" class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3">
-												<div class="flex items-center justify-between gap-3">
-													<div class="flex items-center gap-3">
-														<div class="h-3 w-3 rounded-full" :class="item.colorClass" />
-														<p class="text-sm font-medium text-stone-900">{{ $t(item.labelKey) }}</p>
-													</div>
-													<p class="text-sm font-semibold text-stone-900">{{ item.amount }}</p>
-												</div>
-												<p class="mt-1 text-xs text-stone-500">{{ item.percent }}%</p>
-											</div>
-										</div>
-									</div>
-								</div>
-							</UCard>
-						</div>
-
-						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Top products</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.topProducts') }}</h2>
-										</div>
-										<UBadge color="primary" variant="soft" label="Top 5" />
-									</div>
-
-									<div class="space-y-3">
-										<div
-											v-for="product in topProducts"
-											:key="product.id"
-											class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
-										>
-											<div class="flex items-start justify-between gap-3">
-												<div class="min-w-0">
-													<p class="truncate text-sm font-semibold text-stone-900">{{ product.name }}</p>
-											<p class="mt-1 text-xs text-stone-500">{{ product.sku }} · {{ $t('reports.soldUnits', { count: product.qty }) }}</p>
-												</div>
-												<div class="text-right">
-													<p class="text-sm font-semibold text-stone-900">{{ product.revenue }}</p>
-													<p class="mt-1 text-xs" :class="product.trend.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'">{{ product.trend }}</p>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-							</UCard>
-
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Staff rank</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.staffPerformance') }}</h2>
-										</div>
-									<UBadge color="neutral" variant="soft" :label="$t('reports.byBillCount')" />
-									</div>
-
-									<div class="space-y-3">
-										<div
-											v-for="staff in staffRanks"
-											:key="staff.id"
-											class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
-										>
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-stone-900">{{ staff.name }}</p>
-												<p class="mt-1 text-xs text-stone-500">{{ $t('reports.billSummary', { count: staff.orders, average: staff.avgTicket }) }}</p>
-											</div>
-											<p class="text-sm font-semibold text-stone-900">{{ staff.sales }}</p>
-										</div>
-									</div>
-								</div>
-							</UCard>
-						</div>
-
-						<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operational signals</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.operationalSignals') }}</h2>
-										</div>
-										<UBadge color="primary" variant="soft" label="Mock insight" />
-									</div>
-
-									<div class="grid gap-3 md:grid-cols-3">
-										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.peakHour') }}</p>
-											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">12:00</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.peakHourHint') }}</p>
-										</div>
-										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.primaryPayment') }}</p>
-											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">QR / โอน</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.primaryPaymentHint') }}</p>
-										</div>
-										<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<p class="text-sm font-semibold text-stone-900">{{ $t('reports.restockNeeded') }}</p>
-											<p class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">4 SKU</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t('reports.restockHint') }}</p>
-										</div>
-									</div>
-								</div>
-							</UCard>
-
-							<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-								<div class="space-y-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Low stock</p>
-										<h2 class="mt-2 text-lg font-semibold text-stone-950">{{ $t('reports.lowStock') }}</h2>
-										</div>
-									<UBadge color="error" variant="soft" :label="$t('common.itemCount', { count: lowStockItems.length })" />
-									</div>
-
-									<div class="space-y-3">
-										<div
-											v-for="item in lowStockItems"
-											:key="item.id"
-											class="rounded-md border border-neutral-200 bg-[#fffefd] px-4 py-3"
-										>
-											<div class="flex items-start justify-between gap-3">
-												<div class="min-w-0">
-													<p class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</p>
-													<p class="mt-1 text-xs text-stone-500">{{ item.status }}</p>
-												</div>
-												<div class="text-right">
-													<p class="text-sm font-semibold text-stone-900">{{ item.remaining }}</p>
-													<p class="mt-1 text-xs text-stone-500">{{ $t('reports.alertAt', { count: item.threshold }) }}</p>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-							</UCard>
-						</div>
-					</div>
-				</div>
-			</section>
-		</template>
-	</AppSidebarShell>
-</template>
+<template><AppSidebarShell :nav-items="appNavItems" :active-ids="['reports']" sidebar-eyebrow="Reports" sidebar-title="ລາຍງານ" sidebar-compact-title="REP" sidebar-description="ວິເຄາະຍອດຂາຍຈາກຂໍ້ມູນຈິງ"><template #default="{openSidebar}"><div class="grid min-w-0 gap-3 pb-4">
+	<AppPageHeader :title-badge="false" compact title="" body-class="px-3 py-2.5 sm:px-4 sm:py-3" @menu="openSidebar"><div class="flex min-h-10 items-center justify-between gap-3"><div class="min-w-0"><div class="flex min-w-0 items-baseline gap-2"><h1 class="shrink-0 text-base font-semibold tracking-[-0.02em] text-stone-950">ລາຍງານ</h1><span class="truncate text-sm font-medium text-stone-600">{{periodText}}</span></div><p class="mt-0.5 text-xs text-stone-400">ອັບເດດ {{dashboard?.generated_at?new Date(dashboard.generated_at).toLocaleTimeString(intlLocale):'-'}}</p></div><AppButton icon="i-heroicons-arrow-path-20-solid" color="neutral" variant="soft" size="md" class="shrink-0 self-center rounded-md" label="ໂຫຼດໃໝ່" :loading="loading" :spin-icon-on-loading="true" @click="loadDashboard"/></div></AppPageHeader>
+	<div class="rounded-md border border-stone-200 bg-white p-3 shadow-sm"><div class="flex gap-2 overflow-x-auto pb-1"><AppButton v-for="preset in presets" :key="preset.id" :color="activePreset===preset.id?'primary':'neutral'" :variant="activePreset===preset.id?'solid':'soft'" :label="preset.label" class="shrink-0" @click="activePreset=preset.id"/></div><div v-if="activePreset==='custom'" class="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input v-model="dateFrom" type="date" class="rounded-md border border-stone-300 px-3 py-2 text-sm"><input v-model="dateTo" type="date" class="rounded-md border border-stone-300 px-3 py-2 text-sm"><AppButton color="primary" label="ນຳໃຊ້" @click="loadDashboard"/></div></div>
+	<div v-if="loading&&!dashboard" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><USkeleton v-for="i in 6" :key="i" class="h-28 rounded-md"/></div><div v-else-if="errorMessage" class="rounded-md border border-rose-200 bg-rose-50 p-8 text-center"><p class="font-semibold text-rose-900">{{errorMessage}}</p><AppButton class="mt-4" label="ລອງໃໝ່" @click="loadDashboard"/></div>
+	<template v-else-if="dashboard"><div class="grid grid-cols-2 gap-3 xl:grid-cols-6"><div v-for="card in metricCards" :key="card.label" class="rounded-md border border-stone-200 bg-white p-4 shadow-sm"><div class="flex items-start justify-between gap-2"><p class="text-xs font-semibold text-stone-500">{{card.label}}</p><span v-if="card.compare" class="rounded-full bg-stone-50 px-2 py-0.5 text-[10px]" :class="card.compare.value!==null&&card.compare.value>=0?'text-emerald-700':'text-rose-700'">{{comparisonText(card.compare)}}</span></div><p class="mt-2 truncate text-xl font-semibold text-stone-950 sm:text-2xl">{{card.value}}</p></div></div>
+	<div class="flex gap-2 overflow-x-auto rounded-md border border-stone-200 bg-white p-2"><AppButton v-for="tab in [{id:'sales',label:'ຍອດຂາຍ'},{id:'products',label:'ສິນຄ້າ'},{id:'operations',label:'ການດຳເນີນງານ'}]" :key="tab.id" :color="activeView===tab.id?'primary':'neutral'" :variant="activeView===tab.id?'solid':'ghost'" :label="tab.label" @click="activeView=tab.id as any"/></div>
+	<template v-if="activeView==='sales'"><div class="grid gap-3 xl:grid-cols-[1.4fr_.6fr]"><UCard><h2 class="font-semibold">ແນວໂນ້ມຍອດຂາຍ</h2><ReportsReportChart :option="salesOption" :empty="!dashboard.sales_series.some(x=>x.revenue)"/></UCard><UCard><h2 class="font-semibold">ສັດສ່ວນການຊຳລະ</h2><ReportsReportChart :option="donutOption" :empty="!dashboard.payment_mix.length"/></UCard></div><div class="grid gap-3 xl:grid-cols-2"><UCard><div class="flex justify-between"><h2 class="font-semibold">ລາຍຮັບ ຕົ້ນທຶນ ແລະ ກຳໄລ</h2><span v-if="dashboard.profitability.unknown_cost_bills" class="text-xs text-amber-700" :title="`${dashboard.profitability.unknown_cost_bills} ບິນມີຕົ້ນທຶນບໍ່ຄົບ`">⚠ ຕົ້ນທຶນບໍ່ຄົບ</span></div><ReportsReportChart :option="profitOption" :empty="!dashboard.sales_series.some(x=>x.revenue)"/></UCard><UCard><h2 class="font-semibold">ຍອດຂາຍຕາມປະເພດອໍເດີ</h2><ReportsReportChart :option="orderOption" :empty="!dashboard.order_type_mix.length"/></UCard></div></template>
+	<template v-else-if="activeView==='products'"><div class="grid gap-3 xl:grid-cols-[.8fr_1.2fr]"><UCard><div class="flex items-center justify-between"><h2 class="font-semibold">ສິນຄ້າຂາຍດີ</h2><div class="flex gap-1"><AppButton size="xs" :variant="productMetric==='revenue'?'solid':'soft'" label="ລາຍຮັບ" @click="productMetric='revenue'"/><AppButton size="xs" :variant="productMetric==='quantity'?'solid':'soft'" label="ຈຳນວນ" @click="productMetric='quantity'"/></div></div><ReportsReportChart :option="productOption" :empty="!dashboard.top_products.length"/></UCard><UCard><h2 class="font-semibold">ສິນຄ້າທີ່ຕ້ອງເພີ່ມສະຕັອກ</h2><div v-if="dashboard.low_stock.length" class="mt-4 grid gap-2 sm:grid-cols-2"><div v-for="item in dashboard.low_stock" :key="item.id" class="rounded-md border border-amber-200 bg-amber-50 p-3"><p class="truncate font-semibold">{{item.name}}</p><div class="mt-1 flex justify-between text-xs"><span>{{item.sku}}</span><strong class="text-amber-800">{{num(item.available_base)}} / {{num(item.threshold)}}</strong></div></div></div><p v-else class="py-16 text-center text-sm text-stone-500">ສະຕັອກຢູ່ໃນລະດັບປົກກະຕິ</p></UCard></div>
+	<UCard><div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="font-semibold">ລາຍງານສິນຄ້າທັງໝົດ</h2><p class="text-xs text-stone-500">{{productReport?.pagination.total||0}} ສິນຄ້າໃນຊ່ວງທີ່ເລືອກ</p></div><div class="flex flex-wrap gap-2"><input v-model="productSearch" placeholder="ຄົ້ນຫາສິນຄ້າ / SKU" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm"><select v-model="productCategory" class="rounded-md border border-stone-300 px-3 py-2 text-sm"><option value="">ທຸກໝວດ</option><option v-for="category in productReport?.categories" :key="category.id" :value="category.id">{{category.name}}</option></select><select v-model="productSort" class="rounded-md border border-stone-300 px-3 py-2 text-sm"><option value="revenue">ລາຍຮັບ</option><option value="quantity">ຈຳນວນຂາຍ</option><option value="average_price">ລາຄາສະເລ່ຍ</option><option value="cost">ຕົ້ນທຶນ</option><option value="profit">ກຳໄລ</option><option value="margin">Margin</option></select><AppButton color="neutral" variant="soft" :icon="productOrder==='desc'?'i-heroicons-bars-arrow-down':'i-heroicons-bars-arrow-up'" :label="productOrder==='desc'?'ຫຼາຍ → ໜ້ອຍ':'ໜ້ອຍ → ຫຼາຍ'" @click="productOrder=productOrder==='desc'?'asc':'desc'"/></div></div>
+	<div class="mt-4 space-y-2 md:hidden"><button v-for="item in productReport?.items" :key="item.id" class="w-full rounded-md border border-stone-200 p-3 text-left" @click="openProduct(item)"><div class="flex justify-between gap-3"><div class="min-w-0"><p class="truncate font-semibold">{{item.name}}</p><p class="text-xs text-stone-400">{{item.sku}} · {{item.category_name}}</p></div><strong class="text-emerald-700">{{money(item.revenue)}}</strong></div><div class="mt-3 grid grid-cols-3 gap-2 text-xs"><span>ຂາຍ <b>{{num(item.quantity)}}</b></span><span>ກຳໄລ <b>{{money(item.gross_profit)}}</b></span><span>Margin <b>{{item.margin.toFixed(1)}}%</b></span></div></button></div>
+	<div class="mt-4 hidden overflow-x-auto md:block"><table class="min-w-[1050px] w-full text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">ສິນຄ້າ</th><th class="p-3">ໝວດ</th><th class="p-3 text-right">ຈຳນວນ</th><th class="p-3 text-right">ລາຄາສະເລ່ຍ</th><th class="p-3 text-right">ລາຍຮັບ</th><th class="p-3 text-right">ຕົ້ນທຶນ</th><th class="p-3 text-right">ກຳໄລ</th><th class="p-3 text-right">Margin</th><th class="p-3 text-right">ບິນ</th></tr></thead><tbody><tr v-for="item in productReport?.items" :key="item.id" class="cursor-pointer border-t border-stone-100 hover:bg-emerald-50/40" @click="openProduct(item)"><td class="p-3"><strong>{{item.name}}</strong><p class="text-xs text-stone-400">{{item.sku}}</p></td><td class="p-3">{{item.category_name}}</td><td class="p-3 text-right">{{num(item.quantity)}}</td><td class="p-3 text-right">{{money(item.average_price)}}</td><td class="p-3 text-right font-semibold">{{money(item.revenue)}}</td><td class="p-3 text-right">{{money(item.known_cost)}}</td><td class="p-3 text-right text-emerald-700">{{money(item.gross_profit)}}</td><td class="p-3 text-right">{{item.margin.toFixed(1)}}%</td><td class="p-3 text-right">{{item.bill_count}}</td></tr></tbody></table></div><div v-if="productLoading" class="py-8 text-center text-sm text-stone-500">ກຳລັງໂຫຼດ...</div><div v-else-if="!productReport?.items.length" class="py-12 text-center text-sm text-stone-500">ບໍ່ພົບຂໍ້ມູນສິນຄ້າ</div><div class="mt-3 flex justify-end gap-2"><AppButton color="neutral" variant="soft" label="ກ່ອນໜ້າ" :disabled="productPage<=1" @click="productPage--"/><span class="self-center text-sm">{{productPage}} / {{productReport?.pagination.pages||1}}</span><AppButton color="neutral" variant="soft" label="ຕໍ່ໄປ" :disabled="productPage>=(productReport?.pagination.pages||1)" @click="productPage++"/></div></UCard></template>
+	<template v-else><div class="grid gap-3 xl:grid-cols-[1.4fr_.6fr]"><UCard><div class="flex justify-between"><h2 class="font-semibold">ຊ່ວງເວລາຂາຍດີ</h2><div class="flex gap-1"><AppButton size="xs" :variant="heatMetric==='revenue'?'solid':'soft'" label="ລາຍຮັບ" @click="heatMetric='revenue'"/><AppButton size="xs" :variant="heatMetric==='bill_count'?'solid':'soft'" label="ບິນ" @click="heatMetric='bill_count'"/></div></div><ReportsReportChart :option="heatOption" height="360px" :empty="!dashboard.heatmap.length"/></UCard><UCard><h2 class="font-semibold">ສັນຍານໜ້າງານ</h2><div class="mt-4 space-y-3"><div class="rounded-md bg-emerald-50 p-4"><p class="text-xs text-emerald-700">ຊ່ວງຂາຍດີສຸດ</p><strong class="mt-1 block text-xl">{{dashboard.operational_signals.peak_period||'-'}}</strong><span class="text-xs">{{money(dashboard.operational_signals.peak_revenue)}}</span></div><div class="rounded-md bg-blue-50 p-4"><p class="text-xs text-blue-700">ວິທີຊຳລະຫຼັກ</p><strong class="mt-1 block text-xl">{{paymentLabel(dashboard.operational_signals.primary_payment_method)}}</strong><span class="text-xs">{{dashboard.operational_signals.primary_payment_percent.toFixed(1)}}%</span></div><div class="rounded-md bg-amber-50 p-4"><p class="text-xs text-amber-700">ຕ້ອງເພີ່ມສະຕັອກ</p><strong class="mt-1 block text-xl">{{dashboard.operational_signals.restock_sku_count}} SKU</strong></div></div></UCard></div><UCard><h2 class="font-semibold">ຜົນງານພະນັກງານ</h2><div class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"><div v-for="(staff,index) in dashboard.staff_ranking" :key="staff.id" class="flex items-center gap-3 rounded-md border border-stone-200 p-3"><span class="grid h-9 w-9 place-items-center rounded-full bg-emerald-50 font-semibold text-emerald-700">{{index+1}}</span><div class="min-w-0 flex-1"><p class="truncate font-semibold">{{staff.name}}</p><p class="text-xs text-stone-500">{{staff.bill_count}} ບິນ · ສະເລ່ຍ {{money(staff.average_bill)}}</p></div><strong>{{money(staff.revenue)}}</strong></div></div></UCard></template>
+	</template></div>
+	<div v-if="selectedProduct" class="fixed inset-0 z-50 flex justify-end bg-stone-950/35" @click.self="selectedProduct=null"><aside class="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl"><div class="flex justify-between"><div><h2 class="text-xl font-semibold">{{selectedProduct.name}}</h2><p class="text-sm text-stone-500">{{selectedProduct.sku}} · {{periodText}}</p></div><AppButton icon="i-heroicons-x-mark" color="neutral" variant="soft" @click="selectedProduct=null"/></div><div class="mt-5 grid grid-cols-2 gap-3"><div class="rounded-md bg-stone-50 p-3"><p class="text-xs text-stone-500">ລາຍຮັບ</p><strong>{{money(selectedProduct.revenue)}}</strong></div><div class="rounded-md bg-stone-50 p-3"><p class="text-xs text-stone-500">ຈຳນວນຂາຍ</p><strong>{{num(selectedProduct.quantity)}}</strong></div><div class="rounded-md bg-stone-50 p-3"><p class="text-xs text-stone-500">ກຳໄລ</p><strong>{{money(selectedProduct.gross_profit)}}</strong></div><div class="rounded-md bg-stone-50 p-3"><p class="text-xs text-stone-500">Margin</p><strong>{{selectedProduct.margin.toFixed(1)}}%</strong></div></div><USkeleton v-if="trendLoading" class="mt-5 h-80 rounded-md"/><ReportsReportChart v-else class="mt-5" :option="trendOption" :empty="!productTrend.length"/></aside></div>
+	</template></AppSidebarShell></template>

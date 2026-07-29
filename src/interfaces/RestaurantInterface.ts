@@ -22,6 +22,7 @@ function conflict(message: string): ApiError {
 
 export class RestaurantInterface {
 	private static initialized = false;
+	private static initializationPromise: Promise<void> | null = null;
 	private static async audit(executor:Executor,storeId:string,actorId:string,action:string,entityType:string,entityId:string,metadata:Record<string,unknown>={}):Promise<void>{
 		await executor.execute({sql:`INSERT INTO audit_events(id,scope,store_id,actor_user_id,actor_role,action,entity_type,entity_id,result,request_id,metadata,occurred_at)
 			VALUES(?,'store',? ,?,'store_member',?,?,?,'success',NULL,?,?)`,args:[randomUUID(),storeId,actorId,action,entityType,entityId,JSON.stringify(metadata),now()]});
@@ -34,12 +35,15 @@ export class RestaurantInterface {
 
 	static async ensureTables(): Promise<void> {
 		if (RestaurantInterface.initialized) return;
-		await OrderInterface.ensureTables();
-		await AuditEventInterface.ensureTable();
-		await ProductInterface.ensureColumns();
-		await PromotionInterface.ensureTables();
-		const db = DbConn.getClient();
-		await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_zones (
+		if (RestaurantInterface.initializationPromise) return RestaurantInterface.initializationPromise;
+
+		RestaurantInterface.initializationPromise = (async () => {
+			await OrderInterface.ensureTables();
+			await AuditEventInterface.ensureTable();
+			await ProductInterface.ensureColumns();
+			await PromotionInterface.ensureTables();
+			const db = DbConn.getClient();
+			await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_zones (
 			id TEXT PRIMARY KEY, store_id TEXT NOT NULL, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
 			UNIQUE(store_id, name)
@@ -94,7 +98,13 @@ export class RestaurantInterface {
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_open_pickup ON orders(store_id, service_mode, status, opened_at)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_storefront_pickup_queue ON orders(store_id, fulfillment_status, paid_at)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_items_order_status ON order_items(order_id, line_status)");
-		RestaurantInterface.initialized = true;
+			RestaurantInterface.initialized = true;
+		})().catch((error) => {
+			RestaurantInterface.initializationPromise = null;
+			throw error;
+		});
+
+		return RestaurantInterface.initializationPromise;
 	}
 
 	static async listPickupQueue(storeId: string): Promise<any[]> {
@@ -289,6 +299,9 @@ export class RestaurantInterface {
 		}
 		const tx = await db.transaction("write");
 		try {
+			const store = await tx.execute({ sql: "SELECT currency,store_type,pickup_queue_enabled FROM stores WHERE id=?", args: [storeId] });
+			if (!store.rows[0]) throw ApiError.NotFoundError("store not found");
+			if (String(store.rows[0].store_type) !== "RESTAURANT") throw ApiError.BadRequestError("restaurant order is only available for RESTAURANT stores");
 			let queueNo: string | null = null;
 			let queueDate: string | null = null;
 			if (serviceMode === "dine-in") {
@@ -301,15 +314,12 @@ export class RestaurantInterface {
 					await tx.rollback();
 					return RestaurantInterface.getOrder(storeId, String(existing.rows[0].id));
 				}
-			} else {
+			} else if (Number(store.rows[0].pickup_queue_enabled) !== 0) {
 				const queue = await RestaurantInterface.allocateQueue(tx, storeId);
 				queueNo = queue.queueNo;
 				queueDate = queue.queueDate;
 			}
 
-			const store = await tx.execute({ sql: "SELECT currency,store_type FROM stores WHERE id=?", args: [storeId] });
-			if (!store.rows[0]) throw ApiError.NotFoundError("store not found");
-			if (String(store.rows[0].store_type) !== "RESTAURANT") throw ApiError.BadRequestError("restaurant order is only available for RESTAURANT stores");
 			const stamp = now();
 			const id = randomUUID();
 			const orderNo = `RES-${stamp.slice(0, 10).replace(/-/g, "")}-${id.slice(0, 6).toUpperCase()}`;
@@ -404,7 +414,7 @@ export class RestaurantInterface {
 				if (!table.rows.length) throw ApiError.NotFoundError("table not found");
 				const occupied = await tx.execute({ sql: "SELECT 1 FROM orders WHERE restaurant_table_id=? AND store_id=? AND id!=? AND status IN ('open','ready_to_pay') LIMIT 1", args: [tableId, storeId, orderId] });
 				if (occupied.rows.length) throw conflict("โต๊ะปลายทางกำลังใช้งาน");
-			} else if (!queueNo) {
+			} else if (!queueNo && await RestaurantInterface.pickupQueueEnabled(storeId)) {
 				const queue = await RestaurantInterface.allocateQueue(tx, storeId);
 				queueNo = queue.queueNo;
 				queueDate = queue.queueDate;

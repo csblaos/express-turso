@@ -68,6 +68,7 @@ const receiptShowStoreAddress = ref(true);
 const receiptShowStorePhone = ref(true);
 const receiptShowTendered = ref(true);
 const receiptShowChange = ref(true);
+const receiptShowPaymentMethod = ref(true);
 const receiptShowQueue = ref(true);
 const currency = ref("LAK");
 const vatEnabled = ref(false);
@@ -408,8 +409,9 @@ function applyCatalog(catalog: PosCatalog) {
 	receiptShowStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
 	receiptShowChange.value = Number(store.receipt_show_change ?? 1) !== 0;
-	receiptShowQueue.value = Number(store.receipt_show_queue ?? 1) !== 0;
+	receiptShowPaymentMethod.value = Number(store.receipt_show_payment_method ?? 1) !== 0;
 	pickupQueueEnabled.value = Number(store.pickup_queue_enabled ?? 0) !== 0;
+	receiptShowQueue.value = pickupQueueEnabled.value;
 	currency.value = String(store.currency || "LAK");
 	vatEnabled.value = Boolean(Number(store.vat_enabled));
 	vatRate.value = Number(store.vat_rate || 0);
@@ -431,6 +433,7 @@ async function loadDashboard() {
 		zones.value = dashboard.data.zones.filter((zone) => zone.is_active);
 		tables.value = dashboard.data.tables;
 		pickupQueueEnabled.value = Number(dashboard.data.pickup_queue_enabled || 0) !== 0;
+		receiptShowQueue.value = pickupQueueEnabled.value;
 		openOrders.value = opened.data;
 		if (catalog) applyCatalog(catalog.data);
 		if (pickupQueueEnabled.value) await loadPickupQueue(); else pickupQueue.value = [];
@@ -1394,29 +1397,29 @@ onBeforeUnmount(() => {
 								<button v-if="suggestedLocalPromotions.length > 1" class="mt-2 text-xs font-medium text-emerald-700" @click="promotionPanelOpen = true">ดูโปรโมชั่นทั้งหมด {{ suggestedLocalPromotions.length }} รายการ</button>
 							</div>
 							<section v-if="draftItems.length">
-								<div class="divide-y divide-orange-100 rounded-md border border-orange-200 bg-orange-50/60">
-									<div v-for="item in draftItems" :key="item.id" class="px-2.5 py-2">
+								<div class="divide-y divide-orange-100 rounded-md border border-orange-200 bg-orange-50/60 dark:divide-emerald-400/15 dark:border-emerald-400/30 dark:bg-emerald-500/10">
+									<div v-for="item in draftItems" :key="item.id" class="px-2.5 py-2 text-stone-900 dark:text-stone-100">
 										<div class="flex items-start justify-between gap-2">
 											<div class="flex min-w-0 flex-1 items-start gap-2">
-												<div class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-orange-100 bg-white text-stone-400">
+												<div class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-orange-100 bg-white text-stone-400 dark:border-emerald-400/20 dark:bg-[#171a16] dark:text-stone-400">
 													<img v-if="productImageForItem(item)" :src="productImageForItem(item) || undefined" :alt="item.name" class="h-full w-full object-cover">
 													<UIcon v-else name="i-heroicons-cube" class="size-4" />
 												</div>
 												<div class="min-w-0 flex-1">
-											<p class="truncate text-sm font-semibold">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ t('restaurantPos.free') }}</span></p>
-													<p v-if="item.note" class="mt-0.5 truncate text-[11px] text-stone-500">{{ item.note }}</p>
+											<p class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600 dark:text-emerald-300">· {{ t('restaurantPos.free') }}</span></p>
+													<p v-if="item.note" class="mt-0.5 truncate text-[11px] text-stone-500 dark:text-stone-400">{{ item.note }}</p>
 												</div>
 											</div>
 											<p class="shrink-0 text-sm font-semibold tabular-nums">{{ money(item.line_total) }}</p>
 										</div>
 										<div class="mt-1.5 flex items-center justify-end gap-1">
 											<template v-if="!item.is_gift">
-												<AppButton size="xs" color="neutral" variant="ghost" :disabled="actionPending || isItemPending(item.id)" @click="changeQty(item, -1)">−</AppButton>
+												<AppButton class="dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700" size="xs" color="neutral" variant="ghost" :disabled="actionPending || isItemPending(item.id)" @click="changeQty(item, -1)">−</AppButton>
 												<span class="min-w-7 text-center text-sm font-semibold">{{ item.qty }}</span>
-												<AppButton size="xs" color="neutral" variant="ghost" :disabled="actionPending || isItemPending(item.id)" @click="changeQty(item, 1)">+</AppButton>
+												<AppButton class="dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700" size="xs" color="neutral" variant="ghost" :disabled="actionPending || isItemPending(item.id)" @click="changeQty(item, 1)">+</AppButton>
 											</template>
 											<span v-else class="text-sm">× {{ item.qty }}</span>
-											<AppButton size="xs" color="error" variant="ghost" icon="i-heroicons-trash" :disabled="actionPending || isItemPending(item.id)" :aria-label="`ลบ ${item.name}`" @click="removeItem(item)" />
+											<AppButton class="dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20" size="xs" color="error" variant="ghost" icon="i-heroicons-trash" :disabled="actionPending || isItemPending(item.id)" :aria-label="`ลบ ${item.name}`" @click="removeItem(item)" />
 										</div>
 									</div>
 								</div>
@@ -1806,9 +1809,9 @@ onBeforeUnmount(() => {
 			<p class="mt-1 text-sm text-emerald-700">{{ t('posPanels.generatingReceipt') }}</p>
 		</div>
 		<div v-else-if="checkoutStep === 'receipt'" class="flex min-h-0 flex-col space-y-3 md:max-h-[calc(100vh-190px)]">
-			<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+			<div v-if="printPaymentMethod === 'cash'" class="rounded-md border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-400/40 dark:bg-emerald-500/15">
 				<p class="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">{{ t('pos.change') }}</p>
-				<p class="mt-1 text-3xl font-bold tabular-nums text-emerald-950">{{ money(printChange) }}</p>
+				<p class="mt-1 text-3xl font-bold tabular-nums text-emerald-950 dark:text-emerald-100">{{ money(printChange) }}</p>
 			</div>
 			<div class="scrollbar-soft min-h-[220px] flex-1 overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 px-3 py-4 md:min-h-0">
 				<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
@@ -1841,7 +1844,7 @@ onBeforeUnmount(() => {
 						<span>{{ t('posPanels.amountDue') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printTotal) }}</span>
 						</div>
-						<div class="flex justify-between gap-3 text-stone-600">
+						<div v-if="receiptShowPaymentMethod" class="flex justify-between gap-3 text-stone-600">
 						<span>{{ t('posPanels.paymentMethod') }}</span>
 							<span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span>
 						</div>
@@ -2095,7 +2098,7 @@ onBeforeUnmount(() => {
 				<div v-if="printVat" class="print-line"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> ({{ t('posPanels.vatIncluded') }})</template></span><span>{{ money(printVat) }}</span></div>
 				<div class="print-total"><strong>{{ t('posPanels.total') }}</strong><strong>{{ money(printTotal) }}</strong></div>
 				<template v-if="printKind === 'receipt'">
-					<div class="print-line"><span>{{ t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span></div>
+					<div v-if="receiptShowPaymentMethod" class="print-line"><span>{{ t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span></div>
 					<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="print-line"><span>{{ t('posPanels.cashReceived') }}</span><span>{{ money(printTendered) }}</span></div>
 					<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="print-line"><span>{{ t('pos.change') }}</span><span>{{ money(printChange) }}</span></div>
 					<div v-if="receiptShowQueue && printQueueText" class="print-queue"><span>{{ t('posPanels.queue') }}</span><strong>{{ printQueueText }}</strong></div>

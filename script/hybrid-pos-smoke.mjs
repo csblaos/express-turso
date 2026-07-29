@@ -36,6 +36,8 @@ try {
 	await db.execute({ sql: "INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)", args: [ "smoke-store", "beer", 5, 0, 5, stamp ] });
 
 	const { RestaurantInterface } = await import("../src/interfaces/RestaurantInterface.ts");
+	await RestaurantInterface.ensureTables();
+	await db.execute("UPDATE stores SET pickup_queue_enabled=1 WHERE id='smoke-store'");
 	const first = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-1", initial_item: { product_id: "beer", qty: 1 } }, "cashier");
 	assert.equal(first.queue_no, "Q001");
 	const firstRetry = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-1", initial_item: { product_id: "beer", qty: 1 } }, "cashier");
@@ -99,7 +101,18 @@ try {
 	assert.equal(nextQuick.queue_no, "Q004");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 
-	console.log("Hybrid POS smoke passed: server orders, local quick checkout Q, receipt, idempotency, stock-once, open-order cleanup");
+	const { ReportInterface } = await import("../src/interfaces/ReportInterface.ts");
+	const report = await ReportInterface.dashboard("smoke-store", "today", 420);
+	const expectedReport = await db.execute("SELECT COUNT(*) AS bill_count,COALESCE(SUM(total),0) AS revenue FROM orders WHERE store_id='smoke-store' AND status='completed' AND payment_status='paid'");
+	assert.equal(report.summary.bill_count, Number(expectedReport.rows[0].bill_count), "report counts only completed paid bills");
+	assert.equal(report.summary.revenue, Number(expectedReport.rows[0].revenue), "report revenue reconciles with paid orders");
+	assert.equal(report.payment_mix[0].method, "cash");
+	assert.equal(report.top_products.some((item) => item.id === "beer"), true);
+	assert.equal(report.periods.current.from.endsWith("17:00:00.000Z"), true, "UTC+7 day starts at 17:00Z");
+	const weekReport = await ReportInterface.dashboard("smoke-store", "7d", 420);
+	assert.equal(weekReport.summary.revenue, report.summary.revenue);
+
+	console.log("Hybrid POS smoke passed: orders, receipt, idempotency, stock-once, cleanup, and real report reconciliation");
 	db.close();
 } finally {
 	await rm(tempDirectory, { recursive: true, force: true });

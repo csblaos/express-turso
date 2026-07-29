@@ -52,6 +52,8 @@ export class AuditEventComponent {
 			const persistedActor = await AuthInterface.findPersistedUserById(normalized.actor_user_id);
 			if (!persistedActor) {
 				normalized.actor_user_id = null;
+			} else if (!normalized.actor_name) {
+				normalized.actor_name = persistedActor.name;
 			}
 		}
 

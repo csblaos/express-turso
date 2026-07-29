@@ -42,6 +42,9 @@ export type AuditEventRecord = {
 	action: string;
 	entity_type: string;
 	entity_id: string | null;
+	related_order_no: string | null;
+	related_queue_no: string | null;
+	related_table_name: string | null;
 	result: string;
 	reason_code: string | null;
 	ip_address: string | null;
@@ -107,6 +110,9 @@ function mapRow(row: Record<string, unknown>): AuditEventRecord {
 		action: String(row.action),
 		entity_type: String(row.entity_type),
 		entity_id: row.entity_id ? String(row.entity_id) : null,
+		related_order_no: row.related_order_no ? String(row.related_order_no) : null,
+		related_queue_no: row.related_queue_no ? String(row.related_queue_no) : null,
+		related_table_name: row.related_table_name ? String(row.related_table_name) : null,
 		result: String(row.result),
 		reason_code: row.reason_code ? String(row.reason_code) : null,
 		ip_address: row.ip_address ? String(row.ip_address) : null,
@@ -173,7 +179,7 @@ export class AuditEventInterface {
 		if (filters.query) {
 			const like = `%${filters.query.trim().toLowerCase()}%`;
 			where.push(
-				"(LOWER(COALESCE(actor_name, '')) LIKE ? OR LOWER(action) LIKE ? OR LOWER(entity_type) LIKE ? OR LOWER(COALESCE(entity_id, '')) LIKE ? OR LOWER(COALESCE(request_id, '')) LIKE ?)",
+				"(LOWER(COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id), '')) LIKE ? OR LOWER(action) LIKE ? OR LOWER(entity_type) LIKE ? OR LOWER(COALESCE(entity_id, '')) LIKE ? OR LOWER(COALESCE(request_id, '')) LIKE ?)",
 			);
 			args.push(like, like, like, like, like);
 		}
@@ -220,11 +226,14 @@ export class AuditEventInterface {
 					scope,
 					store_id,
 					actor_user_id,
-					actor_name,
+					COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id)) AS actor_name,
 					actor_role,
 					action,
 					entity_type,
 					entity_id,
+					(SELECT o.order_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_order_no,
+					(SELECT o.queue_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_queue_no,
+					(SELECT t.name FROM orders o LEFT JOIN restaurant_tables t ON t.id = o.restaurant_table_id WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_table_name,
 					result,
 					reason_code,
 					ip_address,
@@ -264,11 +273,14 @@ export class AuditEventInterface {
 					scope,
 					store_id,
 					actor_user_id,
-					actor_name,
+					COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id)) AS actor_name,
 					actor_role,
 					action,
 					entity_type,
 					entity_id,
+					(SELECT o.order_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_order_no,
+					(SELECT o.queue_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_queue_no,
+					(SELECT t.name FROM orders o LEFT JOIN restaurant_tables t ON t.id = o.restaurant_table_id WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_table_name,
 					result,
 					reason_code,
 					ip_address,
