@@ -3,7 +3,8 @@ import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 
 type Product = { id: string; name: string; sku: string };
-type Promotion = { id: string; name: string; type: "buy_x_get_y" | "cart_total_gift"; apply_mode: "automatic" | "manual"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string; gift_qty: number; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number; application_count?: number; gift_quantity?: number };
+type PromotionType = "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount";
+type Promotion = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string | null; gift_qty: number | null; discount_method: "percent" | "fixed" | null; discount_value: number | null; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number; application_count?: number; gift_quantity?: number };
 type Envelope<T> = { data: T };
 
 const { apiFetch } = useApiClient();
@@ -25,7 +26,7 @@ const typeFilter = ref<"all" | Promotion["type"]>("all");
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [ 10, 20, 50 ];
-const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], apply_mode: "manual" as Promotion["apply_mode"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
+const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], apply_mode: "manual" as Promotion["apply_mode"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent" as "percent" | "fixed", discount_value: 10, starts_at: "", ends_at: "", is_active: true });
 const noEndDate = ref(true);
 const modalInputClass = "w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#1b1713]";
 const modalSelectClass = "w-full [&_button]:min-h-11 [&_button]:rounded-md [&_button]:border-neutral-200 [&_button]:bg-white dark:[&_button]:border-[#3a332a] dark:[&_button]:bg-[#1b1713]";
@@ -37,10 +38,30 @@ const copy = computed(() => locale.value === "lo" ? {
 } : {
 	title: "โปรโมชั่น", description: "จัดการซื้อ X แถม Y และของแถมเมื่อยอดบิลถึงกำหนด", add: "เพิ่มโปรโมชั่น", reload: "รีโหลด", edit: "แก้ไขโปรโมชั่น", remove: "ลบ", active: "ใช้งาน", inactive: "ปิดใช้งาน", all: "ทั้งหมด", type: "ประเภท", applyMode: "วิธีเพิ่มของแถม", applyManual: "ให้พนักงานกดเพิ่มเอง", applyAutomatic: "เพิ่มอัตโนมัติเมื่อครบเงื่อนไข", buy: "ซื้อ X แถม Y", total: "ยอดบิลแถมสินค้า", name: "ชื่อโปรโมชั่น", namePlaceholder: "เช่น ซื้อ 4 แถม 1", selectProduct: "เลือกสินค้า", qty: "จำนวนที่ซื้อ", qtyPlaceholder: "เช่น 4", minimum: "ยอดขั้นต่ำ", minimumPlaceholder: "เช่น 100,000", gift: "สินค้าของแถม", giftQty: "จำนวนของแถม", period: "ช่วงวันที่", start: "เริ่ม", end: "สิ้นสุด", uses: "จำนวนบิลที่ใช้", usage: "การใช้โปรโมชั่น", applications: "ใช้โปร", giftsGiven: "ของแถม", save: "บันทึกโปรโมชั่น", cancel: "ยกเลิก", empty: "ยังไม่มีโปรโมชั่น", emptyHint: "สร้างโปรโมชั่นแรกเพื่อให้พนักงานเลือกใช้ใน POS", first: "เพิ่มโปรโมชั่นแรก", search: "ค้นหาชื่อโปรโมชั่นหรือสินค้า", filters: "ตัวกรอง", showing: "แสดง", totalPromotions: "โปรโมชั่นทั้งหมด", activePromotions: "กำลังใช้งาน", inactivePromotions: "ปิดใช้งาน", totalUses: "จำนวนบิลที่ใช้", condition: "เงื่อนไข", actions: "จัดการ", basic: "ข้อมูลพื้นฐาน", rules: "เงื่อนไขโปรโมชั่น", schedule: "กำหนดช่วงเวลา", preview: "ตัวอย่างผลลัพธ์", noEnd: "ไม่กำหนดวันสิ้นสุด", giftFree: "ฟรี", enabled: "เปิดใช้งาน", enabledHint: "ปิดเพื่อพักโปรโมชั่น และเปิดใช้งานใหม่ได้ทุกเมื่อ"
 });
+const discountCopy = computed(() => locale.value === "lo"
+	? { description: "ຈັດການຂອງແຖມ ແລະ ສ່ວນຫຼຸດທັງບິນ", direct: "ຫຼຸດທັງບິນ", threshold: "ຍອດເຖິງເກນແລ້ວຫຼຸດ", method: "ຮູບແບບສ່ວນຫຼຸດ", percent: "ເປີເຊັນ (%)", fixed: "ຈຳນວນເງິນ", value: "ສ່ວນຫຼຸດ", discount: "ຫຼຸດ", applyMode: "ວິທີນຳໃຊ້ໂປຣໂມຊັນ" }
+	: locale.value === "en"
+		? { description: "Manage free gifts and order discounts.", direct: "Order discount", threshold: "Minimum spend discount", method: "Discount method", percent: "Percentage (%)", fixed: "Fixed amount", value: "Discount value", discount: "Discount", applyMode: "Promotion application" }
+		: { description: "จัดการของแถมและส่วนลดทั้งบิล", direct: "ลดทั้งบิล", threshold: "ยอดถึงเกณฑ์แล้วลด", method: "รูปแบบส่วนลด", percent: "เปอร์เซ็นต์ (%)", fixed: "จำนวนเงิน", value: "มูลค่าส่วนลด", discount: "ลด", applyMode: "วิธีใช้โปรโมชั่น" });
 
 const productOptions = computed(() => products.value.map((product) => ({ label: `${product.name}${product.sku ? ` · ${product.sku}` : ""}`, value: product.id })));
 const selectedQualifyingProduct = computed(() => products.value.find((product) => product.id === form.qualifying_product_id));
 const selectedGiftProduct = computed(() => products.value.find((product) => product.id === form.gift_product_id));
+function parseMoneyInput(value: unknown) {
+	const normalized = String(value ?? "").replace(/[^\d]/g, "");
+	return normalized ? Number(normalized) : 0;
+}
+function displayMoneyInput(value: number) {
+	return value > 0 ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value) : "";
+}
+const minimumSubtotalInput = computed({
+	get: () => displayMoneyInput(Number(form.minimum_subtotal || 0)),
+	set: (value: string | number) => { form.minimum_subtotal = parseMoneyInput(value); },
+});
+const fixedDiscountInput = computed({
+	get: () => displayMoneyInput(Number(form.discount_value || 0)),
+	set: (value: string | number) => { form.discount_value = parseMoneyInput(value); },
+});
 const filteredItems = computed(() => {
 	const keyword = search.value.trim().toLowerCase();
 	return items.value.filter((item) => {
@@ -91,7 +112,7 @@ function goToPage(page: number) { currentPage.value = Math.min(Math.max(1, page)
 function reset(value?: Promotion) {
 	editing.value = value || null;
 	noEndDate.value = !value?.ends_at;
-	Object.assign(form, value ? { name: value.name, type: value.type, apply_mode: value.apply_mode || "manual", qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id, gift_qty: value.gift_qty, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", apply_mode: "manual", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, starts_at: "", ends_at: "", is_active: true });
+	Object.assign(form, value ? { name: value.name, type: value.type, apply_mode: value.apply_mode || "manual", qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id || "", gift_qty: value.gift_qty || 1, discount_method: value.discount_method || "percent", discount_value: value.discount_value || 10, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", apply_mode: "manual", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent", discount_value: 10, starts_at: "", ends_at: "", is_active: true });
 	open.value = true;
 }
 function formatMoney(value: number | null) { return new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-US").format(Number(value || 0)); }
@@ -105,8 +126,20 @@ function formatPeriod(item: Promotion) { return `${formatPromotionDateTime(item.
 function promotionBoundary(date: string, endOfDay = false) {
 	return new Date(`${date}T${endOfDay ? "23:59:59" : "00:00:00"}+07:00`).toISOString();
 }
-function itemCondition(item: Promotion) { return item.type === "buy_x_get_y" ? `${item.qualifying_product_name || "—"} × ${item.qualifying_qty || 0} → ${item.gift_product_name || "—"} × ${item.gift_qty}` : `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${item.gift_product_name || "—"} × ${item.gift_qty}`; }
-const previewText = computed(() => form.type === "buy_x_get_y" ? `${copy.value.buy}: ${selectedQualifyingProduct.value?.name || "…"} × ${form.qualifying_qty} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}` : `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}`);
+function discountLabel(method: "percent" | "fixed" | null, value: number | null) { return method === "percent" ? `${formatMoney(value)}%` : formatMoney(value); }
+function typeLabel(type: PromotionType) { return type === "buy_x_get_y" ? copy.value.buy : type === "cart_total_gift" ? copy.value.total : type === "cart_discount" ? discountCopy.value.direct : discountCopy.value.threshold; }
+function itemCondition(item: Promotion) {
+	if (item.type === "buy_x_get_y") return `${item.qualifying_product_name || "—"} × ${item.qualifying_qty || 0} → ${item.gift_product_name || "—"} × ${item.gift_qty}`;
+	if (item.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${item.gift_product_name || "—"} × ${item.gift_qty}`;
+	const discount = `${discountCopy.value.discount} ${discountLabel(item.discount_method, item.discount_value)}`;
+	return item.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${discount}` : discount;
+}
+const previewText = computed(() => {
+	if (form.type === "buy_x_get_y") return `${copy.value.buy}: ${selectedQualifyingProduct.value?.name || "…"} × ${form.qualifying_qty} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}`;
+	if (form.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}`;
+	const discount = `${discountCopy.value.discount} ${discountLabel(form.discount_method, form.discount_value)}`;
+	return form.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${discount}` : discount;
+});
 
 async function load() {
 	if (!currentStoreId.value) return;
@@ -122,17 +155,18 @@ async function load() {
 async function save() {
 	if (!currentStoreId.value) return;
 	const invalid = !form.name.trim()
-		|| !form.gift_product_id
-		|| form.gift_qty < 1
+		|| ((form.type === "buy_x_get_y" || form.type === "cart_total_gift") && (!form.gift_product_id || form.gift_qty < 1))
 		|| (form.type === "buy_x_get_y" && (!form.qualifying_product_id || form.qualifying_qty < 1))
-		|| (form.type === "cart_total_gift" && form.minimum_subtotal <= 0);
+		|| ((form.type === "cart_total_gift" || form.type === "cart_threshold_discount") && form.minimum_subtotal <= 0)
+		|| ((form.type === "cart_discount" || form.type === "cart_threshold_discount") && (form.discount_value <= 0 || (form.discount_method === "percent" && form.discount_value > 100)));
 	if (invalid) {
 		appToast.error({ title: locale.value === "lo" ? "ກະລຸນາກອກຂໍ້ມູນໂປຣໂມຊັນໃຫ້ຄົບ" : locale.value === "en" ? "Complete the required promotion details" : "กรอกข้อมูลโปรโมชั่นที่จำเป็นให้ครบ", timeout: 3200 });
 		return;
 	}
 	saving.value = true;
 	try {
-		const payload = { ...form, name: form.name.trim(), store_id: currentStoreId.value, qualifying_product_id: form.type === "buy_x_get_y" ? form.qualifying_product_id : null, qualifying_qty: form.type === "buy_x_get_y" ? form.qualifying_qty : null, minimum_subtotal: form.type === "cart_total_gift" ? form.minimum_subtotal : null, starts_at: form.starts_at ? promotionBoundary(form.starts_at) : null, ends_at: form.ends_at ? promotionBoundary(form.ends_at, true) : null };
+		const isGift = form.type === "buy_x_get_y" || form.type === "cart_total_gift";
+		const payload = { ...form, name: form.name.trim(), store_id: currentStoreId.value, qualifying_product_id: form.type === "buy_x_get_y" ? form.qualifying_product_id : null, qualifying_qty: form.type === "buy_x_get_y" ? form.qualifying_qty : null, minimum_subtotal: form.type === "cart_total_gift" || form.type === "cart_threshold_discount" ? form.minimum_subtotal : null, gift_product_id: isGift ? form.gift_product_id : null, gift_qty: isGift ? form.gift_qty : null, discount_method: isGift ? null : form.discount_method, discount_value: isGift ? null : form.discount_value, starts_at: form.starts_at ? promotionBoundary(form.starts_at) : null, ends_at: form.ends_at ? promotionBoundary(form.ends_at, true) : null };
 		await apiFetch(editing.value ? `/promotions/${editing.value.id}?store_id=${currentStoreId.value}` : "/promotions", { method: editing.value ? "PUT" : "POST", body: payload });
 		open.value = false;
 		appToast.success({ title: locale.value === "lo" ? "ບັນທຶກໂປຣໂມຊັນແລ້ວ" : locale.value === "en" ? "Promotion saved" : "บันทึกโปรโมชั่นแล้ว" });
@@ -163,6 +197,7 @@ async function togglePromotion(item: Promotion) {
 				name: item.name, type: item.type, qualifying_product_id: item.qualifying_product_id,
 				qualifying_qty: item.qualifying_qty, minimum_subtotal: item.minimum_subtotal,
 				gift_product_id: item.gift_product_id, gift_qty: item.gift_qty,
+				discount_method: item.discount_method, discount_value: item.discount_value,
 				starts_at: item.starts_at, ends_at: item.ends_at, apply_mode: item.apply_mode || "manual", is_active: !Boolean(item.is_active)
 			}
 		});
@@ -183,10 +218,10 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 </script>
 
 <template>
-	<AppSidebarShell :nav-items="appNavItems" :active-ids="['promotions']" sidebar-eyebrow="Promotion" :sidebar-title="copy.title" sidebar-compact-title="PROMO" :sidebar-description="copy.description">
+	<AppSidebarShell :nav-items="appNavItems" :active-ids="['promotions']" sidebar-eyebrow="Promotion" :sidebar-title="copy.title" sidebar-compact-title="PROMO" :sidebar-description="discountCopy.description">
 		<template #default="{ openSidebar }">
 			<div class="space-y-3 pb-4">
-				<AppPageHeader title="" compact :description="copy.description" @menu="openSidebar">
+				<AppPageHeader title="" compact :description="discountCopy.description" @menu="openSidebar">
 					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto] lg:justify-end">
 						<UInput
 							v-model="search"
@@ -228,7 +263,7 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 						<span class="mr-1 text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{ copy.filters }}</span>
 						<div class="flex flex-wrap gap-2">
 							<USelect v-model="statusFilter" :items="[{ label: copy.all, value: 'all' }, { label: copy.active, value: 'active' }, { label: copy.inactive, value: 'inactive' }]" class="min-w-36" />
-							<USelect v-model="typeFilter" :items="[{ label: copy.type, value: 'all' }, { label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }]" class="min-w-44" />
+							<USelect v-model="typeFilter" :items="[{ label: copy.type, value: 'all' }, { label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }, { label: discountCopy.direct, value: 'cart_discount' }, { label: discountCopy.threshold, value: 'cart_threshold_discount' }]" class="min-w-44" />
 						</div>
 					</div>
 				</div>
@@ -248,7 +283,7 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 						<div class="min-h-0 flex-1 overflow-x-auto">
 						<table class="w-full min-w-[1060px] border-separate border-spacing-0 text-sm">
 							<thead class="bg-[#fcfbf8] dark:bg-[#221d18]"><tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500"><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.name }}</th><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.condition }}</th><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.period }}</th><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.uses }}</th><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.usage }}</th><th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ copy.actions }}</th></tr></thead>
-							<tbody><tr v-for="item in paginatedItems" :key="item.id" class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50 dark:text-stone-300 dark:hover:bg-primary-500/10" :class="open && editing?.id === item.id ? 'bg-primary-50 dark:bg-primary-500/10' : 'bg-white dark:bg-[#221d18]'" @click="reset(item)"><td class="border-b border-[#f1ede6] px-4 py-4 dark:border-[#332d26]"><div class="flex items-start gap-3"><div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-500 text-white shadow-sm"><UIcon name="i-heroicons-gift-20-solid" class="h-5 w-5" /></div><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><p class="truncate font-semibold text-stone-950 dark:text-stone-100">{{ item.name }}</p><UBadge :color="item.is_active ? 'success' : 'neutral'" variant="soft" size="xs">{{ item.is_active ? copy.active : copy.inactive }}</UBadge></div><p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{{ item.type === 'buy_x_get_y' ? copy.buy : copy.total }}</p><p class="mt-1 hidden text-[11px] text-stone-400 lg:block">{{ formatPeriod(item) }}</p></div></div></td><td class="border-b border-[#f1ede6] px-4 py-4 font-medium text-stone-700 dark:border-[#332d26] dark:text-stone-300">{{ itemCondition(item) }}</td><td class="border-b border-[#f1ede6] px-4 py-4 text-xs text-stone-500 dark:border-[#332d26] dark:text-stone-400">{{ formatPeriod(item) }}</td><td class="border-b border-[#f1ede6] px-4 py-4 font-semibold tabular-nums text-stone-950 dark:border-[#332d26] dark:text-stone-100">{{ item.order_count || 0 }}</td><td class="border-b border-[#f1ede6] px-4 py-4 dark:border-[#332d26]"><p class="font-semibold tabular-nums text-stone-950 dark:text-stone-100">{{ copy.applications }} {{ item.application_count || 0 }}</p><p class="mt-1 text-xs tabular-nums text-stone-500 dark:text-stone-400">{{ copy.giftsGiven }} {{ item.gift_quantity || 0 }}</p></td><td class="border-b border-[#f1ede6] px-4 py-4 text-right dark:border-[#332d26]"><AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-chevron-right-20-solid" class="rounded-md" @click.stop="reset(item)">{{ paginationCopy.manage }}</AppButton></td></tr></tbody>
+							<tbody><tr v-for="item in paginatedItems" :key="item.id" class="cursor-pointer text-sm text-stone-700 transition hover:bg-primary-50 dark:text-stone-300 dark:hover:bg-primary-500/10" :class="open && editing?.id === item.id ? 'bg-primary-50 dark:bg-primary-500/10' : 'bg-white dark:bg-[#221d18]'" @click="reset(item)"><td class="border-b border-[#f1ede6] px-4 py-4 dark:border-[#332d26]"><div class="flex items-start gap-3"><div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary-500 text-white shadow-sm"><UIcon :name="item.type === 'cart_discount' || item.type === 'cart_threshold_discount' ? 'i-heroicons-receipt-percent-20-solid' : 'i-heroicons-gift-20-solid'" class="h-5 w-5" /></div><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><p class="truncate font-semibold text-stone-950 dark:text-stone-100">{{ item.name }}</p><UBadge :color="item.is_active ? 'success' : 'neutral'" variant="soft" size="xs">{{ item.is_active ? copy.active : copy.inactive }}</UBadge></div><p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{{ typeLabel(item.type) }}</p><p class="mt-1 hidden text-[11px] text-stone-400 lg:block">{{ formatPeriod(item) }}</p></div></div></td><td class="border-b border-[#f1ede6] px-4 py-4 font-medium text-stone-700 dark:border-[#332d26] dark:text-stone-300">{{ itemCondition(item) }}</td><td class="border-b border-[#f1ede6] px-4 py-4 text-xs text-stone-500 dark:border-[#332d26] dark:text-stone-400">{{ formatPeriod(item) }}</td><td class="border-b border-[#f1ede6] px-4 py-4 font-semibold tabular-nums text-stone-950 dark:border-[#332d26] dark:text-stone-100">{{ item.order_count || 0 }}</td><td class="border-b border-[#f1ede6] px-4 py-4 dark:border-[#332d26]"><p class="font-semibold tabular-nums text-stone-950 dark:border-[#332d26] dark:text-stone-100">{{ copy.applications }} {{ item.application_count || 0 }}</p><p v-if="item.type === 'buy_x_get_y' || item.type === 'cart_total_gift'" class="mt-1 text-xs tabular-nums text-stone-500 dark:text-stone-400">{{ copy.giftsGiven }} {{ item.gift_quantity || 0 }}</p></td><td class="border-b border-[#f1ede6] px-4 py-4 text-right dark:border-[#332d26]"><AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-chevron-right-20-solid" class="rounded-md" @click.stop="reset(item)">{{ paginationCopy.manage }}</AppButton></td></tr></tbody>
 						</table>
 						</div>
 						<div class="flex flex-col gap-2.5 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm dark:border-[#3a332a] dark:bg-[#221d18]/95 sm:gap-3 md:flex-row md:items-center md:justify-between">
@@ -278,7 +313,14 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 						</section>
 						<section class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
 							<h3 class="text-sm font-semibold text-stone-900 dark:text-stone-100">{{ copy.rules }}</h3>
-							<div class="mt-3 space-y-3"><UFormField :label="copy.type"><USelect v-model="form.type" size="lg" color="neutral" :items="[{ label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }]" :class="modalSelectClass" /></UFormField><UFormField :label="copy.applyMode"><USelect v-model="form.apply_mode" size="lg" color="neutral" :items="[{label: copy.applyManual, value:'manual'},{label: copy.applyAutomatic, value:'automatic'}]" :class="modalSelectClass" /></UFormField><template v-if="form.type === 'buy_x_get_y'"><UFormField :label="copy.qualify"><USelect v-model="form.qualifying_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.qty"><UInput v-model.number="form.qualifying_qty" type="number" min="1" size="lg" color="neutral" :placeholder="copy.qtyPlaceholder" :class="modalInputClass" /></UFormField></template><UFormField v-else :label="copy.minimum"><UInput v-model.number="form.minimum_subtotal" type="number" min="1" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField><div class="border-t border-neutral-100 pt-3 dark:border-[#332d26]"><UFormField :label="copy.gift"><USelect v-model="form.gift_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.giftQty" class="mt-3"><UInput v-model.number="form.gift_qty" type="number" min="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" /></UFormField></div></div>
+							<div class="mt-3 space-y-3">
+								<UFormField :label="copy.type"><USelect v-model="form.type" size="lg" color="neutral" :items="[{ label: copy.buy, value: 'buy_x_get_y' }, { label: copy.total, value: 'cart_total_gift' }, { label: discountCopy.direct, value: 'cart_discount' }, { label: discountCopy.threshold, value: 'cart_threshold_discount' }]" :class="modalSelectClass" /></UFormField>
+								<UFormField :label="form.type === 'cart_discount' || form.type === 'cart_threshold_discount' ? discountCopy.applyMode : copy.applyMode"><USelect v-model="form.apply_mode" size="lg" color="neutral" :items="[{label: copy.applyManual, value:'manual'},{label: copy.applyAutomatic, value:'automatic'}]" :class="modalSelectClass" /></UFormField>
+								<template v-if="form.type === 'buy_x_get_y'"><UFormField :label="copy.qualify"><USelect v-model="form.qualifying_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.qty"><UInput v-model.number="form.qualifying_qty" type="number" min="1" size="lg" color="neutral" :placeholder="copy.qtyPlaceholder" :class="modalInputClass" /></UFormField></template>
+								<UFormField v-if="form.type === 'cart_total_gift' || form.type === 'cart_threshold_discount'" :label="copy.minimum"><UInput v-model="minimumSubtotalInput" type="text" inputmode="numeric" autocomplete="off" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField>
+								<div v-if="form.type === 'buy_x_get_y' || form.type === 'cart_total_gift'" class="border-t border-neutral-100 pt-3 dark:border-[#332d26]"><UFormField :label="copy.gift"><USelect v-model="form.gift_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.giftQty" class="mt-3"><UInput v-model.number="form.gift_qty" type="number" min="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" /></UFormField></div>
+								<div v-else class="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-3 sm:grid-cols-2 dark:border-[#332d26]"><UFormField :label="discountCopy.method"><USelect v-model="form.discount_method" size="lg" color="neutral" :items="[{ label: discountCopy.percent, value: 'percent' }, { label: discountCopy.fixed, value: 'fixed' }]" :class="modalSelectClass" /></UFormField><UFormField :label="discountCopy.value"><UInput v-if="form.discount_method === 'percent'" v-model.number="form.discount_value" type="number" min="0.01" max="100" step="0.01" size="lg" color="neutral" placeholder="10" :class="modalInputClass" /><UInput v-else v-model="fixedDiscountInput" type="text" inputmode="numeric" autocomplete="off" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField></div>
+							</div>
 						</section>
 						<section class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">
 							<h3 class="text-sm font-semibold text-stone-900 dark:text-stone-100">{{ copy.schedule }}</h3>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type InventoryStatus = "all" | "low" | "out" | "negative" | "active" | "inactive";
@@ -260,14 +261,7 @@ watch([activeCategory, activeStatus, activeSort], () => {
 });
 
 function formatDate(value: string) {
-	try {
-		return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
-			dateStyle: "medium",
-			timeStyle: "short",
-		}).format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function formatQty(value: number) {

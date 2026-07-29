@@ -2,6 +2,7 @@
 import { appNavItems } from "~/utils/app-nav";
 import { formatMoneyWithSymbol } from "~/utils/currency";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type OrderStatus = "open" | "ready_to_pay" | "pending" | "confirmed" | "preparing" | "ready" | "completed" | "cancelled";
 type OrderType = "quick-sale" | "dine-in";
@@ -64,9 +65,11 @@ const detailOpen = ref(false);
 const printPreviewOpen = ref(false);
 const selectedOrderId = ref("");
 const ordersPending = ref(false);
+const ordersLoadedOnce = ref(false);
 const ordersError = ref<string | null>(null);
 const storeCurrency = ref("LAK");
 const queueEnabled = ref(false);
+const businessDayStartMinutes = ref(0);
 const receiptStore = ref({
 	name: "", address: "", phone: "", showAddress: true, showPhone: true,
 	showTendered: true, showChange: true, showPaymentMethod: true,
@@ -75,20 +78,33 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const { apiFetch } = useApiClient();
 const { t } = useI18n();
-const { intlLocale } = useAppLocale();
+const { locale: appLocale, intlLocale } = useAppLocale();
 const { currentStoreId, currentAccess } = useAuthSession();
 const effectiveStoreId = computed(() => currentStoreId.value?.trim() || currentAccess.value?.store_id?.trim() || "");
 let ordersRequestSequence = 0;
+const ordersInitialLoading = computed(() => ordersPending.value && !ordersLoadedOnce.value);
+const ordersRefreshing = computed(() => ordersPending.value && ordersLoadedOnce.value);
 
 
 const orders = ref<OrderRecord[]>([]);
 
 type ApiOrder = Record<string, unknown> & { lines?: Array<Record<string, unknown>> };
 
-function localDateBoundary(value: string, endOfDay = false) {
+function localDateBoundary(value: string, endExclusive = false) {
 	const [ year, month, day ] = value.split("-").map(Number);
-	return new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0).toISOString();
+	return new Date(year, month - 1, day + (endExclusive ? 1 : 0), 0, businessDayStartMinutes.value, 0, endExclusive ? -1 : 0).toISOString();
 }
+
+function businessDate(value: string) {
+	const date = new Date(value);
+	date.setMinutes(date.getMinutes() - businessDayStartMinutes.value);
+	return toLocalDateInput(date);
+}
+
+const orderBusinessPeriodText = computed(() => {
+	if (!dateFrom.value || !dateTo.value) return "";
+	return t("businessPeriod.range", { from: formatAppDateTime(localDateBoundary(dateFrom.value), appLocale.value), to: formatAppDateTime(localDateBoundary(dateTo.value, true), appLocale.value) });
+});
 
 function formatQueueNumber(value: string) {
 	return value.replace(/^Q/i, "").padStart(3, "0");
@@ -127,13 +143,13 @@ async function loadOrders() {
 	const requestSequence = ++ordersRequestSequence;
 	ordersPending.value = true; ordersError.value = null;
 	try {
+		const storeResponse = await apiFetch<{ data: Record<string, unknown> }>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
+		businessDayStartMinutes.value = Math.min(1439, Math.max(0, Number(storeResponse.data.business_day_start_minutes || 0)));
+		if (!["all", "custom"].includes(activeDatePreset.value)) applyDatePreset(activeDatePreset.value);
 		const params = new URLSearchParams({ store_id: effectiveStoreId.value });
 		if (dateFrom.value) params.set("from", localDateBoundary(dateFrom.value));
 		if (dateTo.value) params.set("to", localDateBoundary(dateTo.value, true));
-		const [ response, storeResponse ] = await Promise.all([
-			apiFetch<{ data: ApiOrder[] }>(`/pos/orders?${params.toString()}`),
-			apiFetch<{ data: Record<string, unknown> }>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`),
-		]);
+		const response = await apiFetch<{ data: ApiOrder[] }>(`/pos/orders?${params.toString()}`);
 		if (requestSequence !== ordersRequestSequence) return;
 		orders.value = response.data.map(mapApiOrder);
 		queueEnabled.value = Number(storeResponse.data.pickup_queue_enabled || 0) !== 0;
@@ -151,9 +167,12 @@ async function loadOrders() {
 		const currency = response.data[0]?.payment_currency;
 		if (currency) storeCurrency.value = String(currency);
 	} catch (error) {
-		if (requestSequence === ordersRequestSequence) { orders.value = []; ordersError.value = resolveApiErrorMessage(error, t("orders.loadError")); }
+		if (requestSequence === ordersRequestSequence) {
+			if (!ordersLoadedOnce.value) orders.value = [];
+			ordersError.value = resolveApiErrorMessage(error, t("orders.loadError"));
+		}
 	}
-	finally { if (requestSequence === ordersRequestSequence) ordersPending.value = false; }
+	finally { if (requestSequence === ordersRequestSequence) { ordersLoadedOnce.value = true; ordersPending.value = false; } }
 }
 
 watch(effectiveStoreId, () => { void loadOrders(); }, { immediate: true });
@@ -176,7 +195,7 @@ const filteredOrders = computed(() => {
 		const matchesOrderType = activeOrderType.value === "all" || order.orderType === activeOrderType.value;
 		const matchesPayment = activePaymentStatus.value === "all" || order.paymentStatus === activePaymentStatus.value;
 		const matchesPaymentMethod = activePaymentMethod.value === "all" || order.paymentMethod === activePaymentMethod.value;
-		const createdDay = toLocalDateInput(new Date(order.createdAt));
+		const createdDay = businessDate(order.createdAt);
 		const matchesDate = (!dateFrom.value || createdDay >= dateFrom.value) && (!dateTo.value || createdDay <= dateTo.value);
 
 		const isOpenTable = order.orderType === "dine-in" && ["open", "ready_to_pay"].includes(order.status);
@@ -204,7 +223,7 @@ const selectedOrder = computed(() =>
 );
 
 const dateScopedOrders = computed(() => orders.value.filter((order) => {
-	const createdDay = toLocalDateInput(new Date(order.createdAt));
+	const createdDay = businessDate(order.createdAt);
 	return (!dateFrom.value || createdDay >= dateFrom.value) && (!dateTo.value || createdDay <= dateTo.value);
 }));
 const totalOrders = computed(() => dateScopedOrders.value.length);
@@ -250,7 +269,7 @@ watch([ searchQuery, activeStatus, activeOrderType, activePaymentStatus, activeP
 
 function formatDate(value: string) {
 	try {
-		return new Intl.DateTimeFormat(intlLocale.value, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+		return formatAppDateTime(value, appLocale.value);
 	} catch {
 		return value;
 	}
@@ -274,7 +293,7 @@ function applyDatePreset(preset: DatePreset) {
 	activeDatePreset.value = preset;
 	if (preset === "custom") return;
 	if (preset === "all") { dateFrom.value = ""; dateTo.value = ""; return; }
-	const today = new Date();
+	const today = new Date(Date.now() - businessDayStartMinutes.value * 60_000);
 	if (preset === "today") { dateFrom.value = toLocalDateInput(today); dateTo.value = dateFrom.value; return; }
 	if (preset === "yesterday") {
 		const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
@@ -477,6 +496,10 @@ function confirmPrintReceipt() {
 								{ value: 'last-week', label: $t('orders.lastWeek') },
 							] as const)" :key="preset.value" size="sm" class="shrink-0 whitespace-nowrap rounded-md" :color="activeDatePreset === preset.value ? 'primary' : 'neutral'" :variant="activeDatePreset === preset.value ? 'solid' : 'soft'" :label="preset.label" @click="applyDatePreset(preset.value)" />
 						</div>
+						<div v-if="orderBusinessPeriodText" class="flex items-start gap-2 rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-800">
+							<UIcon name="i-lucide-clock-3" class="mt-0.5 size-4 shrink-0" />
+							<span class="leading-5">{{ orderBusinessPeriodText }}</span>
+						</div>
 
 						<div class="flex items-center justify-between gap-3">
 							<p class="text-xs font-semibold text-stone-500">{{ $t('orders.quickViews') }}</p>
@@ -492,7 +515,8 @@ function confirmPrintReceipt() {
 					</div>
 				</div>
 
-				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+				<div class="relative overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<AppInlineLoadingBar v-if="ordersRefreshing" class="pointer-events-none absolute inset-x-0 top-0 z-20" minimal container-class="bg-transparent" />
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
@@ -505,7 +529,7 @@ function confirmPrintReceipt() {
 						</div>
 
 						<div class="min-h-0 flex-1 overflow-x-auto">
-							<div v-if="ordersPending" class="min-w-[1080px] divide-y divide-[#f1ede6]" aria-live="polite">
+							<div v-if="ordersInitialLoading" class="min-w-[1080px] divide-y divide-[#f1ede6]" aria-live="polite">
 								<div v-for="index in 7" :key="index" class="grid grid-cols-[150px_220px_150px_130px_160px_160px_110px] gap-4 px-4 py-4">
 									<div v-for="cell in 7" :key="cell" class="h-4 animate-pulse rounded bg-neutral-100" />
 								</div>

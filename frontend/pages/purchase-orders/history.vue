@@ -419,13 +419,13 @@ async function copyToClipboard(text: string, toastTitle: string) {
 		await navigator.clipboard.writeText(value);
 		showToast(toastTitle);
 	} catch {
-		showToast("คัดลอกไม่สำเร็จ");
+		showToast(t("toastMessages.copyFailed"));
 	}
 }
 
 async function copySupplierContact() {
 	if (!selectedOrderDetail.value?.order.supplier_contact) return;
-	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, "คัดลอก Supplier contact แล้ว");
+	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, t("toastMessages.copiedSupplierContact"));
 }
 
 function statusColor(status: string) {

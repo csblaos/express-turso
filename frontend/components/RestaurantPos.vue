@@ -523,13 +523,13 @@ function confirmClearCart() {
 	if (!canClearCartDraft.value) return;
 	if (order.value) {
 		clearTableDraft();
-		toast.success({ title: "ລ້າງລາຍການໃໝ່ແລ້ວ" });
+		toast.success({ title: t("toastMessages.cartReset") });
 	} else {
 		localCart.value = [];
 		selectedPromotionIds.value = [];
 		selectedPromotionCounts.value = {};
 		persistLocalCart();
-		toast.success({ title: "ລ້າງກະຕ່າແລ້ວ" });
+		toast.success({ title: t("toastMessages.cartCleared") });
 	}
 	clearCartPanel.value = false;
 }
@@ -655,7 +655,7 @@ async function addProduct(product: Product) {
 	}
 	const localQty = tableDraft.value.filter((item) => item.product_id === product.id).reduce((total, item) => total + item.qty, 0);
 	if (product.inventory_mode === "tracked" && localQty >= Number(product.available_base || 0)) {
-		toast.error({ title: "สต็อกคงเหลือไม่พอ", description: "ระบบจะตรวจสต็อกล่าสุดอีกครั้งเมื่อบันทึกบิล" });
+		toast.error({ title: t("toastMessages.insufficientStock"), description: t("toastMessages.stockRecheckHint") });
 		return;
 	}
 	const existing = tableDraft.value.find((item) => item.product_id === product.id && !item.note);
@@ -673,7 +673,7 @@ function productCartQty(productId: string) {
 function applyLocalPromotion(promotion: AvailablePromotion) {
 	const blockedReason = promotionBlockedReason(promotion);
 	if (blockedReason) {
-		toast.error({ title: "ใช้โปรโมชั่นไม่ได้", description: blockedReason });
+		toast.error({ title: t("toastMessages.promotionUnavailable"), description: blockedReason });
 		return;
 	}
 	const currentCount = selectedPromotionCounts.value[promotion.promotion_id] || 0;
@@ -691,43 +691,43 @@ function applyLocalPromotion(promotion: AvailablePromotion) {
 			selectedPromotionCounts.value[promotion.promotion_id] = currentCount + 1;
 		}
 		promotionPanelOpen.value = false;
-		toast.success({ title: "เพิ่มโปรโมชั่นแล้ว", description: `${promotion.name} · เพิ่มอีก 1 ชุด` });
+		toast.success({ title: t("toastMessages.promotionAdded"), description: promotion.name });
 		void nextTick(() => evaluateLocalPromotions());
 		return;
 	}
 	if (order.value) {
-		toast.error({ title: "ยังไม่ครบเงื่อนไขโปรโมชั่น", description: promotion.remaining_amount ? `เพิ่มยอดอีก ${money(promotion.remaining_amount)}` : "เพิ่มสินค้าให้ครบก่อนรับของแถม" });
+		toast.error({ title: t("toastMessages.promotionConditionMissing"), description: promotion.remaining_amount ? t("toastMessages.addMoreAmount", { amount: money(promotion.remaining_amount) }) : t("toastMessages.addRequiredProducts") });
 		return;
 	}
 	const maxApplications = Math.max(1, Number(promotion.applications || 1));
 	if (currentCount >= maxApplications) {
-		toast.error({ title: "ใช้โปรโมชั่นครบแล้ว", description: "จำนวนสินค้าในตะกร้าตอนนี้รับของแถมครบตามเงื่อนไขแล้ว" });
+		toast.error({ title: t("toastMessages.promotionLimitReached"), description: t("toastMessages.promotionLimitHint") });
 		return;
 	}
 	if (promotion.eligible === false) {
-		toast.error({ title: "ยังไม่ครบเงื่อนไขโปรโมชั่น", description: promotion.remaining_amount ? `เพิ่มยอดอีก ${money(promotion.remaining_amount)}` : "เพิ่มสินค้าให้ครบก่อนรับของแถม" });
+		toast.error({ title: t("toastMessages.promotionConditionMissing"), description: promotion.remaining_amount ? t("toastMessages.addMoreAmount", { amount: money(promotion.remaining_amount) }) : t("toastMessages.addRequiredProducts") });
 		return;
 	}
 	if (!selectedPromotionIds.value.includes(promotion.promotion_id)) selectedPromotionIds.value.push(promotion.promotion_id);
 	selectedPromotionCounts.value[promotion.promotion_id] = currentCount + 1;
 	promotionPanelOpen.value = false;
-	toast.success({ title: "เพิ่มโปรโมชั่นแล้ว", description: promotion.name });
+	toast.success({ title: t("toastMessages.promotionAdded"), description: promotion.name });
 }
 
 function addLocalPromotionGift(promotion: AvailablePromotion) {
 	const blockedReason = promotionBlockedReason(promotion);
 	if (blockedReason) {
-		toast.error({ title: "เพิ่มของแถมไม่ได้", description: blockedReason });
+		toast.error({ title: t("toastMessages.giftAddFailed"), description: blockedReason });
 		return;
 	}
 	if (promotion.eligible === false) {
-		toast.error({ title: "ยังไม่ครบเงื่อนไขโปรโมชั่น", description: promotion.remaining_amount ? `เพิ่มยอดอีก ${money(promotion.remaining_amount)}` : "เพิ่มสินค้าให้ครบก่อนรับของแถม" });
+		toast.error({ title: t("toastMessages.promotionConditionMissing"), description: promotion.remaining_amount ? t("toastMessages.addMoreAmount", { amount: money(promotion.remaining_amount) }) : t("toastMessages.addRequiredProducts") });
 		return;
 	}
 	const currentCount = selectedPromotionCounts.value[promotion.promotion_id] || 0;
 	const maxApplications = Math.max(0, Number(promotion.applications || 0));
 	if (currentCount >= maxApplications) {
-		toast.error({ title: "เพิ่มของแถมครบแล้ว", description: "ไม่มีของแถมที่ยังไม่ได้เพิ่มสำหรับโปรโมชั่นนี้" });
+		toast.error({ title: t("toastMessages.giftLimitReached"), description: t("toastMessages.giftLimitHint") });
 		return;
 	}
 	const giftQty = pendingLocalGiftQty(promotion);
@@ -738,12 +738,12 @@ function addLocalPromotionGift(promotion: AvailablePromotion) {
 		if (existing) existing.qty += giftLine.qty;
 		else tableDraft.value.unshift({ product_id: giftLine.product_id, qty: giftLine.qty, note: giftLine.note, is_gift: true, promotion_id: giftLine.promotion_id || promotion.promotion_id });
 		selectedPromotionCounts.value[promotion.promotion_id] = maxApplications;
-		toast.success({ title: "เพิ่มของแถมแล้ว", description: `${promotion.name} · ของแถม × ${giftQty}` });
+		toast.success({ title: t("toastMessages.giftAdded"), description: `${promotion.name} · ${t("toastMessages.giftQuantity", { count: giftQty })}` });
 		return;
 	}
 	if (!selectedPromotionIds.value.includes(promotion.promotion_id)) selectedPromotionIds.value.push(promotion.promotion_id);
 	selectedPromotionCounts.value[promotion.promotion_id] = maxApplications;
-	toast.success({ title: "เพิ่มของแถมแล้ว", description: `${promotion.name} · ของแถม × ${giftQty}` });
+	toast.success({ title: t("toastMessages.giftAdded"), description: `${promotion.name} · ${t("toastMessages.giftQuantity", { count: giftQty })}` });
 }
 
 async function changeQty(item: OrderItem, delta: number) {
@@ -776,7 +776,7 @@ async function changeQty(item: OrderItem, delta: number) {
 			method: "PUT", body: { store_id: props.storeId, qty, expected_version: order.value.version },
 		});
 		order.value = response.data;
-	} catch (error) { order.value = rollback; toast.error({ title: "แก้จำนวนไม่สำเร็จ", description: localizedApiError(error) }); await refreshOrder(); }
+	} catch (error) { order.value = rollback; toast.error({ title: t("toastMessages.quantityUpdateFailed"), description: localizedApiError(error) }); await refreshOrder(); }
 	finally { endItemMutation(item.id); actionPending.value = false; }
 }
 
@@ -803,7 +803,7 @@ async function removeItem(item: OrderItem) {
 			method: "DELETE", body: { store_id: props.storeId, expected_version: order.value.version },
 		});
 		order.value = response.data;
-	} catch (error) { order.value = rollback; toast.error({ title: "ลบรายการไม่สำเร็จ", description: localizedApiError(error) }); await refreshOrder(); }
+	} catch (error) { order.value = rollback; toast.error({ title: t("toastMessages.itemDeleteFailed"), description: localizedApiError(error) }); await refreshOrder(); }
 	finally { endItemMutation(item.id); actionPending.value = false; }
 }
 
@@ -846,13 +846,13 @@ function chooseTable(table: DiningTable) {
 	if (table.order_id) {
 		if (tableSelectionMode.value === "move" || tableSelectionMode.value === "cart") {
 			if (tableSelectionMode.value === "cart") {
-				toast.error({ title: "โต๊ะนี้มีออเดอร์แล้ว", description: "เลือกโต๊ะว่างสำหรับตะกร้านี้" });
+				toast.error({ title: t("toastMessages.tableOccupied"), description: t("toastMessages.chooseEmptyTable") });
 				return;
 			}
 			if (order.value && table.order_id === order.value.id) {
-				toast.info({ title: "โต๊ะปัจจุบัน", description: "เลือกโต๊ะว่างเพื่อย้ายออเดอร์" });
+				toast.info({ title: t("toastMessages.currentTable"), description: t("toastMessages.chooseEmptyTableToMove") });
 			} else {
-				toast.error({ title: "โต๊ะนี้มีออเดอร์แล้ว", description: "เลือกโต๊ะว่างสำหรับย้ายออเดอร์" });
+				toast.error({ title: t("toastMessages.tableOccupied"), description: t("toastMessages.chooseEmptyTableToMove") });
 			}
 			return;
 		}
@@ -896,10 +896,10 @@ async function confirmTable() {
 		// The order is ready for local item entry; dashboard refreshes are informational.
 		actionPending.value = false;
 		await loadDashboard();
-		toast.success({ title: `ผูกออเดอร์กับโต๊ะ ${selectedTable.value.name} แล้ว` });
+		toast.success({ title: t("toastMessages.orderLinkedToTable", { table: selectedTable.value.name }) });
 	} catch (error) {
 		const description = localizedApiError(error);
-		toast.error({ title: tableSelectionMode.value === "move" ? "เปลี่ยนโต๊ะไม่สำเร็จ" : "เลือกโต๊ะไม่สำเร็จ", description });
+		toast.error({ title: t(tableSelectionMode.value === "move" ? "toastMessages.tableMoveFailed" : "toastMessages.tableSelectFailed"), description });
 		if (description.includes("open restaurant order not found")) tableSelectionMode.value = "browse";
 		await loadDashboard();
 	}
@@ -915,8 +915,8 @@ async function changeToPickup() {
 		});
 		order.value = response.data;
 		await loadDashboard();
-		toast.success({ title: `เปลี่ยนเป็นซื้อกลับบ้าน คิว ${displayQueueNo(response.data.queue_no)}` });
-	} catch (error) { toast.error({ title: "เปลี่ยนรูปแบบบริการไม่สำเร็จ", description: localizedApiError(error) }); }
+		toast.success({ title: t("toastMessages.changedToTakeaway", { queue: displayQueueNo(response.data.queue_no) }) });
+	} catch (error) { toast.error({ title: t("toastMessages.serviceChangeFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -936,15 +936,15 @@ async function sendKitchen(options: { print: boolean; park: boolean; pay: boolea
 		if (options.pay) openCheckout("existing");
 		else if (options.park) parkOrder();
 		else void loadDashboard();
-		toast.success({ title: options.park ? "บันทึกและพักบิลแล้ว" : `บันทึกบิลรอบ ${round} แล้ว` });
-	} catch (error) { toast.error({ title: "บันทึกบิลไม่สำเร็จ", description: `${localizedApiError(error)} · รายการที่แตะไว้ยังคงอยู่ สามารถโหลดออเดอร์ล่าสุดแล้วลองใหม่ได้` }); }
+		toast.success({ title: options.park ? t("toastMessages.billParked") : t("toastMessages.billRoundSaved", { round }) });
+	} catch (error) { toast.error({ title: t("toastMessages.billSaveFailed"), description: `${localizedApiError(error)} · ${t("toastMessages.unsavedItemsRemain")}` }); }
 	finally { actionPending.value = false; }
 }
 
 function openCheckout(dispatch: "existing" | "direct") {
 	if (!order.value && !localCart.value.length) return;
 	if (hasLocalTableDraft.value) {
-		toast.error({ title: "กรุณาบันทึกบิลก่อนชำระเงิน", description: "รายการที่ยังอยู่ในเครื่องต้องผ่านการตรวจสต็อกจาก server ก่อน" });
+		toast.error({ title: t("toastMessages.saveBeforePayment"), description: t("toastMessages.serverStockCheckHint") });
 		return;
 	}
 	if (checkoutSuccessTimer) clearTimeout(checkoutSuccessTimer);
@@ -1023,7 +1023,7 @@ function releaseCompletedOrder(completed: Order) {
 }
 
 function printReceiptAndFinish() {
-	if (!canPrintDocument("receipt")) return toast.error({ title: "ไม่มีสิทธิ์พิมพ์เอกสาร" });
+	if (!canPrintDocument("receipt")) return toast.error({ title: t("toastMessages.printForbidden") });
 	printKind.value = "receipt";
 	printRound.value = null;
 	nextTick(() => window.print());
@@ -1052,7 +1052,7 @@ async function checkout() {
 			localCart.value = [];
 			selectedPromotionIds.value = [];
 			selectedPromotionCounts.value = {};
-			toast.success({ title: "ชำระเงินสำเร็จ" });
+			toast.success({ title: t("toastMessages.paymentSuccessful") });
 			showCheckoutReceipt();
 			return;
 		}
@@ -1064,11 +1064,11 @@ async function checkout() {
 		printKind.value = "receipt";
 		checkoutKey = "";
 		releaseCompletedOrder(response.data);
-		toast.success({ title: "ชำระเงินและปิดออเดอร์แล้ว" });
+		toast.success({ title: t("toastMessages.paymentAndCloseSuccessful") });
 		showCheckoutReceipt();
 	} catch (error) {
 		checkoutStep.value = "payment";
-		toast.error({ title: "ชำระเงินไม่สำเร็จ", description: localizedApiError(error) });
+		toast.error({ title: t("toastMessages.paymentFailed"), description: localizedApiError(error) });
 		if (!order.value) await loadDashboard();
 	}
 	finally { actionPending.value = false; }
@@ -1095,8 +1095,8 @@ async function cancelOrder() {
 		order.value = null;
 		mobileTicketOpen.value = false;
 		await loadDashboard();
-		toast.success({ title: "ยกเลิกออเดอร์แล้ว" });
-	} catch (error) { toast.error({ title: "ยกเลิกออเดอร์ไม่สำเร็จ", description: localizedApiError(error) }); }
+		toast.success({ title: t("toastMessages.orderCancelled") });
+	} catch (error) { toast.error({ title: t("toastMessages.orderCancelFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -1105,7 +1105,7 @@ async function toggleAvailability(product: Product) {
 	try {
 		await apiFetch(`/pos/restaurant/products/${product.id}/availability`, { method: "PATCH", body: { store_id: props.storeId, sold_out: !Boolean(product.manual_sold_out) } });
 		await loadDashboard();
-	} catch (error) { toast.error({ title: "เปลี่ยนสถานะเมนูไม่สำเร็จ", description: localizedApiError(error) }); }
+	} catch (error) { toast.error({ title: t("toastMessages.menuStatusChangeFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -1113,7 +1113,7 @@ async function applyPromotion(promotion: Promotion) {
 	if (!order.value) return;
 	const blockedReason = promotionBlockedReason(promotion);
 	if (blockedReason) {
-		toast.error({ title: "ใช้โปรโมชั่นไม่ได้", description: blockedReason });
+		toast.error({ title: t("toastMessages.promotionUnavailable"), description: blockedReason });
 		return;
 	}
 	actionPending.value = true;
@@ -1123,7 +1123,7 @@ async function applyPromotion(promotion: Promotion) {
 		});
 		order.value = response.data;
 		promotionPanelOpen.value = false;
-	} catch (error) { toast.error({ title: "ใช้โปรโมชั่นไม่สำเร็จ", description: localizedApiError(error) }); }
+	} catch (error) { toast.error({ title: t("toastMessages.promotionApplyFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -1144,8 +1144,8 @@ async function adjustSentItem() {
 		});
 		order.value = response.data;
 		sentItemPanel.value = false;
-		toast.success({ title: sentItemQty.value === 0 ? "ຍົກເລີກລາຍການແລ້ວ" : "ແກ້ໄຂຈຳນວນແລ້ວ" });
-	} catch (error) { toast.error({ title: "ແກ້ໄຂລາຍການບໍ່ສຳເລັດ", description: localizedApiError(error) }); await refreshOrder(); }
+		toast.success({ title: sentItemQty.value === 0 ? t("toastMessages.itemCancelled") : t("toastMessages.quantityUpdated") });
+	} catch (error) { toast.error({ title: t("toastMessages.quantityUpdateFailed"), description: localizedApiError(error) }); await refreshOrder(); }
 	finally { actionPending.value = false; }
 }
 
@@ -1160,7 +1160,7 @@ async function markReady() {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/ready`, { method: "POST", body: { store_id: props.storeId, expected_version: order.value.version } });
 		order.value = response.data;
 		printDocument("check");
-	} catch (error) { toast.error({ title: "เช็กบิลไม่สำเร็จ", description: localizedApiError(error) }); }
+	} catch (error) { toast.error({ title: t("toastMessages.checkBillFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -1176,7 +1176,7 @@ function canPrintDocument(kind: "kitchen" | "check" | "estimate" | "receipt") {
 	return kind !== "receipt" || can("pos.restaurant.print");
 }
 function printDocument(kind: "kitchen" | "check" | "estimate" | "receipt", round?: number) {
-	if (!canPrintDocument(kind)) return toast.error({ title: "ไม่มีสิทธิ์พิมพ์เอกสาร" });
+	if (!canPrintDocument(kind)) return toast.error({ title: t("toastMessages.printForbidden") });
 	printKind.value = kind;
 	printRound.value = round || null;
 	printPreviewOpen.value = true;

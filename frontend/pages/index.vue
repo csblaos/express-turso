@@ -321,7 +321,7 @@ const posExperience = computed<"loading" | "restaurant" | "retail">(() => {
 	return isRestaurantStore.value ? "restaurant" : "retail";
 });
 const cart = ref<CartEntry[]>([]);
-type AvailablePromotion = { promotion_id: string; name: string; applications: number; gift_product_id: string; gift_qty: number };
+type AvailablePromotion = { promotion_id: string; name: string; type: "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount"; apply_mode: "automatic" | "manual"; applications: number; gift_product_id: string | null; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number; discount_amount: number };
 const availablePromotions = ref<AvailablePromotion[]>([]);
 const selectedPromotionIds = ref<string[]>([]);
 const promotionsPending = ref(false);
@@ -485,26 +485,30 @@ const vatPercent = computed(() => {
 	return rawRate > 100 ? rawRate / 100 : rawRate;
 });
 
-const discount = computed(() =>
+const productDiscount = computed(() =>
 	cartItems.value.reduce(
 		(sum, item) => sum + ((item.compareAt ?? item.price) - item.price) * item.qty,
 		0,
 	),
 );
+const promotionDiscount = computed(() => Math.min(subtotal.value, availablePromotions.value
+	.filter((promotion) => selectedPromotionIds.value.includes(promotion.promotion_id))
+	.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0)));
+const discount = computed(() => productDiscount.value + promotionDiscount.value);
 
 const tax = computed(() => {
 	const rate = vatPercent.value;
 	if (rate <= 0) return 0;
 	if (vatMode.value === "INCLUSIVE") {
-		return Math.round(subtotal.value * (rate / (100 + rate)));
+		return Math.round(Math.max(0, subtotal.value - promotionDiscount.value) * (rate / (100 + rate)));
 	}
-	return Math.round(subtotal.value * (rate / 100));
+	return Math.round(Math.max(0, subtotal.value - promotionDiscount.value) * (rate / 100));
 });
 const serviceCharge = computed(() => 0);
 const total = computed(() => (
 	vatEnabled.value && vatPercent.value > 0 && vatMode.value !== "INCLUSIVE"
-		? subtotal.value + tax.value + serviceCharge.value
-		: subtotal.value + serviceCharge.value
+		? Math.max(0, subtotal.value - promotionDiscount.value) + tax.value + serviceCharge.value
+		: Math.max(0, subtotal.value - promotionDiscount.value) + serviceCharge.value
 ));
 const vatLabel = computed(() => {
 	const rate = vatPercent.value;
@@ -1097,7 +1101,7 @@ async function continuePaymentCheckout() {
 				note: orderNote.value || null,
 			},
 		});
-		appToast.success({ title: `ชำระเงินสำเร็จ ${response.data.order_no}`, description: response.data.change_amount > 0 ? `เงินทอน ${formatMoney(response.data.change_amount)}` : `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}` });
+		appToast.success({ title: t("toastMessages.paymentSuccessfulWithOrder", { order: response.data.order_no }), description: response.data.change_amount > 0 ? t("toastMessages.changeAmount", { amount: formatMoney(response.data.change_amount) }) : `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}` });
 		cart.value = [];
 		selectedPromotionIds.value = [];
 		availablePromotions.value = [];
@@ -1118,7 +1122,10 @@ async function evaluatePromotions() {
 	try {
 		const response = await apiFetch<ApiEnvelope<AvailablePromotion[]>>("/promotions/evaluate", { method: "POST", body: { store_id: effectiveStoreId.value, items: cart.value.map((item) => ({ product_id: item.productId, qty: item.qty })) } });
 		availablePromotions.value = response.data;
-		selectedPromotionIds.value = selectedPromotionIds.value.filter((id) => response.data.some((promotion) => promotion.promotion_id === id));
+		selectedPromotionIds.value = [ ...new Set([
+			...selectedPromotionIds.value.filter((id) => response.data.some((promotion) => promotion.promotion_id === id)),
+			...response.data.filter((promotion) => promotion.apply_mode === "automatic" && promotion.applications > 0).map((promotion) => promotion.promotion_id),
+		]) ];
 	} catch { availablePromotions.value = []; selectedPromotionIds.value = []; }
 	finally { promotionsPending.value = false; }
 }
@@ -1632,7 +1639,7 @@ onBeforeUnmount(() => {
 
 					<div v-if="availablePromotions.length" class="mx-1 mb-2 rounded-md border border-emerald-200 bg-emerald-50 p-2.5 dark:border-emerald-900/70 dark:bg-emerald-950/30">
 						<div class="mb-2 flex items-center justify-between"><p class="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{{ $t('pos.availablePromotions') }}</p><UIcon v-if="promotionsPending" name="i-heroicons-arrow-path" class="h-4 w-4 animate-spin text-emerald-700" /></div>
-						<label v-for="promotion in availablePromotions" :key="promotion.promotion_id" class="mb-1 flex cursor-pointer items-center gap-2 rounded bg-white/70 px-2 py-1.5 text-xs dark:bg-black/10"><input v-model="selectedPromotionIds" type="checkbox" :value="promotion.promotion_id" class="accent-emerald-600"><span class="min-w-0 flex-1 truncate">{{ promotion.name }}</span><span class="font-medium">{{ $t('pos.giftQuantity', { count: promotion.gift_qty }) }}</span></label>
+						<label v-for="promotion in availablePromotions" :key="promotion.promotion_id" class="mb-1 flex cursor-pointer items-center gap-2 rounded bg-white/70 px-2 py-1.5 text-xs dark:bg-black/10"><input v-model="selectedPromotionIds" type="checkbox" :value="promotion.promotion_id" :disabled="promotion.apply_mode === 'automatic'" class="accent-emerald-600"><span class="min-w-0 flex-1 truncate">{{ promotion.name }}</span><span class="font-medium">{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}</span></label>
 					</div>
 					<div class="sticky bottom-0 z-10 border-t border-[#ece6dc] bg-[rgba(251,251,248,0.96)] px-1 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-[#3b342c] dark:bg-[rgba(21,18,15,0.96)]">
 						<div class="space-y-1.5">

@@ -5,7 +5,7 @@ import { resolveApiErrorMessage } from "~/utils/api-errors";
 type Zone={id:string;name:string;sort_order:number;is_active:number;table_count:number};
 type DiningTable={id:string;zone_id:string;name:string;code:string|null;capacity:number;sort_order:number;is_active:number;zone_name:string;order_id?:string|null};
 type Envelope<T>={data:T};
-type StoreSettings={id:string;pickup_queue_enabled?:number};
+type StoreSettings={id:string;pickup_queue_enabled?:number;business_day_start_minutes?:number};
 
 const {apiFetch}=useApiClient();
 const {currentStoreId}=useAuthSession();
@@ -13,6 +13,7 @@ const {t}=useI18n();
 const toast=useAppToast();
 const zones=ref<Zone[]>([]);const tables=ref<DiningTable[]>([]);const pending=ref(false);const saving=ref(false);
 const pickupQueueEnabled=ref(false);const queueSettingSaving=ref(false);
+const businessDayStart=ref("00:00");const businessDaySaving=ref(false);
 const reordering=ref(false);
 const panelOpen=ref(false);const formKind=ref<"zone"|"table">("zone");const editingId=ref("");
 const form=reactive({name:"",zone_id:"",code:"",capacity:2,is_active:true});
@@ -24,8 +25,11 @@ const draggingOverZoneId=ref("");
 const draggingOverTableId=ref("");
 const panelTitle=computed(()=>t(`restaurantSettingsPage.panel.${editingId.value?"edit":"add"}${formKind.value==="zone"?"Zone":"Table"}`));
 
-async function load(){if(!currentStoreId.value)return;pending.value=true;try{const [z,tablesResponse,storeResponse]=await Promise.all([apiFetch<Envelope<Zone[]>>(`/restaurant/zones?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<DiningTable[]>>(`/restaurant/tables?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`)]);zones.value=z.data;tables.value=tablesResponse.data;pickupQueueEnabled.value=Number(storeResponse.data.pickup_queue_enabled||0)!==0;}catch(error){toast.error({title:t("restaurantSettingsPage.toast.loadFailed"),description:resolveApiErrorMessage(error)});}finally{pending.value=false;}}
+function minutesToTime(value:number){const minutes=Math.min(1439,Math.max(0,Number(value)||0));return `${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`;}
+function timeToMinutes(value:string){const [hours,minutes]=value.split(":").map(Number);return hours*60+minutes;}
+async function load(){if(!currentStoreId.value)return;pending.value=true;try{const [z,tablesResponse,storeResponse]=await Promise.all([apiFetch<Envelope<Zone[]>>(`/restaurant/zones?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<DiningTable[]>>(`/restaurant/tables?store_id=${encodeURIComponent(currentStoreId.value)}`),apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`)]);zones.value=z.data;tables.value=tablesResponse.data;pickupQueueEnabled.value=Number(storeResponse.data.pickup_queue_enabled||0)!==0;businessDayStart.value=minutesToTime(Number(storeResponse.data.business_day_start_minutes||0));}catch(error){toast.error({title:t("restaurantSettingsPage.toast.loadFailed"),description:resolveApiErrorMessage(error)});}finally{pending.value=false;}}
 async function savePickupQueueSetting(enabled:boolean){if(!currentStoreId.value||queueSettingSaving.value)return;pickupQueueEnabled.value=enabled;queueSettingSaving.value=true;try{const response=await apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`,{method:"PUT",body:{pickup_queue_enabled:enabled?1:0}});pickupQueueEnabled.value=Number(response.data.pickup_queue_enabled||0)!==0;toast.success({title:t("restaurantSettingsPage.toast.queueSettingSaved")});}catch(error){pickupQueueEnabled.value=!enabled;toast.error({title:t("restaurantSettingsPage.toast.saveFailed"),description:resolveApiErrorMessage(error)});}finally{queueSettingSaving.value=false;}}
+async function saveBusinessDaySetting(){if(!currentStoreId.value||businessDaySaving.value)return;businessDaySaving.value=true;try{const response=await apiFetch<Envelope<StoreSettings>>(`/stores/${encodeURIComponent(currentStoreId.value)}`,{method:"PUT",body:{business_day_start_minutes:timeToMinutes(businessDayStart.value)}});businessDayStart.value=minutesToTime(Number(response.data.business_day_start_minutes||0));toast.success({title:t("restaurantSettingsPage.toast.businessDaySaved")});}catch(error){toast.error({title:t("restaurantSettingsPage.toast.saveFailed"),description:resolveApiErrorMessage(error)});}finally{businessDaySaving.value=false;}}
 function normalizeName(value:string){return value.trim().replace(/\s+/g," ").toLocaleLowerCase();}
 function tableCodeFromName(value:string){return value.trim().replace(/\s+/g," ");}
 function isDuplicateZoneName(name:string){const normalized=normalizeName(name);return zones.value.some(zone=>zone.id!==editingId.value&&normalizeName(zone.name)===normalized);}
@@ -50,7 +54,7 @@ watch(currentStoreId,()=>void load(),{immediate:true});
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		:sidebar-eyebrow="t('restaurantSettingsPage.eyebrow')"
-		:sidebar-title="t('restaurantSettingsPage.title')"
+		:sidebar-title="t('restaurantSettingsPage.pageTitle')"
 		sidebar-compact-title="TABLE"
 		:sidebar-description="t('restaurantSettingsPage.sidebarDescription')"
 	>
@@ -72,6 +76,23 @@ watch(currentStoreId,()=>void load(),{immediate:true});
 					<USwitch :model-value="pickupQueueEnabled" :disabled="pending || queueSettingSaving" @update:model-value="savePickupQueueSetting(Boolean($event))" />
 				</label>
 			</section>
+			<section id="business-day" class="scroll-mt-4 flex flex-col gap-4 rounded-none border border-neutral-200 bg-white p-4 shadow-sm sm:rounded-md sm:flex-row sm:items-center sm:justify-between">
+				<div class="flex min-w-0 items-start gap-3">
+					<span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-700"><UIcon name="i-lucide-clock-3" class="size-5" /></span>
+					<div>
+						<h2 class="text-sm font-semibold text-stone-950">{{ t("restaurantSettingsPage.businessDay.title") }}</h2>
+						<p class="mt-1 text-xs leading-5 text-stone-600">{{ t("restaurantSettingsPage.businessDay.description") }}</p>
+						<p class="mt-1 text-xs leading-5 text-stone-500">{{ t("restaurantSettingsPage.businessDay.example") }}</p>
+					</div>
+				</div>
+				<div class="flex shrink-0 items-end gap-2">
+					<label class="grid gap-1 text-xs font-medium text-stone-600">
+						<span>{{ t("restaurantSettingsPage.businessDay.startTime") }}</span>
+						<input v-model="businessDayStart" type="time" step="900" class="h-10 rounded-md border border-neutral-200 bg-white px-3 text-sm text-stone-900 outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+					</label>
+					<AppButton color="primary" :loading="businessDaySaving" :disabled="pending || businessDaySaving" @click="saveBusinessDaySetting">{{ t("restaurantSettingsPage.businessDay.save") }}</AppButton>
+				</div>
+			</section>
 				<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
 					<div class="relative">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#ece6dc] px-4 py-3">
@@ -80,7 +101,7 @@ watch(currentStoreId,()=>void load(),{immediate:true});
 									<UIcon name="i-heroicons-squares-2x2-20-solid" class="h-5 w-5" />
 								</div>
 								<div>
-									<p class="text-sm font-semibold text-stone-950 dark:text-stone-50">{{ t("restaurantSettingsPage.title") }}</p>
+									<p class="text-sm font-semibold text-stone-950 dark:text-stone-50">{{ t("restaurantSettingsPage.pageTitle") }}</p>
 									<p class="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">
 										{{ t("restaurantSettingsPage.headerDescription") }}
 									</p>

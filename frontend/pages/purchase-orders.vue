@@ -344,13 +344,13 @@ async function copyToClipboard(text: string, toastTitle: string) {
 		await navigator.clipboard.writeText(value);
 		showToast(toastTitle);
 	} catch {
-		showToast("คัดลอกไม่สำเร็จ");
+		showToast(t("toastMessages.copyFailed"));
 	}
 }
 
 async function copySupplierContact() {
 	if (!selectedOrderDetail.value?.order.supplier_contact) return;
-	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, "คัดลอก Supplier contact แล้ว");
+	await copyToClipboard(selectedOrderDetail.value.order.supplier_contact, t("toastMessages.copiedSupplierContact"));
 }
 
 async function ensurePurchaseOrderAuthPermissionReady() {
@@ -764,7 +764,7 @@ async function confirmReceiveSelectedOrder() {
 		}))
 		.filter((line) => Number.isFinite(line.qty_received) && line.qty_received > 0);
 	if (!payloadItems.length) {
-		showToast("กรอกจำนวนรับอย่างน้อย 1 รายการ");
+		showToast(t("toastMessages.receiveQuantityRequired"));
 		return;
 	}
 	receiveSaving.value = true;
@@ -775,11 +775,11 @@ async function confirmReceiveSelectedOrder() {
 		});
 		selectedOrderDetail.value = response.data;
 		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
-		showToast("รับสินค้าเข้าสต็อกแล้ว");
+		showToast(t("toastMessages.stockReceived"));
 		receiveOpen.value = false;
 		await loadOrders();
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : "รับสินค้าไม่สำเร็จ");
+		showToast(err instanceof Error ? err.message : t("toastMessages.stockReceiveFailed"));
 	} finally {
 		receiveSaving.value = false;
 	}
@@ -794,11 +794,11 @@ async function confirmMarkPurchaseOrderArrived() {
 		});
 		selectedOrderDetail.value = response.data;
 		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
-		showToast("บันทึกเป็นรอรับสต็อกแล้ว");
+		showToast(t("toastMessages.pendingStockSaved"));
 		receiveOpen.value = false;
 		await loadOrders();
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : "บันทึกสถานะรอรับสต็อกไม่สำเร็จ");
+		showToast(err instanceof Error ? err.message : t("toastMessages.pendingStockSaveFailed"));
 	} finally {
 		receiveSaving.value = false;
 	}
@@ -813,10 +813,10 @@ async function confirmMarkPurchaseOrderOrdered() {
 		});
 		selectedOrderDetail.value = response.data;
 		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
-		showToast("ยืนยันสั่งซื้อแล้ว");
+		showToast(t("toastMessages.purchaseConfirmed"));
 		await loadOrders();
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : "ยืนยันสั่งซื้อไม่สำเร็จ");
+		showToast(err instanceof Error ? err.message : t("toastMessages.purchaseConfirmFailed"));
 	} finally {
 		purchaseOrderOrderedSaving.value = false;
 	}
@@ -864,11 +864,11 @@ async function submitPaymentSettlement() {
 		});
 		selectedOrderDetail.value = response.data;
 		purchaseOrderDetailCache.value[response.data.order.id] = response.data;
-		showToast("บันทึกชำระเงินแล้ว");
+		showToast(t("toastMessages.paymentSaved"));
 		paymentOpen.value = false;
 		await loadOrders();
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : "บันทึกชำระเงินไม่สำเร็จ");
+		showToast(err instanceof Error ? err.message : t("toastMessages.paymentSaveFailed"));
 	} finally {
 		paymentSaving.value = false;
 	}
@@ -1025,12 +1025,12 @@ async function submitCreate(status: "draft" | "ordered") {
 	createForm.items.forEach((line) => syncLineCostFields(line));
 
 	if (!createForm.storeId || !validStoreIdSet.value.has(createForm.storeId)) {
-		showToast("ยังไม่มี store_id สำหรับสร้าง PO");
+		showToast(t("toastMessages.createStoreMissing"));
 		return;
 	}
 
 	if (!createForm.items.length || createForm.items.some((line) => !line.productId || !line.qtyOrdered)) {
-		showToast("กรอกสินค้าและจำนวนให้ครบ");
+		showToast(t("toastMessages.productQuantityRequired"));
 		return;
 	}
 
@@ -1050,12 +1050,12 @@ async function submitCreate(status: "draft" | "ordered") {
 			body: payload,
 		});
 
-		showToast(status === "draft" ? "บันทึก Draft แล้ว" : "สร้าง Purchase Order แล้ว");
+		showToast(t(status === "draft" ? "toastMessages.draftSaved" : "toastMessages.purchaseOrderCreated"));
 		createOpen.value = false;
 		await loadOrders();
 		openDetail(response.data.order.id);
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : (status === "draft" ? "บันทึก Draft ไม่สำเร็จ" : "สร้าง PO ไม่สำเร็จ"));
+		showToast(err instanceof Error ? err.message : t(status === "draft" ? "toastMessages.draftSaveFailed" : "toastMessages.purchaseOrderCreateFailed"));
 	} finally {
 		submitting.value = false;
 	}
@@ -1066,12 +1066,12 @@ async function submitEditPurchaseOrder() {
 	createForm.items.forEach((line) => syncLineCostFields(line));
 
 	if (!createForm.storeId || !validStoreIdSet.value.has(createForm.storeId)) {
-		showToast("ยังไม่มี store_id สำหรับแก้ไข PO");
+		showToast(t("toastMessages.editStoreMissing"));
 		return;
 	}
 
 	if (!createForm.items.length || createForm.items.some((line) => !line.productId || !line.qtyOrdered)) {
-		showToast("กรอกสินค้าและจำนวนให้ครบ");
+		showToast(t("toastMessages.productQuantityRequired"));
 		return;
 	}
 
@@ -1094,7 +1094,7 @@ async function submitEditPurchaseOrder() {
 			body: payload,
 		});
 
-		showToast("บันทึกการแก้ไข PO แล้ว");
+		showToast(t("toastMessages.purchaseOrderUpdated"));
 		createOpen.value = false;
 		purchaseOrderFormMode.value = "create";
 		editingPurchaseOrderId.value = null;
@@ -1102,7 +1102,7 @@ async function submitEditPurchaseOrder() {
 		await loadOrders();
 		openDetail(response.data.order.id);
 	} catch (err) {
-		showToast(err instanceof Error ? err.message : "บันทึกการแก้ไข PO ไม่สำเร็จ");
+		showToast(err instanceof Error ? err.message : t("toastMessages.purchaseOrderUpdateFailed"));
 	} finally {
 		submitting.value = false;
 		purchaseOrderEditLoading.value = false;

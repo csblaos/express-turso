@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getCurrencySymbol, normalizeCurrencyCode } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type StockState = "ready" | "low" | "inactive";
 type ProductStatus = "all" | "active" | "inactive";
@@ -185,7 +186,7 @@ type ProductRecord = {
 	const appToast = useAppToast();
 	const route = useRoute();
 	const router = useRouter();
-	const { t } = useI18n();
+	const { t, locale } = useI18n();
 	const { intlLocale } = useAppLocale();
 	const localizedDefaultUnitCodes = new Set([ "pcs", "box", "pack", "set", "kg", "g", "ltr", "ml", "btl" ]);
 
@@ -437,11 +438,6 @@ const canSaveProductEdit = computed(() => {
 	}
 	return true;
 });
-
-const dateFormatter = computed(() => new Intl.DateTimeFormat(intlLocale.value, {
-	dateStyle: "medium",
-	timeStyle: "short",
-}));
 
 const unitLabelMap = computed(() => (
 	Object.fromEntries(units.value.map((unit) => [ unit.id, getUnitDisplayName(unit) ]))
@@ -1168,11 +1164,7 @@ function getVariantCount(raw: string | null) {
 }
 
 	function formatApiDate(value: string) {
-		try {
-			return dateFormatter.value.format(new Date(value));
-		} catch {
-			return value;
-		}
+		return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 	}
 
 	function parseLocaleNumber(raw: string) {
