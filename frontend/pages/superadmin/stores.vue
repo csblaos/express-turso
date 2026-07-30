@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -143,13 +144,7 @@ const overviewStats = computed(() => {
 });
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-GB" : "th-TH", {
-		day: "numeric",
-		month: "long",
-		year: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function storeTypeLabel(storeType: string) {
