@@ -782,11 +782,6 @@ export class RbacInterface {
 				]),
 			);
 			const missingPresets = DEFAULT_STORE_ROLE_PRESETS.filter((preset) => !rolesByName.has(normalizeRoleName(preset.name)));
-			if (missingPresets.length === 0) {
-				RbacInterface.defaultRolesReadyByStore.add(storeId);
-				return;
-			}
-
 			const availablePermissionMap = await RbacInterface.getAvailablePermissionKeyMap();
 
 			// Backfill new permissions into existing system presets without removing custom permissions.
