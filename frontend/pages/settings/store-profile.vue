@@ -260,7 +260,7 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 
 							<div class="mt-5 space-y-2">
 								<label class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ copy.storeName }}</label>
-								<UInput v-model="form.name" size="lg" color="neutral" maxlength="120" :disabled="loading || !canUpdate" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#4a4034] dark:[&_input]:bg-[#17130f]" />
+								<UInput v-model="form.name" size="lg" color="neutral" maxlength="120" :disabled="loading || !canUpdate" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:transition-colors [&_input]:hover:border-neutral-300 [&_input]:focus:border-primary-400 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-100 dark:[&_input]:border-[#4a4034] dark:[&_input]:bg-[#17130f] dark:[&_input]:hover:border-[#655746] dark:[&_input]:focus:border-emerald-500 dark:[&_input]:focus:ring-emerald-500/15" />
 								<p class="text-xs leading-5 text-stone-500">{{ copy.storeNameHint }}</p>
 							</div>
 						</UCard>
@@ -275,11 +275,11 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 							<div class="grid gap-4 md:grid-cols-2">
 								<div class="space-y-2">
 									<label class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ copy.phone }}</label>
-									<UInput v-model="form.phone" type="tel" size="lg" color="neutral" maxlength="40" icon="i-heroicons-phone-20-solid" :disabled="loading || !canUpdate" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#4a4034] dark:[&_input]:bg-[#17130f]" />
+									<UInput v-model="form.phone" type="tel" size="lg" color="neutral" maxlength="40" icon="i-heroicons-phone-20-solid" :disabled="loading || !canUpdate" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:transition-colors [&_input]:hover:border-neutral-300 [&_input]:focus:border-primary-400 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-100 dark:[&_input]:border-[#4a4034] dark:[&_input]:bg-[#17130f] dark:[&_input]:hover:border-[#655746] dark:[&_input]:focus:border-emerald-500 dark:[&_input]:focus:ring-emerald-500/15" />
 								</div>
 								<div class="space-y-2 md:row-span-2">
 									<label class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ copy.address }}</label>
-									<UTextarea v-model="form.address" :rows="5" autoresize :maxrows="7" maxlength="500" :disabled="loading || !canUpdate" class="w-full [&_textarea]:rounded-md [&_textarea]:border-neutral-200 [&_textarea]:bg-white [&_textarea]:leading-6 dark:[&_textarea]:border-[#4a4034] dark:[&_textarea]:bg-[#17130f]" />
+									<UTextarea v-model="form.address" :rows="5" autoresize :maxrows="7" maxlength="500" :disabled="loading || !canUpdate" class="w-full [&_textarea]:rounded-md [&_textarea]:border-neutral-200 [&_textarea]:bg-white [&_textarea]:leading-6 [&_textarea]:transition-colors [&_textarea]:hover:border-neutral-300 [&_textarea]:focus:border-primary-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-primary-100 dark:[&_textarea]:border-[#4a4034] dark:[&_textarea]:bg-[#17130f] dark:[&_textarea]:hover:border-[#655746] dark:[&_textarea]:focus:border-emerald-500 dark:[&_textarea]:focus:ring-emerald-500/15" />
 								</div>
 							</div>
 						</UCard>
