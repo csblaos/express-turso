@@ -105,6 +105,7 @@ export class DbConn {
 				pdf_company_phone TEXT,
 				receipt_show_store_address INTEGER NOT NULL DEFAULT 1,
 				receipt_show_store_phone INTEGER NOT NULL DEFAULT 1,
+				receipt_show_store_name INTEGER NOT NULL DEFAULT 1,
 				receipt_show_tendered INTEGER NOT NULL DEFAULT 1,
 				receipt_show_change INTEGER NOT NULL DEFAULT 1,
 				receipt_show_payment_method INTEGER NOT NULL DEFAULT 1,

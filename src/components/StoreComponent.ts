@@ -35,6 +35,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"pdf_company_phone",
 	"receipt_show_store_address",
 	"receipt_show_store_phone",
+	"receipt_show_store_name",
 	"receipt_show_tendered",
 	"receipt_show_change",
 	"receipt_show_payment_method",

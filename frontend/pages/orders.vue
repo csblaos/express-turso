@@ -71,12 +71,19 @@ const storeCurrency = ref("LAK");
 const queueEnabled = ref(false);
 const businessDayStartMinutes = ref(0);
 const receiptStore = ref({
-	name: "", address: "", phone: "", showAddress: true, showPhone: true,
+	name: "", logo: "", address: "", phone: "", showName: true, showLogo: true, showAddress: true, showPhone: true,
 	showTendered: true, showChange: true, showPaymentMethod: true,
 });
 const currentPage = ref(1);
 const pageSize = ref(20);
 const { apiFetch } = useApiClient();
+const runtimeConfig = useRuntimeConfig();
+const receiptLogoUrl = computed(() => {
+	const value = receiptStore.value.logo;
+	if (!value) return "";
+	if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
+	return `${String(runtimeConfig.public.r2PublicBaseUrl || "").replace(/\/$/, "")}/${value.replace(/^\//, "")}`;
+});
 const { t } = useI18n();
 const { locale: appLocale, intlLocale } = useAppLocale();
 const { currentStoreId, currentAccess } = useAuthSession();
@@ -155,15 +162,18 @@ async function loadOrders() {
 		queueEnabled.value = Number(storeResponse.data.pickup_queue_enabled || 0) !== 0;
 		const store = storeResponse.data;
 		receiptStore.value = {
-			name: String(store.pdf_company_name || store.name || "O KhaiDee+"),
-			address: String(store.pdf_company_address || store.address || ""),
-			phone: String(store.pdf_company_phone || store.phone_number || ""),
+			name: String(store.name || "O KhaiDee+"),
+			logo: String(store.logo_url || ""),
+			address: String(store.address || ""),
+			phone: String(store.phone_number || ""),
+			showName: Number(store.receipt_show_store_name ?? 1) !== 0,
+			showLogo: Number(store.pdf_show_logo ?? 1) !== 0,
 			showAddress: Number(store.receipt_show_store_address ?? 1) !== 0,
 			showPhone: Number(store.receipt_show_store_phone ?? 1) !== 0,
 			showTendered: Number(store.receipt_show_tendered ?? 1) !== 0,
 			showChange: Number(store.receipt_show_change ?? 1) !== 0,
 			showPaymentMethod: Number(store.receipt_show_payment_method ?? 1) !== 0,
-		};
+	};
 		const currency = response.data[0]?.payment_currency;
 		if (currency) storeCurrency.value = String(currency);
 	} catch (error) {
@@ -775,7 +785,8 @@ function confirmPrintReceipt() {
 					<div class="scrollbar-soft max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
 						<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
 							<div class="text-center">
-								<p class="text-[13px] font-bold text-stone-950">{{ receiptStore.name }}</p>
+								<img v-if="receiptStore.showLogo && receiptLogoUrl" :src="receiptLogoUrl" :alt="receiptStore.name" class="mx-auto mb-2 h-12 w-12 object-contain">
+								<p v-if="receiptStore.showName" class="text-[13px] font-bold text-stone-950">{{ receiptStore.name }}</p>
 								<p v-if="receiptStore.showAddress && receiptStore.address" class="mt-0.5 text-[11px] text-stone-500">{{ receiptStore.address }}</p>
 								<p v-if="receiptStore.showPhone && receiptStore.phone" class="mt-0.5 text-[11px] text-stone-500">{{ receiptStore.phone }}</p>
 								<p class="mt-1 text-[11px] text-stone-500">{{ selectedOrder.orderNo }}</p>
@@ -809,7 +820,7 @@ function confirmPrintReceipt() {
 
 			<div v-if="selectedOrder" class="orders-print-root">
 				<div class="orders-print-sheet">
-					<h1>{{ receiptStore.name }}</h1><p v-if="receiptStore.showAddress && receiptStore.address">{{ receiptStore.address }}</p><p v-if="receiptStore.showPhone && receiptStore.phone">{{ receiptStore.phone }}</p><p>{{ selectedOrder.orderNo }}</p><hr>
+					<img v-if="receiptStore.showLogo && receiptLogoUrl" :src="receiptLogoUrl" :alt="receiptStore.name" class="orders-print-logo"><h1 v-if="receiptStore.showName">{{ receiptStore.name }}</h1><p v-if="receiptStore.showAddress && receiptStore.address">{{ receiptStore.address }}</p><p v-if="receiptStore.showPhone && receiptStore.phone">{{ receiptStore.phone }}</p><p>{{ selectedOrder.orderNo }}</p><hr>
 					<div v-for="line in selectedOrder.lines.filter((item) => item.lineStatus !== 'cancelled')" :key="line.id" class="orders-print-line"><span>{{ line.name }} × {{ line.qty }}</span><span>{{ formatMoney(line.qty * line.price) }}</span></div><hr>
 					<div class="orders-print-line"><span>{{ $t('orders.subtotal') }}</span><span>{{ formatMoney(selectedOrder.subtotal) }}</span></div><div v-if="selectedOrder.discount" class="orders-print-line"><span>{{ $t('orders.discount') }}</span><span>−{{ formatMoney(selectedOrder.discount) }}</span></div><div v-if="selectedOrder.vatAmount" class="orders-print-line"><span>{{ $t('orders.vat') }}</span><span>{{ formatMoney(selectedOrder.vatAmount) }}</span></div><div class="orders-print-total"><strong>{{ $t('orders.netTotal') }}</strong><strong>{{ formatMoney(selectedOrder.total) }}</strong></div>
 					<div v-if="receiptStore.showPaymentMethod" class="orders-print-line"><span>{{ $t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="orders-print-line"><span>{{ $t('posPanels.cashReceived') }}</span><span>{{ formatMoney(selectedOrder.amountTendered) }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="orders-print-line"><span>{{ $t('pos.change') }}</span><span>{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
@@ -821,6 +832,6 @@ function confirmPrintReceipt() {
 </template>
 
 <style scoped>
-.receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.orders-print-root{display:none}.orders-print-line,.orders-print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.orders-print-sheet h1,.orders-print-sheet>p{text-align:center}.orders-print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.orders-print-queue span,.orders-print-queue strong{display:block}.orders-print-queue strong{font-size:20px}.orders-print-powered{font-size:10px;color:#555}
+.receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.orders-print-root{display:none}.orders-print-logo{display:block;width:48px;height:48px;object-fit:contain;margin:0 auto 8px}.orders-print-line,.orders-print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.orders-print-sheet h1,.orders-print-sheet>p{text-align:center}.orders-print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.orders-print-queue span,.orders-print-queue strong{display:block}.orders-print-queue strong{font-size:20px}.orders-print-powered{font-size:10px;color:#555}
 @media print{body *{visibility:hidden!important}.orders-print-root,.orders-print-root *{visibility:visible!important}.orders-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm}.orders-print-sheet{width:72mm;margin:0 auto;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif;font-size:12px}.orders-print-sheet h1{font-size:18px}.orders-print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
 </style>

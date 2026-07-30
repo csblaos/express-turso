@@ -10,11 +10,11 @@ type ApiEnvelope<T> = {
 type StoreRecord = {
 	id: string;
 	name: string;
+	logo_url: string | null;
 	address: string | null;
 	phone_number: string | null;
-	pdf_company_name: string | null;
-	pdf_company_address: string | null;
-	pdf_company_phone: string | null;
+	pdf_show_logo: number;
+	receipt_show_store_name: number;
 	receipt_show_store_address: number;
 	receipt_show_store_phone: number;
 	receipt_show_tendered: number;
@@ -25,6 +25,7 @@ type StoreRecord = {
 };
 
 const { apiFetch } = useApiClient();
+const runtimeConfig = useRuntimeConfig();
 const { t, locale } = useI18n();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
@@ -48,6 +49,8 @@ const copy = computed(() => {
 			displayOptionsHint: "Choose which store and payment details appear on the customer receipt.",
 			showAddress: "Show store address",
 			showPhone: "Show store phone",
+			showName: "Show store name",
+			showLogo: "Show store logo",
 			showTendered: "Show amount received",
 			showChange: "Show change",
 			showPaymentMethod: "Show payment method",
@@ -93,6 +96,8 @@ const copy = computed(() => {
 			displayOptionsHint: "เลือกข้อมูลร้านและข้อมูลการชำระเงินที่จะแสดงบนบิลลูกค้า",
 			showAddress: "แสดงที่อยู่ร้าน",
 			showPhone: "แสดงเบอร์โทรร้าน",
+			showName: "แสดงชื่อร้าน",
+			showLogo: "แสดงโลโก้ร้าน",
 			showTendered: "แสดงยอดรับเงิน",
 			showChange: "แสดงเงินทอน",
 			showPaymentMethod: "แสดงวิธีชำระเงิน",
@@ -137,6 +142,8 @@ const copy = computed(() => {
 		displayOptionsHint: "ເລືອກຂໍ້ມູນຮ້ານ ແລະ ຂໍ້ມູນການຊຳລະທີ່ຈະສະແດງໃນບິນລູກຄ້າ.",
 		showAddress: "ສະແດງທີ່ຢູ່ຮ້ານ",
 		showPhone: "ສະແດງເບີໂທຮ້ານ",
+		showName: "ສະແດງຊື່ຮ້ານ",
+		showLogo: "ສະແດງໂລໂກ້ຮ້ານ",
 		showTendered: "ສະແດງຍອດຮັບເງິນ",
 		showChange: "ສະແດງເງິນທອນ",
 		showPaymentMethod: "ສະແດງວິທີຊຳລະ",
@@ -170,9 +177,8 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
 
-const companyName = ref("");
-const companyAddress = ref("");
-const companyPhone = ref("");
+const showStoreName = ref(true);
+const showStoreLogo = ref(true);
 const showStoreAddress = ref(true);
 const showStorePhone = ref(true);
 const showTendered = ref(true);
@@ -188,9 +194,16 @@ const isElevatedStoreManager = computed(() => currentUser.value?.systemRole === 
 const canUpdateReceiptSettings = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
 const canShowPermissionWarning = computed(() => !loading.value && Boolean(selectedStore.value) && Boolean(currentUser.value || currentAccess.value) && !canUpdateReceiptSettings.value);
 
-const previewName = computed(() => companyName.value.trim() || selectedStore.value?.name || "DShop");
-const previewAddress = computed(() => companyAddress.value.trim() || selectedStore.value?.address || "");
-const previewPhone = computed(() => companyPhone.value.trim() || selectedStore.value?.phone_number || "");
+const previewName = computed(() => selectedStore.value?.name || "DShop");
+const previewAddress = computed(() => selectedStore.value?.address || "");
+const previewPhone = computed(() => selectedStore.value?.phone_number || "");
+const previewLogo = computed(() => {
+	const value = selectedStore.value?.logo_url || "";
+	if (!value) return "";
+	if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
+	const base = String(runtimeConfig.public.r2PublicBaseUrl || "").replace(/\/$/, "");
+	return `${base}/${value.replace(/^\//, "")}`;
+});
 const previewLines = computed(() => [
 	showStoreAddress.value ? previewAddress.value : "",
 	showStorePhone.value && previewPhone.value ? `ໂທ: ${previewPhone.value}` : "",
@@ -198,9 +211,8 @@ const previewLines = computed(() => [
 
 const currentSnapshot = computed(() => JSON.stringify({
 	storeId: effectiveStoreId.value,
-	companyName: companyName.value,
-	companyAddress: companyAddress.value,
-	companyPhone: companyPhone.value,
+	showStoreName: showStoreName.value,
+	showStoreLogo: showStoreLogo.value,
 	showStoreAddress: showStoreAddress.value,
 	showStorePhone: showStorePhone.value,
 	showTendered: showTendered.value,
@@ -237,9 +249,8 @@ function resolveApiErrorMessage(errorValue: unknown, fallback: string) {
 }
 
 function hydrateForm(store: StoreRecord) {
-	companyName.value = store.pdf_company_name || store.name || "";
-	companyAddress.value = store.pdf_company_address || store.address || "";
-	companyPhone.value = store.pdf_company_phone || store.phone_number || "";
+	showStoreName.value = Number(store.receipt_show_store_name ?? 1) !== 0;
+	showStoreLogo.value = Number(store.pdf_show_logo ?? 1) !== 0;
 	showStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
 	showStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	showTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
@@ -287,9 +298,8 @@ async function saveSettings() {
 		await apiFetch<ApiEnvelope<StoreRecord>>(`/stores/${encodeURIComponent(selectedStore.value.id)}`, {
 			method: "PUT",
 			body: {
-				pdf_company_name: companyName.value.trim() || null,
-				pdf_company_address: companyAddress.value.trim() || null,
-				pdf_company_phone: companyPhone.value.trim() || null,
+				receipt_show_store_name: showStoreName.value ? 1 : 0,
+				pdf_show_logo: showStoreLogo.value ? 1 : 0,
 				receipt_show_store_address: showStoreAddress.value ? 1 : 0,
 				receipt_show_store_phone: showStorePhone.value ? 1 : 0,
 				receipt_show_tendered: showTendered.value ? 1 : 0,
@@ -371,39 +381,14 @@ onMounted(loadSettings);
 					<div class="space-y-4">
 						<UCard class="rounded-md border-0 bg-white shadow-sm ring-1 ring-neutral-200">
 							<div class="space-y-4">
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<h2 class="text-base font-semibold text-stone-950">{{ copy.storeInfo }}</h2>
-										<p class="mt-1 text-sm text-stone-500">{{ copy.storeInfoHint }}</p>
-									</div>
-									<UBadge v-if="selectedStore" color="neutral" variant="soft" :label="selectedStore.name" />
-								</div>
-
-								<label class="block space-y-1">
-									<span class="text-sm font-medium text-stone-700">{{ copy.storeName }}</span>
-									<input v-model="companyName" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100">
-								</label>
-
-								<label class="block space-y-1">
-									<span class="text-sm font-medium text-stone-700">{{ copy.address }}</span>
-									<textarea v-model="companyAddress" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm leading-6 shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100" />
-								</label>
-
-								<label class="block space-y-1">
-									<span class="text-sm font-medium text-stone-700">{{ copy.phone }}</span>
-									<input v-model="companyPhone" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100">
-								</label>
-							</div>
-						</UCard>
-
-						<UCard class="rounded-md border-0 bg-white shadow-sm ring-1 ring-neutral-200">
-							<div class="space-y-4">
 								<div>
 									<h2 class="text-base font-semibold text-stone-950">{{ copy.displayOptions }}</h2>
 									<p class="mt-1 text-sm text-stone-500">{{ copy.displayOptionsHint }}</p>
 								</div>
 								<div class="grid gap-3 sm:grid-cols-2">
 									<label v-for="option in [
+										{ key: 'name', label: copy.showName },
+										{ key: 'logo', label: copy.showLogo },
 										{ key: 'address', label: copy.showAddress },
 										{ key: 'phone', label: copy.showPhone },
 										{ key: 'tendered', label: copy.showTendered },
@@ -412,7 +397,19 @@ onMounted(loadSettings);
 									]" :key="option.key" class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
 										<span class="text-sm font-medium text-stone-800">{{ option.label }}</span>
 										<input
-											v-if="option.key === 'address'"
+											v-if="option.key === 'name'"
+											v-model="showStoreName"
+											type="checkbox"
+											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+										>
+										<input
+											v-else-if="option.key === 'logo'"
+											v-model="showStoreLogo"
+											type="checkbox"
+											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+										>
+										<input
+											v-else-if="option.key === 'address'"
 											v-model="showStoreAddress"
 											type="checkbox"
 											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
@@ -463,7 +460,8 @@ onMounted(loadSettings);
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-4">
 								<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
 									<div class="text-center">
-										<p class="text-[13px] font-bold text-stone-950">{{ previewName }}</p>
+										<img v-if="showStoreLogo && previewLogo" :src="previewLogo" :alt="previewName" class="mx-auto mb-2 h-12 w-12 object-contain">
+										<p v-if="showStoreName" class="text-[13px] font-bold text-stone-950">{{ previewName }}</p>
 										<p v-for="line in previewLines" :key="line" class="mt-0.5 text-[11px] text-stone-500">{{ line }}</p>
 										<p class="mt-1 text-[11px] text-stone-500">POS-20260727-0001</p>
 									</div>

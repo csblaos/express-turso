@@ -8,11 +8,11 @@ import { InventoryComponent } from "@components/InventoryComponent";
 type PosCatalogStore = {
 	id: string;
 	name: string;
+	logo_url: string | null;
 	address: string | null;
 	phone_number: string | null;
-	pdf_company_name: string | null;
-	pdf_company_address: string | null;
-	pdf_company_phone: string | null;
+	receipt_show_store_name: number;
+	pdf_show_logo: number;
 	receipt_show_store_address: number;
 	receipt_show_store_phone: number;
 	receipt_show_tendered: number;
@@ -191,11 +191,11 @@ export class PosComponent {
 			store: {
 				id: store?.id || normalizedStoreId,
 				name: store?.name || "ร้านค้า",
+				logo_url: store?.logo_url || null,
 				address: store?.address || null,
 				phone_number: store?.phone_number || null,
-				pdf_company_name: store?.pdf_company_name || null,
-				pdf_company_address: store?.pdf_company_address || null,
-				pdf_company_phone: store?.pdf_company_phone || null,
+				receipt_show_store_name: Number(store?.receipt_show_store_name ?? 1),
+				pdf_show_logo: Number(store?.pdf_show_logo ?? 0),
 				receipt_show_store_address: Number(store?.receipt_show_store_address ?? 1),
 				receipt_show_store_phone: Number(store?.receipt_show_store_phone ?? 1),
 				receipt_show_tendered: Number(store?.receipt_show_tendered ?? 1),

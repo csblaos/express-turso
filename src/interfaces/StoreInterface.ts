@@ -49,6 +49,9 @@ export class StoreInterface {
 			if (!existingColumns.has("receipt_show_store_phone")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_store_phone INTEGER NOT NULL DEFAULT 1");
 			}
+			if (!existingColumns.has("receipt_show_store_name")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_store_name INTEGER NOT NULL DEFAULT 1");
+			}
 
 			if (!existingColumns.has("receipt_show_tendered")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_tendered INTEGER NOT NULL DEFAULT 1");

@@ -63,8 +63,11 @@ const selectedPromotionCounts = ref<Record<string, number>>({});
 const activeZone = ref("");
 const search = ref("");
 const storeName = ref("ร้านค้า");
+const storeLogo = ref("");
 const storeAddress = ref("");
 const storePhone = ref("");
+const receiptShowStoreName = ref(true);
+const receiptShowStoreLogo = ref(false);
 const receiptShowStoreAddress = ref(true);
 const receiptShowStorePhone = ref(true);
 const receiptShowTendered = ref(true);
@@ -300,10 +303,10 @@ const printPaymentMethod = computed(() => checkoutReceipt.value?.payment_method 
 const printTendered = computed(() => checkoutReceipt.value?.amount_tendered ?? printOrder.value?.amount_tendered ?? 0);
 const printChange = computed(() => checkoutReceipt.value?.change_amount ?? printOrder.value?.change_amount ?? 0);
 const receiptStoreLines = computed(() => [
-	storeName.value,
 	receiptShowStoreAddress.value ? storeAddress.value : "",
 	receiptShowStorePhone.value && storePhone.value ? `ໂທ: ${storePhone.value}` : "",
 ].filter(Boolean));
+const receiptStoreLogoUrl = computed(() => resolveProductImageUrl(storeLogo.value));
 const checkoutTitle = computed(() => t(checkoutStep.value === "processing" ? "posPanels.processing" : checkoutStep.value === "success" ? "posPanels.success" : checkoutStep.value === "receipt" ? "posPanels.receiptPreview" : "posPanels.payment"));
 const checkoutDescription = computed(() => checkoutStep.value === "receipt" ? t("posPanels.receiptPreviewHint") : checkoutStep.value === "success" || checkoutStep.value === "processing" ? "" : (order.value ? orderLabel.value : ""));
 
@@ -422,9 +425,12 @@ function endItemMutation(itemId: string) { pendingItemIds.value = pendingItemIds
 function applyCatalog(catalog: PosCatalog) {
 	products.value = catalog.items;
 	const store = catalog.store || {};
-	storeName.value = String(store.pdf_company_name || store.name || "ร้านค้า");
-	storeAddress.value = String(store.pdf_company_address || store.address || "");
-	storePhone.value = String(store.pdf_company_phone || store.phone_number || "");
+	storeName.value = String(store.name || "ร้านค้า");
+	storeLogo.value = String(store.logo_url || "");
+	storeAddress.value = String(store.address || "");
+	storePhone.value = String(store.phone_number || "");
+	receiptShowStoreName.value = Number(store.receipt_show_store_name ?? 1) !== 0;
+	receiptShowStoreLogo.value = Number(store.pdf_show_logo ?? 0) !== 0;
 	receiptShowStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
 	receiptShowStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
@@ -1843,8 +1849,9 @@ onBeforeUnmount(() => {
 			<div class="scrollbar-soft min-h-[220px] flex-1 overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 px-3 py-4 md:min-h-0">
 				<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
 					<div class="text-center">
-						<p class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
-						<p v-for="line in receiptStoreLines.slice(1)" :key="line" class="mt-0.5 text-[11px] text-stone-500">{{ line }}</p>
+						<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="mx-auto mb-2 size-14 object-contain">
+						<p v-if="receiptShowStoreName" class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
+						<p v-for="line in receiptStoreLines" :key="line" class="mt-0.5 text-[11px] text-stone-500">{{ line }}</p>
 						<p class="mt-1 text-[11px] text-stone-500">{{ printOrderNo }}</p>
 					</div>
 					<div class="my-3 border-t border-dashed border-neutral-300" />
@@ -2077,7 +2084,8 @@ onBeforeUnmount(() => {
 			<div class="scrollbar-soft max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
 				<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
 					<div class="text-center">
-						<p class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
+						<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="mx-auto mb-2 size-14 object-contain">
+						<p v-if="receiptShowStoreName" class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
 						<p class="mt-1 font-semibold">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
 						<p v-if="printKind === 'check' || printKind === 'estimate'" class="mt-1 font-bold text-red-600">{{ t('posPanels.unpaid') }}</p>
 						<p v-if="printKind !== 'receipt'" class="mt-1 text-[11px] text-stone-500">{{ printLabel }}</p>
@@ -2109,8 +2117,9 @@ onBeforeUnmount(() => {
 
 	<div class="restaurant-print-root">
 		<div class="print-sheet">
-			<h1>{{ storeName }}</h1>
-			<p v-for="line in receiptStoreLines.slice(1)" :key="line">{{ line }}</p>
+			<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="print-store-logo">
+			<h1 v-if="receiptShowStoreName">{{ storeName }}</h1>
+			<p v-for="line in receiptStoreLines" :key="line">{{ line }}</p>
 			<p class="print-kind">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
 			<p v-if="printKind === 'check' || printKind === 'estimate'" class="print-unpaid">{{ t('posPanels.unpaid') }}</p>
 			<p v-if="printKind !== 'receipt'">{{ printLabel }}</p>
@@ -2148,5 +2157,5 @@ onBeforeUnmount(() => {
 @keyframes checkout-burst{0%{opacity:0;transform:scale(.72)}55%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}@keyframes checkout-pulse{0%{opacity:0;transform:scale(.35)}65%{opacity:1;transform:scale(1.18)}100%{opacity:0;transform:scale(1.55)}}@keyframes checkout-pop{0%{opacity:0;transform:scale(.42) rotate(-8deg)}100%{opacity:1;transform:scale(1) rotate(0)}}@keyframes checkout-check{0%{opacity:0;transform:scale(.5)}100%{opacity:1;transform:scale(1)}}
 .receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.receipt-preview-sheet .font-sans{font-family:inherit}
 .restaurant-print-root{display:none}.print-line,.print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.print-line span:last-child,.print-total strong:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}.print-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet h1{text-align:center;font-size:18px}.print-sheet>p{text-align:center;margin:3px 0}.print-kind{font-weight:700;margin-top:10px!important}.print-time,.print-unpaid{text-align:center;margin-top:16px;font-size:11px}.print-unpaid{font-size:14px;font-weight:700}.print-note{margin:-4px 0 7px 12px;font-size:11px}.print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.print-queue span{display:block;font-size:11px}.print-queue strong{display:block;font-size:20px;line-height:1.1}.print-powered{text-align:center;margin-top:8px!important;font-size:10px;color:#555}
-@media print{body *{visibility:hidden!important}.restaurant-print-root,.restaurant-print-root *{visibility:visible!important}.restaurant-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet{width:72mm;margin:0 auto;font-size:12px}.print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
+@media print{body *{visibility:hidden!important}.restaurant-print-root,.restaurant-print-root *{visibility:visible!important}.restaurant-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet{width:72mm;margin:0 auto;font-size:12px}.print-store-logo{display:block;width:56px;height:56px;object-fit:contain;margin:0 auto 8px}.print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
 </style>
