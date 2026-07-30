@@ -22,10 +22,17 @@ type PasswordChangeResponse = ProfileUpdateResponse & {
 	passwordChanged: true;
 };
 
+type AccessibleStoreRecord = {
+	id: string;
+	name: string;
+	currency?: string;
+};
+
 const { apiFetch } = useApiClient();
 const { t, locale } = useI18n();
-const { currentUser, currentSession, currentAccess, fetchMe } = useAuthSession();
+const { currentUser, currentSession, currentAccess, currentStoreId, fetchMe } = useAuthSession();
 const appToast = useAppToast();
+const accessibleStores = useState<AccessibleStoreRecord[]>("auth-accessible-stores", () => []);
 
 const profileForm = reactive({
 	name: "",
@@ -53,9 +60,35 @@ const passwordVisibility = reactive({
 	confirm: false,
 });
 
-const primaryMembership = computed(() => currentAccess.value?.memberships?.[0] ?? null);
+const primaryMembership = computed(() => (
+	currentAccess.value?.memberships?.find((membership) => membership.store_id === currentStoreId.value)
+	|| currentAccess.value?.memberships?.[0]
+	|| null
+));
+const currentStoreName = computed(() => (
+	accessibleStores.value.find((store) => store.id === currentStoreId.value)?.name
+	|| t("profilePage.unknownStore")
+));
 const permissionCount = computed(() => currentAccess.value?.permissions?.length ?? 0);
 const membershipCount = computed(() => currentAccess.value?.memberships?.length ?? 0);
+
+function abbreviateId(value?: string | null) {
+	if (!value) return "-";
+	return value.length > 17 ? `${value.slice(0, 8)}…${value.slice(-8)}` : value;
+}
+
+async function copyTechnicalId(value?: string | null) {
+	if (!value || !import.meta.client || !navigator.clipboard?.writeText) {
+		appToast.error({ title: t("profilePage.copyFailed") });
+		return;
+	}
+	try {
+		await navigator.clipboard.writeText(value);
+		appToast.success({ title: t("profilePage.copied") });
+	} catch {
+		appToast.error({ title: t("profilePage.copyFailed") });
+	}
+}
 
 function shouldAutoFocusProfileModalInput() {
 	if (!import.meta.client) return false;
@@ -67,9 +100,30 @@ function formatDateTime(value?: string | null) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return value;
 
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
-		dateStyle: "medium",
+	const normalizedLocale = String(locale.value).toLowerCase();
+	if (normalizedLocale.startsWith("lo")) {
+		const laoMonths = [
+			"ມັງກອນ", "ກຸມພາ", "ມີນາ", "ເມສາ", "ພຶດສະພາ", "ມິຖຸນາ",
+			"ກໍລະກົດ", "ສິງຫາ", "ກັນຍາ", "ຕຸລາ", "ພະຈິກ", "ທັນວາ",
+		];
+		const parts = new Intl.DateTimeFormat("en-CA", {
+			timeZone: "Asia/Vientiane",
+			year: "numeric",
+			month: "numeric",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			hourCycle: "h23",
+		}).formatToParts(date);
+		const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || "";
+		const monthIndex = Number(part("month")) - 1;
+		return `${part("day")} ${laoMonths[monthIndex] || part("month")} ${part("year")}, ${part("hour")}:${part("minute")}`;
+	}
+
+	return new Intl.DateTimeFormat(normalizedLocale.startsWith("en") ? "en-US" : "th-TH", {
+		dateStyle: "long",
 		timeStyle: "short",
+		timeZone: "Asia/Vientiane",
 	}).format(date);
 }
 
@@ -205,7 +259,9 @@ async function submitPassword() {
 }
 
 onMounted(async () => {
-	await refreshProfile();
+	if (!currentUser.value || !currentSession.value) {
+		await refreshProfile();
+	}
 });
 </script>
 
@@ -260,11 +316,7 @@ onMounted(async () => {
 								</div>
 								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
 									<dt class="text-stone-500">{{ t('profilePage.currentStore') }}</dt>
-									<dd class="text-right font-medium text-stone-900">{{ primaryMembership?.store_id || "-" }}</dd>
-								</div>
-								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
-									<dt class="text-stone-500">{{ t('profilePage.sessionId') }}</dt>
-									<dd class="min-w-0 max-w-[240px] truncate text-right font-mono text-xs font-medium whitespace-nowrap text-stone-900">{{ currentSession?.id || "-" }}</dd>
+									<dd class="max-w-[240px] truncate text-right font-medium text-stone-900" :title="currentStoreName">{{ currentStoreName }}</dd>
 								</div>
 								<div class="flex items-start justify-between gap-4 border-b border-[#f0ece5] pb-3 dark:border-[#3a332a]">
 									<dt class="text-stone-500">{{ t('profilePage.rememberMe') }}</dt>
@@ -275,6 +327,29 @@ onMounted(async () => {
 									<dd class="text-right font-medium text-stone-900">{{ formatDateTime(currentSession?.refreshExpiresAt) }}</dd>
 								</div>
 							</dl>
+
+							<details class="group rounded-md bg-[var(--pos-surface-soft)]">
+								<summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-stone-700">
+									<span>{{ t('profilePage.technicalDetails') }}</span>
+									<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 transition group-open:rotate-180" />
+								</summary>
+								<dl class="space-y-2 border-t border-[#ece6dc] px-3 py-3 text-xs dark:border-[#3a332a]">
+									<div class="flex items-center justify-between gap-3">
+										<dt class="text-stone-500">{{ t('profilePage.storeId') }}</dt>
+										<dd class="flex min-w-0 items-center gap-1.5">
+											<code class="truncate text-stone-700">{{ abbreviateId(currentStoreId) }}</code>
+											<AppButton v-if="currentStoreId" color="neutral" variant="ghost" size="xs" icon="i-heroicons-clipboard-document-20-solid" :aria-label="t('profilePage.copyStoreId')" :title="t('profilePage.copyStoreId')" @click="copyTechnicalId(currentStoreId)" />
+										</dd>
+									</div>
+									<div class="flex items-center justify-between gap-3">
+										<dt class="text-stone-500">{{ t('profilePage.sessionId') }}</dt>
+										<dd class="flex min-w-0 items-center gap-1.5">
+											<code class="truncate text-stone-700">{{ abbreviateId(currentSession?.id) }}</code>
+											<AppButton v-if="currentSession?.id" color="neutral" variant="ghost" size="xs" icon="i-heroicons-clipboard-document-20-solid" :aria-label="t('profilePage.copySessionId')" :title="t('profilePage.copySessionId')" @click="copyTechnicalId(currentSession.id)" />
+										</dd>
+									</div>
+								</dl>
+							</details>
 						</div>
 					</UCard>
 				</div>

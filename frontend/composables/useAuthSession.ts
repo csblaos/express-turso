@@ -112,9 +112,15 @@ function getFetchErrorStatus(error: unknown): number | undefined {
 	return typeof status === "number" ? status : undefined;
 }
 
-function readStorageValue<T>(key: string): T | null {
+type AuthBrowserStorage = "local" | "session";
+
+function getBrowserStorage(storage: AuthBrowserStorage): Storage | null {
 	if (!import.meta.client) return null;
-	const rawValue = window.localStorage.getItem(key);
+	return storage === "local" ? window.localStorage : window.sessionStorage;
+}
+
+function readStorageValue<T>(key: string, storage: AuthBrowserStorage): T | null {
+	const rawValue = getBrowserStorage(storage)?.getItem(key);
 	if (!rawValue) return null;
 	try {
 		return JSON.parse(rawValue) as T;
@@ -123,14 +129,17 @@ function readStorageValue<T>(key: string): T | null {
 	}
 }
 
-function writeStorageValue(key: string, value: unknown) {
-	if (!import.meta.client) return;
-	window.localStorage.setItem(key, JSON.stringify(value));
+function writeStorageValue(key: string, value: unknown, storage: AuthBrowserStorage) {
+	getBrowserStorage(storage)?.setItem(key, JSON.stringify(value));
 }
 
-function removeStorageValue(key: string) {
-	if (!import.meta.client) return;
-	window.localStorage.removeItem(key);
+function removeStorageValue(key: string, storage?: AuthBrowserStorage) {
+	if (storage) {
+		getBrowserStorage(storage)?.removeItem(key);
+		return;
+	}
+	getBrowserStorage("local")?.removeItem(key);
+	getBrowserStorage("session")?.removeItem(key);
 }
 
 function normalizeSystemRole(systemRole?: string | null) {
@@ -201,12 +210,15 @@ export function useAuthSession() {
 	function hydrateAuthState() {
 		if (!import.meta.client || hydrated.value) return;
 
-		accessToken.value = readStorageValue<string>(STORAGE_KEYS.accessToken) || accessTokenCookie.value;
-		refreshToken.value = readStorageValue<string>(STORAGE_KEYS.refreshToken) || refreshTokenCookie.value;
-		currentUser.value = readStorageValue<AuthUser>(STORAGE_KEYS.user);
-		currentSession.value = readStorageValue<AuthSession>(STORAGE_KEYS.session);
-		currentAccess.value = readStorageValue<AuthAccess>(STORAGE_KEYS.access);
-		currentStoreId.value = readStorageValue<string>(STORAGE_KEYS.currentStoreId) || currentStoreIdCookie.value || null;
+		const sessionSession = readStorageValue<AuthSession>(STORAGE_KEYS.session, "session");
+		const localSession = readStorageValue<AuthSession>(STORAGE_KEYS.session, "local");
+		const storage: AuthBrowserStorage = sessionSession ? "session" : "local";
+		currentSession.value = sessionSession || localSession;
+		accessToken.value = readStorageValue<string>(STORAGE_KEYS.accessToken, storage) || accessTokenCookie.value;
+		refreshToken.value = readStorageValue<string>(STORAGE_KEYS.refreshToken, storage) || refreshTokenCookie.value;
+		currentUser.value = readStorageValue<AuthUser>(STORAGE_KEYS.user, storage);
+		currentAccess.value = readStorageValue<AuthAccess>(STORAGE_KEYS.access, storage);
+		currentStoreId.value = readStorageValue<string>(STORAGE_KEYS.currentStoreId, storage) || currentStoreIdCookie.value || null;
 		if (!currentStoreId.value) {
 			currentStoreId.value = resolveAccessStoreId(currentAccess.value);
 		}
@@ -214,10 +226,14 @@ export function useAuthSession() {
 	}
 
 	function persistAuthState() {
+		const storage: AuthBrowserStorage = currentSession.value?.rememberMe ? "local" : "session";
+		const otherStorage: AuthBrowserStorage = storage === "local" ? "session" : "local";
+
 		if (accessToken.value) {
 			accessTokenCookie.value = accessToken.value;
 			if (import.meta.client) {
-				writeStorageValue(STORAGE_KEYS.accessToken, accessToken.value);
+				writeStorageValue(STORAGE_KEYS.accessToken, accessToken.value, storage);
+				removeStorageValue(STORAGE_KEYS.accessToken, otherStorage);
 			}
 		} else {
 			accessTokenCookie.value = null;
@@ -229,7 +245,8 @@ export function useAuthSession() {
 		if (refreshToken.value) {
 			refreshTokenCookie.value = refreshToken.value;
 			if (import.meta.client) {
-				writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken.value);
+				writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken.value, storage);
+				removeStorageValue(STORAGE_KEYS.refreshToken, otherStorage);
 			}
 		} else {
 			refreshTokenCookie.value = null;
@@ -244,25 +261,29 @@ export function useAuthSession() {
 		if (!import.meta.client) return;
 
 		if (currentUser.value) {
-			writeStorageValue(STORAGE_KEYS.user, currentUser.value);
+			writeStorageValue(STORAGE_KEYS.user, currentUser.value, storage);
+			removeStorageValue(STORAGE_KEYS.user, otherStorage);
 		} else {
 			removeStorageValue(STORAGE_KEYS.user);
 		}
 
 		if (currentSession.value) {
-			writeStorageValue(STORAGE_KEYS.session, currentSession.value);
+			writeStorageValue(STORAGE_KEYS.session, currentSession.value, storage);
+			removeStorageValue(STORAGE_KEYS.session, otherStorage);
 		} else {
 			removeStorageValue(STORAGE_KEYS.session);
 		}
 
 		if (currentAccess.value) {
-			writeStorageValue(STORAGE_KEYS.access, currentAccess.value);
+			writeStorageValue(STORAGE_KEYS.access, currentAccess.value, storage);
+			removeStorageValue(STORAGE_KEYS.access, otherStorage);
 		} else {
 			removeStorageValue(STORAGE_KEYS.access);
 		}
 
 		if (currentStoreId.value) {
-			writeStorageValue(STORAGE_KEYS.currentStoreId, currentStoreId.value);
+			writeStorageValue(STORAGE_KEYS.currentStoreId, currentStoreId.value, storage);
+			removeStorageValue(STORAGE_KEYS.currentStoreId, otherStorage);
 		} else {
 			removeStorageValue(STORAGE_KEYS.currentStoreId);
 		}

@@ -63,7 +63,7 @@ let reducedMotionQueryList: MediaQueryList | null = null;
 let syncReducedMotionListener: (() => void) | null = null;
 const MOBILE_SIDEBAR_CLOSE_DELAY_MS = 180;
 const switchStorePending = ref(false);
-const accessibleStores = ref<AccessibleStoreRecord[]>([]);
+const accessibleStores = useState<AccessibleStoreRecord[]>("auth-accessible-stores", () => []);
 
 const sidebarWidthClass = computed(() => {
 	if (!isDesktopViewport.value) {
@@ -238,7 +238,7 @@ const visibleNavItems = computed(() => {
 	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
 });
 const isDarkMode = computed(() => colorMode.value === "dark");
-const colorModeLabel = computed(() => isDarkMode.value ? "โหมดสว่าง" : "โหมดมืด");
+const colorModeLabel = computed(() => t(isDarkMode.value ? "shell.lightMode" : "shell.darkMode"));
 const colorModeIcon = computed(() => (
 	isDarkMode.value ? "i-heroicons-sun-20-solid" : "i-heroicons-moon-20-solid"
 ));
@@ -643,15 +643,15 @@ onErrorCaptured((error) => {
 															<div class="my-2 border-t border-[#efece4] dark:border-[#2d382d]" />
 															<button
 																type="button"
-																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 hover:text-red-700 dark:text-red-300 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+																class="group flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-950/35 dark:hover:text-red-300"
 																@click="openLogoutConfirm"
 															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 group-hover:bg-red-100 dark:bg-red-500/10 dark:text-red-300">
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 transition group-hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:group-hover:bg-red-900/50 dark:group-hover:text-red-300">
 																	<UIcon name="i-heroicons-arrow-right-on-rectangle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">
 																	<span class="block font-medium">{{ $t('shell.signOut') }}</span>
-																	<span class="block truncate text-xs text-stone-500">{{ $t('shell.signOutHint') }}</span>
+																	<span class="block truncate text-xs text-stone-500 transition dark:text-stone-400 dark:group-hover:text-red-300/80">{{ $t('shell.signOutHint') }}</span>
 																</span>
 															</button>
 														</div>

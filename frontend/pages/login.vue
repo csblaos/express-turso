@@ -54,7 +54,7 @@ const DEV_LOGINS = [
 const form = reactive({
 	email: DEV_LOGINS[0].email,
 	password: DEV_LOGINS[0].password,
-	remember: true,
+	remember: false,
 });
 
 const submitting = ref(false);
