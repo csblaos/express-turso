@@ -22,7 +22,7 @@ const copy = computed(() => {
 	if (locale.value === "lo") return {
 		settings: "ຕັ້ງຄ່າ", title: "ຂໍ້ມູນຮ້ານ", description: "ແກ້ໄຂຊື່ ໂລໂກ້ ທີ່ຢູ່ ແລະ ເບີໂທຂອງຮ້ານ",
 		storeName: "ຊື່ຮ້ານ", storeNameHint: "ຊື່ນີ້ຈະສະແດງໃນລະບົບ ແລະ ເອກະສານ", logo: "ໂລໂກ້ຮ້ານ", logoHint: "ຮູບຈະຖືກຫຍໍ້ເປັນ WebP 640px ກ່ອນອັບໂຫຼດ", address: "ທີ່ຢູ່", phone: "ເບີໂທ",
-		chooseImage: "ເລືອກຮູບ", changeImage: "ປ່ຽນຮູບ", removeImage: "ລຶບຮູບ", imageAdded: "ກຽມຮູບຮ້ານແລ້ວ", imageFailed: "ກຽມຮູບບໍ່ສຳເລັດ", contact: "ຂໍ້ມູນຕິດຕໍ່", identity: "ຂໍ້ມູນຮ້ານ",
+		chooseImage: "ເລືອກຮູບ", changeImage: "ປ່ຽນຮູບ", removeImage: "ລົບຮູບ", imageAdded: "ກຽມຮູບຮ້ານແລ້ວ", imageFailed: "ກຽມຮູບບໍ່ສຳເລັດ", contact: "ຂໍ້ມູນຕິດຕໍ່", identity: "ຂໍ້ມູນຮ້ານ",
 		preview: "ຕົວຢ່າງ", noLogo: "ຍັງບໍ່ມີໂລໂກ້", reload: "ໂຫຼດໃໝ່", save: "ບັນທຶກ", saving: "ກຳລັງບັນທຶກ", saved: "ບັນທຶກຂໍ້ມູນຮ້ານແລ້ວ",
 		loadFailed: "ໂຫຼດຂໍ້ມູນຮ້ານບໍ່ສຳເລັດ", saveFailed: "ບັນທຶກບໍ່ສຳເລັດ", nameRequired: "ກະລຸນາລະບຸຊື່ຮ້ານ", noPermission: "ທ່ານບໍ່ມີສິດແກ້ໄຂຮ້ານນີ້",
 	};

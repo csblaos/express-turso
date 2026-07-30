@@ -103,7 +103,7 @@ const paginationCopy = computed(() => locale.value === "lo"
 		? { perPage: "Per page", previous: "Previous", next: "Next", manage: "Manage", page: "Page" }
 		: { perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", manage: "จัดการ", page: "หน้า" });
 const deleteCopy = computed(() => locale.value === "lo"
-	? { title: "ຢືນຢັນການລຶບໂປຣໂມຊັນ", description: "ໂປຣນີ້ຈະຖືກປິດ ແລະ ບໍ່ສາມາດໃຊ້ໃນ POS ໄດ້", warning: "ລຶບໂປຣໂມຊັນ", hint: "ກະລຸນາກວດສອບຊື່ໂປຣໂມຊັນກ່ອນຢືນຢັນ", cancel: "ຍົກເລີກ", confirm: "ຢືນຢັນລຶບ" }
+	? { title: "ຢືນຢັນການລົບໂປຣໂມຊັນ", description: "ໂປຣນີ້ຈະຖືກປິດ ແລະ ບໍ່ສາມາດໃຊ້ໃນ POS ໄດ້", warning: "ລົບໂປຣໂມຊັນ", hint: "ກະລຸນາກວດສອບຊື່ໂປຣໂມຊັນກ່ອນຢືນຢັນ", cancel: "ຍົກເລີກ", confirm: "ຢືນຢັນລົບ" }
 	: locale.value === "en"
 		? { title: "Delete promotion", description: "This promotion will be disabled and unavailable in POS.", warning: "Delete promotion", hint: "Check the promotion name before confirming.", cancel: "Cancel", confirm: "Delete promotion" }
 		: { title: "ยืนยันการลบโปรโมชั่น", description: "โปรโมชั่นนี้จะถูกปิดและไม่สามารถใช้ใน POS ได้", warning: "ลบโปรโมชั่น", hint: "กรุณาตรวจสอบชื่อโปรโมชั่นก่อนยืนยัน", cancel: "ยกเลิก", confirm: "ยืนยันลบ" });
@@ -199,7 +199,7 @@ async function remove(item: Promotion) {
 		open.value = false;
 		await load();
 	} catch (error) {
-		appToast.error({ title: locale.value === "lo" ? "ລຶບໂປຣໂມຊັນບໍ່ສຳເລັດ" : locale.value === "en" ? "Unable to delete promotion" : "ลบโปรโมชั่นไม่สำเร็จ", description: resolveApiErrorMessage(error), timeout: 3200 });
+		appToast.error({ title: locale.value === "lo" ? "ລົບໂປຣໂມຊັນບໍ່ສຳເລັດ" : locale.value === "en" ? "Unable to delete promotion" : "ลบโปรโมชั่นไม่สำเร็จ", description: resolveApiErrorMessage(error), timeout: 3200 });
 	} finally { deleting.value = false; }
 }
 async function togglePromotion(item: Promotion) {
