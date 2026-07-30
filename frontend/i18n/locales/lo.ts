@@ -127,7 +127,7 @@ export default defineI18nLocale(() => ({
 			},
 			storePayments: {
 				title: "ການຮັບຊຳລະ",
-				description: "ບັນຊີທະນາຄານ QR ID ແລະ ສະກຸນເງິນ",
+				description: "ບັນຊີທະນາຄານ QR ແລະ ສະກຸນເງິນ",
 			},
 			restaurant: { title: "ຮ້ານອາຫານ ແລະ ວັນເຮັດວຽກ", description: "ຈັດການໂຊນ ໂຕະ ຄິວ ແລະ ເວລາເລີ່ມວັນເຮັດວຽກ" },
 			pickupQueue: { title: "ຄິວໜ້າຮ້ານ", description: "ເປີດ ຫຼື ປິດຄິວຮັບສິນຄ້າສຳລັບການຂາຍດ່ວນ" },
