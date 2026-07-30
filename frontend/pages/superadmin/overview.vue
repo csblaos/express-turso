@@ -14,6 +14,8 @@ type Dashboard = {
 	sales_series: Array<{ label: string; revenue: number; bill_count: number }>;
 	payment_mix: Array<{ method: string; amount: number; bill_count: number; percent: number }>;
 	stores: Array<{ id: string; name: string; currency: string; revenue: number; bill_count: number; average_bill: number; discount: number }>;
+	top_products: Array<{ id: string; name: string; sku: string; store_name: string; quantity: number; revenue: number }>;
+	promotions: Array<{ id: string; name: string; type: string; bill_count: number; applications: number; discount_amount: number; gift_quantity: number; gift_cost: number }>;
 	store_options: Array<{ id: string; name: string; currency: string }>;
 };
 
@@ -25,19 +27,23 @@ const copy = computed(() => locale.value === "lo" ? {
 	revenue: "ຍອດຂາຍສຸດທິ", orders: "ຈຳນວນອໍເດີ", average: "ສະເລ່ຍຕໍ່ອໍເດີ", activeStores: "ຮ້ານທີ່ມີຍອດຂາຍ",
 	cancelled: "ຍົກເລີກ/ຄືນເງິນ", discount: "ສ່ວນຫຼຸດ", salesTrend: "ແນວໂນ້ມຍອດຂາຍ", paymentMix: "ສັດສ່ວນການຊຳລະ",
 	storeComparison: "ປຽບທຽບຮ້ານ", store: "ຮ້ານ", noData: "ຍັງບໍ່ມີຂໍ້ມູນໃນຊ່ວງນີ້", previous: "ທຽບຊ່ວງກ່ອນ", view: "ເບິ່ງຮ້ານ",
+	overviewTab: "ພາບລວມ", productsTab: "ສິນຄ້າ", promotionsTab: "ໂປຣໂມຊັນ", topProducts: "ສິນຄ້າຂາຍດີ", quantity: "ຈຳນວນ", promotionUsage: "ຜົນການໃຊ້ໂປຣໂມຊັນ", bills: "ບິນ", applications: "ຄັ້ງທີ່ໃຊ້", giftCost: "ຕົ້ນທຶນຂອງແຖມ",
 } : locale.value === "en" ? {
 	title: "Business overview", hint: "Combined sales and orders across all stores", allStores: "All stores",
 	today: "Today", sevenDays: "7 days", thirtyDays: "30 days", thisMonth: "This month", custom: "Custom", apply: "Apply", reload: "Reload",
 	revenue: "Net sales", orders: "Orders", average: "Average order", activeStores: "Stores with sales", cancelled: "Cancelled/refunded", discount: "Discount",
 	salesTrend: "Sales trend", paymentMix: "Payment mix", storeComparison: "Store comparison", store: "Store", noData: "No data for this period", previous: "vs previous period", view: "View store",
+	overviewTab: "Overview", productsTab: "Products", promotionsTab: "Promotions", topProducts: "Top products", quantity: "Quantity", promotionUsage: "Promotion performance", bills: "Bills", applications: "Applications", giftCost: "Gift cost",
 } : {
 	title: "ภาพรวมธุรกิจ", hint: "รวมยอดขายและออเดอร์ของทุกร้าน", allStores: "ทุกร้าน",
 	today: "วันนี้", sevenDays: "7 วัน", thirtyDays: "30 วัน", thisMonth: "เดือนนี้", custom: "กำหนดเอง", apply: "ใช้ตัวกรอง", reload: "โหลดใหม่",
 	revenue: "ยอดขายสุทธิ", orders: "จำนวนออเดอร์", average: "เฉลี่ยต่อออเดอร์", activeStores: "ร้านที่มียอดขาย", cancelled: "ยกเลิก/คืนเงิน", discount: "ส่วนลด",
 	salesTrend: "แนวโน้มยอดขาย", paymentMix: "สัดส่วนการชำระ", storeComparison: "เปรียบเทียบร้าน", store: "ร้าน", noData: "ยังไม่มีข้อมูลในช่วงนี้", previous: "เทียบช่วงก่อน", view: "ดูร้าน",
+	overviewTab: "ภาพรวม", productsTab: "สินค้า", promotionsTab: "โปรโมชัน", topProducts: "สินค้าขายดี", quantity: "จำนวน", promotionUsage: "ผลการใช้โปรโมชัน", bills: "บิล", applications: "ครั้งที่ใช้", giftCost: "ต้นทุนของแถม",
 });
 
 const preset = ref("7d");
+const activeTab = ref<"overview" | "products" | "promotions">("overview");
 const selectedStoreId = ref("");
 const dateFrom = ref("");
 const dateTo = ref("");
@@ -122,6 +128,26 @@ const paymentOption = computed<EChartsCoreOption>(() => ({
 	legend: { bottom: 0, type: "scroll" },
 	series: [ { type: "pie", radius: [ "48%", "72%" ], center: [ "50%", "43%" ], padAngle: 2, itemStyle: { borderRadius: 5, borderColor: "#fff", borderWidth: 2 }, label: { show: false }, data: dashboard.value?.payment_mix.map((item) => ({ name: paymentLabel(item.method), value: item.amount })) || [] } ],
 }));
+const productOption = computed<EChartsCoreOption>(() => {
+	const rows = [ ...(dashboard.value?.top_products || []) ].reverse();
+	return {
+		color: [ "#10b981" ], tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+		grid: { left: 8, right: 24, top: 10, bottom: 20, containLabel: true },
+		xAxis: { type: "value", axisLabel: { formatter: (value: number) => Intl.NumberFormat("en", { notation: "compact" }).format(value) }, splitLine: { lineStyle: { color: "#f5f5f4" } } },
+		yAxis: { type: "category", data: rows.map((item) => item.name), axisLabel: { width: 140, overflow: "truncate" } },
+		series: [ { type: "bar", barMaxWidth: 18, itemStyle: { borderRadius: [ 0, 5, 5, 0 ] }, data: rows.map((item) => item.revenue) } ],
+	};
+});
+const promotionOption = computed<EChartsCoreOption>(() => ({
+	color: [ "#10b981", "#f59e0b" ], tooltip: { trigger: "axis", axisPointer: { type: "shadow" } }, legend: { bottom: 0 },
+	grid: { left: 8, right: 18, top: 24, bottom: 48, containLabel: true },
+	xAxis: { type: "category", data: dashboard.value?.promotions.map((item) => item.name) || [], axisLabel: { width: 110, overflow: "truncate" } },
+	yAxis: { type: "value", minInterval: 1, splitLine: { lineStyle: { color: "#f5f5f4" } } },
+	series: [
+		{ name: copy.value.bills, type: "bar", barMaxWidth: 22, data: dashboard.value?.promotions.map((item) => item.bill_count) || [] },
+		{ name: copy.value.applications, type: "bar", barMaxWidth: 22, data: dashboard.value?.promotions.map((item) => item.applications) || [] },
+	],
+}));
 
 onMounted(loadDashboard);
 </script>
@@ -157,28 +183,52 @@ onMounted(loadDashboard);
 				<div v-if="loading" class="min-h-[420px] rounded-md border border-neutral-200 bg-white"><AppInlineLoadingBar container-class="bg-neutral-100" /></div>
 				<div v-else-if="error" class="rounded-md border border-rose-200 bg-rose-50 p-5 text-center text-sm text-rose-700">{{ error }}</div>
 				<template v-else-if="dashboard">
-					<div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-						<div v-for="card in cards" :key="card.label" class="rounded-md border border-neutral-200 bg-white p-4 shadow-sm">
-							<p class="text-xs font-medium text-stone-500">{{ card.label }}</p><strong class="mt-2 block text-xl tabular-nums text-stone-950">{{ card.value }}</strong>
-							<p v-if="card.comparison" class="mt-1 text-xs" :class="comparisonTone(card.comparison)">{{ comparisonText(card.comparison) }} {{ copy.previous }}</p>
-						</div>
+					<div class="flex gap-1 overflow-x-auto rounded-md border border-neutral-200 bg-white p-1.5 shadow-sm">
+						<AppButton size="sm" :variant="activeTab === 'overview' ? 'solid' : 'ghost'" @click="activeTab = 'overview'">{{ copy.overviewTab }}</AppButton>
+						<AppButton size="sm" :variant="activeTab === 'products' ? 'solid' : 'ghost'" @click="activeTab = 'products'">{{ copy.productsTab }}</AppButton>
+						<AppButton size="sm" :variant="activeTab === 'promotions' ? 'solid' : 'ghost'" @click="activeTab = 'promotions'">{{ copy.promotionsTab }}</AppButton>
 					</div>
 
-					<div class="grid min-w-0 gap-3 xl:grid-cols-[1.4fr_.6fr]">
-						<UCard><h2 class="font-semibold">{{ copy.salesTrend }}</h2><ReportsReportChart :option="salesOption" :empty="!dashboard.sales_series.some((item) => item.revenue)" /></UCard>
-						<UCard><h2 class="font-semibold">{{ copy.paymentMix }}</h2><ReportsReportChart :option="paymentOption" :empty="!dashboard.payment_mix.length" /></UCard>
-					</div>
-
-					<UCard>
-						<div class="flex items-center justify-between"><div><h2 class="font-semibold">{{ copy.storeComparison }}</h2><p class="mt-1 text-xs text-stone-500">{{ dashboard.period.date_from }} – {{ dashboard.period.date_to }}</p></div><span class="rounded-md bg-neutral-100 px-2.5 py-1 text-xs text-stone-500">{{ dashboard.stores.length }} {{ copy.store }}</span></div>
-						<div v-if="dashboard.stores.length" class="mt-4 overflow-x-auto">
-							<table class="w-full min-w-[760px] text-sm">
-								<thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.store }}</th><th class="p-3 text-right">{{ copy.revenue }}</th><th class="p-3 text-right">{{ copy.orders }}</th><th class="p-3 text-right">{{ copy.average }}</th><th class="p-3 text-right">{{ copy.discount }}</th><th class="p-3 text-right"></th></tr></thead>
-								<tbody><tr v-for="store in dashboard.stores" :key="store.id" class="border-t border-stone-100"><td class="p-3 font-semibold">{{ store.name }}</td><td class="p-3 text-right tabular-nums">{{ money(store.revenue) }}</td><td class="p-3 text-right tabular-nums">{{ number(store.bill_count) }}</td><td class="p-3 text-right tabular-nums">{{ money(store.average_bill) }}</td><td class="p-3 text-right tabular-nums">{{ money(store.discount) }}</td><td class="p-3 text-right"><AppButton size="xs" color="neutral" variant="soft" @click="selectStore(store.id)">{{ copy.view }}</AppButton></td></tr></tbody>
-							</table>
+					<template v-if="activeTab === 'overview'">
+						<div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+							<div v-for="card in cards" :key="card.label" class="rounded-md border border-neutral-200 bg-white p-4 shadow-sm">
+								<p class="text-xs font-medium text-stone-500">{{ card.label }}</p><strong class="mt-2 block text-xl tabular-nums text-stone-950">{{ card.value }}</strong>
+								<p v-if="card.comparison" class="mt-1 text-xs" :class="comparisonTone(card.comparison)">{{ comparisonText(card.comparison) }} {{ copy.previous }}</p>
+							</div>
 						</div>
-						<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
-					</UCard>
+
+						<div class="grid min-w-0 gap-3 xl:grid-cols-[1.4fr_.6fr]">
+							<UCard><h2 class="font-semibold">{{ copy.salesTrend }}</h2><ReportsReportChart :option="salesOption" :empty="!dashboard.sales_series.some((item) => item.revenue)" /></UCard>
+							<UCard><h2 class="font-semibold">{{ copy.paymentMix }}</h2><ReportsReportChart :option="paymentOption" :empty="!dashboard.payment_mix.length" /></UCard>
+						</div>
+
+						<UCard>
+							<div class="flex items-center justify-between"><div><h2 class="font-semibold">{{ copy.storeComparison }}</h2><p class="mt-1 text-xs text-stone-500">{{ dashboard.period.date_from }} – {{ dashboard.period.date_to }}</p></div><span class="rounded-md bg-neutral-100 px-2.5 py-1 text-xs text-stone-500">{{ dashboard.stores.length }} {{ copy.store }}</span></div>
+							<div v-if="dashboard.stores.length" class="mt-4 overflow-x-auto">
+								<table class="w-full min-w-[760px] text-sm">
+									<thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.store }}</th><th class="p-3 text-right">{{ copy.revenue }}</th><th class="p-3 text-right">{{ copy.orders }}</th><th class="p-3 text-right">{{ copy.average }}</th><th class="p-3 text-right">{{ copy.discount }}</th><th class="p-3 text-right"></th></tr></thead>
+									<tbody><tr v-for="store in dashboard.stores" :key="store.id" class="border-t border-stone-100"><td class="p-3 font-semibold">{{ store.name }}</td><td class="p-3 text-right tabular-nums">{{ money(store.revenue) }}</td><td class="p-3 text-right tabular-nums">{{ number(store.bill_count) }}</td><td class="p-3 text-right tabular-nums">{{ money(store.average_bill) }}</td><td class="p-3 text-right tabular-nums">{{ money(store.discount) }}</td><td class="p-3 text-right"><AppButton size="xs" color="neutral" variant="soft" @click="selectStore(store.id)">{{ copy.view }}</AppButton></td></tr></tbody>
+								</table>
+							</div>
+							<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
+						</UCard>
+					</template>
+
+					<template v-else-if="activeTab === 'products'">
+						<UCard><h2 class="font-semibold">{{ copy.topProducts }}</h2><ReportsReportChart :option="productOption" :empty="!dashboard.top_products.length" /></UCard>
+						<UCard>
+							<div v-if="dashboard.top_products.length" class="overflow-x-auto"><table class="w-full min-w-[680px] text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.productsTab }}</th><th class="p-3">{{ copy.store }}</th><th class="p-3 text-right">{{ copy.quantity }}</th><th class="p-3 text-right">{{ copy.revenue }}</th></tr></thead><tbody><tr v-for="product in dashboard.top_products" :key="product.id" class="border-t border-stone-100"><td class="p-3"><p class="font-semibold">{{ product.name }}</p><p class="text-xs text-stone-500">{{ product.sku }}</p></td><td class="p-3">{{ product.store_name }}</td><td class="p-3 text-right">{{ number(product.quantity) }}</td><td class="p-3 text-right font-semibold">{{ money(product.revenue) }}</td></tr></tbody></table></div>
+							<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
+						</UCard>
+					</template>
+
+					<template v-else>
+						<UCard><h2 class="font-semibold">{{ copy.promotionUsage }}</h2><ReportsReportChart :option="promotionOption" :empty="!dashboard.promotions.length" /></UCard>
+						<UCard>
+							<div v-if="dashboard.promotions.length" class="overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.promotionsTab }}</th><th class="p-3 text-right">{{ copy.bills }}</th><th class="p-3 text-right">{{ copy.applications }}</th><th class="p-3 text-right">{{ copy.discount }}</th><th class="p-3 text-right">{{ copy.giftCost }}</th></tr></thead><tbody><tr v-for="promotion in dashboard.promotions" :key="promotion.id" class="border-t border-stone-100"><td class="p-3 font-semibold">{{ promotion.name }}</td><td class="p-3 text-right">{{ number(promotion.bill_count) }}</td><td class="p-3 text-right">{{ number(promotion.applications) }}</td><td class="p-3 text-right">{{ money(promotion.discount_amount) }}</td><td class="p-3 text-right">{{ money(promotion.gift_cost) }}</td></tr></tbody></table></div>
+							<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
+						</UCard>
+					</template>
 				</template>
 			</div>
 		</template>

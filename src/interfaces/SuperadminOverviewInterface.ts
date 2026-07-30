@@ -68,6 +68,42 @@ export class SuperadminOverviewInterface {
 					: [ periods.current.from, periods.current.to, ownerUserId ],
 			},
 			{
+				sql: `SELECT p.id, p.name, p.sku, s.name store_name,
+						COALESCE(SUM(oi.qty_base), 0) quantity, COALESCE(SUM(oi.line_total), 0) revenue
+					FROM orders o
+					INNER JOIN stores s ON s.id = o.store_id
+					INNER JOIN order_items oi ON oi.order_id = o.id
+					INNER JOIN products p ON p.id = oi.product_id
+					WHERE ${paidWhere}
+						AND COALESCE(oi.line_status, 'sent') != 'cancelled'
+						AND COALESCE(oi.is_gift, 0) = 0
+					GROUP BY p.id, p.name, p.sku, s.name
+					ORDER BY revenue DESC LIMIT 10`,
+				args: currentArgs,
+			},
+			{
+				sql: `SELECT op.promotion_id, op.promotion_name, op.promotion_type,
+						COUNT(DISTINCT op.order_id) bill_count,
+						COALESCE(SUM(op.applications), 0) applications,
+						COALESCE(SUM(op.discount_amount), 0) discount_amount,
+						COALESCE(SUM(g.gift_quantity), 0) gift_quantity,
+						COALESCE(SUM(g.gift_cost), 0) gift_cost
+					FROM order_promotions op
+					INNER JOIN orders o ON o.id = op.order_id
+					INNER JOIN stores s ON s.id = o.store_id
+					LEFT JOIN (
+						SELECT order_id, promotion_id, SUM(qty_base) gift_quantity,
+							SUM(CASE WHEN cost_source_at_sale IN ('purchase', 'manual') THEN cost_base_at_sale * qty_base ELSE 0 END) gift_cost
+						FROM order_items
+						WHERE COALESCE(is_gift, 0) = 1 AND COALESCE(line_status, 'sent') != 'cancelled'
+						GROUP BY order_id, promotion_id
+					) g ON g.order_id = op.order_id AND g.promotion_id = op.promotion_id
+					WHERE ${paidWhere}
+					GROUP BY op.promotion_id, op.promotion_name, op.promotion_type
+					ORDER BY bill_count DESC, discount_amount DESC LIMIT 10`,
+				args: currentArgs,
+			},
+			{
 				sql: `SELECT COUNT(*) total FROM orders o INNER JOIN stores s ON s.id = o.store_id
 					WHERE s.owner_user_id = ? ${storeFilter}
 						AND COALESCE(o.closed_at, o.paid_at, o.created_at) >= ?
@@ -97,7 +133,7 @@ export class SuperadminOverviewInterface {
 				bill_count: bills,
 				average_bill: averageBill,
 				discount: numeric(current.discount),
-				cancelled_refunded_count: numeric(results[5].rows[0]?.total),
+				cancelled_refunded_count: numeric(results[7].rows[0]?.total),
 				active_store_count: (results[4].rows as Record<string, unknown>[]).filter((item) => numeric(item.bill_count) > 0).length,
 				comparison: {
 					revenue: comparison(revenue, numeric(previous.revenue)),
@@ -125,7 +161,25 @@ export class SuperadminOverviewInterface {
 				average_bill: numeric(item.average_bill),
 				discount: numeric(item.discount),
 			})),
-			store_options: results[6].rows.map((item) => ({
+			top_products: results[5].rows.map((item) => ({
+				id: String(item.id),
+				name: String(item.name),
+				sku: String(item.sku || ""),
+				store_name: String(item.store_name),
+				quantity: numeric(item.quantity),
+				revenue: numeric(item.revenue),
+			})),
+			promotions: results[6].rows.map((item) => ({
+				id: String(item.promotion_id),
+				name: String(item.promotion_name),
+				type: String(item.promotion_type),
+				bill_count: numeric(item.bill_count),
+				applications: numeric(item.applications),
+				discount_amount: numeric(item.discount_amount),
+				gift_quantity: numeric(item.gift_quantity),
+				gift_cost: numeric(item.gift_cost),
+			})),
+			store_options: results[8].rows.map((item) => ({
 				id: String(item.id),
 				name: String(item.name),
 				currency: String(item.currency),
