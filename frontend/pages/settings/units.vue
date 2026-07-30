@@ -553,7 +553,6 @@ onMounted(async () => {
 														<td class="border-b border-[#f1ede6] px-4 py-4">
 															<div class="min-w-0">
 																<p class="truncate font-semibold text-stone-950">{{ unit.name_th }}</p>
-																<p class="mt-1 truncate text-xs text-stone-500">{{ unit.id }}</p>
 															</div>
 														</td>
 														<td class="border-b border-[#f1ede6] px-4 py-4">
