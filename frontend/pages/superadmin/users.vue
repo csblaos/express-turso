@@ -812,8 +812,18 @@ onMounted(loadUsers);
 													<td class="border-b border-[#f1ede6] px-4 py-4">
 														<UBadge color="neutral" variant="soft" :label="roleLabel(user.system_role)" />
 													</td>
-													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-														{{ user.membership_count }}
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														<div class="flex min-w-0 items-center gap-2">
+															<span class="max-w-40 truncate font-medium text-stone-800" :title="user.primary_store_name || ''">
+																{{ user.primary_store_name || '-' }}
+															</span>
+															<UBadge
+																v-if="user.membership_count > 1"
+																color="neutral"
+																variant="soft"
+																:label="`+${user.membership_count - 1}`"
+															/>
+														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 whitespace-nowrap text-stone-600">
 														{{ formatDateTime(user.created_at) }}
