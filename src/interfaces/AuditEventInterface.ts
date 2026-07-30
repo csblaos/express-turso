@@ -11,6 +11,7 @@ export type AuditEventFilters = {
 	result?: string;
 	entityType?: string;
 	actorRole?: string;
+	excludePrivilegedActors?: boolean;
 	page?: number;
 	limit?: number;
 };
@@ -204,6 +205,15 @@ export class AuditEventInterface {
 			args.push(filters.actorRole);
 		}
 
+		if (filters.excludePrivilegedActors) {
+			where.push(`LOWER(COALESCE(actor_role, '')) NOT IN ('superadmin', 'system_admin')
+				AND NOT EXISTS (
+					SELECT 1 FROM users privileged_actor
+					WHERE privileged_actor.id = audit_events.actor_user_id
+						AND LOWER(COALESCE(privileged_actor.system_role, '')) IN ('superadmin', 'system_admin')
+				)`);
+		}
+
 		const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 		const page = Math.max(1, Number(filters.page) || 1);
 		const limit = Math.max(1, Math.min(filters.limit ?? 100, 200));
@@ -262,7 +272,10 @@ export class AuditEventInterface {
 		};
 	}
 
-	static async findById(id: string): Promise<AuditEventRecord | null> {
+	static async findById(
+		id: string,
+		options: { storeId?: string; excludePrivilegedActors?: boolean } = {},
+	): Promise<AuditEventRecord | null> {
 		await AuditEventInterface.ensureTable();
 
 		const db = DbConn.getClient();
@@ -292,9 +305,16 @@ export class AuditEventInterface {
 					occurred_at
 				FROM audit_events
 				WHERE id = ?
+					${options.storeId ? "AND store_id = ?" : ""}
+					${options.excludePrivilegedActors ? `AND LOWER(COALESCE(actor_role, '')) NOT IN ('superadmin', 'system_admin')
+						AND NOT EXISTS (
+							SELECT 1 FROM users privileged_actor
+							WHERE privileged_actor.id = audit_events.actor_user_id
+								AND LOWER(COALESCE(privileged_actor.system_role, '')) IN ('superadmin', 'system_admin')
+						)` : ""}
 				LIMIT 1
 			`,
-			args: [id],
+			args: options.storeId ? [id, options.storeId] : [id],
 		});
 
 		const row = result.rows[0] as Record<string, unknown> | undefined;

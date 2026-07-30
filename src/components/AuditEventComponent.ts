@@ -13,9 +13,13 @@ export class AuditEventComponent {
 		return AuditEventInterface.findMany(filters);
 	}
 
-	static async getEventById(requestId: string, id: string): Promise<AuditEventRecord> {
+	static async getEventById(
+		requestId: string,
+		id: string,
+		options: { storeId?: string; excludePrivilegedActors?: boolean } = {},
+	): Promise<AuditEventRecord> {
 		void requestId;
-		const event = await AuditEventInterface.findById(id);
+		const event = await AuditEventInterface.findById(id, options);
 		if (!event) {
 			throw ApiError.NotFoundError("Audit event not found");
 		}
