@@ -927,20 +927,17 @@ async function loadStores() {
 }
 
 async function syncActiveStoreSelection(storeRecords: StoreRecord[]) {
-	const availableStoreId = storeRecords.find((store) => store.id === currentStoreId.value)?.id
-		|| storeRecords[0]?.id
-		|| "";
-
-	if (!availableStoreId) return;
-
-	if (currentStoreId.value !== availableStoreId) {
-		try {
-			await switchStore(availableStoreId);
-		} catch {
-			currentStoreId.value = availableStoreId;
-		}
+	const persistedStoreId = currentStoreId.value?.trim() || "";
+	if (persistedStoreId) {
+		// A partial or delayed store list must never change the user's active store.
+		createForm.storeId = persistedStoreId;
+		return;
 	}
 
+	const availableStoreId = storeRecords[0]?.id || "";
+	if (!availableStoreId) return;
+
+	await switchStore(availableStoreId);
 	createForm.storeId = availableStoreId;
 }
 
