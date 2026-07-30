@@ -9,6 +9,7 @@ import {
 	InventoryMovementListItem,
 	InventoryPageFilters,
 } from "@interfaces/InventoryInterface";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { StoreInterface } from "@interfaces/StoreInterface";
@@ -93,9 +94,11 @@ export class InventoryComponent {
 			}
 		}
 
-		return InventoryInterface.adjustStock(input, {
+		const result = await InventoryInterface.adjustStock(input, {
 			refType: options.refType,
 			refId: options.refId,
 		});
+		NotificationInterface.queueStockRefresh(input.store_id);
+		return result;
 	}
 }

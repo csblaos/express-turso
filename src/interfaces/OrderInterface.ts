@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { allocateRestaurantQueue } from "@utils/RestaurantQueue";
@@ -314,6 +315,7 @@ export class OrderInterface {
 			});
 			await transaction.batch(writeStatements);
 			await transaction.commit();
+			NotificationInterface.queueStockRefresh(payload.store_id);
 			void db.execute({
 				sql: `INSERT INTO audit_events (id, scope, store_id, actor_user_id, actor_role, action, entity_type, entity_id, result, request_id, metadata, occurred_at)
 					VALUES (?, 'store', ?, ?, 'cashier', 'pos.checkout', 'order', ?, 'success', ?, ?, ?)`,

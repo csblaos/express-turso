@@ -11,6 +11,7 @@ import {
 	PurchaseOrderUpdatePayload,
 } from "@interfaces/PurchaseOrderInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 
 function normalizeOptionalString(value?: string | null): string | null {
 	const trimmed = value?.trim();
@@ -287,6 +288,7 @@ export class PurchaseOrderComponent {
 			throw new Error("Failed to mark purchase order as received");
 		}
 
+		NotificationInterface.queueStockRefresh(String(detail.order.store_id));
 		return updated;
 	}
 

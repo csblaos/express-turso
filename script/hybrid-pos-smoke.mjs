@@ -106,6 +106,11 @@ try {
 	assert.equal(nextQuick.queue_no, "Q004");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 
+	const { NotificationInterface } = await import("../src/interfaces/NotificationInterface.ts");
+	await NotificationInterface.reconcile("smoke-store", [ "stock" ]);
+	const notifications = await NotificationInterface.list("smoke-store", "cashier", { topic: "stock" });
+	assert.equal(notifications.items.some((item) => item.entity_id === "beer" && item.due_status === "out_of_stock"), true, "stock notification is created from the committed balance");
+
 	const { ReportInterface } = await import("../src/interfaces/ReportInterface.ts");
 	const report = await ReportInterface.dashboard("smoke-store", { preset: "today", timezoneOffset: 420 });
 	const expectedReport = await db.execute("SELECT COUNT(*) AS bill_count,COALESCE(SUM(total),0) AS revenue FROM orders WHERE store_id='smoke-store' AND status='completed' AND payment_status='paid'");

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 
 import { DbConn } from "@connections/DbConn";
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { OrderInterface } from "@interfaces/OrderInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
@@ -684,6 +685,7 @@ export class RestaurantInterface {
 			if (automatic.rows.length) await RestaurantInterface.syncAutomaticPromotions(tx,storeId,orderId,true);
 			const round=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,idempotencyKey,actorId,"kitchen",{syncAutomatic:false,recalculateVersionIncrement:2,returnOrder:true});
 			await tx.commit();
+			NotificationInterface.queueStockRefresh(storeId);
 			RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.send_kitchen","order",orderId,{round_id:round.roundId,round_no:round.roundNo,idempotency_key:idempotencyKey});
 			return round.order;
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
@@ -755,6 +757,7 @@ export class RestaurantInterface {
 		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,version=version+1 WHERE id=?`,args:[method,subtotal,vat,total,tendered,tendered-total,stamp,stamp,idempotencyKey,orderId]});
 		await tx.execute({sql:`INSERT INTO cash_flow_entries(id,store_id,account_id,direction,entry_type,source_type,source_id,amount,currency,reference,note,metadata,occurred_at,created_by,created_at) VALUES(?,?,NULL,'in','sale','order',?,?,?,?,?,?,?, ?,?)`,args:[randomUUID(),storeId,orderId,total,String(store?.currency||"LAK"),text(input.payment_reference)||null,text(input.note)||null,JSON.stringify({payment_method:method,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"}),stamp,actorId,stamp]});
 		await tx.commit();
+		if(directRound)NotificationInterface.queueStockRefresh(storeId);
 		if(directRound)RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.dispatch_direct","order",orderId,{round_id:directRound.roundId,round_no:directRound.roundNo});
 		RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.checkout","order",orderId,{payment_method:method,total,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"});
 		return RestaurantInterface.getOrder(storeId,orderId);

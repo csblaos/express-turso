@@ -22,7 +22,9 @@ type DetectedNotification = {
 	payload: Record<string, unknown>;
 };
 
-const RECONCILE_INTERVAL_MS = 60_000;
+const STOCK_DEBOUNCE_MS = 500;
+const STOCK_SAFETY_SCAN_INTERVAL_MS = 30 * 60_000;
+const PROMOTION_SCAN_INTERVAL_MS = 6 * 60 * 60_000;
 
 function now(): string {
 	return new Date().toISOString();
@@ -35,6 +37,8 @@ function dedupeKey(item: DetectedNotification): string {
 export class NotificationInterface {
 	private static tablesEnsured = false;
 	private static ensurePromise: Promise<void> | null = null;
+	private static backgroundJobsStarted = false;
+	private static readonly stockRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	static async ensureTables(): Promise<void> {
 		if (NotificationInterface.tablesEnsured) return;
@@ -92,19 +96,48 @@ export class NotificationInterface {
 		return NotificationInterface.ensurePromise;
 	}
 
-	private static async shouldReconcile(storeId: string): Promise<boolean> {
-		const db = DbConn.getClient();
-		const result = await db.execute({
-			sql: "SELECT scanned_at FROM notification_scan_state WHERE store_id = ? LIMIT 1",
-			args: [ storeId ],
-		});
-		const scannedAt = String(result.rows[0]?.scanned_at || "");
-		return !scannedAt || Date.now() - new Date(scannedAt).getTime() >= RECONCILE_INTERVAL_MS;
+	static queueStockRefresh(storeId: string): void {
+		const normalizedStoreId = String(storeId || "").trim();
+		if (!normalizedStoreId) return;
+		const previous = NotificationInterface.stockRefreshTimers.get(normalizedStoreId);
+		if (previous) clearTimeout(previous);
+		const timer = setTimeout(() => {
+			NotificationInterface.stockRefreshTimers.delete(normalizedStoreId);
+			void NotificationInterface.reconcile(normalizedStoreId, [ "stock" ]).catch((error) => {
+				console.error(`[notifications] stock refresh failed for store ${normalizedStoreId}`, error);
+			});
+		}, STOCK_DEBOUNCE_MS);
+		timer.unref?.();
+		NotificationInterface.stockRefreshTimers.set(normalizedStoreId, timer);
 	}
 
-	private static async detect(storeId: string): Promise<DetectedNotification[]> {
+	static async startBackgroundJobs(): Promise<void> {
+		if (NotificationInterface.backgroundJobsStarted) return;
+		await NotificationInterface.ensureTables();
+		NotificationInterface.backgroundJobsStarted = true;
+
+		const runForStores = async (topics: Array<DetectedNotification["topic"]>) => {
+			try {
+				const stores = await DbConn.getClient().execute("SELECT id FROM stores");
+				for (const row of stores.rows) {
+					await NotificationInterface.reconcile(String(row.id), topics);
+				}
+			} catch (error) {
+				console.error(`[notifications] ${topics.join("/")} safety scan failed`, error);
+			}
+		};
+		const stockTimer = setInterval(() => void runForStores([ "stock" ]), STOCK_SAFETY_SCAN_INTERVAL_MS);
+		const promotionTimer = setInterval(() => void runForStores([ "promotion" ]), PROMOTION_SCAN_INTERVAL_MS);
+		stockTimer.unref?.();
+		promotionTimer.unref?.();
+		void runForStores([ "stock", "promotion" ]);
+	}
+
+	private static async detect(storeId: string, topics: Array<DetectedNotification["topic"]>): Promise<DetectedNotification[]> {
 		const db = DbConn.getClient();
-		const stockResult = await db.execute({
+		const includeStock = topics.includes("stock");
+		const includePromotion = topics.includes("promotion");
+		const stockResult = includeStock ? await db.execute({
 			sql: `
 				SELECT p.id, p.name, p.sku, COALESCE(b.available_base, 0) AS available_base,
 					CASE
@@ -135,11 +168,11 @@ export class NotificationInterface {
 				LIMIT 200
 			`,
 			args: [ storeId ],
-		});
+		}) : { rows: [] };
 
 		const current = new Date();
 		const endingBoundary = new Date(current.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
-		const promotionResult = await db.execute({
+		const promotionResult = includePromotion ? await db.execute({
 			sql: `
 				SELECT id, name, ends_at
 				FROM promotions
@@ -153,7 +186,7 @@ export class NotificationInterface {
 				LIMIT 200
 			`,
 			args: [ storeId, current.toISOString(), endingBoundary ],
-		});
+		}) : { rows: [] };
 
 		const detected: DetectedNotification[] = stockResult.rows.map((row) => {
 			const available = Number(row.available_base || 0);
@@ -201,11 +234,9 @@ export class NotificationInterface {
 		return detected;
 	}
 
-	static async reconcile(storeId: string): Promise<void> {
+	static async reconcile(storeId: string, topics: Array<DetectedNotification["topic"]> = [ "stock", "promotion" ]): Promise<void> {
 		await NotificationInterface.ensureTables();
-		if (!await NotificationInterface.shouldReconcile(storeId)) return;
-
-		const detected = await NotificationInterface.detect(storeId);
+		const detected = await NotificationInterface.detect(storeId, topics);
 		const detectedKeys = new Set(detected.map(dedupeKey));
 		const stamp = now();
 		const db = DbConn.getClient();
@@ -251,8 +282,8 @@ export class NotificationInterface {
 			}
 
 			const activeResult = await transaction.execute({
-				sql: "SELECT id, dedupe_key FROM notification_inbox WHERE store_id = ? AND status = 'active' AND topic IN ('stock', 'promotion')",
-				args: [ storeId ],
+				sql: `SELECT id, dedupe_key FROM notification_inbox WHERE store_id = ? AND status = 'active' AND topic IN (${topics.map(() => "?").join(",")})`,
+				args: [ storeId, ...topics ],
 			});
 			for (const row of activeResult.rows) {
 				if (detectedKeys.has(String(row.dedupe_key))) continue;
@@ -279,7 +310,6 @@ export class NotificationInterface {
 
 	static async list(storeId: string, userId: string, options: NotificationListOptions = {}) {
 		await NotificationInterface.ensureTables();
-		await NotificationInterface.reconcile(storeId);
 		const db = DbConn.getClient();
 		const limit = Math.max(1, Math.min(100, Number(options.limit || 20)));
 		const conditions = [ "n.store_id = ?", "n.status = 'active'" ];
