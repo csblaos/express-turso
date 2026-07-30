@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AppNavItem } from "~/utils/app-nav";
 import { resolveBreadcrumbs } from "~/utils/breadcrumbs";
+import { formatAppDateTime } from "~/utils/date-format";
 
 const props = defineProps<{
 	navItems: AppNavItem[];
@@ -19,6 +20,7 @@ const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 });
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
 const profileMenuOpen = ref(false);
+const notificationMenuOpen = ref(false);
 const storeSwitcherOpen = ref(false);
 const logoutConfirmOpen = ref(false);
 const logoutPending = ref(false);
@@ -30,8 +32,9 @@ const isDesktopViewport = ref(import.meta.server
 	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
-const { currentUser, currentAccess, currentStoreId, switchStore, logout } = useAuthSession();
+const { currentUser, currentAccess, currentStoreId, switchStore, logout, can } = useAuthSession();
 const { apiFetch } = useApiClient();
+const notificationCenter = useNotificationCenter();
 const appToast = useAppToast();
 const colorMode = useColorMode();
 const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
@@ -40,7 +43,7 @@ const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	default: () => null,
 });
 const route = useRoute();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const navLabel = (item: AppNavItem) => item.labelKey ? t(item.labelKey) : item.label;
 const translatedSidebarTitle = computed(() => {
 	const active = props.navItems.find((item) => props.activeIds.includes(item.id));
@@ -61,6 +64,7 @@ let mediaQueryList: MediaQueryList | null = null;
 let syncViewportListener: (() => void) | null = null;
 let reducedMotionQueryList: MediaQueryList | null = null;
 let syncReducedMotionListener: (() => void) | null = null;
+let notificationRefreshTimer: ReturnType<typeof setInterval> | null = null;
 const MOBILE_SIDEBAR_CLOSE_DELAY_MS = 180;
 const switchStorePending = ref(false);
 const accessibleStores = useState<AccessibleStoreRecord[]>("auth-accessible-stores", () => []);
@@ -173,6 +177,57 @@ const profileStoreSummary = computed(() => {
 	if (!membershipCount) return t("shell.noStores");
 	return t("shell.managedStores", { count: membershipCount });
 });
+const canViewNotifications = computed(() => (
+	resolvedSystemRole.value === "superadmin"
+	|| can("settings.users.view")
+));
+const notificationCopy = computed(() => {
+	if (locale.value === "lo") return { title: "ການແຈ້ງເຕືອນ", unread: "ຍັງບໍ່ອ່ານ", allRead: "ອ່ານທັງໝົດແລ້ວ", viewAll: "ເບິ່ງທັງໝົດ", empty: "ບໍ່ມີການແຈ້ງເຕືອນ", read: "ໝາຍວ່າອ່ານແລ້ວ", out: "ສິນຄ້າໝົດ", low: "ສະຕັອກໃກ້ໝົດ", ending: "ໂປຣໂມຊັນໃກ້ສິ້ນສຸດ" };
+	if (locale.value === "th") return { title: "การแจ้งเตือน", unread: "ยังไม่อ่าน", allRead: "อ่านทั้งหมดแล้ว", viewAll: "ดูทั้งหมด", empty: "ไม่มีการแจ้งเตือน", read: "ทำเครื่องหมายว่าอ่านแล้ว", out: "สินค้าหมด", low: "สต็อกใกล้หมด", ending: "โปรโมชั่นใกล้สิ้นสุด" };
+	return { title: "Notifications", unread: "unread", allRead: "Mark all read", viewAll: "View all", empty: "No notifications", read: "Mark as read", out: "Out of stock", low: "Low stock", ending: "Promotion ending soon" };
+});
+
+function notificationTitle(item: AppNotification) {
+	if (item.due_status === "out_of_stock") return notificationCopy.value.out;
+	if (item.due_status === "low_stock") return notificationCopy.value.low;
+	return notificationCopy.value.ending;
+}
+
+function notificationTime(value: string) {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	return formatAppDateTime(date, locale.value === "lo" ? "lo" : locale.value === "th" ? "th" : "en");
+}
+
+async function refreshNotifications() {
+	if (!canViewNotifications.value || !currentStoreId.value) {
+		notificationCenter.clear();
+		return;
+	}
+	try {
+		await notificationCenter.fetchNotifications(currentStoreId.value, { limit: 10 });
+	} catch {
+		// Navbar refresh failures should not interrupt the current workspace.
+	}
+}
+
+async function openNotification(item: AppNotification) {
+	if (currentStoreId.value && !item.is_read) {
+		await notificationCenter.markRead(currentStoreId.value, item.id).catch(() => undefined);
+	}
+	notificationMenuOpen.value = false;
+	await navigateTo(item.payload.target || (item.topic === "stock" ? "/inventory" : "/promotions"));
+}
+
+async function markNotificationRead(item: AppNotification) {
+	if (!currentStoreId.value || item.is_read) return;
+	await notificationCenter.markRead(currentStoreId.value, item.id).catch(() => undefined);
+}
+
+async function markAllNotificationsRead() {
+	if (!currentStoreId.value || notificationCenter.unreadCount.value <= 0) return;
+	await notificationCenter.markAllRead(currentStoreId.value).catch(() => undefined);
+}
 const canShowStoreSection = computed(() => (
 	resolvedSystemRole.value !== "system_admin"
 	&& (currentAccess.value?.memberships?.length ?? 0) > 0
@@ -366,6 +421,14 @@ watch(profileMenuOpen, (opened) => {
 	void loadAccessibleStores();
 });
 
+watch(notificationMenuOpen, (opened) => {
+	if (opened) void refreshNotifications();
+});
+
+watch([currentStoreId, canViewNotifications], () => {
+	void refreshNotifications();
+}, { immediate: true });
+
 watch(membershipStoreKey, () => {
 	accessibleStores.value = [];
 });
@@ -388,6 +451,8 @@ onMounted(() => {
 	syncReducedMotionListener();
 	mediaQueryList.addEventListener("change", syncViewportListener);
 	reducedMotionQueryList.addEventListener("change", syncReducedMotionListener);
+	void refreshNotifications();
+	notificationRefreshTimer = setInterval(() => void refreshNotifications(), 60_000);
 });
 
 onUnmounted(() => {
@@ -397,6 +462,7 @@ onUnmounted(() => {
 	if (reducedMotionQueryList && syncReducedMotionListener) {
 		reducedMotionQueryList.removeEventListener("change", syncReducedMotionListener);
 	}
+	if (notificationRefreshTimer) clearInterval(notificationRefreshTimer);
 });
 
 onErrorCaptured((error) => {
@@ -539,6 +605,93 @@ onErrorCaptured((error) => {
 
 										<template #right>
 											<slot name="navbar-right" />
+
+											<UPopover
+												v-if="canViewNotifications"
+												v-model:open="notificationMenuOpen"
+												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
+											>
+												<AppButton
+													color="neutral"
+													variant="soft"
+													size="sm"
+													icon="i-heroicons-bell"
+													class="relative h-9 w-9 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-0 text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 sm:h-10 sm:w-10"
+													:title="notificationCopy.title"
+													:aria-label="notificationCopy.title"
+												>
+													<span
+														v-if="notificationCenter.unreadCount.value > 0"
+														class="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white dark:ring-[#171d16]"
+													>
+														{{ notificationCenter.unreadCount.value > 99 ? "99+" : notificationCenter.unreadCount.value }}
+													</span>
+												</AppButton>
+
+												<template #content>
+													<div class="w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd] dark:bg-[#171d16] dark:ring-[#30402f]">
+														<div class="flex items-center justify-between border-b border-[#efece4] px-4 py-3 dark:border-[#2d382d]">
+															<div>
+																<p class="text-sm font-semibold text-stone-950 dark:text-stone-100">{{ notificationCopy.title }}</p>
+																<p class="mt-0.5 text-xs text-stone-500">{{ notificationCenter.unreadCount.value }} {{ notificationCopy.unread }}</p>
+															</div>
+															<button
+																v-if="notificationCenter.unreadCount.value > 0"
+																type="button"
+																class="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300"
+																@click="markAllNotificationsRead"
+															>
+																{{ notificationCopy.allRead }}
+															</button>
+														</div>
+
+														<div class="max-h-[420px] overflow-y-auto">
+															<div v-if="notificationCenter.pending.value && !notificationCenter.items.value.length" class="space-y-2 p-4">
+																<USkeleton v-for="index in 3" :key="index" class="h-16 w-full rounded-md" />
+															</div>
+															<div v-else-if="!notificationCenter.items.value.length" class="px-4 py-10 text-center">
+																<UIcon name="i-heroicons-bell-slash" class="mx-auto h-7 w-7 text-stone-300 dark:text-stone-600" />
+																<p class="mt-2 text-sm text-stone-500">{{ notificationCopy.empty }}</p>
+															</div>
+															<div v-else class="divide-y divide-[#f0ede6] dark:divide-[#2d382d]">
+																<div
+																	v-for="item in notificationCenter.items.value"
+																	:key="item.id"
+																	class="group flex gap-2 px-3 py-3 transition hover:bg-emerald-50/60 dark:hover:bg-emerald-500/10"
+																	:class="item.is_read ? 'opacity-70' : 'bg-emerald-50/30 dark:bg-emerald-500/5'"
+																>
+																	<button type="button" class="min-w-0 flex-1 text-left" @click="openNotification(item)">
+																		<div class="flex items-center gap-2">
+																			<span class="h-2 w-2 shrink-0 rounded-full" :class="item.severity === 'critical' ? 'bg-rose-500' : 'bg-amber-500'" />
+																			<p class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ notificationTitle(item) }}</p>
+																		</div>
+																		<p class="mt-1 truncate pl-4 text-xs text-stone-600 dark:text-stone-400">{{ item.payload.name || item.payload.sku || "-" }}</p>
+																		<p class="mt-1 pl-4 text-[10px] text-stone-400">{{ notificationTime(item.last_detected_at) }}</p>
+																	</button>
+																	<button
+																		v-if="!item.is_read"
+																		type="button"
+																		class="mt-1 h-7 w-7 shrink-0 rounded-md text-stone-400 opacity-100 hover:bg-white hover:text-emerald-700 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-[#232922] dark:hover:text-emerald-300"
+																		:title="notificationCopy.read"
+																		:aria-label="notificationCopy.read"
+																		@click="markNotificationRead(item)"
+																	>
+																		<UIcon name="i-heroicons-check" class="h-4 w-4" />
+																	</button>
+																</div>
+															</div>
+														</div>
+
+														<NuxtLink
+															to="/notifications"
+															class="block border-t border-[#efece4] px-4 py-3 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-[#2d382d] dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+															@click="notificationMenuOpen = false"
+														>
+															{{ notificationCopy.viewAll }}
+														</NuxtLink>
+													</div>
+												</template>
+											</UPopover>
 
 											<AppButton
 												color="neutral"

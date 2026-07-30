@@ -11,16 +11,17 @@ type DiningTable = { id: string; zone_id: string; zone_name: string; name: strin
 type Product = { id: string; name: string; sku: string; price_base: number; inventory_mode: "tracked" | "untracked"; manual_sold_out: number; stock_state: string; available_base: number; image_url?: string | null };
 type PosCatalog = { store: Record<string, unknown>; items: Product[] };
 type OrderItem = { id: string; product_id: string; name: string; sku: string; qty: number; line_total: number; line_status: "draft" | "sent" | "cancelled"; is_gift: number; promotion_id?: string | null; note?: string | null; round_no?: number | null };
-type Promotion = { promotion_id: string; name: string; type?: "buy_x_get_y" | "cart_total_gift"; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id?: string | null; gift_product_name: string; gift_qty: number; eligible: boolean; remaining_qty: number; remaining_amount: number };
+type PromotionType = "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount";
+type Promotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id?: string | null; gift_product_name: string; gift_qty: number; discount_amount?: number; eligible: boolean; remaining_qty: number; remaining_amount: number };
 type Round = { id: string; round_no: number; dispatch_mode: "kitchen" | "direct"; sent_at: string };
-type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
+type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; discount?: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
 type OpenOrder = Pick<Order, "id" | "order_no" | "service_mode" | "queue_no" | "status" | "total" | "guest_count" | "guest_count_specified" | "opened_at" | "version" | "table_name" | "zone_name"> & { draft_count: number; sent_count: number };
 type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
 type LocalCartEntry = { product_id: string; qty: number; note?: string | null };
 type TableDraftEntry = { product_id: string; qty: number; note?: string | null; is_gift?: boolean; promotion_id?: string | null };
 type PaymentAccount = { id: string; display_name: string; is_active: number };
-type AvailablePromotion = { promotion_id: string; name: string; type?: "buy_x_get_y" | "cart_total_gift"; apply_mode?: "automatic" | "manual"; applications: number; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id: string; gift_product_name?: string; gift_qty: number; eligible?: boolean; remaining_qty?: number; remaining_amount?: number };
-type PromotionRecord = { id: string; name: string; type: "buy_x_get_y" | "cart_total_gift"; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; minimum_subtotal?: number | null; gift_product_id: string; gift_product_name?: string | null; gift_qty: number; starts_at?: string | null; ends_at?: string | null; is_active: number };
+type AvailablePromotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode?: "automatic" | "manual"; applications: number; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id: string | null; gift_product_name?: string; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number; discount_amount?: number; eligible?: boolean; remaining_qty?: number; remaining_amount?: number };
+type PromotionRecord = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; minimum_subtotal?: number | null; gift_product_id: string | null; gift_product_name?: string | null; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number | null; starts_at?: string | null; ends_at?: string | null; is_active: number };
 type CheckoutResult = {
 	order_id: string; order_no: string; queue_no: string | null; queue_date: string | null; subtotal: number; vat_amount: number; total: number;
 	payment_method: "cash" | "qr_transfer" | "credit_card"; amount_tendered: number; change_amount: number; completed_at: string;
@@ -123,7 +124,7 @@ const filteredProducts = computed(() => {
 });
 const zoneTables = computed(() => tables.value.filter((table) => table.is_active && (!activeZone.value || table.zone_id === activeZone.value)));
 function giftLineForPromotion(promotion: AvailablePromotion, count: number): OrderItem[] {
-	if (promotion.eligible === false || promotion.gift_qty <= 0 || count <= 0) return [];
+	if (promotion.eligible === false || !promotion.gift_product_id || promotion.gift_qty <= 0 || count <= 0) return [];
 	const product = products.value.find((candidate) => candidate.id === promotion.gift_product_id);
 	const giftPerApplication = Math.max(1, Math.round(Number(promotion.gift_qty || 0) / Math.max(1, Number(promotion.applications || 1))));
 	return [{
@@ -164,27 +165,39 @@ const cartItemCount = computed(() => (order.value ? [ ...(order.value.items || [
 	.filter((item) => item.line_status !== "cancelled")
 	.reduce((total, item) => total + Number(item.qty || 0), 0));
 const localSubtotal = computed(() => localItems.value.reduce((total, item) => total + Number(item.line_total || 0), 0));
+const localPromotionIds = computed(() => [ ...new Set([
+	...selectedPromotionIds.value,
+	...availablePromotions.value
+		.filter((promotion) => isAutomaticPromotion(promotion) && promotion.eligible !== false && Number(promotion.applications || 0) > 0 && !promotionBlockedReason(promotion))
+		.map((promotion) => promotion.promotion_id),
+]) ]);
+const localDiscount = computed(() => Math.min(localSubtotal.value, availablePromotions.value
+	.filter((promotion) => localPromotionIds.value.includes(promotion.promotion_id))
+	.reduce((total, promotion) => total + Math.max(0, Number(promotion.discount_amount || 0)), 0)));
+const localDiscountedSubtotal = computed(() => Math.max(0, localSubtotal.value - localDiscount.value));
 const localVat = computed(() => {
 	if (!vatEnabled.value) return 0;
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
-	return Math.round(vatMode.value === "INCLUSIVE" ? localSubtotal.value * rate / (100 + rate) : localSubtotal.value * rate / 100);
+	return Math.round(vatMode.value === "INCLUSIVE" ? localDiscountedSubtotal.value * rate / (100 + rate) : localDiscountedSubtotal.value * rate / 100);
 });
-const localTotal = computed(() => vatEnabled.value && vatMode.value !== "INCLUSIVE" ? localSubtotal.value + localVat.value : localSubtotal.value);
+const localTotal = computed(() => vatEnabled.value && vatMode.value !== "INCLUSIVE" ? localDiscountedSubtotal.value + localVat.value : localDiscountedSubtotal.value);
 const tableDraftSubtotal = computed(() => tableDraftItems.value.reduce((total, item) => total + Number(item.line_total || 0), 0));
 const billingSubtotal = computed(() => order.value ? Number(order.value.subtotal || 0) + tableDraftSubtotal.value : localSubtotal.value);
+const billingDiscount = computed(() => order.value ? Math.max(0, Number(order.value.discount || 0)) : localDiscount.value);
+const billingDiscountedSubtotal = computed(() => Math.max(0, billingSubtotal.value - billingDiscount.value));
 const billingVat = computed(() => {
 	if (!vatEnabled.value) return 0;
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
-	return Math.round(vatMode.value === "INCLUSIVE" ? billingSubtotal.value * rate / (100 + rate) : billingSubtotal.value * rate / 100);
+	return Math.round(vatMode.value === "INCLUSIVE" ? billingDiscountedSubtotal.value * rate / (100 + rate) : billingDiscountedSubtotal.value * rate / 100);
 });
-const billingNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, billingSubtotal.value - billingVat.value) : billingSubtotal.value);
+const billingNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, billingDiscountedSubtotal.value - billingVat.value) : billingDiscountedSubtotal.value);
 const vatRateLabel = computed(() => {
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
 	return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, "");
 });
 const displayTotal = computed(() => {
 	if (!order.value) return localTotal.value;
-	const subtotal = Number(order.value.subtotal || 0) + tableDraftSubtotal.value;
+	const subtotal = Math.max(0, Number(order.value.subtotal || 0) + tableDraftSubtotal.value - Number(order.value.discount || 0));
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
 	const vat = vatEnabled.value ? Math.round(vatMode.value === "INCLUSIVE" ? subtotal * rate / (100 + rate) : subtotal * rate / 100) : 0;
 	return vatMode.value === "INCLUSIVE" ? subtotal : subtotal + vat;
@@ -247,6 +260,13 @@ function pendingLocalGiftQty(promotion: AvailablePromotion) {
 	const applications = Math.max(0, Number(promotion.applications || 0));
 	const giftPerApplication = Math.max(1, Math.round(Number(promotion.gift_qty || 0) / Math.max(1, applications)));
 	return Math.max(0, (applications - selectedCount) * giftPerApplication);
+}
+function isDiscountPromotion(promotion: AvailablePromotion | Promotion) {
+	return promotion.type === "cart_discount" || promotion.type === "cart_threshold_discount";
+}
+function promotionBenefitLabel(promotion: AvailablePromotion) {
+	if (isDiscountPromotion(promotion)) return `${t("pos.discount")} -${money(Number(promotion.discount_amount || 0))}`;
+	return `${t("restaurantPos.free")} × ${pendingLocalGiftQty(promotion)}`;
 }
 function isAutomaticPromotion(promotion: AvailablePromotion | Promotion) {
 	return promotion.apply_mode === "automatic";
@@ -555,6 +575,9 @@ function promotionRecordToAvailable(promotion: PromotionRecord): AvailablePromot
 		gift_product_id: promotion.gift_product_id,
 		gift_product_name: promotion.gift_product_name || undefined,
 		gift_qty: 0,
+		discount_method: promotion.discount_method || null,
+		discount_value: Number(promotion.discount_value || 0),
+		discount_amount: 0,
 		eligible: false,
 		remaining_qty: promotion.type === "buy_x_get_y" ? requiredQty : 0,
 		remaining_amount: promotion.type === "cart_total_gift" ? minimumSubtotal : 0,
@@ -1390,9 +1413,9 @@ onBeforeUnmount(() => {
 									</span>
 									<div class="min-w-0 flex-1">
 										<p class="text-sm font-semibold text-emerald-950">มีโปรโมชั่นที่รับได้</p>
-										<p class="mt-0.5 truncate text-xs text-emerald-700">{{ suggestedLocalPromotions[0]?.name }} · ของแถม × {{ pendingLocalGiftQty(suggestedLocalPromotions[0]) }}</p>
+										<p class="mt-0.5 truncate text-xs text-emerald-700">{{ suggestedLocalPromotions[0]?.name }} · {{ suggestedLocalPromotions[0] ? promotionBenefitLabel(suggestedLocalPromotions[0]) : '' }}</p>
 									</div>
-									<AppButton class="shrink-0 shadow-sm" size="xs" color="success" variant="solid" icon="i-heroicons-plus" @click="suggestedLocalPromotions[0] && addLocalPromotionGift(suggestedLocalPromotions[0])">เพิ่มของแถม</AppButton>
+									<AppButton class="shrink-0 shadow-sm" size="xs" color="success" variant="solid" icon="i-heroicons-plus" @click="suggestedLocalPromotions[0] && (isDiscountPromotion(suggestedLocalPromotions[0]) ? applyLocalPromotion(suggestedLocalPromotions[0]) : addLocalPromotionGift(suggestedLocalPromotions[0]))">{{ suggestedLocalPromotions[0] && isDiscountPromotion(suggestedLocalPromotions[0]) ? t('restaurantPos.applyPromotion') : t('restaurantPos.addGift') }}</AppButton>
 								</div>
 								<button v-if="suggestedLocalPromotions.length > 1" class="mt-2 text-xs font-medium text-emerald-700" @click="promotionPanelOpen = true">ดูโปรโมชั่นทั้งหมด {{ suggestedLocalPromotions.length }} รายการ</button>
 							</div>
@@ -1453,6 +1476,10 @@ onBeforeUnmount(() => {
 								<div class="flex items-center justify-between">
 									<span class="text-sm text-stone-500">{{ t('restaurantPos.total') }}</span>
 									<strong class="text-xl tabular-nums">{{ money(displayTotal) }}</strong>
+								</div>
+								<div v-if="!order && localDiscount > 0" class="flex items-center justify-between rounded-md bg-emerald-50 px-2.5 py-2 text-sm text-emerald-800">
+									<span>{{ t('pos.discount') }}</span>
+									<strong class="tabular-nums">-{{ money(localDiscount) }}</strong>
 								</div>
 								<template v-if="!order">
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
@@ -1709,7 +1736,7 @@ onBeforeUnmount(() => {
 										<span class="min-w-0">
 											<span class="block line-clamp-2 text-sm font-semibold text-stone-950">{{ promotion.name }}</span>
 											<span class="mt-1 block text-xs text-stone-500">
-												{{ promotionBlockedReason(promotion) || (promotion.eligible === false ? promotion.remaining_qty ? `เพิ่มอีก ${promotion.remaining_qty} ชิ้น เพื่อรับของแถม` : `เพิ่มยอดอีก ${money(promotion.remaining_amount || 0)} เพื่อรับของแถม` : `ใช้ได้ ${promotion.applications} รอบ · ของแถม × ${promotion.gift_qty}`) }}
+												{{ promotionBlockedReason(promotion) || (promotion.eligible === false ? promotion.remaining_qty ? `เพิ่มอีก ${promotion.remaining_qty} ชิ้น` : `เพิ่มยอดอีก ${money(promotion.remaining_amount || 0)}` : isDiscountPromotion(promotion) ? `${t('pos.discount')} -${money(Number(promotion.discount_amount || 0))}` : `ใช้ได้ ${promotion.applications} รอบ · ${t('restaurantPos.free')} × ${promotion.gift_qty}`) }}
 											</span>
 										</span>
 									</span>
@@ -1717,7 +1744,7 @@ onBeforeUnmount(() => {
 								</span>
 								<div class="mt-auto flex items-center justify-between gap-2 pt-4">
 									<UBadge class="w-fit shrink-0" :color="promotionBlockedReason(promotion) ? 'error' : promotion.eligible === false ? 'neutral' : 'success'" variant="soft">
-										{{ promotionBlockedReason(promotion) ? 'สินค้าในโปรหมด' : promotion.eligible === false ? 'จะเติมสินค้าให้ครบโปร' : 'พร้อมแถม' }}
+										{{ promotionBlockedReason(promotion) ? 'สินค้าในโปรหมด' : promotion.eligible === false ? 'เงื่อนไขยังไม่ครบ' : isDiscountPromotion(promotion) ? t('restaurantPos.readyDiscount') : 'พร้อมแถม' }}
 									</UBadge>
 									<AppButton class="min-w-[116px] justify-center shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-plus" :disabled="Boolean(promotionBlockedReason(promotion))" @click="applyLocalPromotion(promotion)">
 										{{ selectedPromotionIds.includes(promotion.promotion_id) ? 'ใช้อีก' : 'ใช้โปรโมชั่น' }}
@@ -1946,7 +1973,11 @@ onBeforeUnmount(() => {
 			<div class="mt-auto rounded-md border border-neutral-200 bg-neutral-50 p-3">
 				<div class="flex justify-between gap-3 text-sm">
 					<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
-					<span class="tabular-nums">{{ money(billingNetSubtotal) }}</span>
+					<span class="tabular-nums">{{ money(billingSubtotal) }}</span>
+				</div>
+				<div v-if="billingDiscount > 0" class="mt-2 flex justify-between gap-3 text-sm text-emerald-700">
+					<span>{{ t('pos.discount') }}</span>
+					<span class="font-semibold tabular-nums">-{{ money(billingDiscount) }}</span>
 				</div>
 				<div v-if="vatEnabled" class="mt-2 flex justify-between gap-3 text-sm">
 					<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${t('posPanels.vatIncluded')})` : '' }}</span>

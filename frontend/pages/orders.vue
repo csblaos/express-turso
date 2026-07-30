@@ -479,8 +479,15 @@ function confirmPrintReceipt() {
 							<select v-model="activePaymentMethod" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<option value="all">{{ $t('orders.allMethods') }}</option><option value="cash">{{ $t('pos.cash') }}</option><option value="qr_transfer">{{ $t('pos.qr') }}</option><option value="credit_card">{{ $t('pos.card') }}</option>
 							</select>
-							<input v-model="dateFrom" type="date" :aria-label="$t('orders.fromDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @input="activeDatePreset = 'custom'">
-							<input v-model="dateTo" type="date" :aria-label="$t('orders.toDate')" class="min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @input="activeDatePreset = 'custom'">
+							<AppDateRangePicker
+								v-model:from="dateFrom"
+								v-model:to="dateTo"
+								class="col-span-2"
+								:from-label="$t('orders.fromDate')"
+								:to-label="$t('orders.toDate')"
+								@update:from="activeDatePreset = 'custom'"
+								@update:to="activeDatePreset = 'custom'"
+							/>
 						</div>
 
 						<div class="flex items-center justify-between gap-3">

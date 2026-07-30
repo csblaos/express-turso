@@ -3,6 +3,7 @@ import { Router } from "express";
 import { AuditEventRouter } from "@routers/AuditEventRouter";
 import { AuthRouter } from "@routers/AuthRouter";
 import { InventoryRouter } from "@routers/InventoryRouter";
+import { NotificationRouter } from "@routers/NotificationRouter";
 import { ProductCategoryRouter } from "@routers/ProductCategoryRouter";
 import { ProductRouter } from "@routers/ProductRouter";
 import { ProductUnitRouter } from "@routers/ProductUnitRouter";
@@ -35,6 +36,7 @@ export class IndexRouter {
 		this.router.use("/pos", PosRouter.getInstance().getRouter());
 		this.router.use("/audit-events", AuditEventRouter.getInstance().getRouter());
 		this.router.use("/inventory", InventoryRouter.getInstance().getRouter());
+		this.router.use("/notifications", NotificationRouter.getInstance().getRouter());
 		this.router.use("/purchase-orders", PurchaseOrderRouter.getInstance().getRouter());
 		this.router.use("/promotions", PromotionRouter.getInstance().getRouter());
 		this.router.use("/reports", ReportRouter.getInstance().getRouter());

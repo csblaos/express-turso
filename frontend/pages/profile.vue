@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -97,34 +98,7 @@ function shouldAutoFocusProfileModalInput() {
 
 function formatDateTime(value?: string | null) {
 	if (!value) return "-";
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return value;
-
-	const normalizedLocale = String(locale.value).toLowerCase();
-	if (normalizedLocale.startsWith("lo")) {
-		const laoMonths = [
-			"ມັງກອນ", "ກຸມພາ", "ມີນາ", "ເມສາ", "ພຶດສະພາ", "ມິຖຸນາ",
-			"ກໍລະກົດ", "ສິງຫາ", "ກັນຍາ", "ຕຸລາ", "ພະຈິກ", "ທັນວາ",
-		];
-		const parts = new Intl.DateTimeFormat("en-CA", {
-			timeZone: "Asia/Vientiane",
-			year: "numeric",
-			month: "numeric",
-			day: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-			hourCycle: "h23",
-		}).formatToParts(date);
-		const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || "";
-		const monthIndex = Number(part("month")) - 1;
-		return `${part("day")} ${laoMonths[monthIndex] || part("month")} ${part("year")}, ${part("hour")}:${part("minute")}`;
-	}
-
-	return new Intl.DateTimeFormat(normalizedLocale.startsWith("en") ? "en-US" : "th-TH", {
-		dateStyle: "long",
-		timeStyle: "short",
-		timeZone: "Asia/Vientiane",
-	}).format(date);
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 watch(currentUser, (value) => {

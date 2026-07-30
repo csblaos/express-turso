@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -40,8 +41,8 @@ type AuditEventListResponse = {
 };
 
 const { apiFetch } = useApiClient();
-const { t } = useI18n();
-const { intlLocale } = useAppLocale();
+const { t, locale } = useI18n();
+const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 
 const searchQuery = ref("");
 const activeScope = ref("all");
@@ -58,10 +59,6 @@ const selectedEventId = ref("");
 const detailOpen = ref(false);
 
 const numberFormatter = new Intl.NumberFormat("th-TH");
-const dateFormatter = computed(() => new Intl.DateTimeFormat(intlLocale.value, {
-	dateStyle: "medium", timeStyle: "short",
-}));
-
 let loadTimer: ReturnType<typeof setTimeout> | null = null;
 
 const scopeOptions = computed(() => [
@@ -84,8 +81,6 @@ const resultOptions = computed(() => [
 	{ id: "all", label: t("activityPage.allResults") },
 	{ id: "success", label: t("activityPage.success") },
 	{ id: "failed", label: t("activityPage.failed") },
-	{ id: "warning", label: t("activityPage.warning") },
-	{ id: "pending", label: t("activityPage.pending") },
 ]);
 
 const selectedEvent = computed(() =>
@@ -255,11 +250,7 @@ function closeEvent() {
 }
 
 function formatDate(value: string) {
-	try {
-		return dateFormatter.value.format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, appLocale.value);
 }
 
 function getResultColor(result: string) {

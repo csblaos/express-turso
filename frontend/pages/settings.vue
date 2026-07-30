@@ -19,7 +19,12 @@ type SettingsSection = {
 };
 
 const route = useRoute();
+const { currentUser, can } = useAuthSession();
 const isSettingsHub = computed(() => route.path === "/settings");
+const canViewNotifications = computed(() => (
+	currentUser.value?.systemRole === "superadmin"
+	|| can("settings.users.view")
+));
 
 const readyTone = {
 	card: "border-neutral-200 bg-white transition-all hover:border-emerald-200 hover:bg-emerald-50/40 dark:border-[#3c3429] dark:bg-[#1c1814] dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/10",
@@ -31,12 +36,14 @@ const plannedTone = {
 	icon: "bg-primary-50 text-primary-700 ring-primary-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20",
 };
 
+const hiddenSettingEntryIds = new Set([ "security", "stores", "shipping", "branchSwitch", "branchConfig" ]);
+
 function linkedEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => Boolean(entry.to));
+	return section.entries.filter((entry) => Boolean(entry.to) && (entry.id !== "notifications" || canViewNotifications.value));
 }
 
 function staticEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => !entry.to);
+	return section.entries.filter((entry) => !entry.to && (entry.id !== "notifications" || canViewNotifications.value));
 }
 
 function entryTone(entry: SettingsEntry) {
@@ -53,9 +60,9 @@ const settingsSections: SettingsSection[] = [
 			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "printing", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "shipping", "branchSwitch", "branchConfig" ] as const).map((key, index) => ({
 				id: key, titleKey: `settings.entries.${key}.title`, descriptionKey: `settings.entries.${key}.description`,
 				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-truck", "i-heroicons-arrows-right-left", "i-heroicons-adjustments-horizontal" ][index]!,
-				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", undefined, "/settings/printing/sales-receipt", undefined, undefined, "/settings/store-finance", "/settings/stock", "/settings/store-payments", undefined, undefined, undefined ][index],
-				availability: ([ 2, 7, 9, 10, 14, 15, 16 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
-			})),
+				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", "/notifications", "/settings/printing/sales-receipt", undefined, "/settings/store-profile", "/settings/store-finance", "/settings/stock", "/settings/store-payments", undefined, undefined, undefined ][index],
+				availability: ([ 2, 9, 14, 15, 16 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
+			})).filter((entry) => !hiddenSettingEntryIds.has(entry.id)),
 		],
 	},
 ];

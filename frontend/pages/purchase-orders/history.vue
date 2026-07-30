@@ -2,6 +2,7 @@
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 import { getCurrencySymbol, formatMoneyWithSymbol } from "~/utils/currency";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -105,7 +106,7 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
 
-const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium", timeStyle: "short" }));
+const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 const numberFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH"));
 const appToast = useAppToast();
 const historyText = computed(() => {
@@ -198,148 +199,15 @@ const paymentOptions = computed<Array<{ id: typeof paymentFilter.value; label: s
 	{ id: "paid", label: historyText.value.paidStatus },
 ]);
 
-type DatePickerField = "from" | "to";
-type CalendarDay = {
-	date: string;
-	day: number;
-	isCurrentMonth: boolean;
-	isToday: boolean;
-	isSelected: boolean;
-	isInRange: boolean;
-};
-
-const datePickerOpen = ref(false);
-const datePickerField = ref<DatePickerField>("from");
-const datePickerMonth = ref(startOfMonth(new Date()));
-const weekdayLabels = computed(() => locale.value === "lo"
-	? ["ອາ", "ຈ", "ອ", "ພ", "ພຫ", "ສ", "ສ"]
-	: locale.value === "en"
-		? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-		: ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]);
-
 type DatePresetId = "today" | "this_week" | "last_week" | "this_month" | "last_month";
 
 function pad2(value: number) {
 	return String(value).padStart(2, "0");
 }
 
-function parseDateInputValue(value: string) {
-	if (!value) return null;
-	const parsed = new Date(`${value}T00:00:00`);
-	return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function toDateInputValue(date: Date) {
 	return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
-
-function startOfMonth(date: Date) {
-	return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function formatPickerDate(value: string | null) {
-	const parsed = parseDateInputValue(value || "");
-	if (!parsed) return t("purchaseOrdersPage.selectDate");
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium" }).format(parsed);
-}
-
-function setDateRangeValue(field: DatePickerField, value: string) {
-	if (field === "from") {
-		fromDate.value = value;
-		if (toDate.value && toDate.value < value) {
-			toDate.value = value;
-		}
-		return;
-	}
-
-	toDate.value = value;
-	if (fromDate.value && fromDate.value > value) {
-		fromDate.value = value;
-	}
-}
-
-function openDatePicker(field: DatePickerField) {
-	datePickerField.value = field;
-	const baseValue = field === "from" ? fromDate.value : toDate.value;
-	const parsed = parseDateInputValue(baseValue);
-	datePickerMonth.value = startOfMonth(parsed || new Date());
-	datePickerOpen.value = true;
-}
-
-function closeDatePicker() {
-	datePickerOpen.value = false;
-}
-
-function moveDatePickerMonth(offset: number) {
-	const nextMonth = new Date(datePickerMonth.value);
-	nextMonth.setMonth(nextMonth.getMonth() + offset);
-	datePickerMonth.value = startOfMonth(nextMonth);
-}
-
-function pickDate(day: CalendarDay) {
-	if (!day.isCurrentMonth) return;
-	setDateRangeValue(datePickerField.value, day.date);
-	closeDatePicker();
-}
-
-function pickToday() {
-	const value = toDateInputValue(new Date());
-	setDateRangeValue(datePickerField.value, value);
-	datePickerMonth.value = startOfMonth(new Date(value));
-	closeDatePicker();
-}
-
-function clearCurrentDate() {
-	if (datePickerField.value === "from") {
-		fromDate.value = "";
-	} else {
-		toDate.value = "";
-	}
-	closeDatePicker();
-}
-
-const datePickerMonthLabel = computed(() => new Intl.DateTimeFormat("th-TH", {
-	month: "long",
-	year: "numeric",
-}).format(datePickerMonth.value));
-
-const datePickerCurrentValue = computed(() => (
-	datePickerField.value === "from" ? fromDate.value : toDate.value
-));
-
-const datePickerCalendarDays = computed<CalendarDay[]>(() => {
-	const start = startOfMonth(datePickerMonth.value);
-	const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-	const startOffset = start.getDay();
-	const gridStart = new Date(start);
-	gridStart.setDate(gridStart.getDate() - startOffset);
-	const selectedDate = datePickerCurrentValue.value || "";
-	const fromValue = fromDate.value;
-	const toValue = toDate.value;
-
-	return Array.from({ length: 42 }, (_, index) => {
-		const current = new Date(gridStart);
-		current.setDate(gridStart.getDate() + index);
-		const date = toDateInputValue(current);
-		const isInRange = !!fromValue && !!toValue && date >= fromValue && date <= toValue;
-		return {
-			date,
-			day: current.getDate(),
-			isCurrentMonth: current.getMonth() === start.getMonth() && current.getFullYear() === start.getFullYear() && current.getDate() >= 1 && current.getDate() <= daysInMonth,
-			isToday: date === toDateInputValue(new Date()),
-			isSelected: date === selectedDate,
-			isInRange,
-		};
-	});
-});
-
-const datePickerCalendarWeeks = computed(() => {
-	const weeks: CalendarDay[][] = [];
-	for (let index = 0; index < datePickerCalendarDays.value.length; index += 7) {
-		weeks.push(datePickerCalendarDays.value.slice(index, index + 7));
-	}
-	return weeks;
-});
 
 function applyPreset(presetId: DatePresetId) {
 	const now = new Date();
@@ -397,11 +265,7 @@ function clearFilters() {
 
 function formatDate(value: string | null) {
 	if (!value) return "-";
-	try {
-		return dateFormatter.value.format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, appLocale.value);
 }
 
 function formatMoney(value: number) {
@@ -681,30 +545,19 @@ onMounted(() => {
 									</div>
 								</div>
 
-								<div class="col-span-2 grid grid-cols-2 gap-2 md:col-span-1">
-									<div class="min-w-0">
-										<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.fromDate }}</label>
-										<button
-											type="button"
-											class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-											@click="openDatePicker('from')"
-										>
-											<span class="truncate">{{ fromDate ? formatPickerDate(fromDate) : t('purchaseOrdersPage.selectDate') }}</span>
-											<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-										</button>
-									</div>
-									<div class="min-w-0">
-										<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ historyText.toDate }}</label>
-										<button
-											type="button"
-											class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-											@click="openDatePicker('to')"
-										>
-											<span class="truncate">{{ toDate ? formatPickerDate(toDate) : t('purchaseOrdersPage.selectDate') }}</span>
-											<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-										</button>
-									</div>
-								</div>
+								<AppDateRangePicker
+									v-model:from="fromDate"
+									v-model:to="toDate"
+									class="col-span-2 md:col-span-1"
+									:from-label="historyText.fromDate"
+									:to-label="historyText.toDate"
+									:start-title="historyText.startDate"
+									:end-title="historyText.endDate"
+									:pick-hint="historyText.pickDate"
+									:today-label="historyText.today"
+									:clear-label="historyText.clear"
+									:close-label="historyText.close"
+								/>
 							</div>
 						</div>
 					</div>
@@ -1175,6 +1028,7 @@ onMounted(() => {
 				</template>
 			</AppResponsivePanel>
 
+			<!--
 			<AppResponsivePanel
 				v-model="datePickerOpen"
 				:title="datePickerField === 'from' ? historyText.startDate : historyText.endDate"
@@ -1269,6 +1123,7 @@ onMounted(() => {
 					</div>
 				</template>
 			</AppResponsivePanel>
+			-->
 		</template>
 	</AppSidebarShell>
 </template>

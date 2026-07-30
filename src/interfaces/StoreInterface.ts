@@ -70,6 +70,10 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN pickup_queue_enabled INTEGER NOT NULL DEFAULT 0");
 			}
 
+			if (!existingColumns.has("business_day_start_minutes")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN business_day_start_minutes INTEGER NOT NULL DEFAULT 0");
+			}
+
 			await db.execute("CREATE INDEX IF NOT EXISTS idx_stores_owner_created ON stores (owner_user_id, created_at DESC)");
 			StoreInterface.columnsEnsured = true;
 		})().catch((error) => {

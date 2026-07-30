@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getCurrencySymbol, formatMoneyWithSymbol } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -193,7 +194,7 @@ const createForm = reactive({
 
 const numberFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH"));
 const receiveQtyFormatter = computed(() => new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { maximumFractionDigits: 0 }));
-const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", { dateStyle: "medium", timeStyle: "short" }));
+const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
@@ -388,11 +389,7 @@ function formatPurchaseAmount(baseAmount: number, exchangeRate: number, currency
 
 function formatDate(value?: string | null) {
 	if (!value) return "-";
-	try {
-		return dateFormatter.value.format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, appLocale.value);
 }
 
 function toDatetimeLocalInput(value?: string | null) {

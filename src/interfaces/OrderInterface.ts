@@ -52,7 +52,7 @@ export type CheckoutResult = {
 	queue_date: string | null;
 	receipt: {
 		lines: CheckoutReceiptLine[];
-		promotions: Array<{ promotion_id: string; name: string; gift_product_id: string; gift_qty: number }>;
+		promotions: Array<{ promotion_id: string; name: string; gift_product_id: string | null; gift_qty: number; discount_amount: number }>;
 	};
 };
 
@@ -196,7 +196,7 @@ export class OrderInterface {
 			const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
 			const promotionStartedAt = performance.now();
 			const appliedPromotions = await PromotionInterface.evaluate(payload.store_id, lines.map((line) => ({ product_id: String(line.row.id), qty: line.qty })), payload.promotion_ids, transaction as never);
-			const giftProductIds = [ ...new Set(appliedPromotions.map((promotion) => promotion.gift_product_id)) ];
+			const giftProductIds = [ ...new Set(appliedPromotions.map((promotion) => promotion.gift_product_id).filter((id): id is string => Boolean(id))) ];
 			if (giftProductIds.length) {
 				const gifts = await transaction.execute({
 					sql: `SELECT p.id, p.name, p.base_unit_id, p.price_base, p.cost_base, p.active, COALESCE(ib.on_hand_base, 0) AS on_hand_base, COALESCE(ib.reserved_base, 0) AS reserved_base
@@ -205,18 +205,21 @@ export class OrderInterface {
 				});
 				const giftRows = new Map(gifts.rows.map((row: any) => [ String(row.id), row as Record<string, unknown> ]));
 				for (const promotion of appliedPromotions) {
+					if (!promotion.gift_product_id || promotion.gift_qty <= 0) continue;
 					const row = giftRows.get(promotion.gift_product_id);
 					if (!row || !Number(row.active)) throw ApiError.BadRequestError(`gift product for ${promotion.name} is unavailable`);
 					lines.push({ row, qty: promotion.gift_qty, lineTotal: 0, isGift: true, promotionId: promotion.promotion_id } as typeof lines[number] & { isGift: boolean; promotionId: string });
 				}
 			}
 			mark("checkout-promotion", promotionStartedAt);
+			const discount = Math.min(subtotal, appliedPromotions.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0));
+			const discountedSubtotal = Math.max(0, subtotal - discount);
 			const rawRate = Number(store.vat_rate || 0);
 			const rate = rawRate > 100 ? rawRate / 100 : rawRate;
 			const vatAmount = Number(store.vat_enabled)
-				? Math.round(String(store.vat_mode).toUpperCase() === "INCLUSIVE" ? subtotal * rate / (100 + rate) : subtotal * rate / 100)
+				? Math.round(String(store.vat_mode).toUpperCase() === "INCLUSIVE" ? discountedSubtotal * rate / (100 + rate) : discountedSubtotal * rate / 100)
 				: 0;
-			const total = String(store.vat_mode).toUpperCase() === "INCLUSIVE" ? subtotal : subtotal + vatAmount;
+			const total = String(store.vat_mode).toUpperCase() === "INCLUSIVE" ? discountedSubtotal : discountedSubtotal + vatAmount;
 			const amountTendered = payload.payment_method === "cash" ? Number(payload.amount_tendered) : total;
 			if (!Number.isFinite(amountTendered) || amountTendered < total) throw ApiError.BadRequestError("amount_tendered is less than total");
 
@@ -229,7 +232,7 @@ export class OrderInterface {
 				? await allocateRestaurantQueue(transaction, payload.store_id)
 				: { queueNo: null, queueDate: null };
 			const result: CheckoutResult = {
-				order_id: orderId, order_no: orderNo, subtotal, discount: 0, vat_amount: vatAmount, total,
+				order_id: orderId, order_no: orderNo, subtotal, discount, vat_amount: vatAmount, total,
 				payment_method: payload.payment_method, amount_tendered: amountTendered,
 				change_amount: amountTendered - total, completed_at: now, queue_no: queue.queueNo, queue_date: queue.queueDate,
 				receipt: {
@@ -238,7 +241,7 @@ export class OrderInterface {
 						unit_price: line.isGift ? 0 : Number(line.row.price_base || 0), line_total: line.lineTotal,
 						is_gift: Boolean(line.isGift), promotion_id: line.promotionId || null,
 					})),
-					promotions: appliedPromotions.map((promotion) => ({ promotion_id: promotion.promotion_id, name: promotion.name, gift_product_id: promotion.gift_product_id, gift_qty: promotion.gift_qty })),
+					promotions: appliedPromotions.map((promotion) => ({ promotion_id: promotion.promotion_id, name: promotion.name, gift_product_id: promotion.gift_product_id, gift_qty: promotion.gift_qty, discount_amount: promotion.discount_amount })),
 				},
 			};
 
@@ -252,15 +255,15 @@ export class OrderInterface {
 					shipping_fee_charged, total, shipping_cost, paid_at, created_by, created_at, payment_currency,
 					payment_method, payment_account_id, payment_slip_url, payment_proof_submitted_at, payment_status,
 					service_mode, amount_tendered, change_amount, payment_reference, note, queue_no, queue_date, fulfillment_status)
-					VALUES (?, ?, ?, ?, 'completed', ?, 0, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)`,
-				args: [ orderId, payload.store_id, orderNo, payload.service_mode, subtotal, vatAmount, total, now,
+					VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)`,
+				args: [ orderId, payload.store_id, orderNo, payload.service_mode, subtotal, discount, vatAmount, total, now,
 					payload.created_by, now, String(store.currency || "LAK"), payload.payment_method, paymentAccountId,
 					payload.payment_slip_url || null, payload.payment_slip_url ? now : null, payload.service_mode,
 					amountTendered, amountTendered - total, payload.payment_reference || null, payload.note || null, queue.queueNo, queue.queueDate,
 					Number(store.pickup_queue_enabled) && payload.service_mode === "pickup" ? "waiting_pickup" : null ],
 			} ];
 			for (const promotion of appliedPromotions) {
-				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id, promotion.gift_qty, now ] });
+				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, discount_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id || "", promotion.gift_qty, promotion.discount_amount, now ] });
 			}
 
 			const consumedByProduct = new Map<string, number>();

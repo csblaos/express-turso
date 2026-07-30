@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type Product = { id: string; name: string; sku: string };
 type PromotionType = "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount";
-type Promotion = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string | null; gift_qty: number | null; discount_method: "percent" | "fixed" | null; discount_value: number | null; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number; application_count?: number; gift_quantity?: number };
+type Promotion = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id: string | null; qualifying_qty: number | null; minimum_subtotal: number | null; gift_product_id: string | null; gift_qty: number | null; discount_method: "percent" | "fixed" | null; discount_value: number | null; max_applications_per_bill: number | null; max_discount_amount_per_bill: number | null; starts_at: string | null; ends_at: string | null; is_active: number; gift_product_name?: string; qualifying_product_name?: string; order_count?: number; application_count?: number; gift_quantity?: number };
 type Envelope<T> = { data: T };
 
 const { apiFetch } = useApiClient();
 const { currentStoreId, hydrateAuthState } = useAuthSession();
 const { locale } = useI18n();
+const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 const appToast = useAppToast();
 const busy = ref(false);
 const saving = ref(false);
@@ -26,7 +28,7 @@ const typeFilter = ref<"all" | Promotion["type"]>("all");
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [ 10, 20, 50 ];
-const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], apply_mode: "manual" as Promotion["apply_mode"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent" as "percent" | "fixed", discount_value: 10, starts_at: "", ends_at: "", is_active: true });
+const form = reactive({ name: "", type: "buy_x_get_y" as Promotion["type"], apply_mode: "manual" as Promotion["apply_mode"], qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent" as "percent" | "fixed", discount_value: 10, unlimited_per_bill: true, max_applications_per_bill: 1, max_discount_amount_per_bill: 0, starts_at: "", ends_at: "", is_active: true });
 const noEndDate = ref(true);
 const modalInputClass = "w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#1b1713]";
 const modalSelectClass = "w-full [&_button]:min-h-11 [&_button]:rounded-md [&_button]:border-neutral-200 [&_button]:bg-white dark:[&_button]:border-[#3a332a] dark:[&_button]:bg-[#1b1713]";
@@ -43,6 +45,11 @@ const discountCopy = computed(() => locale.value === "lo"
 	: locale.value === "en"
 		? { description: "Manage free gifts and order discounts.", direct: "Order discount", threshold: "Minimum spend discount", method: "Discount method", percent: "Percentage (%)", fixed: "Fixed amount", value: "Discount value", discount: "Discount", applyMode: "Promotion application" }
 		: { description: "จัดการของแถมและส่วนลดทั้งบิล", direct: "ลดทั้งบิล", threshold: "ยอดถึงเกณฑ์แล้วลด", method: "รูปแบบส่วนลด", percent: "เปอร์เซ็นต์ (%)", fixed: "จำนวนเงิน", value: "มูลค่าส่วนลด", discount: "ลด", applyMode: "วิธีใช้โปรโมชั่น" });
+const capCopy = computed(() => locale.value === "lo"
+	? { unlimited: "ບໍ່ຈຳກັດຕໍ່ບິນ", unlimitedHint: "ປິດເພື່ອກຳນົດຈຳນວນສູງສຸດຕໍ່ບິນ", maxApplications: "ສູງສຸດຕໍ່ບິນ (ຈຳນວນຊຸດ)", maxDiscount: "ສ່ວນຫຼຸດສູງສຸດຕໍ່ບິນ", unlimitedShort: "ບໍ່ຈຳກັດ", maxSets: (value: number) => `ສູງສຸດ ${value} ຊຸດ/ບິນ`, maxAmount: (value: string) => `ສູງສຸດ ${value}/ບິນ` }
+	: locale.value === "en"
+		? { unlimited: "Unlimited per bill", unlimitedHint: "Turn this off to set a maximum per bill.", maxApplications: "Maximum per bill (applications)", maxDiscount: "Maximum discount per bill", unlimitedShort: "Unlimited", maxSets: (value: number) => `Maximum ${value} applications/bill`, maxAmount: (value: string) => `Maximum ${value}/bill` }
+		: { unlimited: "ไม่จำกัดต่อบิล", unlimitedHint: "ปิดเพื่อกำหนดจำนวนสูงสุดต่อบิล", maxApplications: "สูงสุดต่อบิล (จำนวนชุด)", maxDiscount: "ส่วนลดสูงสุดต่อบิล", unlimitedShort: "ไม่จำกัด", maxSets: (value: number) => `สูงสุด ${value} ชุด/บิล`, maxAmount: (value: string) => `สูงสุด ${value}/บิล` });
 
 const productOptions = computed(() => products.value.map((product) => ({ label: `${product.name}${product.sku ? ` · ${product.sku}` : ""}`, value: product.id })));
 const selectedQualifyingProduct = computed(() => products.value.find((product) => product.id === form.qualifying_product_id));
@@ -61,6 +68,10 @@ const minimumSubtotalInput = computed({
 const fixedDiscountInput = computed({
 	get: () => displayMoneyInput(Number(form.discount_value || 0)),
 	set: (value: string | number) => { form.discount_value = parseMoneyInput(value); },
+});
+const maxDiscountInput = computed({
+	get: () => displayMoneyInput(Number(form.max_discount_amount_per_bill || 0)),
+	set: (value: string | number) => { form.max_discount_amount_per_bill = parseMoneyInput(value); },
 });
 const filteredItems = computed(() => {
 	const keyword = search.value.trim().toLowerCase();
@@ -112,15 +123,14 @@ function goToPage(page: number) { currentPage.value = Math.min(Math.max(1, page)
 function reset(value?: Promotion) {
 	editing.value = value || null;
 	noEndDate.value = !value?.ends_at;
-	Object.assign(form, value ? { name: value.name, type: value.type, apply_mode: value.apply_mode || "manual", qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id || "", gift_qty: value.gift_qty || 1, discount_method: value.discount_method || "percent", discount_value: value.discount_value || 10, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", apply_mode: "manual", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent", discount_value: 10, starts_at: "", ends_at: "", is_active: true });
+	const existingLimit = value && (value.type === "buy_x_get_y" || value.type === "cart_total_gift") ? value.max_applications_per_bill : value?.max_discount_amount_per_bill;
+	Object.assign(form, value ? { name: value.name, type: value.type, apply_mode: value.apply_mode || "manual", qualifying_product_id: value.qualifying_product_id || "", qualifying_qty: value.qualifying_qty || 1, minimum_subtotal: value.minimum_subtotal || 0, gift_product_id: value.gift_product_id || "", gift_qty: value.gift_qty || 1, discount_method: value.discount_method || "percent", discount_value: value.discount_value || 10, unlimited_per_bill: !existingLimit, max_applications_per_bill: value.max_applications_per_bill || 1, max_discount_amount_per_bill: value.max_discount_amount_per_bill || 0, starts_at: value.starts_at?.slice(0, 10) || "", ends_at: value.ends_at?.slice(0, 10) || "", is_active: Boolean(value.is_active) } : { name: "", type: "buy_x_get_y", apply_mode: "manual", qualifying_product_id: "", qualifying_qty: 1, minimum_subtotal: 0, gift_product_id: "", gift_qty: 1, discount_method: "percent", discount_value: 10, unlimited_per_bill: true, max_applications_per_bill: 1, max_discount_amount_per_bill: 0, starts_at: "", ends_at: "", is_active: true });
 	open.value = true;
 }
 function formatMoney(value: number | null) { return new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-US").format(Number(value || 0)); }
 function formatPromotionDateTime(value: string | null | undefined) {
 	if (!value) return "—";
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return value;
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Vientiane" }).format(date);
+	return formatAppDateTime(value, appLocale.value);
 }
 function formatPeriod(item: Promotion) { return `${formatPromotionDateTime(item.starts_at)} – ${item.ends_at ? formatPromotionDateTime(item.ends_at) : scheduleCopy.value.noEnd}`; }
 function promotionBoundary(date: string, endOfDay = false) {
@@ -129,16 +139,20 @@ function promotionBoundary(date: string, endOfDay = false) {
 function discountLabel(method: "percent" | "fixed" | null, value: number | null) { return method === "percent" ? `${formatMoney(value)}%` : formatMoney(value); }
 function typeLabel(type: PromotionType) { return type === "buy_x_get_y" ? copy.value.buy : type === "cart_total_gift" ? copy.value.total : type === "cart_discount" ? discountCopy.value.direct : discountCopy.value.threshold; }
 function itemCondition(item: Promotion) {
-	if (item.type === "buy_x_get_y") return `${item.qualifying_product_name || "—"} × ${item.qualifying_qty || 0} → ${item.gift_product_name || "—"} × ${item.gift_qty}`;
-	if (item.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${item.gift_product_name || "—"} × ${item.gift_qty}`;
+	const cap = item.type === "buy_x_get_y" || item.type === "cart_total_gift"
+		? item.max_applications_per_bill ? capCopy.value.maxSets(item.max_applications_per_bill) : capCopy.value.unlimitedShort
+		: item.max_discount_amount_per_bill ? capCopy.value.maxAmount(formatMoney(item.max_discount_amount_per_bill)) : capCopy.value.unlimitedShort;
+	if (item.type === "buy_x_get_y") return `${item.qualifying_product_name || "—"} × ${item.qualifying_qty || 0} → ${item.gift_product_name || "—"} × ${item.gift_qty} · ${cap}`;
+	if (item.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${item.gift_product_name || "—"} × ${item.gift_qty} · ${cap}`;
 	const discount = `${discountCopy.value.discount} ${discountLabel(item.discount_method, item.discount_value)}`;
-	return item.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ${discount}` : discount;
+	return `${item.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(item.minimum_subtotal)} → ` : ""}${discount} · ${cap}`;
 }
 const previewText = computed(() => {
-	if (form.type === "buy_x_get_y") return `${copy.value.buy}: ${selectedQualifyingProduct.value?.name || "…"} × ${form.qualifying_qty} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}`;
-	if (form.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree}`;
+	const cap = form.unlimited_per_bill ? capCopy.value.unlimitedShort : form.type === "buy_x_get_y" || form.type === "cart_total_gift" ? capCopy.value.maxSets(form.max_applications_per_bill) : capCopy.value.maxAmount(formatMoney(form.max_discount_amount_per_bill));
+	if (form.type === "buy_x_get_y") return `${copy.value.buy}: ${selectedQualifyingProduct.value?.name || "…"} × ${form.qualifying_qty} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree} · ${cap}`;
+	if (form.type === "cart_total_gift") return `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${selectedGiftProduct.value?.name || "…"} × ${form.gift_qty} ${copy.value.giftFree} · ${cap}`;
 	const discount = `${discountCopy.value.discount} ${discountLabel(form.discount_method, form.discount_value)}`;
-	return form.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ${discount}` : discount;
+	return `${form.type === "cart_threshold_discount" ? `${copy.value.minimum} ${formatMoney(form.minimum_subtotal)} → ` : ""}${discount} · ${cap}`;
 });
 
 async function load() {
@@ -158,7 +172,8 @@ async function save() {
 		|| ((form.type === "buy_x_get_y" || form.type === "cart_total_gift") && (!form.gift_product_id || form.gift_qty < 1))
 		|| (form.type === "buy_x_get_y" && (!form.qualifying_product_id || form.qualifying_qty < 1))
 		|| ((form.type === "cart_total_gift" || form.type === "cart_threshold_discount") && form.minimum_subtotal <= 0)
-		|| ((form.type === "cart_discount" || form.type === "cart_threshold_discount") && (form.discount_value <= 0 || (form.discount_method === "percent" && form.discount_value > 100)));
+		|| ((form.type === "cart_discount" || form.type === "cart_threshold_discount") && (form.discount_value <= 0 || (form.discount_method === "percent" && form.discount_value > 100)))
+		|| (!form.unlimited_per_bill && ((form.type === "buy_x_get_y" || form.type === "cart_total_gift") ? form.max_applications_per_bill < 1 : form.max_discount_amount_per_bill <= 0));
 	if (invalid) {
 		appToast.error({ title: locale.value === "lo" ? "ກະລຸນາກອກຂໍ້ມູນໂປຣໂມຊັນໃຫ້ຄົບ" : locale.value === "en" ? "Complete the required promotion details" : "กรอกข้อมูลโปรโมชั่นที่จำเป็นให้ครบ", timeout: 3200 });
 		return;
@@ -166,7 +181,7 @@ async function save() {
 	saving.value = true;
 	try {
 		const isGift = form.type === "buy_x_get_y" || form.type === "cart_total_gift";
-		const payload = { ...form, name: form.name.trim(), store_id: currentStoreId.value, qualifying_product_id: form.type === "buy_x_get_y" ? form.qualifying_product_id : null, qualifying_qty: form.type === "buy_x_get_y" ? form.qualifying_qty : null, minimum_subtotal: form.type === "cart_total_gift" || form.type === "cart_threshold_discount" ? form.minimum_subtotal : null, gift_product_id: isGift ? form.gift_product_id : null, gift_qty: isGift ? form.gift_qty : null, discount_method: isGift ? null : form.discount_method, discount_value: isGift ? null : form.discount_value, starts_at: form.starts_at ? promotionBoundary(form.starts_at) : null, ends_at: form.ends_at ? promotionBoundary(form.ends_at, true) : null };
+		const payload = { ...form, name: form.name.trim(), store_id: currentStoreId.value, qualifying_product_id: form.type === "buy_x_get_y" ? form.qualifying_product_id : null, qualifying_qty: form.type === "buy_x_get_y" ? form.qualifying_qty : null, minimum_subtotal: form.type === "cart_total_gift" || form.type === "cart_threshold_discount" ? form.minimum_subtotal : null, gift_product_id: isGift ? form.gift_product_id : null, gift_qty: isGift ? form.gift_qty : null, discount_method: isGift ? null : form.discount_method, discount_value: isGift ? null : form.discount_value, max_applications_per_bill: isGift && !form.unlimited_per_bill ? form.max_applications_per_bill : null, max_discount_amount_per_bill: !isGift && !form.unlimited_per_bill ? form.max_discount_amount_per_bill : null, starts_at: form.starts_at ? promotionBoundary(form.starts_at) : null, ends_at: form.ends_at ? promotionBoundary(form.ends_at, true) : null };
 		await apiFetch(editing.value ? `/promotions/${editing.value.id}?store_id=${currentStoreId.value}` : "/promotions", { method: editing.value ? "PUT" : "POST", body: payload });
 		open.value = false;
 		appToast.success({ title: locale.value === "lo" ? "ບັນທຶກໂປຣໂມຊັນແລ້ວ" : locale.value === "en" ? "Promotion saved" : "บันทึกโปรโมชั่นแล้ว" });
@@ -198,6 +213,7 @@ async function togglePromotion(item: Promotion) {
 				qualifying_qty: item.qualifying_qty, minimum_subtotal: item.minimum_subtotal,
 				gift_product_id: item.gift_product_id, gift_qty: item.gift_qty,
 				discount_method: item.discount_method, discount_value: item.discount_value,
+				max_applications_per_bill: item.max_applications_per_bill, max_discount_amount_per_bill: item.max_discount_amount_per_bill,
 				starts_at: item.starts_at, ends_at: item.ends_at, apply_mode: item.apply_mode || "manual", is_active: !Boolean(item.is_active)
 			}
 		});
@@ -320,6 +336,14 @@ watch(totalPages, () => { if (currentPage.value > totalPages.value) currentPage.
 								<UFormField v-if="form.type === 'cart_total_gift' || form.type === 'cart_threshold_discount'" :label="copy.minimum"><UInput v-model="minimumSubtotalInput" type="text" inputmode="numeric" autocomplete="off" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField>
 								<div v-if="form.type === 'buy_x_get_y' || form.type === 'cart_total_gift'" class="border-t border-neutral-100 pt-3 dark:border-[#332d26]"><UFormField :label="copy.gift"><USelect v-model="form.gift_product_id" size="lg" color="neutral" :items="productOptions" :placeholder="copy.selectProduct" :class="modalSelectClass" /></UFormField><UFormField :label="copy.giftQty" class="mt-3"><UInput v-model.number="form.gift_qty" type="number" min="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" /></UFormField></div>
 								<div v-else class="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-3 sm:grid-cols-2 dark:border-[#332d26]"><UFormField :label="discountCopy.method"><USelect v-model="form.discount_method" size="lg" color="neutral" :items="[{ label: discountCopy.percent, value: 'percent' }, { label: discountCopy.fixed, value: 'fixed' }]" :class="modalSelectClass" /></UFormField><UFormField :label="discountCopy.value"><UInput v-if="form.discount_method === 'percent'" v-model.number="form.discount_value" type="number" min="0.01" max="100" step="0.01" size="lg" color="neutral" placeholder="10" :class="modalInputClass" /><UInput v-else v-model="fixedDiscountInput" type="text" inputmode="numeric" autocomplete="off" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" /></UFormField></div>
+								<div class="border-t border-neutral-100 pt-3 dark:border-[#332d26]">
+									<UCheckbox v-model="form.unlimited_per_bill" :label="capCopy.unlimited" />
+									<p class="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">{{ capCopy.unlimitedHint }}</p>
+									<UFormField v-if="!form.unlimited_per_bill" class="mt-3" :label="form.type === 'buy_x_get_y' || form.type === 'cart_total_gift' ? capCopy.maxApplications : capCopy.maxDiscount">
+										<UInput v-if="form.type === 'buy_x_get_y' || form.type === 'cart_total_gift'" v-model.number="form.max_applications_per_bill" type="number" min="1" step="1" size="lg" color="neutral" placeholder="1" :class="modalInputClass" />
+										<UInput v-else v-model="maxDiscountInput" type="text" inputmode="numeric" autocomplete="off" size="lg" color="neutral" :placeholder="copy.minimumPlaceholder" :class="modalInputClass" />
+									</UFormField>
+								</div>
 							</div>
 						</section>
 						<section class="rounded-md border border-neutral-200 bg-white p-4 dark:border-[#3a332a] dark:bg-[#221d18]">

@@ -39,6 +39,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"receipt_show_payment_method",
 	"receipt_show_queue",
 	"pickup_queue_enabled",
+	"business_day_start_minutes",
 ];
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];
@@ -121,6 +122,13 @@ export class StoreComponent {
 		const updateData = pickUpdateFields(data || {});
 		if (typeof updateData.cost_method === "string" && !ALLOWED_COST_METHODS.has(updateData.cost_method)) {
 			throw ApiError.BadRequestError("Invalid cost method");
+		}
+		if (updateData.business_day_start_minutes !== undefined) {
+			const minutes = Number(updateData.business_day_start_minutes);
+			if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) {
+				throw ApiError.BadRequestError("Invalid business day start time");
+			}
+			updateData.business_day_start_minutes = minutes;
 		}
 		if (actor.systemRole !== "system_admin") {
 			delete (updateData as Partial<Store>).owner_user_id;

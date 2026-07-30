@@ -494,6 +494,10 @@ const productDiscount = computed(() =>
 const promotionDiscount = computed(() => Math.min(subtotal.value, availablePromotions.value
 	.filter((promotion) => selectedPromotionIds.value.includes(promotion.promotion_id))
 	.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0)));
+const appliedPromotions = computed(() => availablePromotions.value.filter(
+	(promotion) => promotion.applications > 0 && selectedPromotionIds.value.includes(promotion.promotion_id),
+));
+const appliedPromotionCount = computed(() => appliedPromotions.value.length);
 const discount = computed(() => productDiscount.value + promotionDiscount.value);
 
 const tax = computed(() => {
@@ -1044,8 +1048,9 @@ function unlockPaymentModalScroll() {
 	paymentModalBodyOverflowSnapshot.value = null;
 }
 
-function openPaymentModal() {
+async function openPaymentModal() {
 	if (!cartItems.value.length) return;
+	await evaluatePromotions();
 	selectedPaymentMethod.value = null;
 	checkoutError.value = null;
 	cashTendered.value = String(total.value);
@@ -1638,8 +1643,32 @@ onBeforeUnmount(() => {
 											</div>
 
 					<div v-if="availablePromotions.length" class="mx-1 mb-2 rounded-md border border-emerald-200 bg-emerald-50 p-2.5 dark:border-emerald-900/70 dark:bg-emerald-950/30">
-						<div class="mb-2 flex items-center justify-between"><p class="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{{ $t('pos.availablePromotions') }}</p><UIcon v-if="promotionsPending" name="i-heroicons-arrow-path" class="h-4 w-4 animate-spin text-emerald-700" /></div>
-						<label v-for="promotion in availablePromotions" :key="promotion.promotion_id" class="mb-1 flex cursor-pointer items-center gap-2 rounded bg-white/70 px-2 py-1.5 text-xs dark:bg-black/10"><input v-model="selectedPromotionIds" type="checkbox" :value="promotion.promotion_id" :disabled="promotion.apply_mode === 'automatic'" class="accent-emerald-600"><span class="min-w-0 flex-1 truncate">{{ promotion.name }}</span><span class="font-medium">{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}</span></label>
+						<div class="mb-2 flex items-center justify-between gap-2">
+							<div>
+								<p class="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{{ $t('pos.availablePromotions') }}</p>
+								<p class="mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">{{ $t('pos.appliedPromotionCount', { count: appliedPromotionCount }) }}</p>
+							</div>
+							<UIcon v-if="promotionsPending" name="i-heroicons-arrow-path" class="h-4 w-4 animate-spin text-emerald-700" />
+						</div>
+						<label
+							v-for="promotion in availablePromotions"
+							:key="promotion.promotion_id"
+							class="mb-1 flex items-center gap-2 rounded bg-white/70 px-2 py-1.5 text-xs dark:bg-black/10"
+							:class="promotion.applications > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-55'"
+						>
+							<input
+								v-model="selectedPromotionIds"
+								type="checkbox"
+								:value="promotion.promotion_id"
+								:disabled="promotion.apply_mode === 'automatic' || promotion.applications <= 0"
+								class="accent-emerald-600"
+							>
+							<span class="min-w-0 flex-1 truncate">
+								{{ promotion.name }}
+								<span v-if="promotion.apply_mode === 'automatic'" class="ml-1 text-[9px] text-emerald-600">({{ $t('pos.automaticPromotion') }})</span>
+							</span>
+							<span class="font-medium">{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}</span>
+						</label>
 					</div>
 					<div class="sticky bottom-0 z-10 border-t border-[#ece6dc] bg-[rgba(251,251,248,0.96)] px-1 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-[#3b342c] dark:bg-[rgba(21,18,15,0.96)]">
 						<div class="space-y-1.5">
@@ -2101,6 +2130,16 @@ onBeforeUnmount(() => {
 														<span class="text-stone-500 dark:text-stone-400">ส่วนลด</span>
 														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">
 															{{ discount > 0 ? `-${formatMoney(discount)}` : formatMoney(discount) }}
+														</span>
+													</div>
+													<div
+														v-for="promotion in appliedPromotions"
+														:key="promotion.promotion_id"
+														class="flex items-center justify-between gap-3 rounded-md bg-emerald-50 px-2.5 py-2 text-xs dark:bg-emerald-950/30"
+													>
+														<span class="min-w-0 truncate font-medium text-emerald-800 dark:text-emerald-200">{{ promotion.name }}</span>
+														<span class="shrink-0 font-semibold text-emerald-700 tabular-nums dark:text-emerald-300">
+															{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}
 														</span>
 													</div>
 													<div class="flex items-center justify-between gap-3 text-sm">

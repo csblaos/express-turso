@@ -11,9 +11,9 @@ try {
 	const { DbConn } = await import("../src/connections/DbConn.ts");
 	await DbConn.connect();
 	const db = DbConn.getClient();
-	await db.execute(`CREATE TABLE orders(id TEXT PRIMARY KEY,store_id TEXT,status TEXT,payment_status TEXT,total REAL,paid_at TEXT,closed_at TEXT,created_at TEXT,created_by TEXT,payment_method TEXT,service_mode TEXT,channel TEXT)`);
+	await db.execute(`CREATE TABLE orders(id TEXT PRIMARY KEY,store_id TEXT,status TEXT,payment_status TEXT,subtotal REAL DEFAULT 0,discount REAL DEFAULT 0,vat_amount REAL DEFAULT 0,shipping_fee_charged REAL DEFAULT 0,total REAL,shipping_cost REAL DEFAULT 0,paid_at TEXT,closed_at TEXT,created_at TEXT,created_by TEXT,payment_method TEXT,service_mode TEXT,channel TEXT)`);
 	await db.execute(`CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT,product_id TEXT,qty_base REAL,line_total REAL,line_status TEXT,is_gift INTEGER,cost_base_at_sale REAL,cost_source_at_sale TEXT)`);
-	await db.execute(`CREATE TABLE products(id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sku TEXT,active INTEGER,deleted_at TEXT,inventory_mode TEXT,low_stock_threshold REAL,category_id TEXT)`);
+	await db.execute(`CREATE TABLE products(id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sku TEXT,active INTEGER,deleted_at TEXT,inventory_mode TEXT,low_stock_threshold REAL,category_id TEXT,cost_base REAL DEFAULT 0)`);
 	await db.execute(`CREATE TABLE product_categories(id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sort_order INTEGER)`);
 	await db.execute(`CREATE TABLE inventory_balances(store_id TEXT,product_id TEXT,available_base REAL)`);
 	await db.execute("UPDATE stores SET currency='LAK',low_stock_threshold=5 WHERE id='report-store'").catch(() => undefined);
@@ -26,10 +26,10 @@ try {
 		["open","open","unpaid",900,"cash"],
 		["cancelled","cancelled","unpaid",800,"cash"],
 	];
-	for (const [id,status,paymentStatus,total,method] of orders) await db.execute({sql:"INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",args:[id,"report-store",status,paymentStatus,total,status==="completed"?paidAt:null,status==="cancelled"?paidAt:null,paidAt,user,method,"quick_sale","pos"]});
+	for (const [id,status,paymentStatus,total,method] of orders) await db.execute({sql:"INSERT INTO orders(id,store_id,status,payment_status,subtotal,total,paid_at,closed_at,created_at,created_by,payment_method,service_mode,channel) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",args:[id,"report-store",status,paymentStatus,total,total,status==="completed"?paidAt:null,status==="cancelled"?paidAt:null,paidAt,user,method,"quick_sale","pos"]});
 	await db.execute("INSERT INTO product_categories VALUES('drinks','report-store','Drinks',1)");
-	await db.execute("INSERT INTO products VALUES('known','report-store','Known','KNOWN',1,NULL,'tracked',3,'drinks')");
-	await db.execute("INSERT INTO products VALUES('unknown','report-store','Unknown','UNKNOWN',1,NULL,'untracked',NULL,NULL)");
+	await db.execute("INSERT INTO products(id,store_id,name,sku,active,deleted_at,inventory_mode,low_stock_threshold,category_id,cost_base) VALUES('known','report-store','Known','KNOWN',1,NULL,'tracked',3,'drinks',200)");
+	await db.execute("INSERT INTO products(id,store_id,name,sku,active,deleted_at,inventory_mode,low_stock_threshold,category_id,cost_base) VALUES('unknown','report-store','Unknown','UNKNOWN',1,NULL,'untracked',NULL,NULL,0)");
 	await db.execute("INSERT INTO inventory_balances VALUES('report-store','known',2)");
 	await db.execute("INSERT INTO order_items VALUES('line-1','paid','known',2,800,'sent',0,200,'purchase')");
 	await db.execute("INSERT INTO order_items VALUES('gift-1','paid','known',1,0,'sent',1,200,'purchase')");
@@ -41,6 +41,8 @@ try {
 	assert.equal(report.summary.revenue, 1000);
 	assert.equal(report.summary.bill_count, 1);
 	assert.equal(report.summary.cancelled_refunded_count, 1);
+	assert.equal(report.summary.gross_sales, 1000);
+	assert.equal(report.summary.discount, 0);
 	assert.equal(report.profitability.known_cost, 600, "known cost includes the gift cost");
 	assert.equal(report.profitability.unknown_cost_revenue, 200);
 	assert.equal(report.top_products.find((item) => item.id === "known")?.quantity, 2, "top products exclude gifts and cancelled lines");
@@ -49,6 +51,10 @@ try {
 	assert.equal(report.period.from.endsWith("17:00:00.000Z"), true);
 	assert.equal(report.sales_series.length,24,"today includes empty hourly buckets");
 	assert.equal(report.order_type_mix[0].type,"quick_sale");
+	assert.equal(report.product_mix.length,2);
+	assert.equal(report.category_performance[0].name,"Drinks");
+	assert.equal(report.operational_signals.out_of_stock_count,0);
+	assert.equal(report.operational_signals.inventory_value,400);
 	assert.equal(report.heatmap.length,1);
 	assert.equal((await ReportInterface.dashboard("report-store", {preset:"7d",timezoneOffset:420})).summary.revenue, 1000);
 	const products=await ReportInterface.products("report-store",{preset:"today",timezoneOffset:420},{sort:"revenue",order:"desc",page:1,limit:20});
