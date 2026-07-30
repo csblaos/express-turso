@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { StoreComponent } from "@components/StoreComponent";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
+import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateStoreInput } from "@models/Store";
 import { appendServerTiming } from "@utils/ServerTiming";
@@ -55,6 +56,10 @@ export class StoreController {
 	});
 
 	static delete = SyncFunction.handler(async (req: Request, res: Response) => {
+		const confirmation = String((req.body as Record<string, unknown> | undefined)?.confirmation || "");
+		if (confirmation !== "confirm") {
+			throw ApiError.BadRequestError("Type confirm to permanently delete this store");
+		}
 		await withStoreTiming(res, () => StoreComponent.delete(req.requestId, req.params.id as string, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",

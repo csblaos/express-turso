@@ -173,14 +173,19 @@ export class StoreComponent {
 
 	static async delete(requestId: string, id: string, actor: StoreAccessActor): Promise<void> {
 		void requestId;
+		if (actor.systemRole !== "superadmin" && actor.systemRole !== "system_admin") {
+			throw ApiError.ForbiddenError("Only Super Admin can permanently delete a store");
+		}
 		const store = await StoreInterface.findAccessibleById(id, actor);
 		if (!store) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
 
+		const assetKeys = await StoreInterface.findAssetKeys(id);
 		const ok = await StoreInterface.delete(id);
 		if (!ok) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_NOT_FOUND);
 		}
+		await Promise.allSettled(assetKeys.map((assetKey) => R2Storage.deleteObject(assetKey)));
 	}
 }

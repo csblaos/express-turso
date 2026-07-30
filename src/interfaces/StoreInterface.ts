@@ -187,6 +187,22 @@ export class StoreInterface {
 		return Number(result.rows[0]?.total || 0);
 	}
 
+	static async findAssetKeys(id: string): Promise<string[]> {
+		await StoreInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `
+				SELECT logo_url AS asset_key FROM stores WHERE id = ?
+				UNION
+				SELECT image_url AS asset_key FROM products WHERE store_id = ? AND image_url IS NOT NULL
+				UNION
+				SELECT qr_image_url AS asset_key FROM store_payment_accounts WHERE store_id = ? AND qr_image_url IS NOT NULL
+			`,
+			args: [ id, id, id ],
+		});
+		return result.rows.map((row) => String(row.asset_key || "").trim()).filter(Boolean);
+	}
+
 	static async create(payload: CreateStoreInput): Promise<Store> {
 		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
@@ -247,12 +263,109 @@ export class StoreInterface {
 	static async delete(id: string): Promise<boolean> {
 		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
-		const result = await db.execute({
-			sql: "DELETE FROM stores WHERE id = ?",
-			args: [ id ],
-		});
+		const existing = await StoreInterface.findById(id);
+		if (!existing) return false;
 
-		return result.rowsAffected > 0;
+		const tableResult = await db.execute(`
+			SELECT name
+			FROM sqlite_master
+			WHERE type = 'table'
+				AND name NOT LIKE 'sqlite_%'
+				AND name <> 'stores'
+			ORDER BY name
+		`);
+		const storeScopedTables: string[] = [];
+		const parentTablesByTable = new Map<string, string[]>();
+		for (const row of tableResult.rows) {
+			const tableName = String(row.name || "");
+			if (!tableName) continue;
+			const quotedTable = StoreInterface.quoteIdentifier(tableName);
+			const columnResult = await db.execute(`PRAGMA table_info(${quotedTable})`);
+			if (columnResult.rows.some((column) => String(column.name || "") === "store_id")) {
+				storeScopedTables.push(tableName);
+				const foreignKeyResult = await db.execute(`PRAGMA foreign_key_list(${quotedTable})`);
+				parentTablesByTable.set(
+					tableName,
+					foreignKeyResult.rows.map((foreignKey) => String(foreignKey.table || "")).filter(Boolean),
+				);
+			}
+		}
+		const deletionOrder = StoreInterface.orderStoreScopedTablesForDeletion(
+			storeScopedTables,
+			parentTablesByTable,
+		);
+
+		const transaction = await db.transaction("write");
+		try {
+			// Delete direct store-scoped rows first. Child records without store_id are
+			// removed by their existing ON DELETE CASCADE constraints.
+			for (const tableName of deletionOrder) {
+				await transaction.execute({
+					sql: `DELETE FROM ${StoreInterface.quoteIdentifier(tableName)} WHERE store_id = ?`,
+					args: [ id ],
+				});
+			}
+			const result = await transaction.execute({
+				sql: "DELETE FROM stores WHERE id = ?",
+				args: [ id ],
+			});
+			await transaction.commit();
+			return result.rowsAffected > 0;
+		} catch (error) {
+			if (!transaction.closed) {
+				try {
+					await transaction.rollback();
+				} catch {
+					// Preserve the original deletion error.
+				}
+			}
+			throw error;
+		} finally {
+			transaction.close();
+		}
+	}
+
+	private static quoteIdentifier(value: string): string {
+		return `"${value.replace(/"/g, "\"\"")}"`;
+	}
+
+	private static orderStoreScopedTablesForDeletion(
+		tables: string[],
+		parentTablesByTable: Map<string, string[]>,
+	): string[] {
+		const tableSet = new Set(tables);
+		const incomingCount = new Map(tables.map((table) => [ table, 0 ]));
+		const parentsByChild = new Map<string, string[]>();
+		for (const table of tables) {
+			const parents = (parentTablesByTable.get(table) || []).filter((parent) => tableSet.has(parent));
+			parentsByChild.set(table, parents);
+			for (const parent of parents) {
+				incomingCount.set(parent, (incomingCount.get(parent) || 0) + 1);
+			}
+		}
+
+		const queue = tables.filter((table) => (incomingCount.get(table) || 0) === 0).sort();
+		const ordered: string[] = [];
+		while (queue.length > 0) {
+			const child = queue.shift();
+			if (!child) break;
+			ordered.push(child);
+			for (const parent of parentsByChild.get(child) || []) {
+				const nextCount = (incomingCount.get(parent) || 0) - 1;
+				incomingCount.set(parent, nextCount);
+				if (nextCount === 0) {
+					queue.push(parent);
+					queue.sort();
+				}
+			}
+		}
+
+		// Cycles should not exist in store-owned tables. Keep deletion deterministic
+		// if a future schema introduces one; the transaction will still fail safely.
+		for (const table of tables.sort()) {
+			if (!ordered.includes(table)) ordered.push(table);
+		}
+		return ordered;
 	}
 
 	private static mapRow(row: Record<string, unknown>): Store {

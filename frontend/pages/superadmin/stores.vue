@@ -34,7 +34,8 @@ const copy = computed(() => locale.value === "lo" ? {
 	noResults: "ບໍ່ພົບຮ້ານຕາມເງື່ອນໄຂ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", store: "ຮ້ານ", owner: "ເຈົ້າຂອງ", type: "ປະເພດ", currency: "ສະກຸນເງິນ", address: "ທີ່ຢູ່", created: "ສ້າງເມື່ອ", action: "ຈັດການ", manage: "ຈັດການ",
 	perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ໜ້າຖັດໄປ", page: "ໜ້າ", of: "ຈາກ",
 	createTitle: "ເພີ່ມຮ້ານ", createDescription: "ສ້າງຮ້ານໃໝ່ໃນຖານຂໍ້ມູນ", detailTitle: "ລາຍລະອຽດຮ້ານ", detailDescription: "ແກ້ໄຂຂໍ້ມູນຮ້ານໃນຖານຂໍ້ມູນ", name: "ຊື່ຮ້ານ", phone: "ເບີໂທ", headerColor: "ສີຫົວເອກະສານ", cancel: "ຍົກເລີກ", close: "ປິດ", save: "ບັນທຶກ", create: "ສ້າງຮ້ານ", ownerCreated: "ເຈົ້າຂອງ: {owner} · ສ້າງເມື່ອ {date}",
-	noPermission: "ບໍ່ມີສິດໃຊ້ງານ", noPermissionHint: "ບັນຊີນີ້ບໍ່ສາມາດຈັດການຮ້ານໄດ້", loadFailed: "ໂຫຼດຮ້ານບໍ່ສຳເລັດ", createSuccess: "ສ້າງຮ້ານແລ້ວ", savedDb: "ບັນທຶກໃນຖານຂໍ້ມູນແລ້ວ", createFailed: "ສ້າງຮ້ານບໍ່ສຳເລັດ", updateSuccess: "ອັບເດດຮ້ານແລ້ວ", saveFailed: "ບັນທຶກບໍ່ສຳເລັດ"
+	noPermission: "ບໍ່ມີສິດໃຊ້ງານ", noPermissionHint: "ບັນຊີນີ້ບໍ່ສາມາດຈັດການຮ້ານໄດ້", loadFailed: "ໂຫຼດຮ້ານບໍ່ສຳເລັດ", createSuccess: "ສ້າງຮ້ານແລ້ວ", savedDb: "ບັນທຶກໃນຖານຂໍ້ມູນແລ້ວ", createFailed: "ສ້າງຮ້ານບໍ່ສຳເລັດ", updateSuccess: "ອັບເດດຮ້ານແລ້ວ", saveFailed: "ບັນທຶກບໍ່ສຳເລັດ",
+	deleteStore: "ລົບຮ້ານ", deleteTitle: "ລົບຮ້ານຖາວອນ", deleteDescription: "ການລົບນີ້ບໍ່ສາມາດກູ້ຄືນໄດ້", deleteWarning: "ຂໍ້ມູນທັງໝົດຂອງຮ້ານ ລວມທັງອໍເດີ, ສິນຄ້າ, ສະຕັອກ, ສະມາຊິກ ແລະ ລາຍງານຈະຖືກລົບຖາວອນ.", typeConfirm: "ພິມ confirm ເພື່ອຢືນຢັນ", deletedSuccess: "ລົບຮ້ານແລ້ວ", deleteFailed: "ລົບຮ້ານບໍ່ສຳເລັດ"
 } : locale.value === "en" ? {
 	description: "Manage stores as Super Admin and monitor the status of each store.",
 	search: "Search store name, owner ID, or store ID", reload: "Reload", add: "Add store",
@@ -43,7 +44,8 @@ const copy = computed(() => locale.value === "lo" ? {
 	noResults: "No stores match the selected filters", noData: "No data yet", store: "Store", owner: "Owner", type: "Type", currency: "Currency", address: "Address", created: "Created", action: "Action", manage: "Manage",
 	perPage: "Per page", previous: "Previous", next: "Next", page: "Page", of: "of",
 	createTitle: "Create store", createDescription: "Create a new store in the database.", detailTitle: "Store details", detailDescription: "Edit store information in the database.", name: "Store name", phone: "Phone number", headerColor: "Document header color", cancel: "Cancel", close: "Close", save: "Save", create: "Create store", ownerCreated: "Owner: {owner} · Created {date}",
-	noPermission: "No permission", noPermissionHint: "This account cannot manage stores.", loadFailed: "Unable to load stores", createSuccess: "Store created", savedDb: "Saved to the database.", createFailed: "Unable to create store", updateSuccess: "Store updated", saveFailed: "Unable to save store"
+	noPermission: "No permission", noPermissionHint: "This account cannot manage stores.", loadFailed: "Unable to load stores", createSuccess: "Store created", savedDb: "Saved to the database.", createFailed: "Unable to create store", updateSuccess: "Store updated", saveFailed: "Unable to save store",
+	deleteStore: "Delete store", deleteTitle: "Permanently delete store", deleteDescription: "This action cannot be undone.", deleteWarning: "All store data—including orders, products, inventory, members, and reports—will be permanently deleted.", typeConfirm: "Type confirm to continue", deletedSuccess: "Store deleted", deleteFailed: "Unable to delete store"
 } : {
 	description: "จัดการร้านในมุม Super Admin และติดตามสถานะการใช้งานแต่ละร้าน",
 	search: "ค้นหาชื่อร้าน, owner ID หรือ store ID", reload: "รีโหลด", add: "เพิ่มร้าน",
@@ -52,7 +54,8 @@ const copy = computed(() => locale.value === "lo" ? {
 	noResults: "ไม่พบร้านตามเงื่อนไขที่เลือก", noData: "ยังไม่มีข้อมูล", store: "Store", owner: "Owner", type: "Type", currency: "Currency", address: "Address", created: "Created", action: "Action", manage: "จัดการ",
 	perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", page: "หน้า", of: "จาก",
 	createTitle: "สร้างร้าน", createDescription: "สร้างร้านใหม่บนฐานข้อมูลจริง", detailTitle: "รายละเอียดร้าน", detailDescription: "แก้ไขข้อมูลร้านบนฐานข้อมูลจริง", name: "ชื่อร้าน", phone: "เบอร์โทร", headerColor: "สีหัวเอกสาร", cancel: "ยกเลิก", close: "ปิด", save: "บันทึก", create: "สร้างร้าน", ownerCreated: "เจ้าของ: {owner} · สร้างเมื่อ {date}",
-	noPermission: "ไม่มีสิทธิ์ใช้งาน", noPermissionHint: "บัญชีนี้ไม่สามารถจัดการร้านได้", loadFailed: "โหลดร้านไม่สำเร็จ", createSuccess: "สร้างร้านแล้ว", savedDb: "บันทึกลงฐานข้อมูลเรียบร้อย", createFailed: "สร้างร้านไม่สำเร็จ", updateSuccess: "อัปเดตร้านแล้ว", saveFailed: "บันทึกไม่สำเร็จ"
+	noPermission: "ไม่มีสิทธิ์ใช้งาน", noPermissionHint: "บัญชีนี้ไม่สามารถจัดการร้านได้", loadFailed: "โหลดร้านไม่สำเร็จ", createSuccess: "สร้างร้านแล้ว", savedDb: "บันทึกลงฐานข้อมูลเรียบร้อย", createFailed: "สร้างร้านไม่สำเร็จ", updateSuccess: "อัปเดตร้านแล้ว", saveFailed: "บันทึกไม่สำเร็จ",
+	deleteStore: "ลบร้าน", deleteTitle: "ลบร้านถาวร", deleteDescription: "การดำเนินการนี้ไม่สามารถกู้คืนได้", deleteWarning: "ข้อมูลทั้งหมดของร้าน รวมถึงออเดอร์ สินค้า สต็อก สมาชิก และรายงาน จะถูกลบอย่างถาวร", typeConfirm: "พิมพ์ confirm เพื่อดำเนินการต่อ", deletedSuccess: "ลบร้านแล้ว", deleteFailed: "ลบร้านไม่สำเร็จ"
 });
 
 const searchQuery = ref("");
@@ -68,7 +71,10 @@ const pageSizeOptions = [ 10, 20, 50 ];
 const storesListScrollRef = ref<HTMLElement | null>(null);
 const createOpen = ref(false);
 const detailOpen = ref(false);
+const deleteOpen = ref(false);
 const selectedStoreId = ref("");
+const deleteConfirmation = ref("");
+const deleting = ref(false);
 
 const createForm = reactive({
 	name: "",
@@ -118,6 +124,11 @@ const selectedStore = computed(() => stores.value.find((store) => store.id === s
 
 const canCreateStore = computed(() => createForm.name.trim().length > 0);
 const canSaveDetail = computed(() => Boolean(selectedStore.value) && detailForm.name.trim().length > 0);
+const canDeleteSelectedStore = computed(() => (
+	Boolean(selectedStore.value)
+	&& deleteConfirmation.value === "confirm"
+	&& !deleting.value
+));
 const totalFilteredStores = computed(() => filteredStores.value.length);
 const totalPages = computed(() => Math.max(1, Math.ceil(totalFilteredStores.value / pageSize.value)));
 const pageLabel = computed(() => `${copy.value.page} ${currentPage.value} / ${totalPages.value}`);
@@ -258,6 +269,14 @@ function openDetailModal(storeId: string) {
 	detailOpen.value = true;
 }
 
+async function openDeleteModal() {
+	if (!selectedStore.value) return;
+	deleteConfirmation.value = "";
+	detailOpen.value = false;
+	await nextTick();
+	deleteOpen.value = true;
+}
+
 async function loadStores() {
 	pending.value = true;
 	error.value = null;
@@ -348,6 +367,37 @@ async function saveDetail() {
 		});
 	} finally {
 		saving.value = false;
+	}
+}
+
+async function deleteStore() {
+	const store = selectedStore.value;
+	if (!store || !canDeleteSelectedStore.value) return;
+	deleting.value = true;
+	try {
+		await apiFetch<ApiEnvelope<null>>(`/stores/${encodeURIComponent(store.id)}`, {
+			method: "DELETE",
+			body: { confirmation: deleteConfirmation.value },
+		});
+		appToast.success({
+			title: copy.value.deletedSuccess,
+			description: store.name,
+		});
+		deleteOpen.value = false;
+		selectedStoreId.value = "";
+		deleteConfirmation.value = "";
+		if (currentStoreId.value === store.id) {
+			currentStoreId.value = null;
+		}
+		await fetchMe(currentStoreId.value || undefined);
+		await loadStores();
+	} catch (err) {
+		appToast.error({
+			title: copy.value.deleteFailed,
+			description: resolveApiErrorMessage(err),
+		});
+	} finally {
+		deleting.value = false;
 	}
 }
 
@@ -707,6 +757,21 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.headerColor }}</label>
 								<input v-model="detailForm.pdf_header_color" type="color" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-2 py-2 shadow-sm">
 							</div>
+							<div class="rounded-md border border-error-200 bg-error-50 p-4">
+								<p class="text-sm font-semibold text-error-700">{{ copy.deleteTitle }}</p>
+								<p class="mt-1 text-xs leading-5 text-error-600">{{ copy.deleteWarning }}</p>
+								<AppButton
+									color="error"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-trash-20-solid"
+									class="mt-3 rounded-md"
+									:block="true"
+									@click="openDeleteModal"
+								>
+									{{ copy.deleteStore }}
+								</AppButton>
+							</div>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
@@ -717,6 +782,42 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 					</div>
 				</div>
 				</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="deleteOpen"
+				:title="copy.deleteTitle"
+				:description="copy.deleteDescription"
+				desktop-width="560px"
+				mobile-max-height="80dvh"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div v-if="selectedStore" class="flex h-full min-h-0 flex-col">
+					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
+						<div class="rounded-md border border-error-200 bg-error-50 p-4">
+							<p class="font-semibold text-error-800">{{ selectedStore.name }}</p>
+							<p class="mt-2 text-sm leading-6 text-error-700">{{ copy.deleteWarning }}</p>
+						</div>
+						<label class="mt-5 block text-sm font-medium text-stone-700">{{ copy.typeConfirm }}</label>
+						<input
+							v-model="deleteConfirmation"
+							type="text"
+							autocomplete="off"
+							spellcheck="false"
+							placeholder="confirm"
+							class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-4 py-3 font-mono text-sm text-stone-900 shadow-sm outline-none transition focus:border-error-300 focus:ring-2 focus:ring-error-100"
+							@keyup.enter="deleteStore"
+						>
+					</div>
+					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" :disabled="deleting" @click="deleteOpen = false">{{ copy.cancel }}</AppButton>
+							<AppButton color="error" variant="solid" size="md" icon="i-heroicons-trash-20-solid" :block="true" :loading="deleting" :disabled="!canDeleteSelectedStore" :spin-icon-on-loading="true" @click="deleteStore">{{ copy.deleteStore }}</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
 				</div>
 		</template>
 	</AppSidebarShell>
