@@ -39,14 +39,57 @@ type RoleDetailRecord = RoleRecord & {
 
 type ApplyRoleMode = "create" | "update";
 
-const HIDDEN_ROLE_PERMISSION_KEYS = new Set([
-	"connections.approve",
-	"connections.export",
-	"connections.manage",
+const VISIBLE_STORE_ROLE_PERMISSION_KEYS = new Set([
+	"pos.create_order",
+	"pos.apply_discount",
+	"pos.override_price",
+	"pos.restaurant.open",
+	"pos.restaurant.send_kitchen",
+	"pos.restaurant.transfer",
+	"pos.restaurant.cancel_sent",
+	"pos.restaurant.apply_promotion",
+	"pos.restaurant.print",
+	"products.view",
+	"products.create",
+	"products.update",
+	"products.update_cost",
+	"products.archive",
+	"promotions.view",
+	"promotions.create",
+	"promotions.update",
+	"promotions.archive",
+	"inventory.view",
+	"inventory.adjust",
+	"inventory.adjust_negative",
+	"purchase_orders.view",
+	"purchase_orders.create",
+	"purchase_orders.update",
+	"purchase_orders.cancel",
+	"purchase_orders.receive",
+	"reports.view",
+	"reports.export",
+	"activity.view",
+	"stores.view",
+	"stores.update",
+	"settings.view",
+	"settings.store.view",
+	"settings.store.update",
+	"settings.restaurant.view",
+	"settings.restaurant.update",
+	"settings.users.view",
+	"settings.users.create",
+	"settings.users.update",
+	"settings.users.suspend",
+	"settings.users.assign_role",
+	"settings.users.reset_password",
+	"settings.roles.view",
+	"settings.roles.create",
+	"settings.roles.update",
+	"settings.roles.archive",
 ]);
 
-function isHiddenRolePermissionKey(permissionKey: string) {
-	return HIDDEN_ROLE_PERMISSION_KEYS.has(permissionKey) || permissionKey.startsWith("system_admin.");
+function isVisibleStoreRolePermissionKey(permissionKey: string) {
+	return VISIBLE_STORE_ROLE_PERMISSION_KEYS.has(permissionKey);
 }
 
 const { apiFetch } = useApiClient();
@@ -148,8 +191,7 @@ const createPanelPending = computed(() => (
 ));
 const createRolePermissionCount = computed(() => createForm.permissionKeys.length);
 const visiblePermissions = computed(() => permissions.value.filter((permission) => (
-	!isHiddenRolePermissionKey(permission.key)
-	&& permission.resource !== "dashboard"
+	isVisibleStoreRolePermissionKey(permission.key)
 )));
 const createRolePermissionTotal = computed(() => permissionMatrixRows.value.reduce((total, row) => total + row.allKeys.length, 0));
 const canSubmitCreateRole = computed(() => (
@@ -186,7 +228,9 @@ const selectedApplyTargetRole = computed(() => (
 	applyTargetRoles.value.find((role) => role.id === applyForm.targetRoleId) ?? null
 ));
 const selectedRolePermissionCount = computed(() => (
-	selectedRoleDetail.value?.permissions.length ?? selectedRole.value?.permissions_count ?? 0
+	selectedRoleDetail.value?.permissions.filter((permission) => isVisibleStoreRolePermissionKey(permission.key)).length
+	?? selectedRole.value?.permissions_count
+	?? 0
 ));
 const isSelectedSystemRole = computed(() => Number(selectedRole.value?.is_system || 0) === 1);
 const filteredRoles = computed(() => {
@@ -273,6 +317,12 @@ function permissionActionLabel(action: string) {
 		apply_discount: [ "ໃຊ້ສ່ວນຫຼຸດ", "Apply discount", "ใช้ส่วนลด" ],
 		override_price: [ "ປັບລາຄາ", "Override price", "ปรับราคา" ],
 		create_order: [ "ສ້າງອໍເດີ", "Create order", "สร้างออเดอร์" ],
+		open: [ "ເປີດອໍເດີ/ໂຕະ", "Open order/table", "เปิดออเดอร์/โต๊ะ" ],
+		send_kitchen: [ "ສົ່ງເຂົ້າຄົວ", "Send to kitchen", "ส่งเข้าครัว" ],
+		transfer: [ "ຍ້າຍໂຕະ", "Transfer table", "ย้ายโต๊ะ" ],
+		cancel_sent: [ "ຍົກເລີກລາຍການທີ່ສົ່ງຄົວ", "Cancel sent item", "ยกเลิกรายการที่ส่งครัว" ],
+		apply_promotion: [ "ໃຊ້ໂປຣໂມຊັນ", "Apply promotion", "ใช้โปรโมชั่น" ],
+		print: [ "ພິມບິນ", "Print receipt", "พิมพ์บิล" ],
 	};
 	const [ lao, english, thai ] = labels[normalized] || [ normalized, normalized, normalized ];
 	return locale.value === "lo" ? lao : locale.value === "en" ? english : thai;
@@ -289,9 +339,11 @@ function permissionResourceLabel(resource: string) {
 		stores: [ "ຮ້ານ", "Stores", "ร้าน" ],
 		settings: [ "ຕັ້ງຄ່າ", "Settings", "ตั้งค่า" ],
 		"settings.store": [ "ຕັ້ງຄ່າຮ້ານ", "Store settings", "ตั้งค่าร้าน" ],
+		"settings.restaurant": [ "ຕັ້ງຄ່າຮ້ານອາຫານ", "Restaurant settings", "ตั้งค่าร้านอาหาร" ],
 		"settings.users": [ "ຜູ້ໃຊ້ຮ້ານ", "Store users", "ผู้ใช้ร้าน" ],
 		"settings.roles": [ "ບົດບາດຮ້ານ", "Store roles", "บทบาทร้าน" ],
 		pos: [ "ຂາຍໜ້າຮ້ານ", "POS", "ขายหน้าร้าน" ],
+		"pos.restaurant": [ "ຂາຍໜ້າຮ້ານອາຫານ", "Restaurant POS", "ขายหน้าร้านอาหาร" ],
 	};
 	const [ lao, english, thai ] = labels[resource] || [ resource, resource, resource ];
 	return locale.value === "lo" ? lao : locale.value === "en" ? english : thai;
