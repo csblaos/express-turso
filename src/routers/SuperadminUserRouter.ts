@@ -3,6 +3,7 @@ import { Router } from "express";
 import { SuperadminBranchController } from "@controllers/SuperadminBranchController";
 import { SuperadminConfigController } from "@controllers/SuperadminConfigController";
 import { SuperadminQuotaController } from "@controllers/SuperadminQuotaController";
+import { SuperadminOverviewController } from "@controllers/SuperadminOverviewController";
 import { SuperadminSecurityController } from "@controllers/SuperadminSecurityController";
 import { SuperadminUserController } from "@controllers/SuperadminUserController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
@@ -23,6 +24,7 @@ export class SuperadminUserRouter {
 		this.router.get("/branches", PermissionMiddleware.require("superadmin.stores.view"), SuperadminBranchController.list);
 		this.router.get("/security", PermissionMiddleware.require("superadmin.users.view"), SuperadminSecurityController.snapshot);
 		this.router.get("/quotas", PermissionMiddleware.require("superadmin.users.view"), SuperadminQuotaController.list);
+		this.router.get("/overview", PermissionMiddleware.require("superadmin.view"), SuperadminOverviewController.dashboard);
 	}
 
 	static getInstance(): SuperadminUserRouter {
