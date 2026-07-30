@@ -39,7 +39,7 @@ export default defineI18nLocale(() => ({
 		purchaseOrders: "สั่งซื้อ", reports: "รายงาน", activity: "กิจกรรม", profile: "โปรไฟล์", settings: "ตั้งค่า",
 		users: "ผู้ใช้", categories: "หมวดหมู่", units: "หน่วย", language: "ภาษา", roles: "บทบาท", stockPolicy: "นโยบายสต็อก",
 		storeFinance: "การเงินร้าน", rates: "อัตราแลกเปลี่ยน", storePayments: "การรับชำระ", printing: "การพิมพ์", salesReceipt: "บิลขาย", superadmin: "ผู้ดูแลสูงสุด",
-		overview: "ภาพรวม", globalConfig: "ตั้งค่าส่วนกลาง", stores: "ร้าน", roleSettings: "ตั้งค่าบทบาท", security: "ความปลอดภัย",
+		overview: "ภาพรวม", globalConfig: "ตั้งค่าส่วนกลาง", stores: "ร้าน", roleSettings: "ตั้งค่าบทบาท", security: "ความปลอดภัย", accountOverview: "ภาพรวมบัญชี",
 		quotas: "โควตา", branchConfig: "ตั้งค่าสาขา", integrations: "การเชื่อมต่อ", systemAdmin: "ผู้ดูแลระบบ", dashboard: "แดชบอร์ด",
 		clients: "ลูกค้า", systemPolicy: "นโยบายระบบ", monitoring: "การติดตาม", thirdPartyUsage: "การใช้งานบุคคลที่สาม",
 		config: "การตั้งค่า", system: "ระบบ", access: "สิทธิ์เข้าถึง",
@@ -297,8 +297,8 @@ export default defineI18nLocale(() => ({
 				description: "ดูและจัดการร้านในระดับ Super Admin",
 			},
 			security: {
-				title: "ความปลอดภัย",
-				description: "ดูภาพรวมบัญชี ร้าน และทีม",
+				title: "ภาพรวมบัญชี",
+				description: "สรุปผู้ใช้ ร้าน สมาชิก และบทบาท",
 			},
 			quotas: {
 				title: "โควตา",

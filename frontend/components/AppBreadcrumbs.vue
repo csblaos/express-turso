@@ -38,6 +38,7 @@ const breadcrumbKeys: Record<string, string> = {
 	Stores: "breadcrumbs.stores",
 	"Role Settings": "breadcrumbs.roleSettings",
 	Security: "breadcrumbs.security",
+	"Account Overview": "breadcrumbs.accountOverview",
 	Quotas: "breadcrumbs.quotas",
 	"Branch Config": "breadcrumbs.branchConfig",
 	Integrations: "breadcrumbs.integrations",

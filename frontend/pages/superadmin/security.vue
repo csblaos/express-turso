@@ -31,13 +31,34 @@ type SuperadminSecuritySnapshot = {
 const { apiFetch } = useApiClient();
 const { locale } = useI18n();
 
-const copy = computed(() => locale.value === "lo" ? {
+const legacyCopy = computed(() => locale.value === "lo" ? {
 	description: "ພາບລວມຄວາມພ້ອມຂອງຜູ້ໃຊ້ ຮ້ານ ແລະ ທີມງານພາຍໃຕ້ Super Admin ນີ້", reload: "ໂຫຼດໃໝ່", title: "ພາບລວມຄວາມປອດໄພ", subtitle: "ພາບລວມສຳລັບຂອບເຂດ Owner ເພື່ອໃຫ້ໂຫຼດໄວ", updated: "ອັບເດດລ່າສຸດ", users: "ຜູ້ໃຊ້ທັງໝົດ", usersNote: "ບັນຊີໃນຂອບເຂດ Super Admin ນີ້", active: "ໃຊ້ງານ", activeNote: "ບັນຊີທີ່ຍັງບໍ່ຖືກລະງັບ", stores: "ຮ້ານທັງໝົດ", storesNote: "ຮ້ານພາຍໃຕ້ກຸ່ມເຈົ້າຂອງນີ້", noTeam: "ຮ້ານທີ່ຍັງບໍ່ມີທີມ", noTeamNote: "ຄວນກວດສອບກ່ອນເປີດໃຊ້ງານ", posture: "ສະຖານະບັນຊີ", postureHint: "ສະຫຼຸບສະຖານະບັນຊີ ແລະ ຄວາມຄອບຄຸມຂອງທີມ", suspended: "ຖືກລະງັບ", passwordChange: "ຕ້ອງປ່ຽນລະຫັດຜ່ານ", members: "ສະມາຊິກຮ້ານທັງໝົດ", coverage: "ຄວາມຄອບຄຸມຂອງຮ້ານ", coverageHint: "ກວດວ່າທຸກຮ້ານມີທີມກ່ອນເລີ່ມໃຊ້ງານ", attention: "ຕ້ອງກວດເບິ່ງ", ready: "ພ້ອມໃຊ້ງານ", noMembers: "ຮ້ານທີ່ບໍ່ມີສະມາຊິກ", roles: "ການແຈກບົດບາດ", rolesHint: "ການແຈກບົດບາດຜູ້ໃຊ້ໃນຂອບເຂດນີ້", warnings: "ຄຳເຕືອນ", warningsHint: "ສັນຍານທີ່ຄວນຕິດຕາມ", items: "ລາຍການ", none: "ບໍ່ມີລາຍການທີ່ຕ້ອງຕິດຕາມ", noRisk: "ບໍ່ພົບສັນຍານຄວາມສ່ຽງຫຼັກໃນຂໍ້ມູນລ່າສຸດ", superAdmin: "ຜູ້ດູແລລະບົບສູງສຸດ", owner: "ເຈົ້າຂອງ", manager: "ຜູ້ຈັດການ", cashier: "ພະນັກງານຂາຍ", other: "ອື່ນໆ",
 } : locale.value === "en" ? {
 	description: "A readiness snapshot for users, stores, and teams within this Super Admin scope.", reload: "Reload", title: "Security snapshot", subtitle: "A lightweight Owner-scope snapshot for fast reading.", updated: "Last updated", users: "Total users", usersNote: "Accounts in this Super Admin scope", active: "Active", activeNote: "Accounts that are not suspended", stores: "Total stores", storesNote: "Stores under this owner group", noTeam: "Stores without a team", noTeamNote: "Review before going live", posture: "Account posture", postureHint: "Summary of account status and team coverage.", suspended: "Suspended", passwordChange: "Must change password", members: "Total store members", coverage: "Store coverage", coverageHint: "Check every store has a team before onboarding or launch.", attention: "Needs attention", ready: "Ready", noMembers: "Stores without members", roles: "Role breakdown", rolesHint: "Distribution of user roles in this scope.", warnings: "Warnings", warningsHint: "Signals to follow up in this Owner scope.", items: "items", none: "No follow-up items", noRisk: "No key risk signals in the latest snapshot.", superAdmin: "Super Admin", owner: "Owner", manager: "Manager", cashier: "Cashier", other: "Other",
 } : {
 	description: "ภาพรวมความพร้อมของผู้ใช้ ร้าน และทีม ภายใต้ Super Admin นี้", reload: "รีโหลด", title: "ภาพรวมความปลอดภัย", subtitle: "ภาพรวมขอบเขต Owner แบบกระชับ เพื่อให้อ่านเร็ว", updated: "อัปเดตล่าสุด", users: "ผู้ใช้ทั้งหมด", usersNote: "บัญชีในขอบเขต Super Admin นี้", active: "กำลังใช้งาน", activeNote: "บัญชีที่ยังไม่ถูกระงับ", stores: "ร้านทั้งหมด", storesNote: "ร้านที่อยู่ใต้กลุ่มเจ้าของนี้", noTeam: "ร้านที่ยังไม่มีทีม", noTeamNote: "ควรตรวจสอบก่อนเปิดใช้งานจริง", posture: "สถานะบัญชี", postureHint: "สรุปสถานะบัญชีและการครอบคลุมของทีม", suspended: "บัญชีที่ถูกระงับ", passwordChange: "ยังต้องเปลี่ยนรหัสผ่าน", members: "สมาชิกในร้านทั้งหมด", coverage: "ความครอบคลุมของร้าน", coverageHint: "ตรวจว่าร้านทุกแห่งมีทีมรองรับก่อนเริ่มใช้งาน", attention: "ต้องตรวจสอบ", ready: "พร้อมใช้งาน", noMembers: "ร้านที่ยังไม่มีสมาชิก", roles: "การกระจายบทบาท", rolesHint: "การกระจายบทบาทของผู้ใช้ในขอบเขตนี้", warnings: "คำเตือน", warningsHint: "สัญญาณที่ควรติดตามในขอบเขต Owner นี้", items: "รายการ", none: "ไม่มีรายการต้องติดตาม", noRisk: "ไม่พบสัญญาณความเสี่ยงสำคัญในข้อมูลล่าสุด", superAdmin: "ผู้ดูแลระบบสูงสุด", owner: "เจ้าของ", manager: "ผู้จัดการ", cashier: "แคชเชียร์", other: "อื่น ๆ",
 });
+
+const copy = computed(() => ({
+	...legacyCopy.value,
+	...(locale.value === "lo"
+		? {
+			description: "ສະຫຼຸບຜູ້ໃຊ້, ຮ້ານ, ສະມາຊິກ ແລະ ບົດບາດພາຍໃຕ້ Super Admin ນີ້",
+			title: "ພາບລວມບັນຊີ",
+			subtitle: "ພາບລວມບັນຊີ ແລະ ທີມໃນຂອບເຂດ Owner",
+		}
+		: locale.value === "en"
+			? {
+				description: "A summary of users, stores, members, and roles within this Super Admin scope.",
+				title: "Account Overview",
+				subtitle: "Accounts and teams within this Owner scope.",
+			}
+			: {
+				description: "สรุปผู้ใช้ ร้าน สมาชิก และบทบาทภายใต้ Super Admin นี้",
+				title: "ภาพรวมบัญชี",
+				subtitle: "ภาพรวมบัญชีและทีมในขอบเขต Owner",
+			}),
+}));
 
 const pending = ref(true);
 const error = ref<string | null>(null);

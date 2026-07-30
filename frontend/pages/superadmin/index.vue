@@ -9,7 +9,7 @@ const entries: Entry[] = [
 	["users", "i-heroicons-users", "/superadmin/users"],
 	["roles", "i-heroicons-shield-check", "/superadmin/roles"],
 	["stores", "i-heroicons-building-storefront", "/superadmin/stores"],
-	["security", "i-heroicons-shield-check", "/superadmin/security"],
+	["security", "i-heroicons-identification", "/superadmin/security"],
 	["quotas", "i-heroicons-swatch", "/superadmin/quotas"],
 ].map(([id, icon, to]) => ({ id: id!, titleKey: `superadmin.entries.${id}.title`, descriptionKey: `superadmin.entries.${id}.description`, icon: icon!, to: to!, availability: "ready" }));
 

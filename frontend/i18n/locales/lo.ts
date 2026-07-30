@@ -39,7 +39,7 @@ export default defineI18nLocale(() => ({
 		purchaseOrders: "ສັ່ງຊື້", reports: "ລາຍງານ", activity: "ກິດຈະກຳ", profile: "ໂປຣໄຟລ໌", settings: "ຕັ້ງຄ່າ",
 		users: "ຜູ້ໃຊ້", categories: "ໝວດໝູ່", units: "ຫົວໜ່ວຍ", language: "ພາສາ", roles: "ບົດບາດ", stockPolicy: "ນະໂຍບາຍສະຕັອກ",
 		storeFinance: "ການເງິນຮ້ານ", rates: "ອັດຕາແລກປ່ຽນ", storePayments: "ການຮັບຊຳລະ", printing: "ການພິມ", salesReceipt: "ບິນຂາຍ", superadmin: "Super Admin",
-		overview: "ພາບລວມ", globalConfig: "ຕັ້ງຄ່າສ່ວນກາງ", stores: "ຮ້ານ", roleSettings: "ຕັ້ງຄ່າບົດບາດ", security: "ຄວາມປອດໄພ",
+		overview: "ພາບລວມ", globalConfig: "ຕັ້ງຄ່າສ່ວນກາງ", stores: "ຮ້ານ", roleSettings: "ຕັ້ງຄ່າບົດບາດ", security: "ຄວາມປອດໄພ", accountOverview: "ພາບລວມບັນຊີ",
 		quotas: "ໂຄຕ້າ", branchConfig: "ຕັ້ງຄ່າສາຂາ", integrations: "ການເຊື່ອມຕໍ່", systemAdmin: "ຜູ້ດູແລລະບົບ", dashboard: "ແດຊບອດ",
 		clients: "ລູກຄ້າ", systemPolicy: "ນະໂຍບາຍລະບົບ", monitoring: "ການຕິດຕາມ", thirdPartyUsage: "ການໃຊ້ງານພາກສ່ວນທີສາມ",
 		config: "ການຕັ້ງຄ່າ", system: "ລະບົບ", access: "ສິດເຂົ້າເຖິງ",
@@ -280,8 +280,8 @@ export default defineI18nLocale(() => ({
 				description: "ເບິ່ງ ແລະ ຈັດການຮ້ານໃນລະດັບ Super Admin",
 			},
 			security: {
-				title: "ຄວາມປອດໄພ",
-				description: "ເບິ່ງພາບລວມບັນຊີ ຮ້ານ ແລະ ທີມ",
+				title: "ພາບລວມບັນຊີ",
+				description: "ສະຫຼຸບຜູ້ໃຊ້, ຮ້ານ, ສະມາຊິກ ແລະ ບົດບາດ",
 			},
 			quotas: { title: "ໂຄຕາ", description: "ເບິ່ງໂຄຕາຮ້ານ ແລະ ສາຂາ" },
 			integrations: {

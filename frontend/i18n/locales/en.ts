@@ -39,7 +39,7 @@ export default defineI18nLocale(() => ({
 		purchaseOrders: "Purchasing", reports: "Reports", activity: "Activity", profile: "Profile", settings: "Settings",
 		users: "Users", categories: "Categories", units: "Units", language: "Language", roles: "Roles", stockPolicy: "Stock policy",
 		storeFinance: "Store Finance", rates: "Exchange rates", storePayments: "Store Payments", printing: "Printing", salesReceipt: "Sales receipt", superadmin: "Super Admin",
-		overview: "Overview", globalConfig: "Global Config", stores: "Stores", roleSettings: "Role Settings", security: "Security",
+		overview: "Overview", globalConfig: "Global Config", stores: "Stores", roleSettings: "Role Settings", security: "Security", accountOverview: "Account Overview",
 		quotas: "Quotas", branchConfig: "Branch Config", integrations: "Integrations", systemAdmin: "System Admin", dashboard: "Dashboard",
 		clients: "Clients", systemPolicy: "System Policy", monitoring: "Monitoring", thirdPartyUsage: "Third-party Usage",
 		config: "Config", system: "System", access: "Access",
@@ -299,8 +299,8 @@ export default defineI18nLocale(() => ({
 				description: "View and manage stores at Super Admin level",
 			},
 			security: {
-				title: "Security",
-				description: "View account, store, and team security snapshots",
+				title: "Account Overview",
+				description: "Summary of users, stores, members, and roles",
 			},
 			quotas: {
 				title: "Quotas",
