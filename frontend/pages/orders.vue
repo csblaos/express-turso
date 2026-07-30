@@ -560,6 +560,17 @@ function confirmPrintReceipt() {
 										<p class="text-sm font-medium text-stone-900">{{ $t('orders.empty') }}</p>
 										<p class="mt-1 text-sm text-stone-500">{{ $t('orders.emptyHint') }}</p>
 									</div>
+									<AppButton
+										v-if="activeFilterCount > 0"
+										class="rounded-md"
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-x-mark-20-solid"
+										@click="clearFilters"
+									>
+										{{ $t('orders.clearFilters') }}
+									</AppButton>
 								</div>
 							</div>
 

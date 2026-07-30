@@ -330,7 +330,7 @@ const runtimeConfig = useRuntimeConfig();
 const { t } = useI18n();
 const { intlLocale } = useAppLocale();
 const { apiFetch } = useApiClient();
-const { currentStoreId, currentAccess } = useAuthSession();
+const { currentStoreId, currentAccess, can } = useAuthSession();
 const appToast = useAppToast();
 
 let scanIndex = 0;
@@ -368,6 +368,11 @@ const posCopy = computed(() => ({
 	sortBy: t("pos.sortBy"),
 }));
 const hasCatalogError = computed(() => Boolean(productsError.value && !productsPending.value));
+// An empty catalog needs different wording from a search that matched nothing.
+const hasEmptyCatalog = computed(() => (
+	!productsPending.value && !hasCatalogError.value && products.value.length === 0
+));
+const canCreateProduct = computed(() => can("products.create"));
 
 const activeModeLabel = computed(() => (
 	activeMode.value === "หน้าร้าน"
@@ -1538,7 +1543,33 @@ onBeforeUnmount(() => {
 
 									<AppCard
 										variant="empty"
-										v-if="!productsPending && !hasCatalogError && filteredProducts.length === 0"
+										v-if="hasEmptyCatalog"
+										class="h-full"
+										body-class="h-full p-0 sm:p-0"
+									>
+										<div class="flex h-full min-h-[320px] flex-col items-center justify-center px-4 py-10 text-center">
+											<div class="flex h-12 w-12 items-center justify-center rounded-md bg-primary-50 text-primary-600 ring-1 ring-primary-200">
+												<UIcon name="i-heroicons-cube" class="h-6 w-6" />
+											</div>
+											<p class="mt-4 text-lg font-semibold text-stone-900">{{ $t('pos.emptyCatalog') }}</p>
+											<p class="mt-2 max-w-md text-sm leading-6 text-stone-500">
+												{{ canCreateProduct ? $t('pos.emptyCatalogHint') : $t('pos.emptyCatalogHintReadOnly') }}
+											</p>
+											<AppButton
+												v-if="canCreateProduct"
+												color="primary"
+												icon="i-heroicons-plus-20-solid"
+												class="mt-5"
+												@click="navigateTo('/products')"
+											>
+												{{ $t('pos.emptyCatalogAction') }}
+											</AppButton>
+										</div>
+									</AppCard>
+
+									<AppCard
+										variant="empty"
+										v-else-if="!productsPending && !hasCatalogError && filteredProducts.length === 0"
 									>
 										<div class="py-8 text-center">
 											<p class="text-lg font-semibold text-stone-900">{{ posCopy.noProducts }}</p>

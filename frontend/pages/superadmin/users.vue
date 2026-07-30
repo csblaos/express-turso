@@ -2,6 +2,10 @@
 import { appNavItems } from "~/utils/app-nav";
 import { formatAppDateTime } from "~/utils/date-format";
 
+// Shared starter credential for accounts created here. Every flow on this page
+// sends must_change_password, so the staff member replaces it on first sign-in.
+const QUICK_FILL_PASSWORD = "123456";
+
 type ApiEnvelope<T> = {
 	success: true;
 	requestId: string;
@@ -271,7 +275,7 @@ function resetCreateForm() {
 }
 
 function quickFillCreatePassword() {
-	createForm.password = "123456";
+	createForm.password = QUICK_FILL_PASSWORD;
 }
 
 function closeCreateModal() {
@@ -1188,7 +1192,7 @@ onMounted(loadUsers);
 								<button
 									type="button"
 									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
-									@click="memberForm.reset_password = '123456'"
+									@click="memberForm.reset_password = QUICK_FILL_PASSWORD"
 								>
 									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
 									{{ t('superadminUsersPage.usePassword') }}

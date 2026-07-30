@@ -125,6 +125,13 @@ const filteredProducts = computed(() => {
 	const query = search.value.trim().toLowerCase();
 	return products.value.filter((product) => !query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query));
 });
+// A store with nothing in its catalog needs different wording from a search
+// that matched nothing, so the two empty states are tracked separately.
+const hasEmptyCatalog = computed(() => !pending.value && !loadError.value && products.value.length === 0);
+const hasNoSearchMatch = computed(() => (
+	!pending.value && !loadError.value && products.value.length > 0 && filteredProducts.value.length === 0
+));
+const canCreateProduct = computed(() => can("products.create"));
 const zoneTables = computed(() => tables.value.filter((table) => table.is_active && (!activeZone.value || table.zone_id === activeZone.value)));
 function giftLineForPromotion(promotion: AvailablePromotion, count: number): OrderItem[] {
 	if (promotion.eligible === false || !promotion.gift_product_id || promotion.gift_qty <= 0 || count <= 0) return [];
@@ -1336,6 +1343,35 @@ onBeforeUnmount(() => {
 								<h2 class="mt-3 font-semibold text-stone-900">{{ t('restaurantPos.loadFailed') }}</h2>
 								<p class="mt-1 max-w-md text-sm text-stone-500">{{ locale === 'lo' ? 'ອາດເກີດຈາກສັນຍານບໍ່ດີ ຫຼື server ບໍ່ພ້ອມ ກະລຸນາລອງໃໝ່' : 'The connection may be unstable or the server may be unavailable. Please try again.' }}</p>
 								<AppButton class="mt-4" color="success" variant="solid" icon="i-heroicons-arrow-path" :loading="pending" @click="loadDashboard">{{ t('restaurantPos.retry') }}</AppButton>
+							</div>
+							<div v-else-if="hasEmptyCatalog" class="col-span-full flex min-h-[55vh] flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50/60 p-8 text-center">
+								<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+									<UIcon name="i-heroicons-cube" class="size-5" />
+								</span>
+								<h2 class="mt-3 font-semibold text-stone-900">{{ t('pos.emptyCatalog') }}</h2>
+								<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+									{{ canCreateProduct ? t('pos.emptyCatalogHint') : t('pos.emptyCatalogHintReadOnly') }}
+								</p>
+								<AppButton
+									v-if="canCreateProduct"
+									class="mt-4"
+									color="success"
+									variant="solid"
+									icon="i-heroicons-plus-20-solid"
+									@click="navigateTo('/products')"
+								>
+									{{ t('pos.emptyCatalogAction') }}
+								</AppButton>
+							</div>
+							<div v-else-if="hasNoSearchMatch" class="col-span-full flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50/60 p-8 text-center">
+								<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-stone-400 shadow-sm">
+									<UIcon name="i-heroicons-magnifying-glass" class="size-5" />
+								</span>
+								<h2 class="mt-3 font-semibold text-stone-900">{{ t('pos.noProductsFound') }}</h2>
+								<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">{{ t('pos.noProductsFoundHint') }}</p>
+								<AppButton class="mt-4" color="neutral" variant="soft" icon="i-heroicons-x-mark-20-solid" @click="search = ''">
+									{{ t('pos.clearSearch') }}
+								</AppButton>
 							</div>
 							<article
 								v-for="product in filteredProducts"

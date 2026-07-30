@@ -465,6 +465,20 @@ const filteredProducts = computed(() => {
 	return products.value;
 });
 
+// The list is filtered on the server, so an empty result means either "no
+// products exist yet" or "the filters matched nothing".
+const hasActiveProductFilters = computed(() => (
+	Boolean(searchQuery.value.trim())
+	|| activeCategory.value !== "all"
+	|| activeStatus.value !== "all"
+));
+
+function clearProductFilters() {
+	searchQuery.value = "";
+	activeCategory.value = "all";
+	activeStatus.value = "all";
+}
+
 const totalPages = computed(() => Math.max(1, Math.ceil(productsTotal.value / pageSize.value)));
 const paginatedProducts = computed(() => products.value);
 
@@ -939,9 +953,28 @@ function csvCell(row: string[], columnIndexes: Record<ProductCsvColumn, number>,
 	return index >= 0 ? String(row[index] || "").trim() : "";
 }
 
+// The importer only accepts units and categories that already exist in this
+// store, so the sample rows are built from real ones. Falling back to a blank
+// cell keeps the file importable when the store has none set up yet.
+function productCsvSampleRows() {
+	const unitCode = units.value[0]?.code?.trim() || "";
+	const categoryName = categories.value[0]?.name?.trim() || "";
+	return [
+		[ t("products.csv.sampleNameA"), "SKU-001", "8850000000017", categoryName, "25000", "18000", unitCode, "A-01", "10" ],
+		[ t("products.csv.sampleNameB"), "SKU-002", "", categoryName, "45000", "32000", unitCode, "A-02", "5" ],
+	];
+}
+
 function downloadProductCsvTemplate() {
-	const csv = `${productCsvHeaders.join(",")}\r\n`;
-	downloadTextFile("products-import-template.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
+	const csv = [
+		productCsvHeaders.join(","),
+		...productCsvSampleRows().map((row) => row.map(escapeCsvValue).join(",")),
+	].join("\r\n");
+	downloadTextFile("products-import-template.csv", `\ufeff${csv}\r\n`, "text/csv;charset=utf-8");
+	appToast.success({
+		title: t("products.csv.templateDownloaded"),
+		description: t("products.csv.templateDownloadedHint"),
+	});
 }
 
 async function exportFilteredProductsCsv() {
@@ -3617,11 +3650,55 @@ onBeforeUnmount(() => {
 										<AppButton color="primary" variant="soft" size="md" class="rounded-md" :label="$t('common.retry')" @click="loadProducts" />
 									</div>
 									</div>
-									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-										<div class="space-y-3">
-											<p class="text-sm font-medium text-stone-900">{{ $t('products.empty') }}</p>
-											<p class="text-sm text-stone-500">{{ $t('products.emptyHint') }}</p>
+									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+										<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+											<UIcon :name="hasActiveProductFilters ? 'i-heroicons-magnifying-glass' : 'i-heroicons-cube'" class="size-5" />
+										</span>
+										<p class="mt-3 font-semibold text-stone-900">
+											{{ hasActiveProductFilters ? $t('products.empty') : $t('products.emptyCatalog') }}
+										</p>
+										<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+											{{ hasActiveProductFilters
+												? $t('products.emptyHint')
+												: (canCreateProduct ? $t('products.emptyCatalogHint') : $t('products.emptyCatalogHintReadOnly')) }}
+										</p>
+										<AppButton
+											v-if="hasActiveProductFilters"
+											class="mt-4 rounded-md"
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-x-mark-20-solid"
+											@click="clearProductFilters"
+										>
+											{{ $t('products.clearFilters') }}
+										</AppButton>
+										<div v-else-if="canCreateProduct" class="mt-4 flex flex-wrap items-center justify-center gap-2">
+											<AppButton
+												class="rounded-md"
+												color="primary"
+												variant="solid"
+												size="md"
+												icon="i-heroicons-plus-20-solid"
+												@click="openCreateProduct"
+											>
+												{{ $t('products.createProduct') }}
+											</AppButton>
+											<AppButton
+												v-if="canImportProducts"
+												class="rounded-md"
+												color="neutral"
+												variant="soft"
+												size="md"
+												icon="i-heroicons-arrow-down-tray-20-solid"
+												@click="downloadProductCsvTemplate"
+											>
+												{{ $t('products.csv.downloadTemplate') }}
+											</AppButton>
 										</div>
+										<p v-if="!hasActiveProductFilters && canImportProducts" class="mt-3 max-w-md text-xs leading-5 text-stone-400">
+											{{ $t('products.csv.templateHint') }}
+										</p>
 									</div>
 										<table v-else class="min-w-[980px] w-full border-separate border-spacing-0">
 											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">

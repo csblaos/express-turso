@@ -5,55 +5,9 @@ const appToast = useAppToast();
 const route = useRoute();
 const { t } = useI18n();
 
-const DEV_PASSWORD = "dev123456";
-const DEV_LOGINS = [
-	{
-		label: "Alex",
-		role: "preset_user",
-		email: "alex@gmail.com",
-		password: "1234567",
-		descriptionKey: "loginPage.devDescriptions.alex",
-	},
-	{
-		label: "System Admin",
-		role: "system_admin",
-		email: "dev@codesabai.local",
-		password: DEV_PASSWORD,
-		descriptionKey: "loginPage.devDescriptions.systemAdmin",
-	},
-	{
-		label: "Owner",
-		role: "owner",
-		email: "owner@codesabai.local",
-		password: DEV_PASSWORD,
-		descriptionKey: "loginPage.devDescriptions.owner",
-	},
-	{
-		label: "Manager",
-		role: "manager",
-		email: "manager@codesabai.local",
-		password: DEV_PASSWORD,
-		descriptionKey: "loginPage.devDescriptions.manager",
-	},
-	{
-		label: "Cashier",
-		role: "cashier",
-		email: "cashier@codesabai.local",
-		password: DEV_PASSWORD,
-		descriptionKey: "loginPage.devDescriptions.cashier",
-	},
-	{
-		label: "Stock",
-		role: "inventory_staff",
-		email: "stock@codesabai.local",
-		password: DEV_PASSWORD,
-		descriptionKey: "loginPage.devDescriptions.stock",
-	},
-] as const;
-
 const form = reactive({
-	email: DEV_LOGINS[0].email,
-	password: DEV_LOGINS[0].password,
+	email: "",
+	password: "",
 	remember: false,
 });
 
@@ -124,45 +78,14 @@ async function loginToPos() {
 	}
 }
 
-function fillDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
-	form.email = loginPreset.email;
-	form.password = loginPreset.password;
-	appToast.info({
-		title: t("loginPage.filled"),
-		description: t("loginPage.readyToLogin", { name: loginPreset.label }),
-	});
-}
-
-async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
-	const payload = `email: ${loginPreset.email}\npassword: ${loginPreset.password}`;
-
-	try {
-		if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-			await navigator.clipboard.writeText(payload);
-			appToast.success({
-				title: t("loginPage.copied"),
-				description: t("loginPage.copiedDescription", { name: loginPreset.label }),
-			});
-			return;
-		}
-	} catch {
-		// fall through to the fallback message below
-	}
-
-	appToast.error({
-		title: t("loginPage.copyFailed"),
-		description: `${loginPreset.email} / ${loginPreset.password}`,
-		timeout: 4200,
-	});
-}
 </script>
 
 <template>
-	<main class="min-h-[100dvh] bg-[#f6f6f3]">
-		<div class="grid min-h-[100dvh] lg:grid-cols-[minmax(0,1.1fr)_520px]">
+	<main class="relative min-h-[100dvh] bg-[#f6f6f3]">
+		<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(45,199,99,0.13),_transparent_34%),radial-gradient(ellipse_at_bottom_left,_rgba(233,168,74,0.24),_transparent_58%),linear-gradient(180deg,_transparent_55%,_rgba(233,168,74,0.09)_100%)] dark:hidden" />
+		<div class="relative grid min-h-[100dvh] lg:grid-cols-[minmax(0,1.1fr)_520px]">
 			<section class="relative hidden overflow-hidden lg:flex">
-				<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(201,119,69,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(151,83,44,0.10),_transparent_24%)]" />
-				<div class="relative flex w-full flex-col justify-between p-8 xl:p-12">
+				<div class="relative flex w-full flex-col p-8 xl:p-12">
 					<div class="flex items-center gap-4">
 						<div class="h-16 w-16 overflow-hidden rounded-3xl">
 							<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
@@ -173,7 +96,8 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 						</div>
 					</div>
 
-					<div class="max-w-2xl space-y-6">
+					<div class="flex flex-1 items-center py-10">
+						<div class="max-w-2xl space-y-6">
 						<div class="space-y-4">
 							<h2 class="text-5xl leading-tight font-semibold tracking-[-0.05em] text-stone-950">
 								{{ t('loginPage.heroTitle') }}
@@ -199,9 +123,9 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 								<p class="mt-3 text-2xl font-semibold text-stone-950">{{ t('loginPage.reportsTitle') }}</p>
 								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('loginPage.reportsDescription') }}</p>
 							</UCard>
+							</div>
 						</div>
 					</div>
-
 				</div>
 			</section>
 
@@ -285,43 +209,6 @@ async function copyDevLogin(loginPreset: (typeof DEV_LOGINS)[number]) {
 										</AppButton>
 									</div>
 								</form>
-
-								<div class="space-y-3 rounded-none border-y border-[#f0e0d3] bg-[#fbf1ea] px-4 py-4 text-sm text-stone-600 sm:rounded-md sm:border">
-									<div class="flex items-start justify-between gap-4">
-										<div>
-											<p class="font-medium text-stone-800">{{ t('loginPage.devAccounts') }}</p>
-										<p class="mt-1 leading-6 text-stone-500">{{ t('loginPage.devAccountsHint') }}</p>
-									</div>
-									<UBadge color="primary" variant="soft" :label="`${DEV_LOGINS.length} roles`" />
-								</div>
-
-								<div class="space-y-3">
-									<div
-										v-for="loginPreset in DEV_LOGINS"
-										:key="loginPreset.email"
-										class="rounded-md bg-white/80 p-3 ring-1 ring-[#ead7c7]"
-									>
-										<div class="flex items-start justify-between gap-3">
-											<div class="min-w-0">
-												<div class="flex items-center gap-2">
-													<p class="text-sm font-semibold text-stone-900">{{ loginPreset.label }}</p>
-													<UBadge color="neutral" variant="soft" :label="loginPreset.role" />
-												</div>
-											<p class="mt-1 text-xs leading-5 text-stone-500">{{ t(loginPreset.descriptionKey) }}</p>
-													<p class="mt-2 text-xs text-stone-700">{{ loginPreset.email }}</p>
-												</div>
-												<div class="flex shrink-0 items-center gap-2">
-													<AppButton color="neutral" variant="soft" size="sm" @click="copyDevLogin(loginPreset)">
-												{{ t('loginPage.copy') }}
-													</AppButton>
-													<AppButton color="primary" variant="soft" size="sm" @click="fillDevLogin(loginPreset)">
-												{{ t('loginPage.fill') }}
-													</AppButton>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
 							</div>
 						</UCard>
 					</div>

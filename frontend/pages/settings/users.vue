@@ -2,6 +2,9 @@
 import { appNavItems } from "~/utils/app-nav";
 import { formatAppDateTime } from "~/utils/date-format";
 
+// Starter credential handed to a new staff member; they change it themselves.
+const QUICK_FILL_PASSWORD = "123456";
+
 type ApiEnvelope<T> = {
 	success: true;
 	requestId: string;
@@ -73,13 +76,13 @@ const pageSizeOptions = [10, 20, 50];
 const createForm = reactive({
 	name: "",
 	email: "",
-	password: "dev123456",
+	password: "",
 	role_id: "",
 	status: "active",
 });
 
 const resetPasswordForm = reactive({
-	password: "dev123456",
+	password: "",
 	must_change_password: true,
 });
 
@@ -109,6 +112,18 @@ const canManageUsers = computed(() => (
 	|| canResetPasswords.value
 ));
 const canManageRoles = computed(() => isElevatedStoreManager.value || can("settings.users.assign_role"));
+// The password fields start empty, so block saving until they meet the
+// six-character minimum the API enforces.
+const canSubmitCreate = computed(() => (
+	canCreateUsers.value
+	&& createForm.name.trim().length > 0
+	&& createForm.email.trim().length > 0
+	&& createForm.password.trim().length >= 6
+));
+const canSubmitResetPassword = computed(() => (
+	canResetPasswords.value
+	&& resetPasswordForm.password.trim().length >= 6
+));
 const lockedStoreId = computed(() => (
 	currentAccess.value?.store_id
 	|| currentAccess.value?.memberships?.[0]?.store_id
@@ -208,12 +223,13 @@ watch([members, pageSize, currentPage], () => {
 watch(createOpen, (isOpen) => {
 	if (isOpen) {
 		createForm.role_id = resolveDefaultRoleId(roles.value);
+		createForm.password = "";
 	}
 });
 
 watch(resetPasswordOpen, (isOpen) => {
 	if (isOpen) {
-		resetPasswordForm.password = "dev123456";
+		resetPasswordForm.password = "";
 		resetPasswordForm.must_change_password = true;
 	}
 });
@@ -323,7 +339,7 @@ async function createMember() {
 
 		createForm.name = "";
 		createForm.email = "";
-		createForm.password = "dev123456";
+		createForm.password = "";
 		createForm.status = "active";
 		createOpen.value = false;
 		await fetchMembers();
@@ -762,7 +778,13 @@ onMounted(async () => {
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.initialPassword") }}</label>
-							<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<div class="flex items-center gap-2">
+								<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:font-mono" />
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-bolt-20-solid" class="shrink-0" @click="createForm.password = QUICK_FILL_PASSWORD">
+									{{ $t("usersPage.usePassword") }}
+								</AppButton>
+							</div>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("usersPage.defaultPasswordHint") }}</p>
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.role") }}</label>
@@ -781,7 +803,7 @@ onMounted(async () => {
 					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="createOpen = false">{{ $t("common.cancel") }}</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canCreateUsers" @click="createMember">
+							<AppButton color="primary" variant="solid" size="md" :block="true" :loading="saving" :spin-icon-on-loading="true" :disabled="saving || !canSubmitCreate" @click="createMember">
 								{{ $t("usersPage.saveUser") }}
 							</AppButton>
 						</div>
@@ -804,12 +826,18 @@ onMounted(async () => {
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="space-y-2">
 								<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.newPassword") }}</label>
-								<UInput
-									v-model="resetPasswordForm.password"
-									size="lg"
-									color="neutral"
-									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
-								/>
+								<div class="flex items-center gap-2">
+									<UInput
+										v-model="resetPasswordForm.password"
+										size="lg"
+										color="neutral"
+										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:font-mono"
+									/>
+									<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-bolt-20-solid" class="shrink-0" @click="resetPasswordForm.password = QUICK_FILL_PASSWORD">
+										{{ $t("usersPage.usePassword") }}
+									</AppButton>
+								</div>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("usersPage.defaultPasswordHint") }}</p>
 							</div>
 
 							<label class="flex items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
@@ -825,7 +853,7 @@ onMounted(async () => {
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 							<div class="grid w-full grid-cols-2 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="resetPasswordOpen = false">{{ $t("common.cancel") }}</AppButton>
-								<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canResetPasswords || saving" :loading="saving" :spin-icon-on-loading="true" @click="resetMemberPassword">
+								<AppButton color="primary" variant="solid" size="md" :block="true" :disabled="!canSubmitResetPassword || saving" :loading="saving" :spin-icon-on-loading="true" @click="resetMemberPassword">
 									{{ $t("usersPage.saveNewPassword") }}
 								</AppButton>
 							</div>

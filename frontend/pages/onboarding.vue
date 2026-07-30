@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { isOnboardingBlocked, needsAuthOnboarding } from "~/utils/auth-onboarding";
 
+const { t } = useI18n();
+
 type ApiEnvelope<T> = {
 	success: true;
 	requestId: string;
@@ -69,42 +71,31 @@ const passwordServerFieldErrors = reactive({
 	form: "",
 });
 
+const STORE_TYPE = "RESTAURANT";
+const STORE_HEADER_COLOR = "#22c55e";
+
 const storeForm = reactive({
 	name: "",
-	store_type: "RETAIL",
-	phone_number: "",
-	address: "",
 	currency: "LAK",
-	pdf_header_color: "#22c55e",
-	vat_enabled: false,
-	vat_rate: "7",
-	vat_mode: "EXCLUSIVE" as "EXCLUSIVE" | "INCLUSIVE",
 });
-
-const themePresets = [
-	{ name: "Emerald", value: "#22c55e" },
-	{ name: "Amber", value: "#f59e0b" },
-	{ name: "Sky", value: "#0ea5e9" },
-	{ name: "Rose", value: "#f43f5e" },
-];
 
 const stepItems = computed(() => ([
 	{
 		id: 1,
 		label: "Security",
-		title: "ตั้งรหัสผ่านใหม่",
+		title: t("onboardingPage.stepSecurityTitle"),
 		complete: !currentUser.value?.mustChangePassword,
 	},
 	{
 		id: 2,
 		label: "Store",
-		title: "สร้างร้านแรก",
+		title: t("onboardingPage.stepStoreTitle"),
 		complete: Number(currentUser.value?.ownedStoresCount || 0) > 0,
 	},
 	{
 		id: 3,
 		label: "Review",
-		title: "ตรวจสอบก่อนเริ่มใช้",
+		title: t("onboardingPage.stepReviewTitle"),
 		complete: false,
 	},
 ]));
@@ -122,10 +113,10 @@ function getDefaultAuthedPath() {
 
 const onboardingIntro = computed(() => {
 	if (currentUser.value?.mustChangePassword) {
-		return "เปลี่ยนรหัสผ่านชั่วคราวก่อน แล้วค่อยตั้งค่าร้านแรกของคุณ";
+		return t("onboardingPage.introMustChangePassword");
 	}
 
-	return "ตั้งค่าร้านแรกของคุณเพื่อเริ่มใช้งาน POS และ backoffice";
+	return t("onboardingPage.introDefault");
 });
 
 watch(currentUser, (user) => {
@@ -163,16 +154,16 @@ function normalizePasswordErrorMessage(message: string) {
 	const normalized = message.trim();
 	const lower = normalized.toLowerCase();
 	if (lower.includes("current password is incorrect")) {
-		return "รหัสผ่านปัจจุบันไม่ถูกต้อง";
+		return t("onboardingPage.errorCurrentWrong");
 	}
 	if (lower.includes("new password must be different")) {
-		return "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน";
+		return t("onboardingPage.errorSameAsCurrent");
 	}
 	if (lower.includes("confirmpassword") && lower.includes("at least 6")) {
-		return "ยืนยันรหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+		return t("onboardingPage.errorConfirmTooShort");
 	}
 	if (lower.includes("newpassword") && lower.includes("at least 6")) {
-		return "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร";
+		return t("onboardingPage.errorNextTooShort");
 	}
 	return normalized;
 }
@@ -192,21 +183,21 @@ const passwordFieldErrors = computed(() => {
 	};
 
 	if (!passwordForm.currentPassword.trim()) {
-		errors.current = "กรุณากรอกรหัสผ่านปัจจุบัน";
+		errors.current = t("onboardingPage.errorCurrentRequired");
 	}
 
 	if (!passwordForm.newPassword.trim()) {
-		errors.next = "กรุณากรอกรหัสผ่านใหม่";
+		errors.next = t("onboardingPage.errorNextRequired");
 	} else if (passwordForm.newPassword.length < 6) {
-		errors.next = "รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร";
+		errors.next = t("onboardingPage.errorNextTooShort");
 	}
 
 	if (!passwordForm.confirmPassword.trim()) {
-		errors.confirm = "กรุณายืนยันรหัสผ่านใหม่";
+		errors.confirm = t("onboardingPage.errorConfirmRequired");
 	} else if (passwordForm.confirmPassword.length < 6) {
-		errors.confirm = "ยืนยันรหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+		errors.confirm = t("onboardingPage.errorConfirmTooShort");
 	} else if (passwordForm.confirmPassword !== passwordForm.newPassword) {
-		errors.confirm = "รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน";
+		errors.confirm = t("onboardingPage.errorConfirmMismatch");
 	}
 
 	return errors;
@@ -251,7 +242,7 @@ async function bootstrap() {
 		}
 		currentStep.value = currentUser.value?.mustChangePassword ? 1 : 2;
 	} catch (error) {
-		pageError.value = extractErrorMessage(error, "โหลดข้อมูล onboarding ไม่สำเร็จ");
+		pageError.value = extractErrorMessage(error, t("onboardingPage.loadFailed"));
 	} finally {
 		pending.value = false;
 	}
@@ -295,11 +286,11 @@ async function submitPasswordStep() {
 		await fetchMe();
 		currentStep.value = 2;
 		appToast.success({
-			title: "เปลี่ยนรหัสผ่านแล้ว",
-			description: "ไปตั้งค่าร้านแรกของคุณต่อได้เลย",
+			title: t("onboardingPage.passwordChanged"),
+			description: t("onboardingPage.passwordChangedDescription"),
 		});
 	} catch (error) {
-		const rawMessage = extractErrorMessage(error, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+		const rawMessage = extractErrorMessage(error, t("onboardingPage.passwordChangeFailed"));
 		const normalizedMessage = normalizePasswordErrorMessage(rawMessage);
 		const lower = rawMessage.toLowerCase();
 		if (lower.includes("current password")) {
@@ -322,35 +313,12 @@ async function submitPasswordStep() {
 
 function goToReview() {
 	if (!canGoToReview.value) {
-		storeError.value = "กรุณากรอกชื่อร้านก่อน";
+		storeError.value = t("onboardingPage.storeNameRequired");
 		return;
 	}
 
 	storeError.value = null;
 	currentStep.value = 3;
-}
-
-function normalizeVatRateInput(raw: string) {
-	const input = String(raw ?? "").trim();
-	if (!input) return "";
-
-	let normalized = input.replace(/\s+/g, "");
-	normalized = normalized.replace(/,/g, "");
-	normalized = normalized.replace(/[^0-9.]/g, "");
-
-	const firstDot = normalized.indexOf(".");
-	if (firstDot !== -1) {
-		normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
-	}
-
-	return normalized;
-}
-
-function vatRateToNumber(raw: string) {
-	const normalized = normalizeVatRateInput(raw);
-	if (!normalized) return 0;
-	const value = Number(normalized);
-	return Number.isFinite(value) ? value : 0;
 }
 
 async function createFirstStore() {
@@ -362,28 +330,21 @@ async function createFirstStore() {
 			method: "POST",
 				body: {
 					name: storeForm.name.trim(),
-					store_type: storeForm.store_type,
-					phone_number: storeForm.phone_number.trim() || null,
-					address: storeForm.address.trim() || null,
+					store_type: STORE_TYPE,
 					currency: storeForm.currency,
 					supported_currencies: storeForm.currency,
-					vat_enabled: storeForm.vat_enabled ? 1 : 0,
-					vat_rate: vatRateToNumber(storeForm.vat_rate),
-					vat_mode: storeForm.vat_mode,
-					pdf_header_color: storeForm.pdf_header_color,
+					pdf_header_color: STORE_HEADER_COLOR,
 					pdf_company_name: storeForm.name.trim(),
-					pdf_company_address: storeForm.address.trim() || null,
-					pdf_company_phone: storeForm.phone_number.trim() || null,
 				},
 		});
 		await fetchMe();
 			appToast.success({
-				title: "สร้างร้านแรกแล้ว",
-				description: `${response.data.name} พร้อมเริ่มใช้งานแล้ว`,
+				title: t("onboardingPage.storeCreated"),
+				description: t("onboardingPage.storeCreatedDescription", { name: response.data.name }),
 			});
 			await navigateTo(getDefaultAuthedPath());
 		} catch (error) {
-		storeError.value = extractErrorMessage(error, "สร้างร้านแรกไม่สำเร็จ");
+		storeError.value = extractErrorMessage(error, t("onboardingPage.storeCreateFailed"));
 	} finally {
 		createStorePending.value = false;
 	}
@@ -419,10 +380,10 @@ onMounted(async () => {
 						<UBadge color="primary" variant="soft" label="Store onboarding" />
 						<div class="space-y-4">
 							<h2 class="text-5xl leading-tight font-semibold tracking-[-0.05em] text-stone-950">
-								เริ่มต้นร้านแรก, ตั้งธีมร้าน และเตรียมบัญชีให้พร้อมใช้งานจริง
+								{{ t('onboardingPage.heroTitle') }}
 							</h2>
 							<p class="max-w-xl text-base leading-7 text-stone-500">
-								flow นี้ออกแบบสำหรับ Super Admin รายใหม่ที่เพิ่งได้รับบัญชีจากระบบกลาง เพื่อให้ตั้งรหัสผ่านใหม่และสร้างร้านแรกของตัวเองในครั้งเดียว
+								{{ t('onboardingPage.heroDescription') }}
 							</p>
 						</div>
 
@@ -430,24 +391,24 @@ onMounted(async () => {
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Step 1</p>
 								<p class="mt-3 text-2xl font-semibold text-stone-950">Security</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">เปลี่ยนรหัสผ่านชั่วคราวให้ปลอดภัยก่อนเริ่มใช้งานจริง</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('onboardingPage.stepSecurityDescription') }}</p>
 							</UCard>
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Step 2</p>
 								<p class="mt-3 text-2xl font-semibold text-stone-950">Store</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">ตั้งชื่อร้าน, ประเภทร้าน, สกุลเงิน และข้อมูลพื้นฐานของร้านแรก</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('onboardingPage.stepStoreDescription') }}</p>
 							</UCard>
 							<UCard class="border-0 bg-[#fffefd] shadow-sm ring-1 ring-[#e7e4dd]">
 								<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Step 3</p>
-								<p class="mt-3 text-2xl font-semibold text-stone-950">Theme</p>
-								<p class="mt-2 text-sm leading-6 text-stone-500">เลือกโทนสีเริ่มต้นให้เอกสารและภาพรวมร้านของคุณ</p>
+								<p class="mt-3 text-2xl font-semibold text-stone-950">Review</p>
+								<p class="mt-2 text-sm leading-6 text-stone-500">{{ t('onboardingPage.stepReviewDescription') }}</p>
 							</UCard>
 						</div>
 					</div>
 
 					<div class="flex items-center justify-between text-sm text-stone-400">
 						<p>Client onboarding</p>
-						<p>สร้างร้านแรกด้วยตัวเอง</p>
+						<p>{{ t('onboardingPage.footerNote') }}</p>
 					</div>
 				</div>
 			</section>
@@ -456,7 +417,7 @@ onMounted(async () => {
 				<div class="w-full max-w-[560px]">
 						<UCard class="border-0 rounded-none bg-[#fffefd] shadow-xl ring-1 ring-[#e7e4dd] sm:rounded-md">
 							<div v-if="pending" class="space-y-5 px-4 py-4 sm:px-1 sm:py-1">
-								<AppInlineLoadingBar label="กำลังเตรียมหน้า onboarding..." />
+								<AppInlineLoadingBar :label="t('onboardingPage.loading')" />
 								<div class="space-y-4 rounded-md border border-[#ece8df] bg-[var(--pos-surface-soft)] p-4">
 									<div class="flex items-center gap-3">
 										<div class="h-14 w-14 animate-pulse rounded-2xl bg-[#e8e4db]" />
@@ -493,7 +454,7 @@ onMounted(async () => {
 								{{ pageError }}
 							</div>
 							<AppButton color="primary" variant="solid" size="md" :block="true" @click="bootstrap">
-								ลองอีกครั้ง
+								{{ t('onboardingPage.tryAgain') }}
 							</AppButton>
 						</div>
 
@@ -505,7 +466,7 @@ onMounted(async () => {
 									</div>
 									<div class="min-w-0">
 										<UBadge color="neutral" variant="soft" label="First login setup" />
-										<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">ยินดีต้อนรับ {{ currentUser?.name || "" }}</h2>
+										<h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-950">{{ t('onboardingPage.welcome', { name: currentUser?.name || "" }) }}</h2>
 										<p class="mt-2 text-sm leading-6 text-stone-500">
 											{{ onboardingIntro }}
 										</p>
@@ -529,15 +490,15 @@ onMounted(async () => {
 
 							<div v-if="onboardingIsBlocked" class="space-y-4">
 								<div class="rounded-md border border-warning-200 bg-warning-50 px-4 py-4">
-									<p class="text-sm font-semibold text-stone-950">บัญชีนี้ยังเริ่มสร้างร้านแรกไม่ได้</p>
-									<p class="mt-1 text-sm leading-6 text-stone-600">ตอนนี้คุณ login ได้แล้ว แต่ยังไม่มีสิทธิ์สร้างร้านแรกของตัวเอง กรุณาติดต่อ System Admin เพื่อเปิดสิทธิ์ก่อนเริ่ม onboarding</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('onboardingPage.blockedTitle') }}</p>
+									<p class="mt-1 text-sm leading-6 text-stone-600">{{ t('onboardingPage.blockedDescription') }}</p>
 								</div>
 								<div class="grid gap-2 sm:grid-cols-2">
 									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="bootstrap">
-										รีโหลดสถานะ
+										{{ t('onboardingPage.reloadStatus') }}
 									</AppButton>
 									<AppButton color="primary" variant="solid" size="md" :block="true" @click="leaveAndLogout">
-										ออกจากระบบ
+										{{ t('onboardingPage.signOut') }}
 									</AppButton>
 								</div>
 							</div>
@@ -548,15 +509,15 @@ onMounted(async () => {
 								</div>
 
 								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-									<p class="text-sm font-semibold text-stone-900">เปลี่ยนรหัสผ่านชั่วคราว</p>
-									<p class="mt-1 text-sm leading-6 text-stone-500">เพื่อความปลอดภัย บัญชีที่สร้างใหม่ต้องตั้งรหัสผ่านใหม่ก่อนเริ่มสร้างร้านแรก</p>
+									<p class="text-sm font-semibold text-stone-900">{{ t('onboardingPage.passwordTitle') }}</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('onboardingPage.passwordDescription') }}</p>
 									<div class="mt-4 grid gap-4">
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">อีเมลบัญชี</label>
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.accountEmail') }}</label>
 											<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
 										</div>
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านปัจจุบัน</label>
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.currentPassword') }}</label>
 											<div class="relative">
 												<UInput
 													v-model="passwordForm.currentPassword"
@@ -566,14 +527,14 @@ onMounted(async () => {
 													:class="passwordInputClass('current')"
 													@blur="passwordTouched.current = true"
 												/>
-												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนรหัสผ่านปัจจุบัน" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.current = !passwordVisibility.current" />
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" :aria-label="t('onboardingPage.toggleCurrentPassword')" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.current ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.current = !passwordVisibility.current" />
 											</div>
 											<p v-if="passwordFieldErrorMessage('current')" class="mt-2 text-xs text-rose-600">
 												{{ passwordFieldErrorMessage("current") }}
 											</p>
 										</div>
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่านใหม่</label>
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.newPassword') }}</label>
 											<div class="relative">
 												<UInput
 													v-model="passwordForm.newPassword"
@@ -583,14 +544,14 @@ onMounted(async () => {
 													:class="passwordInputClass('next')"
 													@blur="passwordTouched.next = true"
 												/>
-												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนรหัสผ่านใหม่" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.next = !passwordVisibility.next" />
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" :aria-label="t('onboardingPage.toggleNewPassword')" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.next ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.next = !passwordVisibility.next" />
 											</div>
 											<p v-if="passwordFieldErrorMessage('next')" class="mt-2 text-xs text-rose-600">
 												{{ passwordFieldErrorMessage("next") }}
 											</p>
 										</div>
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">ยืนยันรหัสผ่านใหม่</label>
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.confirmPassword') }}</label>
 											<div class="relative">
 												<UInput
 													v-model="passwordForm.confirmPassword"
@@ -600,7 +561,7 @@ onMounted(async () => {
 													:class="passwordInputClass('confirm')"
 													@blur="passwordTouched.confirm = true"
 												/>
-												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" aria-label="แสดงหรือซ่อนยืนยันรหัสผ่านใหม่" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.confirm = !passwordVisibility.confirm" />
+												<AppButton color="neutral" variant="ghost" size="xs" type="button" tabindex="-1" :aria-label="t('onboardingPage.toggleConfirmPassword')" class="absolute top-1/2 right-2 h-8 w-8 -translate-y-1/2 justify-center rounded-md text-stone-500 hover:bg-white hover:text-stone-900" :icon="passwordVisibility.confirm ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" @mousedown.prevent @click="passwordVisibility.confirm = !passwordVisibility.confirm" />
 											</div>
 											<p v-if="passwordFieldErrorMessage('confirm')" class="mt-2 text-xs text-rose-600">
 												{{ passwordFieldErrorMessage("confirm") }}
@@ -611,10 +572,10 @@ onMounted(async () => {
 
 								<div class="grid gap-2 sm:grid-cols-2">
 									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="leaveAndLogout">
-										ออกจากระบบ
+										{{ t('onboardingPage.signOut') }}
 									</AppButton>
 									<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-arrow-right-20-solid" :loading="passwordPending" :spin-icon-on-loading="true" :block="true" @click="submitPasswordStep">
-										ยืนยันรหัสผ่านใหม่
+										{{ t('onboardingPage.confirmNewPassword') }}
 									</AppButton>
 								</div>
 							</div>
@@ -625,27 +586,23 @@ onMounted(async () => {
 								</div>
 
 								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-									<p class="text-sm font-semibold text-stone-900">สร้างร้านแรกของคุณ</p>
-									<p class="mt-1 text-sm leading-6 text-stone-500">เริ่มจากข้อมูลสำคัญก่อน แล้วค่อยกลับมาเติมโลโก้หรือรายละเอียดเชิงลึกทีหลังได้</p>
+									<p class="text-sm font-semibold text-stone-900">{{ t('onboardingPage.storeTitle') }}</p>
+									<p class="mt-1 text-sm leading-6 text-stone-500">{{ t('onboardingPage.storeDescription') }}</p>
 									<div class="mt-4 grid gap-4">
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อร้าน</label>
-											<UInput v-model="storeForm.name" size="lg" color="neutral" placeholder="เช่น Codesabai Mart" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.storeName') }}</label>
+											<UInput v-model="storeForm.name" size="lg" color="neutral" :placeholder="t('onboardingPage.storeNamePlaceholder')" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
 										</div>
 										<div class="grid gap-4 sm:grid-cols-2">
 											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">ประเภทร้าน</label>
-												<select v-model="storeForm.store_type" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-													<option value="RETAIL">Retail</option>
-													<option value="CAFE">Cafe</option>
-													<option value="RESTAURANT">Restaurant</option>
-													<option value="BEAUTY">Beauty</option>
-													<option value="SERVICE">Service</option>
-													<option value="OTHER">Other</option>
-												</select>
+												<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.storeType') }}</label>
+												<div class="w-full rounded-md border border-[#e7e4dd] bg-neutral-50 px-4 py-3 text-sm font-medium text-stone-700">
+													{{ t('onboardingPage.storeTypeRestaurant') }}
+												</div>
+												<p class="mt-2 text-xs leading-5 text-stone-400">{{ t('onboardingPage.storeTypeHint') }}</p>
 											</div>
 											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">สกุลเงินหลัก</label>
+												<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('onboardingPage.currency') }}</label>
 												<select v-model="storeForm.currency" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 													<option value="LAK">LAK</option>
 													<option value="THB">THB</option>
@@ -653,118 +610,16 @@ onMounted(async () => {
 												</select>
 											</div>
 										</div>
-										<div class="grid gap-4 sm:grid-cols-2">
-											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">เบอร์โทรร้าน</label>
-												<UInput v-model="storeForm.phone_number" size="lg" color="neutral" placeholder="020xxxxxxx" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3" />
-											</div>
-										</div>
-										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">ที่อยู่ร้าน</label>
-											<textarea v-model="storeForm.address" rows="3" class="w-full rounded-md border border-[#e7e4dd] bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" placeholder="ถนน / แขวง / เมือง / แขวง" />
-										</div>
+										<p class="text-xs leading-5 text-stone-400">{{ t('onboardingPage.laterInSettings') }}</p>
 									</div>
 								</div>
 
-								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-									<div class="flex items-center justify-between gap-3">
-										<div>
-											<p class="text-sm font-semibold text-stone-900">VAT / ภาษีมูลค่าเพิ่ม</p>
-											<p class="mt-1 text-sm leading-6 text-stone-500">ตั้งค่า VAT เริ่มต้นสำหรับร้านใหม่ เพื่อให้ POS คิดภาษีได้ทันที</p>
-										</div>
-										<UBadge color="neutral" variant="soft" :label="storeForm.vat_enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'" />
-									</div>
-
-									<div class="mt-4 grid gap-3 sm:grid-cols-3">
-										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
-											<div class="flex items-center justify-between gap-4">
-												<div class="min-w-0">
-													<p class="text-sm font-semibold text-stone-900">เปิดใช้งาน VAT</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">เปิดไว้เมื่อร้านต้องออกใบเสร็จมีภาษี</p>
-												</div>
-												<button
-													type="button"
-													class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition"
-													:class="storeForm.vat_enabled ? 'bg-primary-600' : 'bg-stone-200'"
-													@click="storeForm.vat_enabled = !storeForm.vat_enabled"
-												>
-													<span
-														class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition"
-														:class="storeForm.vat_enabled ? 'translate-x-5' : 'translate-x-0.5'"
-													/>
-												</button>
-											</div>
-										</div>
-
-										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
-											<p class="text-sm font-semibold text-stone-900">อัตรา VAT</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">กรอกเป็นเปอร์เซ็นต์ เช่น 7 สำหรับ 7%</p>
-											<div class="mt-3">
-												<UInput
-													v-model="storeForm.vat_rate"
-													size="lg"
-													color="neutral"
-													type="text"
-													inputmode="decimal"
-													placeholder="7"
-													class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3"
-												/>
-											</div>
-										</div>
-
-										<div class="rounded-md border border-[#e7e4dd] bg-white px-4 py-3">
-											<p class="text-sm font-semibold text-stone-900">รูปแบบ VAT</p>
-											<p class="mt-1 text-xs leading-5 text-stone-500">Exclusive = บวกเพิ่ม, Inclusive = รวมในราคาแล้ว</p>
-											<div class="mt-3 grid grid-cols-2 gap-2">
-												<button
-													type="button"
-													class="rounded-md border px-3 py-2 text-sm font-semibold transition"
-													:class="storeForm.vat_mode === 'EXCLUSIVE'
-														? 'border-primary-300 bg-primary-50 text-primary-700'
-														: 'border-neutral-200 bg-neutral-50 text-stone-600 hover:bg-neutral-100'"
-													@click="storeForm.vat_mode = 'EXCLUSIVE'"
-												>
-													Exclusive
-												</button>
-												<button
-													type="button"
-													class="rounded-md border px-3 py-2 text-sm font-semibold transition"
-													:class="storeForm.vat_mode === 'INCLUSIVE'
-														? 'border-primary-300 bg-primary-50 text-primary-700'
-														: 'border-neutral-200 bg-neutral-50 text-stone-600 hover:bg-neutral-100'"
-													@click="storeForm.vat_mode = 'INCLUSIVE'"
-												>
-													Inclusive
-												</button>
-											</div>
-										</div>
-									</div>
-								</div>
-
-								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-									<p class="text-sm font-semibold text-stone-900">เลือกโทนสีร้าน</p>
-									<p class="mt-1 text-sm leading-6 text-stone-500">สีนี้จะถูกใช้เป็นโทนเริ่มต้นของเอกสารร้านและภาพรวมแบรนด์เบื้องต้น</p>
-									<div class="mt-4 grid gap-3 sm:grid-cols-4">
-										<button
-											v-for="preset in themePresets"
-											:key="preset.value"
-											type="button"
-											class="rounded-md border px-3 py-3 text-left transition"
-											:class="storeForm.pdf_header_color === preset.value ? 'border-primary-300 bg-primary-50' : 'border-neutral-200 bg-white hover:border-primary-200 hover:bg-primary-50/50'"
-											@click="storeForm.pdf_header_color = preset.value"
-										>
-											<div class="h-8 rounded-md" :style="{ backgroundColor: preset.value }" />
-											<p class="mt-2 text-sm font-medium text-stone-900">{{ preset.name }}</p>
-										</button>
-									</div>
-								</div>
-
-								<div class="grid gap-2 sm:grid-cols-2">
+								<div class="grid gap-2" :class="currentUser?.mustChangePassword ? 'sm:grid-cols-2' : ''">
 									<AppButton v-if="currentUser?.mustChangePassword" color="neutral" variant="soft" size="md" :block="true" @click="currentStep = 1">
-										ย้อนกลับ
+										{{ t('onboardingPage.back') }}
 									</AppButton>
 									<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-arrow-right-20-solid" :block="true" @click="goToReview">
-										ตรวจสอบก่อนสร้างร้าน
+										{{ t('onboardingPage.goReview') }}
 									</AppButton>
 								</div>
 							</div>
@@ -783,47 +638,34 @@ onMounted(async () => {
 									<UCard class="border-0 bg-[var(--pos-surface-soft)] shadow-none">
 										<p class="text-xs uppercase tracking-[0.16em] text-stone-400">Store</p>
 										<p class="mt-3 text-lg font-semibold text-stone-950">{{ storeForm.name || "-" }}</p>
-										<p class="mt-1 text-sm text-stone-500">{{ storeForm.store_type }} · {{ storeForm.currency }}</p>
+										<p class="mt-1 text-sm text-stone-500">{{ t('onboardingPage.storeTypeRestaurant') }} · {{ storeForm.currency }}</p>
 									</UCard>
 								</div>
 
 								<div class="rounded-md bg-[var(--pos-surface-soft)] p-4">
-									<p class="text-sm font-semibold text-stone-900">สรุปก่อนเริ่มใช้งาน</p>
+									<p class="text-sm font-semibold text-stone-900">{{ t('onboardingPage.reviewTitle') }}</p>
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ชื่อร้าน</dt>
+											<dt class="text-stone-500">{{ t('onboardingPage.storeName') }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ storeForm.name }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ประเภทร้าน</dt>
-											<dd class="text-right font-medium text-stone-900">{{ storeForm.store_type }}</dd>
+											<dt class="text-stone-500">{{ t('onboardingPage.storeType') }}</dt>
+											<dd class="text-right font-medium text-stone-900">{{ t('onboardingPage.storeTypeRestaurant') }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">สกุลเงิน</dt>
+											<dt class="text-stone-500">{{ t('onboardingPage.currency') }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ storeForm.currency }}</dd>
-										</div>
-										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">VAT</dt>
-											<dd class="text-right font-medium text-stone-900">
-												{{ storeForm.vat_enabled ? `${vatRateToNumber(storeForm.vat_rate)}% · ${storeForm.vat_mode}` : "ปิดใช้งาน" }}
-											</dd>
-										</div>
-										<div class="flex items-start justify-between gap-4">
-											<dt class="text-stone-500">สีแบรนด์เริ่มต้น</dt>
-											<dd class="flex items-center gap-2 text-right font-medium text-stone-900">
-												<span class="inline-block h-4 w-4 rounded-full ring-1 ring-black/10" :style="{ backgroundColor: storeForm.pdf_header_color }" />
-												{{ storeForm.pdf_header_color }}
-											</dd>
 										</div>
 									</dl>
 								</div>
 
 								<div class="grid gap-2 sm:grid-cols-2">
 									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="currentStep = 2">
-										ย้อนกลับ
+										{{ t('onboardingPage.back') }}
 									</AppButton>
 									<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="createStorePending" :spin-icon-on-loading="true" :block="true" @click="createFirstStore">
-										สร้างร้านแรกและเริ่มใช้งาน
+										{{ t('onboardingPage.createStore') }}
 									</AppButton>
 								</div>
 							</div>

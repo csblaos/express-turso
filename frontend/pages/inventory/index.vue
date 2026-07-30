@@ -180,6 +180,20 @@ const pageSizeOptions = [10, 20, 50, 100];
 	let pendingScan: { code: string; source: "scanner" | "camera" } | null = null;
 
 	const canAdjustInventory = computed(() => can("inventory.adjust"));
+// Balances are derived from products and filtered on the server, so an empty
+// list without filters means the store has no products to track yet.
+const hasActiveInventoryFilters = computed(() => (
+	Boolean(searchQuery.value.trim())
+	|| activeCategory.value !== "all"
+	|| activeStatus.value !== "all"
+));
+const canCreateProduct = computed(() => can("products.create"));
+
+function clearInventoryFilters() {
+	searchQuery.value = "";
+	activeCategory.value = "all";
+	activeStatus.value = "all";
+}
 	const canUpdateProduct = computed(() => can("products.update"));
 
 const categoryOptions = computed(() => [
@@ -965,11 +979,40 @@ onMounted(() => {
 									<AppButton color="primary" variant="soft" size="md" class="rounded-md" :label="t('inventoryPage.tryAgain')" @click="loadBalances" />
 								</div>
 							</div>
-							<div v-else-if="!filteredBalances.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-								<div class="space-y-3">
-									<p class="text-sm font-medium text-stone-900">{{ t('inventoryPage.noResults') }}</p>
-									<p class="text-sm text-stone-500">{{ t('inventoryPage.noResultsHint') }}</p>
-								</div>
+							<div v-else-if="!filteredBalances.length" class="flex h-full min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+								<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+									<UIcon :name="hasActiveInventoryFilters ? 'i-heroicons-magnifying-glass' : 'i-heroicons-cube'" class="size-5" />
+								</span>
+								<p class="mt-3 font-semibold text-stone-900">
+									{{ hasActiveInventoryFilters ? t('inventoryPage.noResults') : t('inventoryPage.emptyCatalog') }}
+								</p>
+								<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+									{{ hasActiveInventoryFilters
+										? t('inventoryPage.noResultsHint')
+										: (canCreateProduct ? t('inventoryPage.emptyCatalogHint') : t('inventoryPage.emptyCatalogHintReadOnly')) }}
+								</p>
+								<AppButton
+									v-if="hasActiveInventoryFilters"
+									class="mt-4 rounded-md"
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-x-mark-20-solid"
+									@click="clearInventoryFilters"
+								>
+									{{ t('inventoryPage.clearFilters') }}
+								</AppButton>
+								<AppButton
+									v-else-if="canCreateProduct"
+									class="mt-4 rounded-md"
+									color="primary"
+									variant="solid"
+									size="md"
+									icon="i-heroicons-plus-20-solid"
+									@click="navigateTo('/products')"
+								>
+									{{ t('inventoryPage.emptyCatalogAction') }}
+								</AppButton>
 							</div>
 
 							<table v-else class="min-w-[1100px] w-full border-separate border-spacing-0">

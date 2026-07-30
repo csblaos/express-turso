@@ -235,6 +235,21 @@ const paginatedOrders = computed(() => {
 	const startIndex = (currentPage.value - 1) * pageSize.value;
 	return orders.value.slice(startIndex, startIndex + pageSize.value);
 });
+// Filtering happens on the server, so an empty list means either "nothing
+// matched the filters" or "this store has no purchase orders at all".
+const hasActiveFilters = computed(() => (
+	Boolean(searchQuery.value.trim())
+	|| activeStatus.value !== "all"
+	|| activePaymentStatus.value !== "all"
+));
+const hasEmptyOrderList = computed(() => !ordersPending.value && !ordersError.value && orders.value.length === 0);
+
+function clearOrderFilters() {
+	searchQuery.value = "";
+	activeStatus.value = "all";
+	activePaymentStatus.value = "all";
+}
+
 const showReceiveLaterOption = computed(() => selectedOrderDetail.value?.order.status !== "arrived");
 const paymentSettledBase = computed(() => {
 	if (!selectedOrderDetail.value) return 0;
@@ -1285,8 +1300,41 @@ async function submitEditPurchaseOrder() {
 											<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadOrders">{{ poListText.retry }}</AppButton>
 										</div>
 									</div>
-									<div v-else-if="!orders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
-										{{ poListText.noOrders }}
+									<div v-else-if="hasEmptyOrderList" class="flex h-full min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+										<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+											<UIcon :name="hasActiveFilters ? 'i-heroicons-magnifying-glass' : 'i-heroicons-clipboard-document-list'" class="size-5" />
+										</span>
+										<h2 class="mt-3 font-semibold text-stone-900">
+											{{ hasActiveFilters ? $t('purchaseOrdersPage.noFilterMatch') : poListText.noOrders }}
+										</h2>
+										<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+											{{ hasActiveFilters
+												? $t('purchaseOrdersPage.noFilterMatchHint')
+												: (canCreatePurchaseOrder ? $t('purchaseOrdersPage.noOrdersHint') : $t('purchaseOrdersPage.noOrdersHintReadOnly')) }}
+										</p>
+										<AppButton
+											v-if="hasActiveFilters"
+											class="mt-4 rounded-md"
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-x-mark-20-solid"
+											@click="clearOrderFilters"
+										>
+											{{ poListText.clear }}
+										</AppButton>
+										<AppButton
+											v-else-if="canCreatePurchaseOrder"
+											class="mt-4 rounded-md"
+											color="primary"
+											variant="solid"
+											size="md"
+											icon="i-heroicons-plus-20-solid"
+											:disabled="!authPermissionReady"
+											@click="openCreateDrawer"
+										>
+											{{ poListText.create }}
+										</AppButton>
 									</div>
 									<table v-else class="min-w-[1120px] w-full border-separate border-spacing-0">
 										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
