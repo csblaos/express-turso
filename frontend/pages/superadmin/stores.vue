@@ -144,8 +144,11 @@ const overviewStats = computed(() => {
 
 function formatDateTime(value: string) {
 	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-GB" : "th-TH", {
-		dateStyle: "medium",
-		timeStyle: "short",
+		day: "numeric",
+		month: "long",
+		year: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
 	}).format(new Date(value));
 }
 
@@ -498,7 +501,6 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 													<td class="border-b border-[#f1ede6] px-4 py-4">
 														<div class="min-w-0">
 															<p class="truncate font-semibold text-stone-950">{{ store.name }}</p>
-															<p class="mt-1 truncate text-xs text-stone-500">{{ store.id }}</p>
 														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
