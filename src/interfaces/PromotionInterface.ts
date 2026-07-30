@@ -85,6 +85,8 @@ export class PromotionInterface {
 			if (!promotionColumns.has("max_discount_amount_per_bill")) await db.execute("ALTER TABLE promotions ADD COLUMN max_discount_amount_per_bill REAL");
 			const orderPromotionInfo = await db.execute("PRAGMA table_info(order_promotions)");
 			const orderPromotionColumns = new Set(orderPromotionInfo.rows.map((row: any) => String(row.name)));
+			if (!orderPromotionColumns.has("discount_method")) await db.execute("ALTER TABLE order_promotions ADD COLUMN discount_method TEXT");
+			if (!orderPromotionColumns.has("discount_value")) await db.execute("ALTER TABLE order_promotions ADD COLUMN discount_value REAL");
 			if (!orderPromotionColumns.has("discount_amount")) await db.execute("ALTER TABLE order_promotions ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0");
 		})();
 		try { await PromotionInterface.ensured; } catch (error) { PromotionInterface.ensured = null; throw error; }

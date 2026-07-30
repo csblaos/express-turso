@@ -361,7 +361,7 @@ export class RestaurantInterface {
 				WHERE oi.order_id=? ORDER BY CASE WHEN oi.line_status='draft' THEN 0 ELSE 1 END,r.round_no,oi.id`,args:[orderId]},
 			{sql:"SELECT * FROM restaurant_order_rounds WHERE order_id=? ORDER BY round_no",args:[orderId]},
 			{sql:"SELECT product_id,SUM(qty) qty,SUM(line_total) amount FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=0 GROUP BY product_id",args:[orderId]},
-			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
+			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p LEFT JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
 			{sql:"SELECT promotion_id,SUM(qty) qty FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=1 GROUP BY promotion_id",args:[orderId]},
 		];
 	}
@@ -527,7 +527,7 @@ export class RestaurantInterface {
 				WHERE oi.order_id=? ORDER BY CASE WHEN oi.line_status='draft' THEN 0 ELSE 1 END,r.round_no,oi.id`,args:[orderId]},
 			{sql:"SELECT * FROM restaurant_order_rounds WHERE order_id=? ORDER BY round_no",args:[orderId]},
 			{sql:"SELECT product_id,SUM(qty) qty,SUM(line_total) amount FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=0 GROUP BY product_id",args:[orderId]},
-			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
+			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p LEFT JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
 			{sql:"SELECT promotion_id,SUM(qty) qty FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=1 GROUP BY promotion_id",args:[orderId]},
 			{sql:"SELECT 1 FROM promotions WHERE store_id=? AND is_active=1 AND deleted_at IS NULL AND apply_mode='automatic' LIMIT 1",args:[storeId]},
 		], "write");
@@ -696,14 +696,14 @@ export class RestaurantInterface {
 
 	private static mapPromotionState(lines:any,promos:any,gifts:any):any[]{
 		const qty=new Map<string,number>(lines.rows.map((r:any)=>[String(r.product_id),number(r.qty)]));const subtotal=lines.rows.reduce((s:number,r:any)=>s+number(r.amount),0);const giftQty=new Map<string,number>(gifts.rows.map((r:any)=>[String(r.promotion_id),number(r.qty)]));
-		return promos.rows.map((p:any)=>{const current=qty.get(String(p.qualifying_product_id))||0;const rawApplications=String(p.type)==="buy_x_get_y"?Math.floor(current/Math.max(1,number(p.qualifying_qty))):Math.floor(subtotal/Math.max(1,number(p.minimum_subtotal)));const limit=number(p.max_applications_per_bill);const applications=limit>0?Math.min(rawApplications,limit):rawApplications;const earned=applications*number(p.gift_qty);const granted=giftQty.get(String(p.id))||0;const available=Math.max(0,earned-granted);return{promotion_id:String(p.id),name:String(p.name),apply_mode:String(p.apply_mode||"manual"),gift_product_id:String(p.gift_product_id),gift_product_name:String(p.gift_product_name),gift_qty:available,earned_gift_qty:earned,granted_gift_qty:granted,over_granted_qty:Math.max(0,granted-earned),applications,eligible:available>0,remaining_qty:String(p.type)==="buy_x_get_y"&&rawApplications===0?Math.max(0,number(p.qualifying_qty)-current):0,remaining_amount:String(p.type)==="cart_total_gift"&&rawApplications===0?Math.max(0,number(p.minimum_subtotal)-subtotal):0};});
+		return promos.rows.map((p:any)=>{const type=String(p.type);const current=qty.get(String(p.qualifying_product_id))||0;const rawApplications=type==="buy_x_get_y"?Math.floor(current/Math.max(1,number(p.qualifying_qty))):type==="cart_total_gift"?Math.floor(subtotal/Math.max(1,number(p.minimum_subtotal))):type==="cart_threshold_discount"?(subtotal>=number(p.minimum_subtotal)?1:0):(subtotal>0?1:0);const applicationLimit=number(p.max_applications_per_bill);const applications=applicationLimit>0?Math.min(rawApplications,applicationLimit):rawApplications;const isGift=type==="buy_x_get_y"||type==="cart_total_gift";const earned=isGift?applications*number(p.gift_qty):0;const granted=giftQty.get(String(p.id))||0;const available=Math.max(0,earned-granted);const rawDiscount=!isGift&&applications>0?(String(p.discount_method)==="percent"?subtotal*number(p.discount_value)/100:number(p.discount_value)):0;const discountLimit=number(p.max_discount_amount_per_bill);const discountAmount=Math.max(0,Math.min(subtotal,discountLimit>0?Math.min(rawDiscount,discountLimit):rawDiscount));return{promotion_id:String(p.id),name:String(p.name),type,apply_mode:String(p.apply_mode||"manual"),gift_product_id:text(p.gift_product_id)||null,gift_product_name:text(p.gift_product_name),gift_qty:available,discount_method:isGift?null:(p.discount_method?String(p.discount_method):null),discount_value:isGift?0:number(p.discount_value),discount_amount:discountAmount,max_applications_per_bill:applicationLimit>0?applicationLimit:null,max_discount_amount_per_bill:discountLimit>0?discountLimit:null,earned_gift_qty:earned,granted_gift_qty:granted,over_granted_qty:Math.max(0,granted-earned),applications,eligible:applications>0&&(isGift?available>0:true),remaining_qty:type==="buy_x_get_y"&&rawApplications===0?Math.max(0,number(p.qualifying_qty)-current):0,remaining_amount:(type==="cart_total_gift"||type==="cart_threshold_discount")&&rawApplications===0?Math.max(0,number(p.minimum_subtotal)-subtotal):0};});
 	}
 
 	private static async promotionState(executor:Executor,storeId:string,orderId:string):Promise<any[]>{
 		const stamp=now();
 		const statements = [
 			{sql:"SELECT product_id,SUM(qty) qty,SUM(line_total) amount FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=0 GROUP BY product_id",args:[orderId]},
-			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
+			{sql:`SELECT p.*,gp.name gift_product_name FROM promotions p LEFT JOIN products gp ON gp.id=p.gift_product_id WHERE p.store_id=? AND p.is_active=1 AND p.deleted_at IS NULL AND (p.starts_at IS NULL OR p.starts_at<=?) AND (p.ends_at IS NULL OR p.ends_at>=?)`,args:[storeId,stamp,stamp]},
 			{sql:"SELECT promotion_id,SUM(qty) qty FROM order_items WHERE order_id=? AND line_status!='cancelled' AND is_gift=1 GROUP BY promotion_id",args:[orderId]},
 		];
 		const [lines, promos, gifts] = executor.batch
@@ -725,7 +725,7 @@ export class RestaurantInterface {
 		const automatic = results[0];
 		if (!knownEnabled && !automatic?.rows.length) return;
 		const states=await RestaurantInterface.promotionState(executor,storeId,orderId);
-		const eligible=states.filter((p:any)=>p.apply_mode==="automatic"&&p.eligible);
+		const eligible=states.filter((p:any)=>p.apply_mode==="automatic"&&p.eligible&&p.gift_product_id&&p.gift_qty>0);
 		if (!eligible.length) return;
 		const productStatements=eligible.map((state:any)=>({sql:"SELECT * FROM products WHERE id=? AND store_id=? AND active=1",args:[state.gift_product_id,storeId]}));
 		const products=executor.batch

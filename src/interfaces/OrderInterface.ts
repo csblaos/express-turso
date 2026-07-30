@@ -241,7 +241,13 @@ export class OrderInterface {
 						unit_price: line.isGift ? 0 : Number(line.row.price_base || 0), line_total: line.lineTotal,
 						is_gift: Boolean(line.isGift), promotion_id: line.promotionId || null,
 					})),
-					promotions: appliedPromotions.map((promotion) => ({ promotion_id: promotion.promotion_id, name: promotion.name, gift_product_id: promotion.gift_product_id, gift_qty: promotion.gift_qty, discount_amount: promotion.discount_amount })),
+					promotions: appliedPromotions.map((promotion) => ({
+						promotion_id: promotion.promotion_id, name: promotion.name,
+						gift_product_id: promotion.gift_product_id, gift_qty: promotion.gift_qty,
+						discount_method: promotion.discount_method || null,
+						discount_value: promotion.discount_value || 0,
+						discount_amount: promotion.discount_amount,
+					})),
 				},
 			};
 
@@ -263,7 +269,7 @@ export class OrderInterface {
 					Number(store.pickup_queue_enabled) && payload.service_mode === "pickup" ? "waiting_pickup" : null ],
 			} ];
 			for (const promotion of appliedPromotions) {
-				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, discount_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id || "", promotion.gift_qty, promotion.discount_amount, now ] });
+				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, discount_method, discount_value, discount_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id || "", promotion.gift_qty, promotion.discount_method || null, promotion.discount_value || 0, promotion.discount_amount || 0, now ] });
 			}
 
 			const consumedByProduct = new Map<string, number>();

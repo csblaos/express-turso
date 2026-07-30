@@ -14,6 +14,7 @@ try {
 	for (const sql of [
 		`CREATE TABLE products (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,name TEXT NOT NULL,sku TEXT NOT NULL,barcode TEXT,category_id TEXT,base_unit_id TEXT NOT NULL,price_base REAL NOT NULL,cost_base REAL NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)`,
 		`CREATE TABLE product_units (id TEXT PRIMARY KEY,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,enabled_for_sale INTEGER NOT NULL DEFAULT 1)`,
+		`CREATE TABLE product_categories (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,name TEXT NOT NULL,sort_order INTEGER)`,
 		`CREATE TABLE orders (id TEXT PRIMARY KEY,store_id TEXT NOT NULL,order_no TEXT NOT NULL,channel TEXT,status TEXT,subtotal REAL,discount REAL,vat_amount REAL,shipping_fee_charged REAL,total REAL,shipping_cost REAL,created_by TEXT,created_at TEXT,payment_currency TEXT,payment_method TEXT,payment_account_id TEXT,payment_slip_url TEXT,payment_proof_submitted_at TEXT,payment_status TEXT,paid_at TEXT)`,
 		`CREATE TABLE order_items (id TEXT PRIMARY KEY,order_id TEXT NOT NULL,product_id TEXT NOT NULL,unit_id TEXT NOT NULL,qty REAL NOT NULL,qty_base REAL NOT NULL,price_base_at_sale REAL NOT NULL,cost_base_at_sale REAL NOT NULL,line_total REAL NOT NULL)`,
 		`CREATE TABLE inventory_balances (store_id TEXT NOT NULL,product_id TEXT NOT NULL,on_hand_base REAL NOT NULL,reserved_base REAL NOT NULL,available_base REAL NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(store_id,product_id))`,
@@ -32,6 +33,7 @@ try {
 	await db.execute("ALTER TABLE products ADD COLUMN updated_at TEXT");
 	await db.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT");
 	await db.execute("ALTER TABLE products ADD COLUMN location TEXT");
+	await db.execute("ALTER TABLE products ADD COLUMN low_stock_threshold REAL");
 	await db.execute("UPDATE products SET inventory_mode='untracked',cost_source='unknown' WHERE id='pizza'");
 	await db.execute({ sql: "INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)", args: [ "smoke-store", "beer", 5, 0, 5, stamp ] });
 
@@ -69,9 +71,12 @@ try {
 	assert.equal(sent.items.find((item) => item.product_id === "beer")?.qty, 2);
 	const sentRetry = await RestaurantInterface.sendRound("smoke-store", dineIn.id, dineIn.version, "send-2", "cashier", [{ product_id: "beer", qty: 2 }]);
 	assert.equal(sentRetry.rounds.length, 1, "batch send idempotency does not create another kitchen round");
-	const batchBeerMovements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='beer' AND ref_type='restaurant_round'");
+	const batchBeerMovements = await db.execute({
+		sql: "SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='beer' AND ref_type='restaurant_round' AND ref_id=?",
+		args: [sent.rounds[0].id],
+	});
 	assert.equal(Number(batchBeerMovements.rows[0].total), 1, "batch send writes one merged stock movement");
-	const completed = await RestaurantInterface.checkout("smoke-store", sent.id, { expected_version: sent.version, payment_method: "cash", amount_tendered: 400, dispatch_mode: "existing" }, "cashier", "checkout-2");
+	const completed = await RestaurantInterface.checkout("smoke-store", sent.id, { expected_version: sent.version, payment_method: "cash", amount_tendered: 600, dispatch_mode: "existing" }, "cashier", "checkout-2");
 	assert.equal(completed.status, "completed");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 	const pizzaMovements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='pizza'");
@@ -102,14 +107,14 @@ try {
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 
 	const { ReportInterface } = await import("../src/interfaces/ReportInterface.ts");
-	const report = await ReportInterface.dashboard("smoke-store", "today", 420);
+	const report = await ReportInterface.dashboard("smoke-store", { preset: "today", timezoneOffset: 420 });
 	const expectedReport = await db.execute("SELECT COUNT(*) AS bill_count,COALESCE(SUM(total),0) AS revenue FROM orders WHERE store_id='smoke-store' AND status='completed' AND payment_status='paid'");
 	assert.equal(report.summary.bill_count, Number(expectedReport.rows[0].bill_count), "report counts only completed paid bills");
 	assert.equal(report.summary.revenue, Number(expectedReport.rows[0].revenue), "report revenue reconciles with paid orders");
 	assert.equal(report.payment_mix[0].method, "cash");
 	assert.equal(report.top_products.some((item) => item.id === "beer"), true);
-	assert.equal(report.periods.current.from.endsWith("17:00:00.000Z"), true, "UTC+7 day starts at 17:00Z");
-	const weekReport = await ReportInterface.dashboard("smoke-store", "7d", 420);
+	assert.equal(report.period.from.endsWith("17:00:00.000Z"), true, "UTC+7 day starts at 17:00Z");
+	const weekReport = await ReportInterface.dashboard("smoke-store", { preset: "7d", timezoneOffset: 420 });
 	assert.equal(weekReport.summary.revenue, report.summary.revenue);
 
 	console.log("Hybrid POS smoke passed: orders, receipt, idempotency, stock-once, cleanup, and real report reconciliation");

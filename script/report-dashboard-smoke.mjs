@@ -12,7 +12,8 @@ try {
 	await DbConn.connect();
 	const db = DbConn.getClient();
 	await db.execute(`CREATE TABLE orders(id TEXT PRIMARY KEY,store_id TEXT,status TEXT,payment_status TEXT,subtotal REAL DEFAULT 0,discount REAL DEFAULT 0,vat_amount REAL DEFAULT 0,shipping_fee_charged REAL DEFAULT 0,total REAL,shipping_cost REAL DEFAULT 0,paid_at TEXT,closed_at TEXT,created_at TEXT,created_by TEXT,payment_method TEXT,service_mode TEXT,channel TEXT)`);
-	await db.execute(`CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT,product_id TEXT,qty_base REAL,line_total REAL,line_status TEXT,is_gift INTEGER,cost_base_at_sale REAL,cost_source_at_sale TEXT)`);
+	await db.execute(`CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT,product_id TEXT,qty_base REAL,line_total REAL,line_status TEXT,is_gift INTEGER,promotion_id TEXT,cost_base_at_sale REAL,cost_source_at_sale TEXT)`);
+	await db.execute(`CREATE TABLE order_promotions(id TEXT PRIMARY KEY,order_id TEXT,promotion_id TEXT,promotion_name TEXT,promotion_type TEXT,applications INTEGER,gift_product_id TEXT,gift_qty INTEGER,discount_method TEXT,discount_value REAL,discount_amount REAL,created_at TEXT)`);
 	await db.execute(`CREATE TABLE products(id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sku TEXT,active INTEGER,deleted_at TEXT,inventory_mode TEXT,low_stock_threshold REAL,category_id TEXT,cost_base REAL DEFAULT 0)`);
 	await db.execute(`CREATE TABLE product_categories(id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sort_order INTEGER)`);
 	await db.execute(`CREATE TABLE inventory_balances(store_id TEXT,product_id TEXT,available_base REAL)`);
@@ -31,10 +32,10 @@ try {
 	await db.execute("INSERT INTO products(id,store_id,name,sku,active,deleted_at,inventory_mode,low_stock_threshold,category_id,cost_base) VALUES('known','report-store','Known','KNOWN',1,NULL,'tracked',3,'drinks',200)");
 	await db.execute("INSERT INTO products(id,store_id,name,sku,active,deleted_at,inventory_mode,low_stock_threshold,category_id,cost_base) VALUES('unknown','report-store','Unknown','UNKNOWN',1,NULL,'untracked',NULL,NULL,0)");
 	await db.execute("INSERT INTO inventory_balances VALUES('report-store','known',2)");
-	await db.execute("INSERT INTO order_items VALUES('line-1','paid','known',2,800,'sent',0,200,'purchase')");
-	await db.execute("INSERT INTO order_items VALUES('gift-1','paid','known',1,0,'sent',1,200,'purchase')");
-	await db.execute("INSERT INTO order_items VALUES('line-2','paid','unknown',1,200,'sent',0,0,'unknown')");
-	await db.execute("INSERT INTO order_items VALUES('cancelled-line','paid','known',99,9900,'cancelled',0,200,'purchase')");
+	await db.execute("INSERT INTO order_items VALUES('line-1','paid','known',2,800,'sent',0,NULL,200,'purchase')");
+	await db.execute("INSERT INTO order_items VALUES('gift-1','paid','known',1,0,'sent',1,NULL,200,'purchase')");
+	await db.execute("INSERT INTO order_items VALUES('line-2','paid','unknown',1,200,'sent',0,NULL,0,'unknown')");
+	await db.execute("INSERT INTO order_items VALUES('cancelled-line','paid','known',99,9900,'cancelled',0,NULL,200,'purchase')");
 
 	const { ReportInterface } = await import("../src/interfaces/ReportInterface.ts");
 	const report = await ReportInterface.dashboard("report-store", { preset:"today", timezoneOffset:420 });
