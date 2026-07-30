@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -126,10 +127,7 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = copy.value.noQuo
 }
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function roleLabel(role: string) {
