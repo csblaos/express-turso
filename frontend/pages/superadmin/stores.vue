@@ -17,7 +17,6 @@ type StoreRecord = {
 	owner_user_name: string | null;
 	address: string | null;
 	phone_number: string | null;
-	pdf_header_color: string;
 	created_at: string;
 };
 
@@ -33,7 +32,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	stores: "ຮ້ານ", listHint: "ລາຍການຮ້ານພ້ອມແບ່ງໜ້າ", allTypes: "ທຸກປະເພດຮ້ານ", allCurrencies: "ທຸກສະກຸນເງິນ",
 	noResults: "ບໍ່ພົບຮ້ານຕາມເງື່ອນໄຂ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", store: "ຮ້ານ", owner: "ເຈົ້າຂອງ", type: "ປະເພດ", currency: "ສະກຸນເງິນ", address: "ທີ່ຢູ່", created: "ສ້າງເມື່ອ", action: "ຈັດການ", manage: "ຈັດການ",
 	perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ໜ້າຖັດໄປ", page: "ໜ້າ", of: "ຈາກ",
-	createTitle: "ເພີ່ມຮ້ານ", createDescription: "ສ້າງຮ້ານໃໝ່ໃນຖານຂໍ້ມູນ", detailTitle: "ລາຍລະອຽດຮ້ານ", detailDescription: "ແກ້ໄຂຂໍ້ມູນຮ້ານໃນຖານຂໍ້ມູນ", name: "ຊື່ຮ້ານ", phone: "ເບີໂທ", headerColor: "ສີຫົວເອກະສານ", cancel: "ຍົກເລີກ", close: "ປິດ", save: "ບັນທຶກ", create: "ສ້າງຮ້ານ", ownerCreated: "ເຈົ້າຂອງ: {owner} · ສ້າງເມື່ອ {date}",
+	createTitle: "ເພີ່ມຮ້ານ", createDescription: "ສ້າງຮ້ານໃໝ່ໃນຖານຂໍ້ມູນ", detailTitle: "ລາຍລະອຽດຮ້ານ", detailDescription: "ແກ້ໄຂຂໍ້ມູນຮ້ານໃນຖານຂໍ້ມູນ", name: "ຊື່ຮ້ານ", phone: "ເບີໂທ", cancel: "ຍົກເລີກ", close: "ປິດ", save: "ບັນທຶກ", create: "ສ້າງຮ້ານ", ownerCreated: "ເຈົ້າຂອງ: {owner} · ສ້າງເມື່ອ {date}",
 	noPermission: "ບໍ່ມີສິດໃຊ້ງານ", noPermissionHint: "ບັນຊີນີ້ບໍ່ສາມາດຈັດການຮ້ານໄດ້", loadFailed: "ໂຫຼດຮ້ານບໍ່ສຳເລັດ", createSuccess: "ສ້າງຮ້ານແລ້ວ", savedDb: "ບັນທຶກໃນຖານຂໍ້ມູນແລ້ວ", createFailed: "ສ້າງຮ້ານບໍ່ສຳເລັດ", updateSuccess: "ອັບເດດຮ້ານແລ້ວ", saveFailed: "ບັນທຶກບໍ່ສຳເລັດ",
 	deleteStore: "ລົບຮ້ານ", deleteTitle: "ລົບຮ້ານຖາວອນ", deleteDescription: "ການລົບນີ້ບໍ່ສາມາດກູ້ຄືນໄດ້", deleteWarning: "ຂໍ້ມູນທັງໝົດຂອງຮ້ານ ລວມທັງອໍເດີ, ສິນຄ້າ, ສະຕັອກ, ສະມາຊິກ ແລະ ລາຍງານຈະຖືກລົບຖາວອນ.", typeConfirm: "ພິມ confirm ເພື່ອຢືນຢັນ", deletedSuccess: "ລົບຮ້ານແລ້ວ", deleteFailed: "ລົບຮ້ານບໍ່ສຳເລັດ"
 } : locale.value === "en" ? {
@@ -43,7 +42,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	stores: "Stores", listHint: "Store list with pagination", allTypes: "All store types", allCurrencies: "All currencies",
 	noResults: "No stores match the selected filters", noData: "No data yet", store: "Store", owner: "Owner", type: "Type", currency: "Currency", address: "Address", created: "Created", action: "Action", manage: "Manage",
 	perPage: "Per page", previous: "Previous", next: "Next", page: "Page", of: "of",
-	createTitle: "Create store", createDescription: "Create a new store in the database.", detailTitle: "Store details", detailDescription: "Edit store information in the database.", name: "Store name", phone: "Phone number", headerColor: "Document header color", cancel: "Cancel", close: "Close", save: "Save", create: "Create store", ownerCreated: "Owner: {owner} · Created {date}",
+	createTitle: "Create store", createDescription: "Create a new store in the database.", detailTitle: "Store details", detailDescription: "Edit store information in the database.", name: "Store name", phone: "Phone number", cancel: "Cancel", close: "Close", save: "Save", create: "Create store", ownerCreated: "Owner: {owner} · Created {date}",
 	noPermission: "No permission", noPermissionHint: "This account cannot manage stores.", loadFailed: "Unable to load stores", createSuccess: "Store created", savedDb: "Saved to the database.", createFailed: "Unable to create store", updateSuccess: "Store updated", saveFailed: "Unable to save store",
 	deleteStore: "Delete store", deleteTitle: "Permanently delete store", deleteDescription: "This action cannot be undone.", deleteWarning: "All store data—including orders, products, inventory, members, and reports—will be permanently deleted.", typeConfirm: "Type confirm to continue", deletedSuccess: "Store deleted", deleteFailed: "Unable to delete store"
 } : {
@@ -53,7 +52,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	stores: "Stores", listHint: "มุมมองรายการร้านพร้อมแบ่งหน้า", allTypes: "ทุกประเภทร้าน", allCurrencies: "ทุกสกุลเงิน",
 	noResults: "ไม่พบร้านตามเงื่อนไขที่เลือก", noData: "ยังไม่มีข้อมูล", store: "Store", owner: "Owner", type: "Type", currency: "Currency", address: "Address", created: "Created", action: "Action", manage: "จัดการ",
 	perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", page: "หน้า", of: "จาก",
-	createTitle: "สร้างร้าน", createDescription: "สร้างร้านใหม่บนฐานข้อมูลจริง", detailTitle: "รายละเอียดร้าน", detailDescription: "แก้ไขข้อมูลร้านบนฐานข้อมูลจริง", name: "ชื่อร้าน", phone: "เบอร์โทร", headerColor: "สีหัวเอกสาร", cancel: "ยกเลิก", close: "ปิด", save: "บันทึก", create: "สร้างร้าน", ownerCreated: "เจ้าของ: {owner} · สร้างเมื่อ {date}",
+	createTitle: "สร้างร้าน", createDescription: "สร้างร้านใหม่บนฐานข้อมูลจริง", detailTitle: "รายละเอียดร้าน", detailDescription: "แก้ไขข้อมูลร้านบนฐานข้อมูลจริง", name: "ชื่อร้าน", phone: "เบอร์โทร", cancel: "ยกเลิก", close: "ปิด", save: "บันทึก", create: "สร้างร้าน", ownerCreated: "เจ้าของ: {owner} · สร้างเมื่อ {date}",
 	noPermission: "ไม่มีสิทธิ์ใช้งาน", noPermissionHint: "บัญชีนี้ไม่สามารถจัดการร้านได้", loadFailed: "โหลดร้านไม่สำเร็จ", createSuccess: "สร้างร้านแล้ว", savedDb: "บันทึกลงฐานข้อมูลเรียบร้อย", createFailed: "สร้างร้านไม่สำเร็จ", updateSuccess: "อัปเดตร้านแล้ว", saveFailed: "บันทึกไม่สำเร็จ",
 	deleteStore: "ลบร้าน", deleteTitle: "ลบร้านถาวร", deleteDescription: "การดำเนินการนี้ไม่สามารถกู้คืนได้", deleteWarning: "ข้อมูลทั้งหมดของร้าน รวมถึงออเดอร์ สินค้า สต็อก สมาชิก และรายงาน จะถูกลบอย่างถาวร", typeConfirm: "พิมพ์ confirm เพื่อดำเนินการต่อ", deletedSuccess: "ลบร้านแล้ว", deleteFailed: "ลบร้านไม่สำเร็จ"
 });
@@ -82,7 +81,6 @@ const createForm = reactive({
 	currency: "LAK",
 	address: "",
 	phone_number: "",
-	pdf_header_color: "#22c55e",
 });
 
 const detailForm = reactive({
@@ -91,7 +89,6 @@ const detailForm = reactive({
 	currency: "LAK",
 	address: "",
 	phone_number: "",
-	pdf_header_color: "#22c55e",
 });
 
 const canManageStore = computed(() => (
@@ -215,7 +212,6 @@ function resetCreateForm() {
 	createForm.currency = "LAK";
 	createForm.address = "";
 	createForm.phone_number = "";
-	createForm.pdf_header_color = "#22c55e";
 }
 
 function scrollStoresListToTop() {
@@ -265,7 +261,6 @@ function openDetailModal(storeId: string) {
 	detailForm.currency = store.currency as typeof detailForm.currency;
 	detailForm.address = store.address || "";
 	detailForm.phone_number = store.phone_number || "";
-	detailForm.pdf_header_color = store.pdf_header_color || "#22c55e";
 	detailOpen.value = true;
 }
 
@@ -316,7 +311,6 @@ async function createStore() {
 				currency: createForm.currency,
 				address: createForm.address.trim() || null,
 				phone_number: createForm.phone_number.trim() || null,
-				pdf_header_color: createForm.pdf_header_color,
 				owner_user_id: currentUser.value?.id || null,
 			},
 		});
@@ -350,7 +344,6 @@ async function saveDetail() {
 				currency: detailForm.currency,
 				address: detailForm.address.trim() || null,
 				phone_number: detailForm.phone_number.trim() || null,
-				pdf_header_color: detailForm.pdf_header_color,
 			},
 		});
 
@@ -688,10 +681,6 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.address }}</label>
 								<textarea v-model="createForm.address" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
 							</div>
-							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.headerColor }}</label>
-								<input v-model="createForm.pdf_header_color" type="color" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-2 py-2 shadow-sm">
-							</div>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
@@ -752,10 +741,6 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.address }}</label>
 								<textarea v-model="detailForm.address" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
-							</div>
-							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.headerColor }}</label>
-								<input v-model="detailForm.pdf_header_color" type="color" class="h-11 w-full rounded-md border border-neutral-200 bg-white px-2 py-2 shadow-sm">
 							</div>
 							<div class="rounded-md border border-error-200 bg-error-50 p-4">
 								<p class="text-sm font-semibold text-error-700">{{ copy.deleteTitle }}</p>
