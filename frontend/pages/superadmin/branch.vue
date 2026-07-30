@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 
+definePageMeta({
+	middleware: () => navigateTo("/superadmin", { replace: true }),
+});
+
 type ApiEnvelope<T> = {
 	success: true;
 	requestId: string;

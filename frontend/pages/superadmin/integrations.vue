@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 
+definePageMeta({
+	middleware: () => navigateTo("/superadmin", { replace: true }),
+});
+
 type IntegrationCard = {
 	id: string;
 	title: string;

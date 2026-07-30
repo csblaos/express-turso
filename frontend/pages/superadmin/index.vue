@@ -11,8 +11,6 @@ const entries: Entry[] = [
 	["stores", "i-heroicons-building-storefront", "/superadmin/stores"],
 	["security", "i-heroicons-shield-check", "/superadmin/security"],
 	["quotas", "i-heroicons-swatch", "/superadmin/quotas"],
-	["integrations", "i-heroicons-link", "/superadmin/integrations"],
-	["branchConfig", "i-heroicons-building-office-2", "/superadmin/branch"],
 ].map(([id, icon, to]) => ({ id: id!, titleKey: `superadmin.entries.${id}.title`, descriptionKey: `superadmin.entries.${id}.description`, icon: icon!, to: to!, availability: "ready" }));
 
 const coreEntries = computed(() => entries.filter((entry) => entry.availability === "ready"));
