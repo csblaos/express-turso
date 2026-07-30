@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime, type DateFormatLocale } from "~/utils/date-format";
 
 type LanguageOption = {
 	id: string;
@@ -95,7 +96,7 @@ const selectedLabel = computed(() => t(selectedOption.value.labelKey));
 
 const previewDate = computed(() => {
 	try {
-		return new Intl.DateTimeFormat(selectedOption.value.locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date());
+		return formatAppDateTime(new Date(), selectedOption.value.id as DateFormatLocale);
 	} catch {
 		return "-";
 	}

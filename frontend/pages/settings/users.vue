@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -222,11 +223,7 @@ function statusTone(status: string) {
 }
 
 function formatDate(value: string) {
-	const localeCode = locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH";
-	return new Intl.DateTimeFormat(localeCode, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function openMemberDetail(userId: string) {

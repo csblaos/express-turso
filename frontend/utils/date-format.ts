@@ -43,5 +43,5 @@ export function formatAppDate(
 }
 
 export function formatAppDateTime(value: string | number | Date, locale: DateFormatLocale) {
-	return formatAppDate(value, locale, { dateStyle: locale === "lo" ? "long" : "medium", timeStyle: "short" });
+	return formatAppDate(value, locale, { dateStyle: "long", timeStyle: "short" });
 }
