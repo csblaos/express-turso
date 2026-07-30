@@ -1,0 +1,12 @@
+{
+  "database": {
+    "url": "libsql://your-database-name-your-org.turso.io",
+    "authToken": "your-turso-auth-token"
+  },
+  "superadmin": {
+    "name": "System Administrator",
+    "email": "admin@example.com",
+    "password": "replace-with-a-strong-password",
+    "locale": "lo"
+  }
+}
