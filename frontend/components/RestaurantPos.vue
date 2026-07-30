@@ -1837,7 +1837,7 @@ onBeforeUnmount(() => {
 			<h3 class="mt-5 text-lg font-bold text-emerald-900">{{ t('posPanels.processing') }}...</h3>
 			<p class="mt-1 max-w-xs text-sm text-emerald-700">{{ t('posPanels.processingHint') }}</p>
 		</div>
-		<div v-else-if="checkoutStep === 'success'" class="flex min-h-[326px] flex-col items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-6 py-8 text-center">
+		<div v-else-if="checkoutStep === 'success'" class="-mx-4 -mb-4 -mt-3 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden border-t border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-6 py-8 text-center">
 			<div class="checkout-success-burst">
 				<div class="checkout-success-ring">
 					<UIcon name="i-heroicons-check" class="checkout-success-check" />
