@@ -93,20 +93,26 @@ const pageSummaryText = computed(() => (
 		: `${pageStart.value}-${pageEnd.value} ${copy.value.of} ${totalItems.value} ${copy.value.accounts}`
 ));
 
-const overviewStats = computed(() => ([
-	{ label: copy.value.stats[0][0], value: summary.value.store_quota_enabled, note: copy.value.stats[0][1] },
-	{ label: copy.value.stats[1][0], value: summary.value.stores_total, note: copy.value.stats[1][1] },
-	{ label: copy.value.stats[2][0], value: summary.value.remaining_store_capacity_total, note: copy.value.stats[2][1] },
-	{ label: copy.value.stats[3][0], value: summary.value.attention_accounts, note: copy.value.stats[3][1] },
-	{ label: copy.value.stats[4][0], value: summary.value.unlimited_store_accounts, note: copy.value.stats[4][1] },
-]));
-
-const localizedWarnings = computed(() => {
-	const count = summary.value.attention_accounts;
-	if (count <= 0) return [];
-	if (locale.value === "lo") return [`ມີ ${count} ບັນຊີທີ່ໃຊ້ໂຄຕາຮ້ານເຕັມ ຫຼື ເກີນແລ້ວ`];
-	if (locale.value === "th") return [`มี ${count} บัญชีที่ใช้โควตาร้านเต็มหรือเกินแล้ว`];
-	return [`${count} account${count === 1 ? "" : "s"} reached or exceeded the store quota.`];
+const overviewStats = computed(() => {
+	if (locale.value === "lo") {
+		return [
+			{ label: "ບັນຊີທັງໝົດ", value: summary.value.accounts_total, note: "ບັນຊີຜູ້ໃຊ້ໃນລະບົບ" },
+			{ label: "ຮ້ານທີ່ສ້າງແລ້ວ", value: summary.value.stores_total, note: "ຈຳນວນຮ້ານທັງໝົດ" },
+			{ label: "ຍັງສ້າງໄດ້", value: summary.value.remaining_store_capacity_total, note: "ຈຳນວນຮ້ານທີ່ຍັງສາມາດສ້າງເພີ່ມ" },
+		];
+	}
+	if (locale.value === "th") {
+		return [
+			{ label: "บัญชีทั้งหมด", value: summary.value.accounts_total, note: "บัญชีผู้ใช้ในระบบ" },
+			{ label: "ร้านที่สร้างแล้ว", value: summary.value.stores_total, note: "จำนวนร้านทั้งหมด" },
+			{ label: "ยังสร้างได้", value: summary.value.remaining_store_capacity_total, note: "จำนวนร้านที่ยังสามารถสร้างเพิ่ม" },
+		];
+	}
+	return [
+		{ label: "Total accounts", value: summary.value.accounts_total, note: "User accounts in the system" },
+		{ label: "Stores created", value: summary.value.stores_total, note: "Total number of stores" },
+		{ label: "Available capacity", value: summary.value.remaining_store_capacity_total, note: "Additional stores that can be created" },
+	];
 });
 
 function resolveApiErrorMessage(errorValue: unknown, fallback = copy.value.noQuota) {
@@ -312,7 +318,7 @@ onMounted(async () => {
 								</div>
 								<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 								<div v-else>
-									<div class="grid grid-cols-2 gap-3 border-b border-[#f1ede6] p-4 md:grid-cols-3 xl:grid-cols-5">
+									<div class="grid grid-cols-1 gap-3 border-b border-[#f1ede6] p-4 sm:grid-cols-3">
 										<div
 											v-for="stat in overviewStats"
 											:key="stat.label"
@@ -321,16 +327,6 @@ onMounted(async () => {
 											<p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">{{ stat.label }}</p>
 											<p class="mt-2 text-2xl font-semibold text-stone-950">{{ stat.value }}</p>
 											<p class="mt-1 text-xs leading-5 text-stone-500">{{ stat.note }}</p>
-										</div>
-									</div>
-
-									<div v-if="localizedWarnings.length" class="grid gap-2 border-b border-[#f1ede6] p-4">
-										<div
-											v-for="warning in localizedWarnings"
-											:key="warning"
-											class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-										>
-											{{ warning }}
 										</div>
 									</div>
 
