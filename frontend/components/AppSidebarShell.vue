@@ -366,7 +366,7 @@ async function handleSwitchStore(storeId: string) {
 		return;
 	}
 
-	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || "ร้านที่เลือก";
+	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || storeId;
 	storeSwitcherOpen.value = false;
 	profileMenuOpen.value = false;
 	switchStorePending.value = true;
@@ -376,14 +376,14 @@ async function handleSwitchStore(storeId: string) {
 			await navigateTo("/");
 		}
 		appToast.success({
-			title: "เปลี่ยนร้านแล้ว",
+			title: t("chooseStorePage.storeSelected"),
 			description: targetStoreName,
 			timeout: 1800,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "เปลี่ยนร้านไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("chooseStorePage.selectFailed"),
+			description: error instanceof Error ? error.message : t("validation.generic"),
 			timeout: 3200,
 		});
 	} finally {
