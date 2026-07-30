@@ -32,7 +32,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	cancelled: "ຍົກເລີກ/ຄືນເງິນ", discount: "ສ່ວນຫຼຸດ", salesTrend: "ແນວໂນ້ມຍອດຂາຍ", paymentMix: "ສັດສ່ວນການຊຳລະ",
 	storeComparison: "ປຽບທຽບຮ້ານ", store: "ຮ້ານ", noData: "ຍັງບໍ່ມີຂໍ້ມູນໃນຊ່ວງນີ້", previous: "ທຽບຊ່ວງກ່ອນ", view: "ເບິ່ງຮ້ານ",
 	overviewTab: "ພາບລວມ", productsTab: "ສິນຄ້າ", promotionsTab: "ໂປຣໂມຊັນ", topProducts: "ສິນຄ້າຂາຍດີ", quantity: "ຈຳນວນ", promotionUsage: "ຜົນການໃຊ້ໂປຣໂມຊັນ", bills: "ບິນ", applications: "ຄັ້ງທີ່ໃຊ້", giftCost: "ຕົ້ນທຶນຂອງແຖມ",
-	salesTimeTab: "ຊ່ວງເວລາຂາຍ", salesByTime: "ຍອດຂາຍຕາມວັນ ແລະ ເວລາ", busiest: "ຊ່ວງຂາຍດີທີ່ສຸດ", quietest: "ຊ່ວງຍອດຂາຍເບົາ", activeOnly: "ຄຳນວນຈາກຊ່ວງທີ່ມີອໍເດີເທົ່ານັ້ນ",
+	salesTimeTab: "ຊ່ວງເວລາຂາຍ", salesByTime: "ຍອດຂາຍຕາມວັນ ແລະ ເວລາ", busiest: "ຊ່ວງຂາຍດີທີ່ສຸດ", quietest: "ຊ່ວງຍອດຂາຍເບົາ", activeOnly: "ສະຫຼຸບເປັນຊ່ວງລະ 3 ຊົ່ວໂມງ ແລະ ຄຳນວນສະເພາະຊ່ວງທີ່ມີອໍເດີ", hourlyTrend: "ຮູບແບບຍອດຂາຍຕະຫຼອດມື້",
 	profitTab: "ກຳໄລ", stockTab: "ສະຕັອກ", estimatedProfit: "ກຳໄລຂັ້ນຕົ້ນໂດຍປະມານ", knownCost: "ຕົ້ນທຶນທີ່ຮູ້", margin: "ອັດຕາກຳໄລ", costCoverage: "ຂໍ້ມູນຕົ້ນທຶນຄົບ", missingCost: "ຍອດຂາຍທີ່ບໍ່ມີຕົ້ນທຶນ", inventoryValue: "ມູນຄ່າສະຕັອກໂດຍປະມານ", outOfStock: "ສິນຄ້າໝົດ", lowStock: "ສະຕັອກຕ່ຳ", negativeStock: "ສະຕັອກຕິດລົບ", stockProducts: "ສິນຄ້າທີ່ຄວນເພີ່ມສະຕັອກ",
 } : locale.value === "en" ? {
 	title: "Business overview", hint: "Combined sales and orders across all stores", allStores: "All stores",
@@ -40,7 +40,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	revenue: "Net sales", orders: "Orders", average: "Average order", activeStores: "Stores with sales", cancelled: "Cancelled/refunded", discount: "Discount",
 	salesTrend: "Sales trend", paymentMix: "Payment mix", storeComparison: "Store comparison", store: "Store", noData: "No data for this period", previous: "vs previous period", view: "View store",
 	overviewTab: "Overview", productsTab: "Products", promotionsTab: "Promotions", topProducts: "Top products", quantity: "Quantity", promotionUsage: "Promotion performance", bills: "Bills", applications: "Applications", giftCost: "Gift cost",
-	salesTimeTab: "Sales times", salesByTime: "Sales by day and hour", busiest: "Busiest period", quietest: "Quietest active period", activeOnly: "Calculated only from periods with orders",
+	salesTimeTab: "Sales times", salesByTime: "Sales by day and hour", busiest: "Busiest period", quietest: "Quietest active period", activeOnly: "Summarized into 3-hour blocks and calculated only from periods with orders", hourlyTrend: "Sales pattern throughout the day",
 	profitTab: "Profit", stockTab: "Stock", estimatedProfit: "Estimated gross profit", knownCost: "Known cost", margin: "Margin", costCoverage: "Cost coverage", missingCost: "Sales without cost data", inventoryValue: "Estimated inventory value", outOfStock: "Out of stock", lowStock: "Low stock", negativeStock: "Negative stock", stockProducts: "Products to restock",
 } : {
 	title: "ภาพรวมธุรกิจ", hint: "รวมยอดขายและออเดอร์ของทุกร้าน", allStores: "ทุกร้าน",
@@ -48,7 +48,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	revenue: "ยอดขายสุทธิ", orders: "จำนวนออเดอร์", average: "เฉลี่ยต่อออเดอร์", activeStores: "ร้านที่มียอดขาย", cancelled: "ยกเลิก/คืนเงิน", discount: "ส่วนลด",
 	salesTrend: "แนวโน้มยอดขาย", paymentMix: "สัดส่วนการชำระ", storeComparison: "เปรียบเทียบร้าน", store: "ร้าน", noData: "ยังไม่มีข้อมูลในช่วงนี้", previous: "เทียบช่วงก่อน", view: "ดูร้าน",
 	overviewTab: "ภาพรวม", productsTab: "สินค้า", promotionsTab: "โปรโมชัน", topProducts: "สินค้าขายดี", quantity: "จำนวน", promotionUsage: "ผลการใช้โปรโมชัน", bills: "บิล", applications: "ครั้งที่ใช้", giftCost: "ต้นทุนของแถม",
-	salesTimeTab: "ช่วงเวลาขาย", salesByTime: "ยอดขายตามวันและเวลา", busiest: "ช่วงขายดีที่สุด", quietest: "ช่วงยอดขายเบา", activeOnly: "คำนวณจากช่วงที่มีออเดอร์เท่านั้น",
+	salesTimeTab: "ช่วงเวลาขาย", salesByTime: "ยอดขายตามวันและเวลา", busiest: "ช่วงขายดีที่สุด", quietest: "ช่วงยอดขายเบา", activeOnly: "สรุปเป็นช่วงละ 3 ชั่วโมง และคำนวณเฉพาะช่วงที่มีออเดอร์", hourlyTrend: "รูปแบบยอดขายตลอดทั้งวัน",
 	profitTab: "กำไร", stockTab: "สต๊อก", estimatedProfit: "กำไรขั้นต้นโดยประมาณ", knownCost: "ต้นทุนที่ทราบ", margin: "อัตรากำไร", costCoverage: "ข้อมูลต้นทุนครบ", missingCost: "ยอดขายที่ไม่มีข้อมูลต้นทุน", inventoryValue: "มูลค่าสต๊อกโดยประมาณ", outOfStock: "สินค้าหมด", lowStock: "สต๊อกต่ำ", negativeStock: "สต๊อกติดลบ", stockProducts: "สินค้าที่ควรเติมสต๊อก",
 });
 
@@ -163,11 +163,24 @@ const weekdays = computed(() => locale.value === "lo"
 	: locale.value === "th"
 		? [ "อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์" ]
 		: [ "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" ]);
-const rankedSalesTimes = computed(() => [ ...(dashboard.value?.sales_heatmap || []) ].sort((a, b) => b.revenue - a.revenue));
+type SalesTimeBlock = { weekday: number; startHour: number; endHour: number; revenue: number; bill_count: number };
+const salesTimeBlocks = computed<SalesTimeBlock[]>(() => {
+	const blocks = new Map<string, SalesTimeBlock>();
+	for (const item of dashboard.value?.sales_heatmap || []) {
+		const startHour = Math.floor(item.hour / 3) * 3;
+		const key = `${item.weekday}-${startHour}`;
+		const existing = blocks.get(key) || { weekday: item.weekday, startHour, endHour: startHour + 3, revenue: 0, bill_count: 0 };
+		existing.revenue += item.revenue;
+		existing.bill_count += item.bill_count;
+		blocks.set(key, existing);
+	}
+	return [ ...blocks.values() ];
+});
+const rankedSalesTimes = computed(() => [ ...salesTimeBlocks.value ].sort((a, b) => b.revenue - a.revenue));
 const busiestPeriod = computed(() => rankedSalesTimes.value[0] || null);
 const quietestPeriod = computed(() => rankedSalesTimes.value.at(-1) || null);
-function periodLabel(item: Dashboard["sales_heatmap"][number] | null) {
-	return item ? `${weekdays.value[item.weekday]} ${String(item.hour).padStart(2, "0")}:00` : "—";
+function periodLabel(item: SalesTimeBlock | null) {
+	return item ? `${weekdays.value[item.weekday]} ${String(item.startHour).padStart(2, "0")}:00–${String(item.endHour).padStart(2, "0")}:00` : "—";
 }
 const heatmapOption = computed<EChartsCoreOption>(() => {
 	const values = dashboard.value?.sales_heatmap.map((item) => [ item.hour, item.weekday, item.revenue, item.bill_count ]) || [];
@@ -179,6 +192,26 @@ const heatmapOption = computed<EChartsCoreOption>(() => {
 		yAxis: { type: "category", data: weekdays.value, splitArea: { show: true } },
 		visualMap: { min: 0, max: maximum, calculable: false, orient: "horizontal", left: "center", bottom: 0, inRange: { color: [ "#ecfdf5", "#6ee7b7", "#059669" ] } },
 		series: [ { type: "heatmap", data: values, itemStyle: { borderColor: "#fff", borderWidth: 2 } } ],
+	};
+});
+const hourlyTrendOption = computed<EChartsCoreOption>(() => {
+	const totals = Array.from({ length: 24 }, (_, hour) => ({ hour, revenue: 0, bills: 0 }));
+	for (const item of dashboard.value?.sales_heatmap || []) {
+		totals[item.hour].revenue += item.revenue;
+		totals[item.hour].bills += item.bill_count;
+	}
+	return {
+		color: [ "#10b981", "#3b82f6" ], tooltip: { trigger: "axis" }, legend: { bottom: 0 },
+		grid: { left: 10, right: 18, top: 24, bottom: 48, containLabel: true },
+		xAxis: { type: "category", data: totals.map((item) => `${String(item.hour).padStart(2, "0")}:00`) },
+		yAxis: [
+			{ type: "value", axisLabel: { formatter: (value: number) => Intl.NumberFormat("en", { notation: "compact" }).format(value) }, splitLine: { lineStyle: { color: "#f5f5f4" } } },
+			{ type: "value", minInterval: 1, splitLine: { show: false } },
+		],
+		series: [
+			{ name: copy.value.revenue, type: "line", smooth: true, areaStyle: { color: "rgba(16,185,129,.14)" }, data: totals.map((item) => item.revenue) },
+			{ name: copy.value.orders, type: "bar", yAxisIndex: 1, barMaxWidth: 16, itemStyle: { color: "rgba(59,130,246,.35)" }, data: totals.map((item) => item.bills) },
+		],
 	};
 });
 const profitSummary = computed(() => (dashboard.value?.profitability || []).reduce((total, item) => ({
@@ -309,6 +342,10 @@ onMounted(loadDashboard);
 						<UCard>
 							<div><h2 class="font-semibold">{{ copy.salesByTime }}</h2><p class="mt-1 text-xs text-stone-500">{{ copy.activeOnly }}</p></div>
 							<ReportsReportChart :option="heatmapOption" height="380px" :empty="!dashboard.sales_heatmap.length" />
+						</UCard>
+						<UCard>
+							<h2 class="font-semibold">{{ copy.hourlyTrend }}</h2>
+							<ReportsReportChart :option="hourlyTrendOption" :empty="!dashboard.sales_heatmap.length" />
 						</UCard>
 					</template>
 
