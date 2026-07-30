@@ -1823,7 +1823,11 @@ onBeforeUnmount(() => {
 		:description="checkoutDescription"
 		desktop-width="560px"
 		desktop-placement="center"
-		mobile-max-height="92vh"
+		mobile-max-height="96dvh"
+		fill-mobile-height
+		compact-header
+		panel-class="lg:h-[min(720px,calc(100dvh-2rem))]"
+		content-class="flex flex-col !overflow-hidden"
 	>
 		<div v-if="checkoutStep === 'processing'" class="flex min-h-[326px] flex-col items-center justify-center rounded-md border border-emerald-100 bg-emerald-50/60 px-6 py-8 text-center">
 			<div class="grid size-16 place-items-center rounded-full bg-white shadow-sm">
@@ -1906,7 +1910,7 @@ onBeforeUnmount(() => {
 				<AppButton color="primary" size="lg" block icon="i-heroicons-printer" @click="printReceiptAndFinish">{{ t('posPanels.printReceipt') }}</AppButton>
 			</div>
 		</div>
-		<div v-else class="flex min-h-[326px] flex-col space-y-3">
+		<div v-else class="scrollbar-soft flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto pr-1">
 			<div class="grid grid-cols-3 gap-1.5 md:gap-2">
 				<button
 					v-for="method in paymentMethodOptions"
@@ -2003,6 +2007,7 @@ onBeforeUnmount(() => {
 				block
 				size="md"
 				color="primary"
+				class="sticky bottom-0 z-10 shrink-0 shadow-[0_-8px_16px_8px_#fffefd]"
 				:loading="actionPending"
 				:disabled="paymentMethod === 'cash' ? cashTendered < displayTotal : paymentMethod === 'qr_transfer' && !order ? !paymentAccountId : false"
 				@click="checkout"
