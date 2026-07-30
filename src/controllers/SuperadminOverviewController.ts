@@ -2,11 +2,13 @@ import { Request, Response } from "express";
 
 import { SuperadminOverviewComponent } from "@components/SuperadminOverviewComponent";
 import { ReportPreset } from "@interfaces/ReportInterface";
+import { RestaurantInterface } from "@interfaces/RestaurantInterface";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { SuccessHandler } from "@utils/SuccessHandler";
 
 export class SuperadminOverviewController {
 	static dashboard = SyncFunction.handler(async (req: Request, res: Response) => {
+		await RestaurantInterface.ensureTables();
 		const data = await SuperadminOverviewComponent.dashboard({
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
