@@ -77,7 +77,7 @@ const deleting = ref(false);
 
 const createForm = reactive({
 	name: "",
-	store_type: "RETAIL",
+	store_type: "RESTAURANT",
 	currency: "LAK",
 	address: "",
 	phone_number: "",
@@ -208,7 +208,7 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = "Please try agai
 
 function resetCreateForm() {
 	createForm.name = "";
-	createForm.store_type = "RETAIL";
+	createForm.store_type = "RESTAURANT";
 	createForm.currency = "LAK";
 	createForm.address = "";
 	createForm.phone_number = "";
@@ -656,13 +656,9 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.type }}</label>
-									<select v-model="createForm.store_type" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="RETAIL">{{ storeTypeLabel('RETAIL') }}</option>
-										<option value="CAFE">{{ storeTypeLabel('CAFE') }}</option>
-										<option value="RESTAURANT">{{ storeTypeLabel('RESTAURANT') }}</option>
-										<option value="SERVICE">{{ storeTypeLabel('SERVICE') }}</option>
-										<option value="OTHER">{{ storeTypeLabel('OTHER') }}</option>
-									</select>
+									<div class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium text-stone-700">
+										{{ storeTypeLabel('RESTAURANT') }}
+									</div>
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.currency }}</label>
@@ -717,13 +713,9 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.type }}</label>
-									<select v-model="detailForm.store_type" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="RETAIL">{{ storeTypeLabel('RETAIL') }}</option>
-										<option value="CAFE">{{ storeTypeLabel('CAFE') }}</option>
-										<option value="RESTAURANT">{{ storeTypeLabel('RESTAURANT') }}</option>
-										<option value="SERVICE">{{ storeTypeLabel('SERVICE') }}</option>
-										<option value="OTHER">{{ storeTypeLabel('OTHER') }}</option>
-									</select>
+									<div class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium text-stone-700">
+										{{ storeTypeLabel(detailForm.store_type) }}
+									</div>
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.currency }}</label>
