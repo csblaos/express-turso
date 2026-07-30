@@ -77,7 +77,6 @@ const summary = ref<QuotaListResponse["summary"]>({
 	attention_accounts: 0,
 	stores_total: 0,
 });
-const warnings = ref<string[]>([]);
 const listScrollRef = ref<HTMLElement | null>(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)));
@@ -100,10 +99,15 @@ const overviewStats = computed(() => ([
 	{ label: copy.value.stats[2][0], value: summary.value.remaining_store_capacity_total, note: copy.value.stats[2][1] },
 	{ label: copy.value.stats[3][0], value: summary.value.attention_accounts, note: copy.value.stats[3][1] },
 	{ label: copy.value.stats[4][0], value: summary.value.unlimited_store_accounts, note: copy.value.stats[4][1] },
-	{ label: copy.value.stats[5][0], value: summary.value.branch_quota_enabled, note: copy.value.stats[5][1] },
-	{ label: copy.value.stats[6][0], value: summary.value.unlimited_branch_accounts, note: copy.value.stats[6][1] },
-	{ label: copy.value.stats[7][0], value: summary.value.limited_store_capacity_total, note: copy.value.stats[7][1] },
 ]));
+
+const localizedWarnings = computed(() => {
+	const count = summary.value.attention_accounts;
+	if (count <= 0) return [];
+	if (locale.value === "lo") return [`ມີ ${count} ບັນຊີທີ່ໃຊ້ໂຄຕາຮ້ານເຕັມ ຫຼື ເກີນແລ້ວ`];
+	if (locale.value === "th") return [`มี ${count} บัญชีที่ใช้โควตาร้านเต็มหรือเกินแล้ว`];
+	return [`${count} account${count === 1 ? "" : "s"} reached or exceeded the store quota.`];
+});
 
 function resolveApiErrorMessage(errorValue: unknown, fallback = copy.value.noQuota) {
 	if (typeof errorValue === "object" && errorValue) {
@@ -131,6 +135,13 @@ function formatDateTime(value: string) {
 }
 
 function roleLabel(role: string) {
+	const normalizedRole = role?.trim().toLowerCase();
+	if (normalizedRole === "superadmin") {
+		if (locale.value === "lo") return "ຜູ້ດູແລລະບົບສູງສຸດ";
+		if (locale.value === "th") return "ผู้ดูแลระบบสูงสุด";
+		return "Super Admin";
+	}
+	if (normalizedRole === "staff") return copy.value.staff;
 	return role || copy.value.staff;
 }
 
@@ -146,12 +157,6 @@ function storeQuotaLabel(item: QuotaRecord) {
 	if (!item.can_create_stores) return copy.value.disabled;
 	if (item.max_stores === null) return copy.value.unlimited;
 	return `${item.max_stores} ${copy.value.stores}`;
-}
-
-function branchQuotaLabel(item: QuotaRecord) {
-	if (!item.can_create_branches || !item.can_create_stores) return copy.value.disabled;
-	if (item.max_branches_per_store === null) return copy.value.unlimited;
-	return `${item.max_branches_per_store} ${copy.value.branchesPerStore}`;
 }
 
 function remainingCapacityLabel(item: QuotaRecord) {
@@ -192,7 +197,6 @@ async function loadQuotas() {
 		quotas.value = response.data.items;
 		totalItems.value = response.data.total;
 		summary.value = response.data.summary;
-		warnings.value = response.data.warnings;
 		scrollListToTop();
 	} catch (err) {
 		error.value = resolveApiErrorMessage(err);
@@ -308,7 +312,7 @@ onMounted(async () => {
 								</div>
 								<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 								<div v-else>
-									<div class="grid grid-cols-2 gap-3 border-b border-[#f1ede6] p-4 lg:grid-cols-4">
+									<div class="grid grid-cols-2 gap-3 border-b border-[#f1ede6] p-4 md:grid-cols-3 xl:grid-cols-5">
 										<div
 											v-for="stat in overviewStats"
 											:key="stat.label"
@@ -320,9 +324,9 @@ onMounted(async () => {
 										</div>
 									</div>
 
-									<div v-if="warnings.length" class="grid gap-2 border-b border-[#f1ede6] p-4">
+									<div v-if="localizedWarnings.length" class="grid gap-2 border-b border-[#f1ede6] p-4">
 										<div
-											v-for="warning in warnings"
+											v-for="warning in localizedWarnings"
 											:key="warning"
 											class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
 										>
@@ -360,7 +364,7 @@ onMounted(async () => {
 												</div>
 											</div>
 
-											<div class="mt-3 grid grid-cols-3 divide-x divide-[#ece6dc] overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 dark:divide-[#3a332a] dark:border-[#3a332a] dark:bg-[#221d18]">
+											<div class="mt-3 grid grid-cols-2 divide-x divide-[#ece6dc] overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 dark:divide-[#3a332a] dark:border-[#3a332a] dark:bg-[#221d18]">
 												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
 													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.storeQuota }}</p>
 													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ storeQuotaLabel(item) }}</p>
@@ -368,10 +372,6 @@ onMounted(async () => {
 												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
 													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.remaining }}</p>
 													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ remainingCapacityLabel(item) }}</p>
-												</div>
-												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
-													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.branchQuota }}</p>
-													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ branchQuotaLabel(item) }}</p>
 												</div>
 											</div>
 										</button>
