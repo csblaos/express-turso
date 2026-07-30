@@ -772,8 +772,9 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 				v-model="deleteOpen"
 				:title="copy.deleteTitle"
 				:description="copy.deleteDescription"
-				desktop-width="560px"
-				mobile-max-height="80dvh"
+				desktop-width="680px"
+				mobile-max-height="88dvh"
+				:fill-mobile-height="true"
 				close-button-size="md"
 				compact-header
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
