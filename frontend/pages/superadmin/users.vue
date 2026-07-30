@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -224,10 +225,7 @@ function rowActionDisabled(user: ClientRecord) {
 }
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH", {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function toOptionalNumber(value: string | number) {
@@ -803,11 +801,6 @@ onMounted(loadUsers);
 														<div class="min-w-0">
 															<p class="truncate font-semibold text-stone-950">{{ user.name }}</p>
 															<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
-															<p class="mt-2 text-xs text-stone-500">
-																{{ roleLabel(user.system_role) }}
-																<span v-if="user.primary_store_name"> · {{ user.primary_store_name }}</span>
-																<span v-if="user.primary_role_name"> · {{ user.primary_role_name }}</span>
-															</p>
 														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4">
