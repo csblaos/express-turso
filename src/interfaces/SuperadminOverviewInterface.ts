@@ -104,6 +104,15 @@ export class SuperadminOverviewInterface {
 				args: currentArgs,
 			},
 			{
+				sql: `SELECT CAST(strftime('%w', o.paid_at, '${modifier}') AS INTEGER) weekday,
+						CAST(strftime('%H', o.paid_at, '${modifier}') AS INTEGER) hour,
+						COALESCE(SUM(o.total), 0) revenue, COUNT(*) bill_count
+					FROM orders o INNER JOIN stores s ON s.id = o.store_id
+					WHERE ${paidWhere}
+					GROUP BY weekday, hour ORDER BY weekday, hour`,
+				args: currentArgs,
+			},
+			{
 				sql: `SELECT COUNT(*) total FROM orders o INNER JOIN stores s ON s.id = o.store_id
 					WHERE s.owner_user_id = ? ${storeFilter}
 						AND COALESCE(o.closed_at, o.paid_at, o.created_at) >= ?
@@ -133,7 +142,7 @@ export class SuperadminOverviewInterface {
 				bill_count: bills,
 				average_bill: averageBill,
 				discount: numeric(current.discount),
-				cancelled_refunded_count: numeric(results[7].rows[0]?.total),
+				cancelled_refunded_count: numeric(results[8].rows[0]?.total),
 				active_store_count: (results[4].rows as Record<string, unknown>[]).filter((item) => numeric(item.bill_count) > 0).length,
 				comparison: {
 					revenue: comparison(revenue, numeric(previous.revenue)),
@@ -179,7 +188,13 @@ export class SuperadminOverviewInterface {
 				gift_quantity: numeric(item.gift_quantity),
 				gift_cost: numeric(item.gift_cost),
 			})),
-			store_options: results[8].rows.map((item) => ({
+			sales_heatmap: results[7].rows.map((item) => ({
+				weekday: numeric(item.weekday),
+				hour: numeric(item.hour),
+				revenue: numeric(item.revenue),
+				bill_count: numeric(item.bill_count),
+			})),
+			store_options: results[9].rows.map((item) => ({
 				id: String(item.id),
 				name: String(item.name),
 				currency: String(item.currency),

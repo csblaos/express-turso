@@ -16,6 +16,7 @@ type Dashboard = {
 	stores: Array<{ id: string; name: string; currency: string; revenue: number; bill_count: number; average_bill: number; discount: number }>;
 	top_products: Array<{ id: string; name: string; sku: string; store_name: string; quantity: number; revenue: number }>;
 	promotions: Array<{ id: string; name: string; type: string; bill_count: number; applications: number; discount_amount: number; gift_quantity: number; gift_cost: number }>;
+	sales_heatmap: Array<{ weekday: number; hour: number; revenue: number; bill_count: number }>;
 	store_options: Array<{ id: string; name: string; currency: string }>;
 };
 
@@ -28,22 +29,25 @@ const copy = computed(() => locale.value === "lo" ? {
 	cancelled: "ຍົກເລີກ/ຄືນເງິນ", discount: "ສ່ວນຫຼຸດ", salesTrend: "ແນວໂນ້ມຍອດຂາຍ", paymentMix: "ສັດສ່ວນການຊຳລະ",
 	storeComparison: "ປຽບທຽບຮ້ານ", store: "ຮ້ານ", noData: "ຍັງບໍ່ມີຂໍ້ມູນໃນຊ່ວງນີ້", previous: "ທຽບຊ່ວງກ່ອນ", view: "ເບິ່ງຮ້ານ",
 	overviewTab: "ພາບລວມ", productsTab: "ສິນຄ້າ", promotionsTab: "ໂປຣໂມຊັນ", topProducts: "ສິນຄ້າຂາຍດີ", quantity: "ຈຳນວນ", promotionUsage: "ຜົນການໃຊ້ໂປຣໂມຊັນ", bills: "ບິນ", applications: "ຄັ້ງທີ່ໃຊ້", giftCost: "ຕົ້ນທຶນຂອງແຖມ",
+	salesTimeTab: "ຊ່ວງເວລາຂາຍ", salesByTime: "ຍອດຂາຍຕາມວັນ ແລະ ເວລາ", busiest: "ຊ່ວງຂາຍດີທີ່ສຸດ", quietest: "ຊ່ວງຍອດຂາຍເບົາ", activeOnly: "ຄຳນວນຈາກຊ່ວງທີ່ມີອໍເດີເທົ່ານັ້ນ",
 } : locale.value === "en" ? {
 	title: "Business overview", hint: "Combined sales and orders across all stores", allStores: "All stores",
 	today: "Today", sevenDays: "7 days", thirtyDays: "30 days", thisMonth: "This month", custom: "Custom", apply: "Apply", reload: "Reload",
 	revenue: "Net sales", orders: "Orders", average: "Average order", activeStores: "Stores with sales", cancelled: "Cancelled/refunded", discount: "Discount",
 	salesTrend: "Sales trend", paymentMix: "Payment mix", storeComparison: "Store comparison", store: "Store", noData: "No data for this period", previous: "vs previous period", view: "View store",
 	overviewTab: "Overview", productsTab: "Products", promotionsTab: "Promotions", topProducts: "Top products", quantity: "Quantity", promotionUsage: "Promotion performance", bills: "Bills", applications: "Applications", giftCost: "Gift cost",
+	salesTimeTab: "Sales times", salesByTime: "Sales by day and hour", busiest: "Busiest period", quietest: "Quietest active period", activeOnly: "Calculated only from periods with orders",
 } : {
 	title: "ภาพรวมธุรกิจ", hint: "รวมยอดขายและออเดอร์ของทุกร้าน", allStores: "ทุกร้าน",
 	today: "วันนี้", sevenDays: "7 วัน", thirtyDays: "30 วัน", thisMonth: "เดือนนี้", custom: "กำหนดเอง", apply: "ใช้ตัวกรอง", reload: "โหลดใหม่",
 	revenue: "ยอดขายสุทธิ", orders: "จำนวนออเดอร์", average: "เฉลี่ยต่อออเดอร์", activeStores: "ร้านที่มียอดขาย", cancelled: "ยกเลิก/คืนเงิน", discount: "ส่วนลด",
 	salesTrend: "แนวโน้มยอดขาย", paymentMix: "สัดส่วนการชำระ", storeComparison: "เปรียบเทียบร้าน", store: "ร้าน", noData: "ยังไม่มีข้อมูลในช่วงนี้", previous: "เทียบช่วงก่อน", view: "ดูร้าน",
 	overviewTab: "ภาพรวม", productsTab: "สินค้า", promotionsTab: "โปรโมชัน", topProducts: "สินค้าขายดี", quantity: "จำนวน", promotionUsage: "ผลการใช้โปรโมชัน", bills: "บิล", applications: "ครั้งที่ใช้", giftCost: "ต้นทุนของแถม",
+	salesTimeTab: "ช่วงเวลาขาย", salesByTime: "ยอดขายตามวันและเวลา", busiest: "ช่วงขายดีที่สุด", quietest: "ช่วงยอดขายเบา", activeOnly: "คำนวณจากช่วงที่มีออเดอร์เท่านั้น",
 });
 
 const preset = ref("7d");
-const activeTab = ref<"overview" | "products" | "promotions">("overview");
+const activeTab = ref<"overview" | "products" | "promotions" | "sales-time">("overview");
 const selectedStoreId = ref("");
 const dateFrom = ref("");
 const dateTo = ref("");
@@ -148,6 +152,29 @@ const promotionOption = computed<EChartsCoreOption>(() => ({
 		{ name: copy.value.applications, type: "bar", barMaxWidth: 22, data: dashboard.value?.promotions.map((item) => item.applications) || [] },
 	],
 }));
+const weekdays = computed(() => locale.value === "lo"
+	? [ "ອາທິດ", "ຈັນ", "ອັງຄານ", "ພຸດ", "ພະຫັດ", "ສຸກ", "ເສົາ" ]
+	: locale.value === "th"
+		? [ "อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์" ]
+		: [ "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" ]);
+const rankedSalesTimes = computed(() => [ ...(dashboard.value?.sales_heatmap || []) ].sort((a, b) => b.revenue - a.revenue));
+const busiestPeriod = computed(() => rankedSalesTimes.value[0] || null);
+const quietestPeriod = computed(() => rankedSalesTimes.value.at(-1) || null);
+function periodLabel(item: Dashboard["sales_heatmap"][number] | null) {
+	return item ? `${weekdays.value[item.weekday]} ${String(item.hour).padStart(2, "0")}:00` : "—";
+}
+const heatmapOption = computed<EChartsCoreOption>(() => {
+	const values = dashboard.value?.sales_heatmap.map((item) => [ item.hour, item.weekday, item.revenue, item.bill_count ]) || [];
+	const maximum = Math.max(1, ...values.map((item) => Number(item[2])));
+	return {
+		tooltip: { formatter: (item: any) => `${weekdays.value[item.value[1]]} ${String(item.value[0]).padStart(2, "0")}:00<br/>${money(item.value[2])} · ${number(item.value[3])} ${copy.value.bills}` },
+		grid: { left: 12, right: 20, top: 10, bottom: 44, containLabel: true },
+		xAxis: { type: "category", data: Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0")), splitArea: { show: true } },
+		yAxis: { type: "category", data: weekdays.value, splitArea: { show: true } },
+		visualMap: { min: 0, max: maximum, calculable: false, orient: "horizontal", left: "center", bottom: 0, inRange: { color: [ "#ecfdf5", "#6ee7b7", "#059669" ] } },
+		series: [ { type: "heatmap", data: values, itemStyle: { borderColor: "#fff", borderWidth: 2 } } ],
+	};
+});
 
 onMounted(loadDashboard);
 </script>
@@ -187,6 +214,7 @@ onMounted(loadDashboard);
 						<AppButton size="sm" :variant="activeTab === 'overview' ? 'solid' : 'ghost'" @click="activeTab = 'overview'">{{ copy.overviewTab }}</AppButton>
 						<AppButton size="sm" :variant="activeTab === 'products' ? 'solid' : 'ghost'" @click="activeTab = 'products'">{{ copy.productsTab }}</AppButton>
 						<AppButton size="sm" :variant="activeTab === 'promotions' ? 'solid' : 'ghost'" @click="activeTab = 'promotions'">{{ copy.promotionsTab }}</AppButton>
+						<AppButton size="sm" :variant="activeTab === 'sales-time' ? 'solid' : 'ghost'" @click="activeTab = 'sales-time'">{{ copy.salesTimeTab }}</AppButton>
 					</div>
 
 					<template v-if="activeTab === 'overview'">
@@ -222,11 +250,28 @@ onMounted(loadDashboard);
 						</UCard>
 					</template>
 
-					<template v-else>
+					<template v-else-if="activeTab === 'promotions'">
 						<UCard><h2 class="font-semibold">{{ copy.promotionUsage }}</h2><ReportsReportChart :option="promotionOption" :empty="!dashboard.promotions.length" /></UCard>
 						<UCard>
 							<div v-if="dashboard.promotions.length" class="overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.promotionsTab }}</th><th class="p-3 text-right">{{ copy.bills }}</th><th class="p-3 text-right">{{ copy.applications }}</th><th class="p-3 text-right">{{ copy.discount }}</th><th class="p-3 text-right">{{ copy.giftCost }}</th></tr></thead><tbody><tr v-for="promotion in dashboard.promotions" :key="promotion.id" class="border-t border-stone-100"><td class="p-3 font-semibold">{{ promotion.name }}</td><td class="p-3 text-right">{{ number(promotion.bill_count) }}</td><td class="p-3 text-right">{{ number(promotion.applications) }}</td><td class="p-3 text-right">{{ money(promotion.discount_amount) }}</td><td class="p-3 text-right">{{ money(promotion.gift_cost) }}</td></tr></tbody></table></div>
 							<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
+						</UCard>
+					</template>
+
+					<template v-else>
+						<div class="grid gap-3 sm:grid-cols-2">
+							<div class="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+								<p class="text-xs font-medium text-emerald-700">{{ copy.busiest }}</p><strong class="mt-2 block text-xl text-stone-950">{{ periodLabel(busiestPeriod) }}</strong>
+								<p class="mt-1 text-sm text-stone-600">{{ busiestPeriod ? money(busiestPeriod.revenue) : "—" }} · {{ busiestPeriod ? number(busiestPeriod.bill_count) : 0 }} {{ copy.bills }}</p>
+							</div>
+							<div class="rounded-md border border-blue-200 bg-blue-50 p-4">
+								<p class="text-xs font-medium text-blue-700">{{ copy.quietest }}</p><strong class="mt-2 block text-xl text-stone-950">{{ periodLabel(quietestPeriod) }}</strong>
+								<p class="mt-1 text-sm text-stone-600">{{ quietestPeriod ? money(quietestPeriod.revenue) : "—" }} · {{ quietestPeriod ? number(quietestPeriod.bill_count) : 0 }} {{ copy.bills }}</p>
+							</div>
+						</div>
+						<UCard>
+							<div><h2 class="font-semibold">{{ copy.salesByTime }}</h2><p class="mt-1 text-xs text-stone-500">{{ copy.activeOnly }}</p></div>
+							<ReportsReportChart :option="heatmapOption" height="380px" :empty="!dashboard.sales_heatmap.length" />
 						</UCard>
 					</template>
 				</template>
