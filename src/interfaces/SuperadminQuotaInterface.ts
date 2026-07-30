@@ -94,7 +94,10 @@ export class SuperadminQuotaInterface {
 		const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
 		const offset = (page - 1) * limit;
 
-		const where = [ buildScopedUserWhere() ];
+		const where = [
+			buildScopedUserWhere(),
+			"COALESCE(u.can_create_stores, 0) = 1",
+		];
 		const args: InValue[] = [ ownerUserId, ownerUserId, ownerUserId ];
 
 		if (params.search?.trim()) {
@@ -159,9 +162,15 @@ export class SuperadminQuotaInterface {
 								WHERE s.owner_user_id = u.id
 							),
 							0
-						) ELSE 0 END) AS remaining_store_capacity_total
+						) ELSE 0 END) AS remaining_store_capacity_total,
+						SUM((
+							SELECT COUNT(*)
+							FROM stores s
+							WHERE s.owner_user_id = u.id
+						)) AS stores_total
 					FROM users u
 					WHERE ${buildScopedUserWhere()}
+						AND COALESCE(u.can_create_stores, 0) = 1
 				`,
 				args: [ ownerUserId, ownerUserId, ownerUserId ],
 			}),
@@ -195,12 +204,6 @@ export class SuperadminQuotaInterface {
 		const summaryRow = summaryResult.rows[0] || {};
 		const total = Number(countResult.rows[0]?.total || 0);
 		const items = rowsResult.rows.map((row) => mapRow(row));
-		const storesTotalResult = await db.execute({
-			sql: "SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
-			args: [ ownerUserId ],
-		});
-		const storesTotal = Number(storesTotalResult.rows[0]?.total || 0);
-
 		const result: SuperadminQuotaListResult = {
 			items,
 			page,
@@ -216,20 +219,10 @@ export class SuperadminQuotaInterface {
 				unlimited_store_accounts: Number(summaryRow.unlimited_store_accounts || 0),
 				unlimited_branch_accounts: Number(summaryRow.unlimited_branch_accounts || 0),
 				attention_accounts: Number(summaryRow.attention_accounts || 0),
-				stores_total: storesTotal,
+				stores_total: Number(summaryRow.stores_total || 0),
 			},
 			warnings: [],
 		};
-
-		if (result.summary.attention_accounts > 0) {
-			result.warnings.push(`มี ${result.summary.attention_accounts} บัญชีที่ใช้ store quota เต็มหรือเกินแล้ว`);
-		}
-		if (result.summary.store_quota_enabled === 0) {
-			result.warnings.push("ยังไม่มีบัญชีใดใน scope นี้ที่เปิดสิทธิ์สร้างร้าน");
-		}
-		if (result.summary.branch_quota_enabled === 0) {
-			result.warnings.push("ยังไม่มีบัญชีใดใน scope นี้ที่เปิดสิทธิ์สร้างสาขา");
-		}
 
 		return result;
 	}

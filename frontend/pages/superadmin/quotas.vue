@@ -300,7 +300,6 @@ onMounted(async () => {
 									<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 md:contents">
 										<select v-model="activeMode" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 											<option value="all">{{ copy.all }}</option>
-											<option value="store-enabled">{{ copy.storeEnabled }}</option>
 											<option value="limited">{{ copy.limited }}</option>
 											<option value="unlimited">{{ copy.unlimited }}</option>
 											<option value="attention">{{ copy.attention }}</option>
