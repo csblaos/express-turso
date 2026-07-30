@@ -800,23 +800,55 @@ export class RbacInterface {
 				}
 			}
 
-			for (const preset of missingPresets) {
-				const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
-					preset.permissionKeys,
-					availablePermissionMap,
+			// Creating the presets through createRole() costs six round trips per
+			// role, which dominates store creation on a remote database. Every role
+			// row and its permission rows go out in a single batch instead.
+			if (missingPresets.length > 0) {
+				const permissionIdByKey = new Map(
+					(await RbacInterface.listPermissions()).map((permission) => [ permission.key, permission.id ]),
 				);
-				if (compatiblePresetKeys.length === 0) continue;
+				const createdAt = new Date().toISOString();
+				const statements: { sql: string; args: InValue[] }[] = [];
 
-				const created = await RbacInterface.createRole({
-					store_id: storeId,
-					name: preset.name,
-					is_system: 1,
-				}, compatiblePresetKeys);
-				rolesByName.set(normalizeRoleName(created.name), {
-					id: created.id,
-					name: created.name,
-					is_system: Number(created.is_system || 0),
-				});
+				for (const preset of missingPresets) {
+					const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
+						preset.permissionKeys,
+						availablePermissionMap,
+					);
+					if (compatiblePresetKeys.length === 0) continue;
+
+					const roleId = randomUUID();
+					statements.push({
+						sql: `
+							INSERT INTO roles (id, store_id, name, is_system, created_at)
+							VALUES (?, ?, ?, ?, ?)
+						`,
+						args: [ roleId, storeId, preset.name, 1, createdAt ],
+					});
+
+					const permissionIds = compatiblePresetKeys
+						.map((key) => permissionIdByKey.get(key))
+						.filter((permissionId): permissionId is string => Boolean(permissionId));
+					if (permissionIds.length > 0) {
+						statements.push({
+							sql: `
+								INSERT INTO role_permissions (role_id, permission_id)
+								VALUES ${permissionIds.map(() => "(?, ?)").join(", ")}
+							`,
+							args: permissionIds.flatMap((permissionId) => [ roleId, permissionId ]),
+						});
+					}
+
+					rolesByName.set(normalizeRoleName(preset.name), {
+						id: roleId,
+						name: preset.name,
+						is_system: 1,
+					});
+				}
+
+				if (statements.length > 0) {
+					await db.batch(statements, "write");
+				}
 			}
 
 			if (shouldReconcilePresets) {

@@ -94,9 +94,15 @@ export class StoreComponent {
 				...payload,
 				owner_user_id: actor.userId,
 			});
-			await RbacInterface.ensureDefaultRolesForStore(created.id);
-			await RbacInterface.ensureOwnerMembershipForStore(created.id, actor.userId);
-			await UnitInterface.ensureDefaultUnitsForStore(created.id);
+			// Unit seeding does not depend on roles, so it runs alongside the role
+			// and membership chain instead of waiting for it.
+			await Promise.all([
+				(async () => {
+					await RbacInterface.ensureDefaultRolesForStore(created.id);
+					await RbacInterface.ensureOwnerMembershipForStore(created.id, actor.userId);
+				})(),
+				UnitInterface.ensureDefaultUnitsForStore(created.id),
+			]);
 			return created;
 		}
 
@@ -105,9 +111,14 @@ export class StoreComponent {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_OWNER_REQUIRED);
 			}
 			const created = await StoreInterface.create(payload);
-			await RbacInterface.ensureDefaultRolesForStore(created.id);
-			await RbacInterface.ensureOwnerMembershipForStore(created.id, payload.owner_user_id);
-			await UnitInterface.ensureDefaultUnitsForStore(created.id);
+			const ownerUserId = payload.owner_user_id;
+			await Promise.all([
+				(async () => {
+					await RbacInterface.ensureDefaultRolesForStore(created.id);
+					await RbacInterface.ensureOwnerMembershipForStore(created.id, ownerUserId);
+				})(),
+				UnitInterface.ensureDefaultUnitsForStore(created.id),
+			]);
 			return created;
 		}
 

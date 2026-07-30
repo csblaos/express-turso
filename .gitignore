@@ -24,6 +24,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# local credential notes
+dev-accounts.local.md
+
 # misc
 .DS_Store
 coverage

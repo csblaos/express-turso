@@ -3,10 +3,16 @@
     "url": "libsql://your-database-name-your-org.turso.io",
     "authToken": "your-turso-auth-token"
   },
-  "superadmin": {
-    "name": "System Administrator",
-    "email": "admin@example.com",
+  "systemAdmin": {
+    "name": "Platform Operator",
+    "email": "ops@example.com",
     "password": "replace-with-a-strong-password",
+    "locale": "lo"
+  },
+  "superadmin": {
+    "name": "Store Owner",
+    "email": "owner@example.com",
+    "password": "replace-with-a-different-strong-password",
     "locale": "lo"
   }
 }

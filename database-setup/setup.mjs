@@ -36,17 +36,40 @@ async function loadConfig() {
 	const config = {
 		url: String(input.database?.url || "").trim(),
 		authToken: String(input.database?.authToken || "").trim(),
-		name: String(input.superadmin?.name || "").trim(),
-		email: String(input.superadmin?.email || "").trim().toLowerCase(),
-		password: String(input.superadmin?.password || ""),
-		locale: String(input.superadmin?.locale || "lo").trim() || "lo",
+		accounts: normalizeAccounts(input),
 	};
 	if (!config.url) fail("database.url จำเป็นต้องระบุ");
 	if (!config.url.startsWith("file:") && !config.authToken) fail("database.authToken จำเป็นสำหรับ Database แบบ remote");
-	if (!config.name) fail("superadmin.name จำเป็นต้องระบุ");
-	if (!config.email.includes("@")) fail("superadmin.email ไม่ถูกต้อง");
-	if (config.password.length < 12) fail("superadmin.password ต้องมีอย่างน้อย 12 ตัวอักษร");
+	if (config.accounts.length === 0) fail("ต้องระบุอย่างน้อยหนึ่งบัญชีใน superadmin หรือ systemAdmin");
 	return config;
+}
+
+// `superadmin` is the customer-facing owner account that works inside a store.
+// `system_admin` is the platform operator and is blocked from the store
+// workspace entirely, so the two are seeded from separate config blocks.
+function normalizeAccounts(input) {
+	const accounts = [];
+	for (const [ key, role ] of [ [ "systemAdmin", "system_admin" ], [ "superadmin", "superadmin" ] ]) {
+		const raw = input[key];
+		if (!raw) continue;
+
+		const account = {
+			key,
+			role,
+			name: String(raw.name || "").trim(),
+			email: String(raw.email || "").trim().toLowerCase(),
+			password: String(raw.password || ""),
+			locale: String(raw.locale || "lo").trim() || "lo",
+		};
+		if (!account.name) fail(`${key}.name จำเป็นต้องระบุ`);
+		if (!account.email.includes("@")) fail(`${key}.email ไม่ถูกต้อง`);
+		if (account.password.length < 12) fail(`${key}.password ต้องมีอย่างน้อย 12 ตัวอักษร`);
+		accounts.push(account);
+	}
+
+	const duplicate = accounts.length === 2 && accounts[0].email === accounts[1].email;
+	if (duplicate) fail("systemAdmin.email และ superadmin.email ต้องเป็นคนละอีเมล");
+	return accounts;
 }
 
 function databaseLabel(url) {
@@ -66,16 +89,23 @@ async function applySchema(client) {
 	await client.executeMultiple(await fs.readFile(schemaPath, "utf8"));
 }
 
-async function seedSuperadmin(client, config) {
+function accountLabel(role) {
+	return role === "system_admin" ? "System Admin" : "Super Admin";
+}
+
+async function seedAccount(client, account) {
+	const label = accountLabel(account.role);
 	const existing = await client.execute({
 		sql: "SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1",
-		args: [config.email],
+		args: [account.email],
 	});
 	if (existing.rows.length > 0) {
-		process.stdout.write(`Super Admin ${config.email} มีอยู่แล้ว (ไม่เปลี่ยนรหัสผ่าน)\n`);
+		process.stdout.write(`${label} ${account.email} มีอยู่แล้ว (ไม่เปลี่ยนรหัสผ่าน)\n`);
 		return;
 	}
 
+	// A system admin never reaches the store workspace, so store quotas stay off.
+	const canCreateStores = account.role === "superadmin" ? 1 : 0;
 	const timestamp = new Date().toISOString();
 	await client.execute({
 		sql: `INSERT INTO users (
@@ -83,24 +113,28 @@ async function seedSuperadmin(client, config) {
 			can_create_branches, max_branches_per_store, created_by,
 			password_hash, session_limit, system_role, must_change_password,
 			password_updated_at, ui_locale, client_suspended
-		) VALUES (?, ?, ?, ?, 1, NULL, 0, NULL, NULL, ?, NULL, 'superadmin', 1, ?, ?, 0)`,
+		) VALUES (?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, NULL, ?, 1, ?, ?, 0)`,
 		args: [
 			randomUUID(),
-			config.name,
-			config.email,
+			account.name,
+			account.email,
 			timestamp,
-			await bcrypt.hash(config.password, 10),
+			canCreateStores,
+			await bcrypt.hash(account.password, 10),
+			account.role,
 			timestamp,
-			config.locale,
+			account.locale,
 		],
 	});
-	process.stdout.write(`สร้าง Super Admin สำเร็จ: ${config.email}\n`);
+	process.stdout.write(`สร้าง ${label} สำเร็จ: ${account.email}\n`);
 }
 
 async function initialize(client, config) {
 	process.stdout.write("กำลังสร้างโครงสร้าง Database...\n");
 	await applySchema(client);
-	await seedSuperadmin(client, config);
+	for (const account of config.accounts) {
+		await seedAccount(client, account);
+	}
 	process.stdout.write("Database พร้อมใช้งานแล้ว\n");
 }
 
@@ -131,18 +165,27 @@ async function check(client, config) {
 	const tables = await client.execute(
 		"SELECT COUNT(*) AS total FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
 	);
-	let admins = 0;
+	let systemAdmins = 0;
+	let superadmins = 0;
 	try {
 		const result = await client.execute(
-			"SELECT COUNT(*) AS total FROM users WHERE LOWER(system_role) = 'superadmin'",
+			`SELECT LOWER(system_role) AS role, COUNT(*) AS total FROM users
+			WHERE LOWER(system_role) IN ('system_admin', 'superadmin') GROUP BY LOWER(system_role)`,
 		);
-		admins = Number(result.rows[0]?.total || 0);
+		for (const row of result.rows) {
+			if (row.role === "system_admin") systemAdmins = Number(row.total || 0);
+			if (row.role === "superadmin") superadmins = Number(row.total || 0);
+		}
 	} catch {
 		// A completely empty database has no users table yet.
 	}
 	process.stdout.write(`Database: ${databaseLabel(config.url)}\n`);
 	process.stdout.write(`Tables: ${Number(tables.rows[0]?.total || 0)}\n`);
-	process.stdout.write(`Super Admin accounts: ${admins}\n`);
+	process.stdout.write(`System Admin accounts: ${systemAdmins}\n`);
+	process.stdout.write(`Super Admin accounts: ${superadmins}\n`);
+	if (systemAdmins === 0) {
+		process.stdout.write("คำเตือน: ไม่มีบัญชี System Admin หน้า /system-admin จะเข้าไม่ได้\n");
+	}
 }
 
 if (!["init", "reset", "check"].includes(command)) {
