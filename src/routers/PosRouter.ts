@@ -13,9 +13,9 @@ export class PosRouter {
 
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
-		this.router.get("/products", PosController.getCatalog);
-		this.router.get("/orders", PosController.listOrders);
-		this.router.post("/checkout", PosController.checkout);
+		this.router.get("/products", PermissionMiddleware.require("pos.create_order"), PosController.getCatalog);
+		this.router.get("/orders", PermissionMiddleware.require("pos.create_order"), PosController.listOrders);
+		this.router.post("/checkout", PermissionMiddleware.require("pos.create_order"), PosController.checkout);
 		this.router.get("/restaurant/tables", PermissionMiddleware.require("pos.restaurant.open"), RestaurantValidator.query, RestaurantController.dashboard);
 		this.router.get("/restaurant/reports/profitability", PermissionMiddleware.require("reports.view"), RestaurantValidator.reportQuery, RestaurantController.profitability);
 		this.router.patch("/restaurant/products/:productId/availability", PermissionMiddleware.require("products.update"), RestaurantValidator.availability, RestaurantController.availability);

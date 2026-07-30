@@ -186,6 +186,8 @@ const DEFAULT_PERMISSION_SEED = [
 
 const DEFAULT_STORE_MEMBER_ROLE_NAME = "Cashier";
 const DEFAULT_STORE_OWNER_ROLE_NAME = "Owner";
+const STORE_ROLE_PRESET_SCHEMA_VERSION = 2;
+const RETIRED_STORE_ROLE_NAMES = [ "Viewer" ] as const;
 
 const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 	name: string;
@@ -195,8 +197,6 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Owner",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
-			"pos.override_price",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
@@ -214,17 +214,13 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"promotions.archive",
 			"inventory.view",
 			"inventory.adjust",
-			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
-			"purchase_orders.cancel",
 			"purchase_orders.receive",
 			"reports.view",
-			"reports.export",
 			"activity.view",
 			"stores.view",
-			"stores.update",
 			"settings.view",
 			"settings.store.view",
 			"settings.store.update",
@@ -246,7 +242,6 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Manager",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
@@ -256,26 +251,27 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"products.view",
 			"products.create",
 			"products.update",
+			"products.update_cost",
+			"products.archive",
 			"promotions.view",
 			"promotions.create",
 			"promotions.update",
 			"promotions.archive",
 			"inventory.view",
 			"inventory.adjust",
-			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
 			"purchase_orders.receive",
 			"reports.view",
-			"reports.export",
 			"activity.view",
+			"stores.view",
 			"settings.view",
+			"settings.store.view",
 			"settings.users.view",
-			"settings.users.create",
 			"settings.users.update",
 			"settings.users.suspend",
-			"settings.users.assign_role",
+			"settings.users.reset_password",
 			"settings.restaurant.view",
 			"settings.restaurant.update",
 		],
@@ -284,15 +280,11 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Cashier",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
 			"pos.restaurant.apply_promotion",
 			"pos.restaurant.print",
-			"products.view",
-			"inventory.view",
-			"purchase_orders.view",
 		],
 	},
 	{
@@ -303,19 +295,8 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"inventory.adjust",
 			"purchase_orders.view",
 			"purchase_orders.create",
+			"purchase_orders.update",
 			"purchase_orders.receive",
-		],
-	},
-	{
-		name: "Viewer",
-		permissionKeys: [
-			"products.view",
-			"inventory.view",
-			"purchase_orders.view",
-			"reports.view",
-			"stores.view",
-			"settings.view",
-			"activity.view",
 		],
 	},
 ] as const;
@@ -783,8 +764,27 @@ export class RbacInterface {
 			);
 			const missingPresets = DEFAULT_STORE_ROLE_PRESETS.filter((preset) => !rolesByName.has(normalizeRoleName(preset.name)));
 			const availablePermissionMap = await RbacInterface.getAvailablePermissionKeyMap();
+			await db.execute(`
+				CREATE TABLE IF NOT EXISTS store_role_preset_migrations (
+					store_id TEXT NOT NULL,
+					version INTEGER NOT NULL,
+					applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (store_id, version)
+				)
+			`);
+			const migrationResult = await db.execute({
+				sql: `
+					SELECT 1
+					FROM store_role_preset_migrations
+					WHERE store_id = ? AND version = ?
+					LIMIT 1
+				`,
+				args: [ storeId, STORE_ROLE_PRESET_SCHEMA_VERSION ],
+			});
+			const shouldReconcilePresets = migrationResult.rows.length === 0;
 
-			// Backfill new permissions into existing system presets without removing custom permissions.
+			// Existing installations are reconciled once per preset schema version. Later
+			// user edits remain intact, while newly introduced keys can still be backfilled.
 			for (const preset of DEFAULT_STORE_ROLE_PRESETS) {
 				const existing = rolesByName.get(normalizeRoleName(preset.name));
 				if (!existing || existing.is_system !== 1) continue;
@@ -793,7 +793,11 @@ export class RbacInterface {
 					availablePermissionMap,
 				);
 				if (compatiblePresetKeys.length === 0) continue;
-				await RbacInterface.addRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				if (shouldReconcilePresets) {
+					await RbacInterface.replaceRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				} else {
+					await RbacInterface.addRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				}
 			}
 
 			for (const preset of missingPresets) {
@@ -812,6 +816,30 @@ export class RbacInterface {
 					id: created.id,
 					name: created.name,
 					is_system: Number(created.is_system || 0),
+				});
+			}
+
+			if (shouldReconcilePresets) {
+				for (const retiredRoleName of RETIRED_STORE_ROLE_NAMES) {
+					const retiredRole = rolesByName.get(normalizeRoleName(retiredRoleName));
+					if (!retiredRole || retiredRole.is_system !== 1) continue;
+					const memberResult = await db.execute({
+						sql: "SELECT 1 FROM store_members WHERE role_id = ? LIMIT 1",
+						args: [ retiredRole.id ],
+					});
+					if (memberResult.rows.length > 0) continue;
+					await db.execute({
+						sql: "UPDATE roles SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+						args: [ retiredRole.id ],
+					});
+				}
+
+				await db.execute({
+					sql: `
+						INSERT OR IGNORE INTO store_role_preset_migrations (store_id, version)
+						VALUES (?, ?)
+					`,
+					args: [ storeId, STORE_ROLE_PRESET_SCHEMA_VERSION ],
 				});
 			}
 
