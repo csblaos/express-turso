@@ -1830,7 +1830,7 @@ onBeforeUnmount(() => {
 		panel-class="lg:h-[min(720px,calc(100dvh-2rem))]"
 		content-class="flex flex-col !overflow-hidden !px-4 !py-4"
 	>
-		<div v-if="checkoutStep === 'processing'" class="flex min-h-[326px] flex-col items-center justify-center rounded-md border border-emerald-100 bg-emerald-50/60 px-6 py-8 text-center">
+		<div v-if="checkoutStep === 'processing'" class="-mx-4 -mb-4 -mt-3 flex min-h-0 flex-1 flex-col items-center justify-center border-t border-emerald-100 bg-emerald-50/60 px-6 py-8 text-center">
 			<div class="grid size-16 place-items-center rounded-full bg-white shadow-sm">
 				<Loader class="size-8 animate-spin text-emerald-600" :stroke-width="2.4" />
 			</div>
