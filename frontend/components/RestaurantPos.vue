@@ -1826,8 +1826,9 @@ onBeforeUnmount(() => {
 		mobile-max-height="96dvh"
 		fill-mobile-height
 		compact-header
+		close-button-size="sm"
 		panel-class="lg:h-[min(720px,calc(100dvh-2rem))]"
-		content-class="flex flex-col !overflow-hidden"
+		content-class="flex flex-col !overflow-hidden !px-4 !py-4"
 	>
 		<div v-if="checkoutStep === 'processing'" class="flex min-h-[326px] flex-col items-center justify-center rounded-md border border-emerald-100 bg-emerald-50/60 px-6 py-8 text-center">
 			<div class="grid size-16 place-items-center rounded-full bg-white shadow-sm">
@@ -1911,12 +1912,12 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 		<div v-else class="scrollbar-soft flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto pr-1">
-			<div class="grid grid-cols-3 gap-1.5 md:gap-2">
+			<div class="grid shrink-0 grid-cols-3 gap-1.5 md:gap-2">
 				<button
 					v-for="method in paymentMethodOptions"
 					:key="method.id"
 					type="button"
-					class="flex min-h-14 flex-col items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-sm font-semibold transition md:min-h-12 md:text-sm"
+					class="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-semibold transition md:min-h-11 md:text-sm"
 					:class="paymentMethod === method.id ? 'border-primary-600 bg-primary-600 text-white shadow-sm' : 'border-neutral-200 bg-neutral-50 text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
 					@click="paymentMethod = method.id"
 				>
@@ -1924,21 +1925,21 @@ onBeforeUnmount(() => {
 					<span class="truncate">{{ method.label }}</span>
 				</button>
 			</div>
-			<div class="min-h-[166px]">
+			<div class="min-h-[166px] shrink-0">
 				<div v-if="paymentMethod === 'cash'" class="space-y-2">
-					<div class="rounded-md border border-neutral-200 bg-white px-3 py-2">
+					<div class="rounded-md border border-neutral-200 bg-white px-3 py-1.5">
 						<div class="flex items-center justify-between gap-3">
 							<p class="text-[11px] font-semibold uppercase text-stone-400">{{ t('posPanels.cashReceived') }}</p>
 							<div class="flex items-center gap-1.5">
-								<button type="button" class="grid size-8 place-items-center rounded-md bg-neutral-100 text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!cashTenderedHistory.length" :aria-label="t('posPanels.undoCash')" @click="undoCashTendered">
-									<UIcon name="i-heroicons-arrow-uturn-left" class="size-4" />
+								<button type="button" class="grid size-7 place-items-center rounded-md bg-neutral-100 text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!cashTenderedHistory.length" :aria-label="t('posPanels.undoCash')" @click="undoCashTendered">
+									<UIcon name="i-heroicons-arrow-uturn-left" class="size-3.5" />
 								</button>
-								<button type="button" class="min-h-8 rounded-md bg-neutral-100 px-2 text-xs font-semibold text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="cashTendered <= 0" @click="setCashTendered(0)">
+								<button type="button" class="min-h-7 rounded-md bg-neutral-100 px-2 text-[11px] font-semibold text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="cashTendered <= 0" @click="setCashTendered(0)">
 									{{ t('posPanels.clear') }}
 								</button>
 							</div>
 						</div>
-						<p class="mt-0.5 text-right text-2xl font-bold tabular-nums text-stone-950">{{ money(cashTendered) }}</p>
+						<p class="text-right text-xl font-bold leading-tight tabular-nums text-stone-950">{{ money(cashTendered) }}</p>
 					</div>
 					<div class="grid grid-cols-4 gap-1.5">
 						<button
@@ -1981,7 +1982,7 @@ onBeforeUnmount(() => {
 					</UFormField>
 				</template>
 			</div>
-			<div class="mt-auto rounded-md border border-neutral-200 bg-neutral-50 p-3">
+			<div class="mt-auto shrink-0 rounded-md border border-neutral-200 bg-neutral-50 p-3">
 				<div class="flex justify-between gap-3 text-sm">
 					<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
 					<span class="tabular-nums">{{ money(billingSubtotal) }}</span>
@@ -2007,7 +2008,7 @@ onBeforeUnmount(() => {
 				block
 				size="md"
 				color="primary"
-				class="sticky bottom-0 z-10 shrink-0 shadow-[0_-8px_16px_8px_#fffefd]"
+				class="shrink-0"
 				:loading="actionPending"
 				:disabled="paymentMethod === 'cash' ? cashTendered < displayTotal : paymentMethod === 'qr_transfer' && !order ? !paymentAccountId : false"
 				@click="checkout"
