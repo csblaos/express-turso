@@ -175,6 +175,17 @@ export class R2Storage {
 		};
 	}
 
+	static async uploadStoreLogo(input: {
+		storeId: string;
+		dataUrl: string;
+	}): Promise<{ key: string; bytes: number; mime: string }> {
+		return R2Storage.uploadProductImage({
+			storeId: input.storeId,
+			productId: "store-logo",
+			dataUrl: input.dataUrl,
+		});
+	}
+
 	static async uploadStorePaymentQrImage(input: {
 		storeId: string;
 		dataUrl: string;

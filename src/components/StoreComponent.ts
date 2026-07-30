@@ -7,6 +7,7 @@ import { StoreAccessActor, StoreInterface } from "@interfaces/StoreInterface";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { CreateStoreInput, Store } from "@models/Store";
+import { R2Storage } from "@storage/R2Storage";
 
 const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"name",
@@ -132,6 +133,13 @@ export class StoreComponent {
 		}
 		if (actor.systemRole !== "system_admin") {
 			delete (updateData as Partial<Store>).owner_user_id;
+		}
+		if (typeof updateData.logo_url === "string" && updateData.logo_url.trim().startsWith("data:")) {
+			const uploaded = await R2Storage.uploadStoreLogo({
+				storeId: id,
+				dataUrl: updateData.logo_url,
+			});
+			updateData.logo_url = uploaded.key;
 		}
 
 		const costMethodChanged = typeof updateData.cost_method === "string" && updateData.cost_method !== existing.cost_method;

@@ -33,8 +33,8 @@ app.get("/healthz", (req, res) => {
 	SuccessHandler.send(res, req.requestId, "ok");
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 	if (err instanceof SyntaxError) {
