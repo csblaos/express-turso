@@ -47,7 +47,9 @@ export type InventoryCostReceiptInput = {
 	received_at?: string;
 };
 
-type SqlExecutor = Pick<ReturnType<typeof DbConn.getClient>, "execute">;
+// "batch" is included so a receipt can send its writes in one round trip; both
+// the client and a transaction expose it.
+type SqlExecutor = Pick<ReturnType<typeof DbConn.getClient>, "execute" | "batch">;
 
 function toNumber(value: unknown): number {
 	return Number(value ?? 0);
@@ -61,7 +63,10 @@ function normalizeOptionalString(value?: string | null): string | null {
 export class InventoryCostInterface {
 	private static initialized = false;
 
-	private static async ensureTables(): Promise<void> {
+	// Public so a caller holding a write transaction can run this first: it uses
+	// its own connection, and issuing DDL on a second connection while a write
+	// transaction is open both costs round trips and risks lock contention.
+	static async ensureTables(): Promise<void> {
 		if (InventoryCostInterface.initialized) return;
 
 		const db = DbConn.getClient();
@@ -165,7 +170,7 @@ export class InventoryCostInterface {
 					source_type,
 					source_id,
 					source_line_id,
-					cost_method: costMethod,
+					cost_method,
 					qty_base_in,
 					qty_base_remaining,
 					unit_cost_base,
@@ -226,107 +231,115 @@ export class InventoryCostInterface {
 		const costMethod = normalizeOptionalString(input.cost_method) || "average";
 		const metaJson = input.meta ? JSON.stringify(input.meta) : null;
 
-		await db.execute({
-			sql: `
-				INSERT INTO inventory_cost_summaries (
-					store_id,
-					product_id,
-					qty_base_on_hand,
-					total_cost_base,
-					average_unit_cost_base,
-					last_receipt_at,
-					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(store_id, product_id) DO UPDATE SET
-					qty_base_on_hand = inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand,
-					total_cost_base = inventory_cost_summaries.total_cost_base + excluded.total_cost_base,
-					average_unit_cost_base = CASE
-						WHEN (inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand) > 0
-							THEN (inventory_cost_summaries.total_cost_base + excluded.total_cost_base) / (inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand)
-						ELSE 0
-					END,
-					last_receipt_at = excluded.last_receipt_at,
-					updated_at = excluded.updated_at
-			`,
-			args: [
-				input.store_id,
-				input.product_id,
-				qtyBase,
-				totalCostBase,
-				qtyBase > 0 ? unitCostBase : 0,
-				now,
-				now,
-			],
-		});
-
-			await db.execute({
+		// Both writes plus the read-back go out together: the receive path runs
+		// inside a write transaction, and every extra round trip there is time the
+		// Turso HTTP stream stays open. RETURNING avoids a separate SELECT for the
+		// running average, which the caller needs for the product cost.
+		const [ summaryResult ] = await db.batch([
+			{
+				sql: `
+					INSERT INTO inventory_cost_summaries (
+						store_id,
+						product_id,
+						qty_base_on_hand,
+						total_cost_base,
+						average_unit_cost_base,
+						last_receipt_at,
+						updated_at
+					) VALUES (?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT(store_id, product_id) DO UPDATE SET
+						qty_base_on_hand = inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand,
+						total_cost_base = inventory_cost_summaries.total_cost_base + excluded.total_cost_base,
+						average_unit_cost_base = CASE
+							WHEN (inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand) > 0
+								THEN (inventory_cost_summaries.total_cost_base + excluded.total_cost_base) / (inventory_cost_summaries.qty_base_on_hand + excluded.qty_base_on_hand)
+							ELSE 0
+						END,
+						last_receipt_at = excluded.last_receipt_at,
+						updated_at = excluded.updated_at
+					RETURNING qty_base_on_hand, total_cost_base, average_unit_cost_base, last_receipt_at, updated_at
+				`,
+				args: [
+					input.store_id,
+					input.product_id,
+					qtyBase,
+					totalCostBase,
+					qtyBase > 0 ? unitCostBase : 0,
+					now,
+					now,
+				],
+			},
+			{
 				sql: `
 					INSERT INTO inventory_cost_layers (
-					id,
-					store_id,
-					product_id,
-					source_type,
-					source_id,
-					source_line_id,
-					cost_method: costMethod,
-					qty_base_in,
-					qty_base_remaining,
-					unit_cost_base,
-					total_cost_base,
-					note,
-					meta_json,
-					created_at,
-					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`,
-			args: [
-				layerId,
-				input.store_id,
-				input.product_id,
-				input.source_type,
-				input.source_id,
-				input.source_line_id ?? null,
-				costMethod,
-				qtyBase,
-				qtyBase,
-				unitCostBase,
-				totalCostBase,
-				normalizeOptionalString(input.note),
-				metaJson,
-				now,
-				now,
+						id,
+						store_id,
+						product_id,
+						source_type,
+						source_id,
+						source_line_id,
+						cost_method,
+						qty_base_in,
+						qty_base_remaining,
+						unit_cost_base,
+						total_cost_base,
+						note,
+						meta_json,
+						created_at,
+						updated_at
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+				args: [
+					layerId,
+					input.store_id,
+					input.product_id,
+					input.source_type,
+					input.source_id,
+					input.source_line_id ?? null,
+					costMethod,
+					qtyBase,
+					qtyBase,
+					unitCostBase,
+					totalCostBase,
+					normalizeOptionalString(input.note),
+					metaJson,
+					now,
+					now,
 				],
-			});
+			},
+		], "write");
 
-			return {
-				layer: {
-					id: layerId,
-					store_id: input.store_id,
-					product_id: input.product_id,
-					source_type: input.source_type,
-					source_id: input.source_id,
-					source_line_id: input.source_line_id ?? null,
-					cost_method: costMethod,
-					qty_base_in: qtyBase,
-					qty_base_remaining: qtyBase,
-					unit_cost_base: unitCostBase,
-					total_cost_base: totalCostBase,
-					note: normalizeOptionalString(input.note),
-					meta_json: metaJson,
-					created_at: now,
-					updated_at: now,
-				},
-				summary: {
-					store_id: input.store_id,
-					product_id: input.product_id,
-					qty_base_on_hand: qtyBase,
-					total_cost_base: totalCostBase,
-					average_unit_cost_base: qtyBase > 0 ? unitCostBase : 0,
-					last_receipt_at: now,
-					updated_at: now,
-				},
-			};
-		}
+		const summaryRow = summaryResult?.rows[0] as Record<string, unknown> | undefined;
+
+		return {
+			layer: {
+				id: layerId,
+				store_id: input.store_id,
+				product_id: input.product_id,
+				source_type: input.source_type,
+				source_id: input.source_id,
+				source_line_id: input.source_line_id ?? null,
+				cost_method: costMethod,
+				qty_base_in: qtyBase,
+				qty_base_remaining: qtyBase,
+				unit_cost_base: unitCostBase,
+				total_cost_base: totalCostBase,
+				note: normalizeOptionalString(input.note),
+				meta_json: metaJson,
+				created_at: now,
+				updated_at: now,
+			},
+			summary: {
+				store_id: input.store_id,
+				product_id: input.product_id,
+				qty_base_on_hand: toNumber(summaryRow?.qty_base_on_hand ?? qtyBase),
+				total_cost_base: toNumber(summaryRow?.total_cost_base ?? totalCostBase),
+				average_unit_cost_base: toNumber(summaryRow?.average_unit_cost_base ?? unitCostBase),
+				last_receipt_at: summaryRow?.last_receipt_at ? String(summaryRow.last_receipt_at) : now,
+				updated_at: summaryRow?.updated_at ? String(summaryRow.updated_at) : now,
+			},
+		};
+	}
 
 	static async getCostSummary(
 		storeId: string,

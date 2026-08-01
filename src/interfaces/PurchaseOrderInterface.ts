@@ -4,6 +4,7 @@ import { InValue } from "@libsql/client";
 
 import { DbConn } from "@connections/DbConn";
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
 import { InventoryInterface } from "@interfaces/InventoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
@@ -31,6 +32,8 @@ export type PurchaseOrderDetailItem = {
 	product_id: string;
 	product_name: string | null;
 	product_sku: string | null;
+	product_cost_base: number;
+	product_cost_source: string | null;
 	unit_name: string | null;
 	qty_ordered: number;
 	qty_received: number;
@@ -162,6 +165,8 @@ function mapDetailItemRow(row: Record<string, unknown>): PurchaseOrderDetailItem
 		product_id: String(row.product_id),
 		product_name: row.product_name ? String(row.product_name) : null,
 		product_sku: row.product_sku ? String(row.product_sku) : null,
+		product_cost_base: toNumber(row.product_cost_base),
+		product_cost_source: row.product_cost_source ? String(row.product_cost_source) : null,
 		unit_name: row.unit_name ? String(row.unit_name) : null,
 		qty_ordered: toNumber(row.qty_ordered),
 		qty_received: toNumber(row.qty_received),
@@ -380,6 +385,8 @@ export class PurchaseOrderInterface {
 						poi.*,
 						p.name AS product_name,
 						p.sku AS product_sku,
+						p.cost_base AS product_cost_base,
+						p.cost_source AS product_cost_source,
 						u.name_th AS unit_name
 					FROM purchase_order_items poi
 					LEFT JOIN products p ON p.id = poi.product_id
@@ -461,8 +468,11 @@ export class PurchaseOrderInterface {
 					payload.supplier_contact ?? null,
 					payload.purchase_currency ?? "LAK",
 					payload.exchange_rate ?? 1,
-					payload.shipping_cost ?? 0,
-					payload.other_cost ?? 0,
+					// Stored in the store's own currency: total_estimated_base and the
+					// freight allocation at receipt both read this as a base-currency
+					// amount. The figure the user typed is kept in *_cost_original.
+					(payload.shipping_cost_original ?? payload.shipping_cost ?? 0) * exchangeRate,
+					(payload.other_cost_original ?? payload.other_cost ?? 0) * exchangeRate,
 					payload.other_cost_note ?? null,
 					payload.status ?? "draft",
 					payload.ordered_at ?? null,
@@ -615,8 +625,11 @@ export class PurchaseOrderInterface {
 					payload.supplier_contact ?? null,
 					payload.purchase_currency ?? detail.order.purchase_currency,
 					exchangeRate,
-					payload.shipping_cost ?? 0,
-					payload.other_cost ?? 0,
+					// Stored in the store's own currency: total_estimated_base and the
+					// freight allocation at receipt both read this as a base-currency
+					// amount. The figure the user typed is kept in *_cost_original.
+					(payload.shipping_cost_original ?? payload.shipping_cost ?? 0) * exchangeRate,
+					(payload.other_cost_original ?? payload.other_cost ?? 0) * exchangeRate,
 					payload.other_cost_note ?? null,
 					payload.expected_at ?? null,
 					payload.note ?? null,
@@ -796,6 +809,10 @@ export class PurchaseOrderInterface {
 		lineReceipts: PurchaseOrderReceiveLineInput[] = [],
 	): Promise<PurchaseOrderDetail | null> {
 		await PurchaseOrderInterface.ensureTables();
+		// Runs its own DDL on a separate connection, so it has to happen before the
+		// write transaction opens rather than from inside recordReceipt.
+		await InventoryCostInterface.ensureTables();
+		await AuditEventInterface.ensureTable();
 		const db = DbConn.getClient();
 		const transaction = await db.transaction("write");
 		try {
@@ -809,6 +826,17 @@ export class PurchaseOrderInterface {
 			const receiveAll = lineReceipts.length === 0;
 			let hasAnyReceived = false;
 			let hasRemaining = false;
+
+			// Shipping and other costs belong to the whole shipment, so they are
+			// spread over every base unit on the order -- not only the units being
+			// received now, which would load the entire freight bill onto the first
+			// partial receipt. Allocated per unit; see extraCostPerBaseUnit.
+			const totalOrderedQtyBase = detail.items.reduce(
+				(sum, line) => sum + (toNumber(line.qty_ordered) * toNumber(line.multiplier_to_base || 1)),
+				0,
+			);
+			const extraCostTotal = toNumber(detail.order.shipping_cost) + toNumber(detail.order.other_cost);
+			const extraCostPerBaseUnit = totalOrderedQtyBase > 0 ? extraCostTotal / totalOrderedQtyBase : 0;
 
 			for (const item of detail.items) {
 				const remainingQty = Math.max(0, toNumber(item.qty_ordered) - toNumber(item.qty_received));
@@ -834,7 +862,10 @@ export class PurchaseOrderInterface {
 
 				hasAnyReceived = true;
 				const receiptQtyBase = requestedQty * toNumber(item.multiplier_to_base || 1);
-				const receiptUnitCostBase = toNumber(item.landed_cost_per_unit || item.unit_cost_base || item.unit_cost_purchase || 0);
+				// landed_cost_per_unit is written at creation time, when the freight
+				// bill is usually still unknown, so the share is added here instead.
+				const goodsUnitCostBase = toNumber(item.landed_cost_per_unit || item.unit_cost_base || item.unit_cost_purchase || 0);
+				const receiptUnitCostBase = goodsUnitCostBase + extraCostPerBaseUnit;
 				const nextQtyReceived = toNumber(item.qty_received) + requestedQty;
 				const nextQtyBaseReceived = toNumber(item.qty_base_received) + receiptQtyBase;
 
@@ -850,7 +881,7 @@ export class PurchaseOrderInterface {
 						refId: detail.order.id,
 					});
 
-					await InventoryCostInterface.recordReceipt({
+					const receipt = await InventoryCostInterface.recordReceipt({
 						store_id: detail.order.store_id,
 						product_id: item.product_id,
 						qty_base: receiptQtyBase,
@@ -872,15 +903,58 @@ export class PurchaseOrderInterface {
 						received_at: receivedAt,
 					}, transaction);
 
-					await transaction.execute({
+				// Receiving stock is what makes the real cost known, so it becomes
+				// the product cost that sales snapshot and reports price margins
+				// against. A cost the store typed in by hand is left alone.
+				const nextCostBase = storeCostMethod === "fifo"
+					? receiptUnitCostBase
+					: toNumber(receipt.summary.average_unit_cost_base) || receiptUnitCostBase;
+
+				// Only products whose cost actually moves get a history row, and only
+				// when the update above is allowed to touch them.
+				const previousCostBase = toNumber(item.product_cost_base);
+				const costChanged = String(item.product_cost_source || "") !== "manual" && previousCostBase !== nextCostBase;
+
+				// One round trip instead of two: the transaction is an HTTP stream and
+				// every extra call is time it stays open.
+				await transaction.batch([
+					{
+						sql: `
+							UPDATE products
+							SET cost_base = ?, cost_source = 'purchase', updated_at = ?
+							WHERE id = ? AND store_id = ? AND cost_source != 'manual'
+						`,
+						args: [ nextCostBase, receivedAt, item.product_id, detail.order.store_id ] as InValue[],
+					},
+					...(costChanged
+						? [ AuditEventInterface.buildInsertStatement(randomUUID(), {
+							scope: "products",
+							store_id: detail.order.store_id,
+							actor_user_id: receivedBy,
+							action: "cost_adjusted",
+							entity_type: "product",
+							entity_id: item.product_id,
+							metadata: {
+								source: "purchase_order",
+								purchase_order_id: detail.order.id,
+								po_number: detail.order.po_number,
+								goods_unit_cost_base: goodsUnitCostBase,
+								extra_cost_per_base_unit: extraCostPerBaseUnit,
+							},
+							before: { cost_base: previousCostBase },
+							after: { cost_base: nextCostBase },
+						}, receivedAt) ]
+						: []),
+					{
 						sql: `
 							UPDATE purchase_order_items
 							SET qty_received = ?,
-							qty_base_received = ?
-						WHERE purchase_order_id = ? AND id = ?
-					`,
-					args: [nextQtyReceived, nextQtyBaseReceived, id, item.id],
-				});
+								qty_base_received = ?
+							WHERE purchase_order_id = ? AND id = ?
+						`,
+						args: [ nextQtyReceived, nextQtyBaseReceived, id, item.id ] as InValue[],
+					},
+				]);
 
 				if (nextQtyReceived < toNumber(item.qty_ordered)) {
 					hasRemaining = true;

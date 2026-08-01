@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { normalizeMoneyTyping } from "~/utils/currency";
 import { getCurrencySymbol, normalizeCurrencyCode } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
 import { formatAppDateTime } from "~/utils/date-format";
@@ -38,6 +39,7 @@ type ApiProduct = {
 	category_name?: string | null;
 	base_unit_name?: string | null;
 	extra_sale_unit_count?: number;
+	has_purchase_cost?: number;
 	inventory_mode?: "tracked" | "untracked";
 	cost_source?: "purchase" | "manual" | "unknown";
 	manual_sold_out?: number;
@@ -88,6 +90,12 @@ type ApiProductCostAdjustment = {
 	before_cost_base: number;
 	after_cost_base: number;
 	delta: number;
+};
+
+type BaseUnitCheck = {
+	product_id: string;
+	can_change: boolean;
+	reasons: string[];
 };
 
 type ApiAdjustProductCostResult = {
@@ -176,6 +184,7 @@ type ProductRecord = {
 	lowStockThreshold: number | null;
 	inventoryMode: "tracked" | "untracked";
 	costSource: "purchase" | "manual" | "unknown";
+	hasPurchaseCost: boolean;
 	manualSoldOut: boolean;
 	tag?: string;
 };
@@ -188,11 +197,10 @@ type ProductRecord = {
 	const router = useRouter();
 	const { t, locale } = useI18n();
 	const { intlLocale } = useAppLocale();
-	const localizedDefaultUnitCodes = new Set([ "pcs", "box", "pack", "set", "kg", "g", "ltr", "ml", "btl" ]);
 
+	// Unit names are store data, so they render exactly as the store saved them
+	// in settings/units instead of going through a per-locale name map.
 	function getUnitDisplayName(unit: ApiUnit) {
-		const code = String(unit.code || "").trim().toLowerCase();
-		if (localizedDefaultUnitCodes.has(code)) return t(`products.unitNames.${code}`);
 		return unit.name_th || unit.code;
 	}
 
@@ -264,18 +272,23 @@ const productUnitsPending = ref(false);
 	const productCostAdjustForm = reactive({
 		costBase: "",
 		reason: "",
+		// Pinning is the default: an adjustment is a deliberate override, so it
+		// should survive the next receive unless the user says otherwise.
+		lockCost: true,
 	});
 	const productVariantMatrixOpen = ref(false);
 	const productVariantMatrixSaving = ref(false);
 	const productVariantMatrixError = ref<string | null>(null);
 	const variantIncludeBaseProductSale = ref(false);
 	const variantAxis1 = reactive({
-		label: "สี",
+		// Set from the active locale in openVariantMatrix; these values are saved
+		// as the variant axis labels, so they must follow the store's language.
+		label: "",
 		valuesRaw: "",
 	});
 	const variantAxis2Enabled = ref(false);
 	const variantAxis2 = reactive({
-		label: "ไซซ์",
+		label: "",
 		valuesRaw: "",
 	});
 	const variantMatrixRows = ref<VariantMatrixRow[]>([]);
@@ -348,6 +361,9 @@ const productUnitForm = reactive({
 		enabledForSale: true,
 	});
 	const draftUnitPriceManualOverride = ref(false);
+	const baseUnitCheck = ref<BaseUnitCheck | null>(null);
+	const baseUnitCheckPending = ref(false);
+	const canChangeBaseUnit = computed(() => Boolean(baseUnitCheck.value?.can_change));
 	watch(() => productForm.inventoryMode, (mode) => {
 		if (mode === "tracked") productForm.costSource = "purchase";
 		else if (productForm.costSource === "purchase") productForm.costSource = "manual";
@@ -494,6 +510,14 @@ const paginatedProducts = computed(() => products.value);
 		return Number.isFinite(parsed) ? parsed : costAdjustBeforeCost.value;
 	});
 	const costAdjustDelta = computed(() => costAdjustAfterCost.value - costAdjustBeforeCost.value);
+	// Pinning or unpinning is a saveable change on its own: the cost can stay
+	// exactly the same while handing it back to the purchase-order receive path.
+	const costAdjustLockChanged = computed(() => (
+		selectedProduct.value
+			? (selectedProduct.value.costSource === "manual") !== productCostAdjustForm.lockCost
+			: false
+	));
+	const costAdjustHasChange = computed(() => costAdjustDelta.value !== 0 || costAdjustLockChanged.value);
 	const costAdjustDeltaTone = computed(() => (
 		costAdjustDelta.value > 0 ? "warning" : costAdjustDelta.value < 0 ? "success" : "neutral"
 	));
@@ -719,6 +743,7 @@ watch(currentPage, () => {
 		if (!selectedProduct.value) return;
 		productCostAdjustForm.costBase = normalizeMoneyTyping(String(selectedProduct.value.cost ?? 0), { maxDecimals: 2 });
 		productCostAdjustForm.reason = "";
+		productCostAdjustForm.lockCost = true;
 		productCostAdjustOpen.value = true;
 		void loadProductCostAdjustments(selectedProduct.value.id);
 	}
@@ -737,7 +762,7 @@ watch(currentPage, () => {
 				});
 				return;
 			}
-			if (Math.abs(nextCost - costAdjustBeforeCost.value) < 0.000001) {
+			if (Math.abs(nextCost - costAdjustBeforeCost.value) < 0.000001 && !costAdjustLockChanged.value) {
 				appToast.info({
 					title: "ยังไม่เปลี่ยนต้นทุน",
 					description: "กรุณาแก้ไขต้นทุนก่อนกดบันทึก",
@@ -753,17 +778,21 @@ watch(currentPage, () => {
 				body: {
 					cost_base: nextCost,
 					reason: productCostAdjustForm.reason.trim() || null,
+					lock_cost: productCostAdjustForm.lockCost,
 				},
 			});
 
 			const updatedProduct = response.data.product;
 			const updatedCost = Number(updatedProduct.cost_base ?? 0);
+			const updatedCostSource = (updatedProduct.cost_source ?? "manual") as ProductRecord["costSource"];
 			selectedProduct.value.cost = updatedCost;
+			selectedProduct.value.costSource = updatedCostSource;
 			const productIndex = products.value.findIndex((item) => item.id === selectedProduct.value?.id);
 			if (productIndex !== -1) {
 				products.value[productIndex] = {
 					...products.value[productIndex],
 					cost: updatedCost,
+					costSource: updatedCostSource,
 				};
 			}
 
@@ -1156,14 +1185,59 @@ function getCategoryLabel(categoryId: string) {
 	return categoryOptions.value.find((category) => category.id === categoryId)?.label ?? t("products.uncategorized");
 }
 
-function getStockTone(state: StockState) {
-	if (state === "ready") return "success";
-	if (state === "low") return "warning";
+// Untracked products hold no stock at all, so the stock cell reports how they
+// are actually controlled instead of a stock state they do not have.
+// "purchase" describes how the cost is maintained, not where it came from: a
+// cost typed at creation also carries it, and no purchase order may have landed
+// yet. Untracked menu items cannot be received against a purchase order at all
+// (InventoryInterface rejects them), so their wording never mentions one.
+function costSourceLabel(product: ProductRecord) {
+	if (product.costSource === "manual") return t("products.detail.costSourceManual");
+	if (product.costSource === "unknown") return t("products.detail.costSourceUnknown");
+	// hasPurchaseCost comes from the receipt ledger, which is the only proof the
+	// cost really arrived from a purchase order rather than being typed in.
+	return product.hasPurchaseCost
+		? t("products.detail.costSourcePo")
+		: t("products.detail.costSourceTyped");
+}
+
+// Short badge for the table: words rather than symbols, because a POS runs on
+// tablets where nobody can hover a tooltip to find out what a glyph meant.
+function costSourceBadge(product: ProductRecord): { label: string; color: "success" | "warning" | "neutral" } {
+	if (product.costSource === "unknown") return { label: t("products.costBadgeUnknown"), color: "neutral" };
+	if (product.costSource === "manual") return { label: t("products.costBadgeLocked"), color: "neutral" };
+	return product.hasPurchaseCost
+		? { label: t("products.costBadgePo"), color: "success" }
+		: { label: t("products.costBadgeTyped"), color: "warning" };
+}
+
+function costSourceHint(product: ProductRecord) {
+	const untracked = product.inventoryMode === "untracked";
+	if (product.costSource === "manual") {
+		return untracked ? t("products.detail.costSourceManualMenuHint") : t("products.detail.costSourceManualHint");
+	}
+	if (product.costSource === "unknown") {
+		return untracked ? t("products.detail.costSourceUnknownMenuHint") : t("products.detail.costSourceUnknownHint");
+	}
+	if (product.hasPurchaseCost) return t("products.detail.costSourcePoHint");
+	return untracked ? t("products.detail.costSourceManualMenuHint") : t("products.detail.costSourceTypedHint");
+}
+
+function getStockTone(product: ProductRecord) {
+	if (product.status === "inactive") return "neutral";
+	if (product.inventoryMode === "untracked") {
+		return product.manualSoldOut ? "warning" : "neutral";
+	}
+	if (product.stockState === "ready") return "success";
+	if (product.stockState === "low") return "warning";
 	return "neutral";
 }
 
 function getStockLabel(product: ProductRecord) {
 	if (product.status === "inactive") return t("products.inactive");
+	if (product.inventoryMode === "untracked") {
+		return product.manualSoldOut ? t("products.soldOutManual") : t("products.notStockTracked");
+	}
 	if (product.stockState === "low" && product.lowStockThreshold !== null) {
 		return t("products.lowStockAlert", { count: product.lowStockThreshold });
 	}
@@ -1216,36 +1290,6 @@ function getVariantCount(raw: string | null) {
 		return Number(normalized);
 	}
 
-	function normalizeMoneyTyping(raw: string, options?: { maxDecimals?: number }) {
-		const maxDecimals = options?.maxDecimals ?? 2;
-		const input = String(raw ?? "");
-		let normalized = input.replace(/\s+/g, "");
-		normalized = normalized.replace(/,/g, "");
-		normalized = normalized.replace(/[^0-9.]/g, "");
-
-		// Keep only first dot.
-		const firstDot = normalized.indexOf(".");
-		if (firstDot !== -1) {
-			normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
-		}
-
-		if (!normalized) return "";
-
-		const hasTrailingDot = normalized.endsWith(".");
-		const [intRaw = "", decRaw = "" ] = normalized.split(".");
-		const intDigitsRaw = intRaw.replace(/\D/g, "");
-		const decDigits = decRaw.replace(/\D/g, "").slice(0, Math.max(0, maxDecimals));
-
-		const needsLeadingZero = normalized.startsWith(".");
-		const intDigits = (intDigitsRaw || needsLeadingZero) ? (intDigitsRaw || "0") : "";
-		const intWithCommas = intDigits
-			? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-			: "";
-
-		if (hasTrailingDot) return `${intWithCommas || "0"}.`;
-		if (decRaw.length > 0) return `${intWithCommas || "0"}.${decDigits}`;
-		return intWithCommas;
-	}
 
 	function handleMoneyInput(field: "priceBase" | "costBase", value: string | number) {
 		const nextValue = normalizeMoneyTyping(String(value ?? ""), { maxDecimals: 2 });
@@ -1392,6 +1436,7 @@ function mapApiProduct(
 		lowStockThreshold,
 		inventoryMode: product.inventory_mode === "untracked" ? "untracked" : "tracked",
 		costSource: product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase",
+		hasPurchaseCost: Number(product.has_purchase_cost || 0) === 1,
 		manualSoldOut: Boolean(product.manual_sold_out),
 		tag: status === "inactive" ? "ปิดขาย" : variantCount > 0 ? "มีตัวเลือก" : undefined,
 	};
@@ -1544,6 +1589,21 @@ function resetProductEditForm() {
 	resetProductImageInputValue(productEditImageInputRef.value);
 }
 
+// The base unit can only be swapped while the product has no history, so the
+// form asks the API whether this one still qualifies before offering the field.
+async function loadBaseUnitCheck(productId: string) {
+	baseUnitCheck.value = null;
+	baseUnitCheckPending.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<BaseUnitCheck>>(`/products/${encodeURIComponent(productId)}/base-unit-check`);
+		baseUnitCheck.value = response.data;
+	} catch {
+		baseUnitCheck.value = null;
+	} finally {
+		baseUnitCheckPending.value = false;
+	}
+}
+
 function openEditProduct() {
 	if (!selectedProduct.value) return;
 	resetProductEditForm();
@@ -1553,6 +1613,8 @@ function openEditProduct() {
 	productEditForm.barcode = selectedProduct.value.barcode === "-" ? "" : (selectedProduct.value.barcode || "");
 	productEditForm.location = selectedProduct.value.location === "-" ? "" : (selectedProduct.value.location || "");
 	productEditForm.categoryId = selectedProduct.value.categoryId === "uncategorized" ? "" : (selectedProduct.value.categoryId || "");
+	productEditForm.baseUnitId = selectedProduct.value.baseUnitId || "";
+	loadBaseUnitCheck(selectedProduct.value.id);
 	productEditForm.priceBase = normalizeMoneyTyping(String(selectedProduct.value.price ?? ""), { maxDecimals: 2 });
 	productEditForm.lowStockThreshold = selectedProduct.value.lowStockThreshold === null
 		? ""
@@ -2005,10 +2067,10 @@ function ean13BitsToBars(bits: string) {
 
 	function openVariantMatrix() {
 		if (!selectedProduct.value) return;
-		variantAxis1.label = "สี";
+		variantAxis1.label = t("products.matrix.axis1Default");
 		variantAxis1.valuesRaw = "";
 		variantAxis2Enabled.value = false;
-		variantAxis2.label = "ไซซ์";
+		variantAxis2.label = t("products.matrix.axis2Default");
 		variantAxis2.valuesRaw = "";
 		variantIncludeBaseProductSale.value = false;
 		variantMatrixRows.value = [];
@@ -2025,7 +2087,7 @@ function ean13BitsToBars(bits: string) {
 
 	function buildVariantLabel(value1: string, value2: string) {
 		if (value1 && value2) return `${value1} / ${value2}`;
-		return value1 || value2 || "ตัวเลือก";
+		return value1 || value2 || t("products.matrix.optionFallback");
 	}
 
 	function generateVariantMatrixRows() {
@@ -2034,7 +2096,7 @@ function ean13BitsToBars(bits: string) {
 		const values2 = variantAxis2Enabled.value ? parseAxisValues(variantAxis2.valuesRaw) : [];
 
 		if (values1.length === 0) {
-			productVariantMatrixError.value = "กรุณากรอกค่าแกนที่ 1 อย่างน้อย 1 ค่า";
+			productVariantMatrixError.value = t("products.matrix.errorAxis1Required");
 			variantMatrixRows.value = [];
 			return;
 		}
@@ -2053,7 +2115,7 @@ function ean13BitsToBars(bits: string) {
 		}
 
 		if (combos.length > 200) {
-			productVariantMatrixError.value = `จำนวนตัวเลือก ${combos.length} รายการเยอะเกินไป (จำกัด 200)`;
+			productVariantMatrixError.value = t("products.matrix.errorTooMany", { count: combos.length, limit: 200 });
 			variantMatrixRows.value = [];
 			return;
 		}
@@ -2150,7 +2212,7 @@ function ean13BitsToBars(bits: string) {
 		productVariantMatrixError.value = null;
 		const rows = variantMatrixRows.value;
 		if (!rows.length) {
-			productVariantMatrixError.value = "กรุณาสร้างตารางตัวเลือกก่อน";
+			productVariantMatrixError.value = t("products.matrix.errorBuildFirst");
 			return;
 		}
 
@@ -2162,11 +2224,11 @@ function ean13BitsToBars(bits: string) {
 		for (const row of rows) {
 			const sku = row.sku.trim().toUpperCase();
 			if (!sku) {
-				productVariantMatrixError.value = "กรุณากรอก SKU ให้ครบทุกแถว";
+				productVariantMatrixError.value = t("products.matrix.errorSkuRequired");
 				return;
 			}
 			if (skuSet.has(sku)) {
-				productVariantMatrixError.value = `SKU ซ้ำในตาราง: ${sku}`;
+				productVariantMatrixError.value = t("products.matrix.errorSkuDuplicate", { sku });
 				return;
 			}
 			skuSet.add(sku);
@@ -2174,7 +2236,7 @@ function ean13BitsToBars(bits: string) {
 			const barcode = row.barcode.trim();
 			if (barcode) {
 				if (barcodeSet.has(barcode)) {
-					productVariantMatrixError.value = `บาร์โค้ดซ้ำในตาราง: ${barcode}`;
+					productVariantMatrixError.value = t("products.matrix.errorBarcodeDuplicate", { barcode });
 					return;
 				}
 				barcodeSet.add(barcode);
@@ -2183,11 +2245,11 @@ function ean13BitsToBars(bits: string) {
 			const price = parseLocaleNumber(row.priceBase);
 			const cost = parseLocaleNumber(row.costBase);
 			if (!Number.isFinite(price) || price < 0) {
-				productVariantMatrixError.value = `ราคาขายไม่ถูกต้อง: ${row.label}`;
+				productVariantMatrixError.value = t("products.matrix.errorPriceInvalid", { label: row.label });
 				return;
 			}
 			if (!Number.isFinite(cost) || cost < 0) {
-				productVariantMatrixError.value = `ต้นทุนไม่ถูกต้อง: ${row.label}`;
+				productVariantMatrixError.value = t("products.matrix.errorCostInvalid", { label: row.label });
 				return;
 			}
 		}
@@ -2220,8 +2282,8 @@ function ean13BitsToBars(bits: string) {
 
 			void response;
 			appToast.success({
-				title: "สร้างตัวเลือกแล้ว",
-				description: `เพิ่ม ${variantMatrixRows.value.length} SKU`,
+				title: t("products.matrix.successTitle"),
+				description: t("products.matrix.successDescription", { count: variantMatrixRows.value.length }),
 				timeout: 2800,
 			});
 
@@ -2229,9 +2291,9 @@ function ean13BitsToBars(bits: string) {
 			variantMatrixRows.value = [];
 			await loadProducts();
 		} catch (error) {
-			productVariantMatrixError.value = error instanceof Error ? error.message : "สร้างตัวเลือกไม่สำเร็จ";
+			productVariantMatrixError.value = error instanceof Error ? error.message : t("products.matrix.errorFallback");
 			appToast.error({
-				title: "สร้างตัวเลือกไม่ได้",
+				title: t("products.matrix.errorTitle"),
 				description: productVariantMatrixError.value,
 				timeout: 3600,
 			});
@@ -2424,6 +2486,14 @@ function removeDraftSaleUnit(draftId: string) {
 	}
 }
 
+	// A blank cost is sent as null so the API can mark the product "unknown cost"
+	// and let the first received purchase order fill it in.
+	function productCreateCostBase() {
+		if (productForm.costSource === "unknown") return null;
+		const raw = productForm.costBase.trim();
+		return raw === "" ? null : parseLocaleNumber(raw);
+	}
+
 	function validateProductCreateForm() {
 		if (!canCreateProduct.value) return t("products.create.noCreatePermission");
 		if (!effectiveStoreId.value) return t("products.create.noActiveStore");
@@ -2433,8 +2503,8 @@ function removeDraftSaleUnit(draftId: string) {
 		if (productForm.location.trim().length > 80) return t("products.create.locationTooLong");
 		const priceBase = parseLocaleNumber(productForm.priceBase);
 		if (!Number.isFinite(priceBase) || priceBase < 0) return t("products.create.invalidSalePrice");
-		const costBase = productForm.costSource === "unknown" ? 0 : parseLocaleNumber(productForm.costBase);
-		if (!Number.isFinite(costBase) || costBase < 0) return t("products.create.invalidCost");
+		const costBase = productCreateCostBase();
+		if (costBase !== null && (!Number.isFinite(costBase) || costBase < 0)) return t("products.create.invalidCost");
 		if (productForm.lowStockThreshold.trim() !== "") {
 			const lowStockThreshold = parseLocaleNumber(productForm.lowStockThreshold);
 			if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
@@ -2470,7 +2540,7 @@ function removeDraftSaleUnit(draftId: string) {
 	}
 		productSaving.value = true;
 		const priceBase = parseLocaleNumber(productForm.priceBase);
-		const costBase = productForm.costSource === "unknown" ? 0 : parseLocaleNumber(productForm.costBase);
+		const costBase = productCreateCostBase();
 		const lowStockThreshold = productForm.lowStockThreshold.trim() === ""
 			? null
 			: parseLocaleNumber(productForm.lowStockThreshold);
@@ -2558,9 +2628,23 @@ async function saveProductEdit() {
 		low_stock_threshold: lowStockThreshold,
 		allow_base_unit_sale: productEditForm.allowBaseUnitSale ? 1 : 0,
 		inventory_mode: productEditForm.inventoryMode,
-		cost_source: productEditForm.inventoryMode === "tracked" ? "purchase" : productEditForm.costSource,
 		manual_sold_out: productEditForm.manualSoldOut ? 1 : 0,
 	};
+
+	// Only untracked menu items own their cost_source here (manual vs unknown is
+	// a choice in this form). A tracked product's cost_source is owned by the
+	// receive path and the cost adjustment, so sending it would let a plain
+	// rename reset a pinned cost back to "purchase" and let the next purchase
+	// order overwrite it.
+	if (productEditForm.inventoryMode !== "tracked") {
+		payload.cost_source = productEditForm.costSource;
+	}
+
+	// Only sent when the product still qualifies, so an untouched form can never
+	// trip the server-side guard.
+	if (canChangeBaseUnit.value && productEditForm.baseUnitId.trim()) {
+		payload.base_unit_id = productEditForm.baseUnitId.trim();
+	}
 
 	if (productEditForm.imageDataUrl) {
 		payload.image_url = productEditForm.imageDataUrl;
@@ -3756,10 +3840,21 @@ onBeforeUnmount(() => {
 													{{ formatMoney(product.price) }}
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-													{{ formatMoney(product.cost) }}
+													<div class="flex flex-wrap items-center gap-1.5">
+														<span :class="product.costSource === 'unknown' ? 'text-stone-400' : ''">
+															{{ product.costSource === 'unknown' ? '—' : formatMoney(product.cost) }}
+														</span>
+														<UBadge
+															:color="costSourceBadge(product).color"
+															variant="soft"
+															class="text-[10px]"
+															:label="costSourceBadge(product).label"
+															:title="costSourceHint(product)"
+														/>
+													</div>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
-													<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
+													<UBadge :color="getStockTone(product)" variant="soft" :label="getStockLabel(product)" />
 												</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
 														{{ product.unitLabel }}
@@ -4154,7 +4249,7 @@ onBeforeUnmount(() => {
 									</div>
 
 									<div v-if="productForm.costSource !== 'unknown'" class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">{{ $t("products.cost") }}</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.cost") }} <span class="font-normal text-stone-400">{{ $t('products.create.optionalLabel') }}</span></label>
 										<UInput
 											v-model="productForm.costBase"
 											type="text"
@@ -4162,10 +4257,12 @@ onBeforeUnmount(() => {
 											pattern="[0-9.,-]*"
 											size="lg"
 											color="neutral"
+											:placeholder="$t('products.create.costPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 											@update:model-value="(v) => handleMoneyInput('costBase', v)"
 											@input="(e) => handleMoneyNativeInput('costBase', e)"
 										/>
+										<p class="text-xs leading-5 text-stone-500">{{ $t('products.create.costHint') }}</p>
 									</div>
 
 									<div v-if="productForm.inventoryMode === 'tracked'" class="space-y-2">
@@ -4402,7 +4499,7 @@ onBeforeUnmount(() => {
 												</div>
 											</div>
 											<UBadge
-												:color="getStockTone(selectedProduct.stockState)"
+												:color="getStockTone(selectedProduct)"
 												variant="soft"
 												:label="getStockLabel(selectedProduct)"
 											/>
@@ -4469,6 +4566,22 @@ onBeforeUnmount(() => {
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 											<dt class="text-stone-500">{{ $t("products.detail.baseUnit") }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.unitLabel }}</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">{{ $t("products.detail.inventoryMode") }}</dt>
+											<dd class="text-right font-medium text-stone-900">
+												{{ selectedProduct.inventoryMode === "untracked" ? $t("products.detail.inventoryModeUntracked") : $t("products.detail.inventoryModeTracked") }}
+											</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">{{ $t("products.detail.costSource") }}</dt>
+											<dd class="text-right">
+												<span class="font-medium text-stone-900">{{ costSourceLabel(selectedProduct) }}</span>
+												<span
+													class="mt-0.5 block text-xs font-normal leading-5"
+													:class="selectedProduct.costSource === 'unknown' ? 'text-amber-700' : 'text-stone-500'"
+												>{{ costSourceHint(selectedProduct) }}</span>
+											</dd>
 										</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 										<dt class="text-stone-500">{{ $t("products.detail.saleUnitCount") }}</dt>
@@ -4682,8 +4795,8 @@ onBeforeUnmount(() => {
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productEditOpen"
-				title="แก้ไขสินค้า"
-				description="แก้ชื่อ SKU บาร์โค้ด ราคา หมวดสินค้า และรูปสินค้า"
+				:title="$t('products.edit.title')"
+				:description="$t('products.edit.description')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -4703,7 +4816,7 @@ onBeforeUnmount(() => {
 
 						<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700">
 							<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.edit.store") }}</span>
 							<UBadge color="neutral" variant="soft" class="max-w-full">
 								<span class="truncate">{{ currentStoreName }}</span>
 							</UBadge>
@@ -4719,7 +4832,7 @@ onBeforeUnmount(() => {
 									<img
 										v-if="productEditImageSelected"
 										:src="productEditForm.imageDataUrl"
-										alt="ตัวอย่างรูปสินค้า"
+										:alt="$t('products.edit.imagePreviewAlt')"
 										class="h-full w-full object-cover"
 									>
 									<img
@@ -4730,24 +4843,24 @@ onBeforeUnmount(() => {
 									>
 									<div v-else class="flex flex-col items-center gap-1 text-stone-400">
 										<UIcon name="i-heroicons-photo-20-solid" class="h-5 w-5 transition group-hover:text-primary-500" />
-										<span class="text-[11px] font-medium transition group-hover:text-primary-600">เพิ่มรูป</span>
+										<span class="text-[11px] font-medium transition group-hover:text-primary-600">{{ $t("products.edit.addImage") }}</span>
 									</div>
 								</button>
 
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<p class="text-sm font-medium text-stone-900">รูปสินค้า (ไม่บังคับ)</p>
+										<p class="text-sm font-medium text-stone-900">{{ $t("products.edit.imageOptional") }}</p>
 										<UBadge color="neutral" variant="soft" label="640px WebP" />
-										<UBadge color="neutral" variant="soft" label="สูงสุด 3 MB" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.edit.imageMaxSize')" />
 									</div>
-									<p class="mt-1 text-xs leading-5 text-stone-500">ถ้าไม่เลือกรูปใหม่ ระบบจะใช้รูปเดิมของสินค้า</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.edit.imageKeepHint") }}</p>
 									<div class="mt-3 flex flex-wrap gap-2">
 										<AppButton
 											color="neutral"
 											variant="soft"
 											size="xs"
 											:icon="(productEditImageSelected || selectedProduct.imageUrl) ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'"
-											:label="(productEditImageSelected || selectedProduct.imageUrl) ? 'เปลี่ยนรูป' : 'เลือกรูป'"
+											:label="(productEditImageSelected || selectedProduct.imageUrl) ? $t('products.edit.changeImage') : $t('products.edit.chooseImage')"
 											@click="openProductEditImagePicker"
 										/>
 										<AppButton
@@ -4756,7 +4869,7 @@ onBeforeUnmount(() => {
 											variant="ghost"
 											size="xs"
 											icon="i-heroicons-x-mark-20-solid"
-											label="ยกเลิกเปลี่ยนรูป"
+											:label="$t('products.edit.cancelImageChange')"
 											@click="removeProductEditImage"
 										/>
 									</div>
@@ -4768,23 +4881,23 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4">
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ชื่อสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.productName") }}</label>
 									<UInput
 										v-model="productEditForm.name"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น น้ำดื่ม 1.5 ลิตร"
+										:placeholder="$t('products.edit.productNamePlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									/>
 								</div>
 
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หมวดสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.category") }}</label>
 									<select
 										v-model="productEditForm.categoryId"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
-										<option value="">ไม่ระบุหมวด</option>
+										<option value="">{{ $t("products.edit.noCategory") }}</option>
 										<option
 											v-for="category in categoryFormOptions"
 											:key="category.id"
@@ -4793,6 +4906,27 @@ onBeforeUnmount(() => {
 											{{ category.label }}
 										</option>
 									</select>
+								</div>
+
+								<div class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.create.baseUnit") }}</label>
+									<select
+										v-model="productEditForm.baseUnitId"
+										:disabled="baseUnitCheckPending || !canChangeBaseUnit"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-stone-500"
+									>
+										<option value="">{{ $t("products.create.selectBaseUnit") }}</option>
+										<option v-for="unit in units" :key="unit.id" :value="unit.id">{{ getUnitDisplayName(unit) }}</option>
+									</select>
+									<p v-if="baseUnitCheckPending" class="text-xs leading-5 text-stone-500">{{ $t("products.edit.baseUnitChecking") }}</p>
+									<div v-else-if="!canChangeBaseUnit" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+										<p class="font-medium">{{ $t("products.edit.baseUnitLocked") }}</p>
+										<ul class="mt-1 list-disc space-y-0.5 pl-4">
+											<li v-for="reason in baseUnitCheck?.reasons || []" :key="reason">{{ reason }}</li>
+										</ul>
+										<p class="mt-2">{{ $t("products.edit.baseUnitLockedHint") }}</p>
+									</div>
+									<p v-else class="text-xs leading-5 text-stone-500">{{ $t("products.edit.baseUnitChangeable") }}</p>
 								</div>
 							</div>
 						</div>
@@ -4805,7 +4939,7 @@ onBeforeUnmount(() => {
 										v-model="productEditForm.sku"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น WATER-1500"
+										:placeholder="$t('products.edit.skuPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									/>
 								</div>
@@ -4816,19 +4950,19 @@ onBeforeUnmount(() => {
 											v-model="productEditForm.barcode"
 											size="lg"
 											color="neutral"
-											placeholder="เว้นว่างได้"
+											:placeholder="$t('products.edit.blankAllowed')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ตำแหน่งสินค้า (ชั้น/ช่อง)</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.location") }}</label>
 										<UInput
 											ref="productEditLocationInputRef"
 											v-model="productEditForm.location"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น A1-03 (เว้นว่างได้)"
+											:placeholder="$t('products.edit.locationPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductEditLocationInput"
 									/>
@@ -4839,7 +4973,7 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div class="space-y-2 sm:col-span-2">
-									<label class="text-sm font-medium text-stone-700">รูปแบบสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.productType") }}</label>
 									<select
 										v-model="productEditForm.inventoryMode"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -4849,7 +4983,7 @@ onBeforeUnmount(() => {
 									</select>
 								</div>
 								<div v-if="productEditForm.inventoryMode === 'untracked'" class="space-y-2 sm:col-span-2">
-									<label class="text-sm font-medium text-stone-700">ต้นทุนเมนู</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.menuCost") }}</label>
 									<select
 										v-model="productEditForm.costSource"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -4857,18 +4991,10 @@ onBeforeUnmount(() => {
 										<option value="manual">{{ $t('productRestaurant.manualCost') }}</option>
 										<option value="unknown">{{ $t('productRestaurant.unknownCost') }}</option>
 									</select>
-									<UCheckbox v-model="productEditForm.manualSoldOut" label="หมดชั่วคราว (ซ่อนจาก POS ร้านอาหาร)" />
+									<UCheckbox v-model="productEditForm.manualSoldOut" :label="$t('products.edit.manualSoldOut')" />
 								</div>
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หน่วยหลัก</label>
-									<div class="flex h-12 items-center rounded-md border border-neutral-200 bg-neutral-50 px-4 text-sm text-stone-700">
-										{{ selectedProduct.unitLabel }}
-									</div>
-									<p class="text-xs leading-5 text-stone-500">แก้หน่วยหลักได้ตอนสร้างสินค้าเท่านั้น</p>
-								</div>
-
-								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ราคาขาย</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.salePrice") }}</label>
 									<UInput
 										v-model="productEditForm.priceBase"
 										type="text"
@@ -4883,7 +5009,7 @@ onBeforeUnmount(() => {
 								</div>
 
 								<div v-if="productEditForm.inventoryMode === 'tracked'" class="space-y-2 sm:col-span-2">
-									<label class="text-sm font-medium text-stone-700">สต็อกต่ำ (≤)</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.lowStock") }}</label>
 									<UInput
 										v-model="productEditForm.lowStockThreshold"
 										type="text"
@@ -4891,12 +5017,12 @@ onBeforeUnmount(() => {
 										pattern="[0-9.,-]*"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น 10"
+										:placeholder="$t('products.edit.lowStockPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleEditLowStockInput"
 										@input="handleEditLowStockNativeInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">สต็อก ≤ 0 ถือว่าหมดอัตโนมัติ</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.edit.lowStockHint") }}</p>
 								</div>
 							</div>
 						</div>
@@ -4905,8 +5031,8 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 								<div class="flex items-start justify-between gap-4">
 									<span class="min-w-0">
-										<span class="block text-sm font-medium text-stone-900">ขายหน่วยหลักใน POS</span>
-										<span class="mt-1 block text-xs leading-5 text-stone-500">ปิดได้ถ้าต้องการขายเฉพาะแบบแพ็คหรือหน่วยแปลง</span>
+										<span class="block text-sm font-medium text-stone-900">{{ $t("products.edit.sellBaseUnit") }}</span>
+										<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.edit.sellBaseUnitHint") }}</span>
 									</span>
 									<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 										<input v-model="productEditForm.allowBaseUnitSale" type="checkbox" class="peer sr-only">
@@ -4931,7 +5057,7 @@ onBeforeUnmount(() => {
 								:disabled="productEditSaving"
 								@click="closeEditProduct"
 							>
-								ยกเลิก
+								{{ $t("products.edit.cancel") }}
 							</AppButton>
 							<AppButton
 								color="primary"
@@ -4944,7 +5070,7 @@ onBeforeUnmount(() => {
 								:disabled="productEditSaving || !canSaveProductEdit"
 								@click="saveProductEdit"
 							>
-								บันทึก
+								{{ $t("products.edit.save") }}
 							</AppButton>
 						</div>
 					</div>
@@ -5074,8 +5200,8 @@ onBeforeUnmount(() => {
 					<AppResponsivePanel
 						v-if="selectedProduct"
 						v-model="productCostAdjustOpen"
-						title="ปรับต้นทุน"
-						description="บันทึกการเปลี่ยนต้นทุนพร้อมเหตุผลและประวัติย้อนหลัง"
+						:title="$t('products.costAdjust.title')"
+						:description="$t('products.costAdjust.description')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -5085,13 +5211,13 @@ onBeforeUnmount(() => {
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ต้นทุนปัจจุบัน</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.costAdjust.currentCost") }}</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 								<p class="mt-1 text-xs text-stone-500">{{ selectedProduct.sku }} · {{ selectedProduct.name }}</p>
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">ต้นทุนใหม่</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("products.costAdjust.newCost") }}</label>
 								<UInput
 									v-model="productCostAdjustForm.costBase"
 									type="text"
@@ -5099,20 +5225,20 @@ onBeforeUnmount(() => {
 									pattern="[0-9.,-]*"
 									size="lg"
 									color="neutral"
-									placeholder="เช่น 1,000.00"
+									:placeholder="$t('products.costAdjust.newCostPlaceholder')"
 									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									@update:model-value="handleCostAdjustMoneyInput"
 									@input="handleCostAdjustMoneyNativeInput"
 								/>
-								<p class="text-xs leading-5 text-stone-500">รองรับตัวเลขและจุดทศนิยมเท่านั้น</p>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("products.costAdjust.newCostHint") }}</p>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 								<div class="flex items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สรุปการเปลี่ยน</p>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.costAdjust.changeSummary") }}</p>
 										<p class="mt-2 text-sm text-stone-700">
-											ทุน {{ formatMoney(costAdjustBeforeCost) }}
+											{{ $t("products.costAdjust.costLabel") }} {{ formatMoney(costAdjustBeforeCost) }}
 											→ {{ formatMoney(costAdjustAfterCost) }}
 											({{ costAdjustDelta >= 0 ? "+" : "" }}{{ formatMoney(costAdjustDelta) }})
 										</p>
@@ -5122,31 +5248,38 @@ onBeforeUnmount(() => {
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">เหตุผล (ไม่บังคับ)</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("products.costAdjust.reason") }}</label>
 								<textarea
 									v-model="productCostAdjustForm.reason"
 									rows="3"
 									maxlength="280"
-									placeholder="เช่น ปรับตามบิลซื้อจริง, รวมค่าขนส่ง, แก้ไขต้นทุนย้อนหลัง"
+									:placeholder="$t('products.costAdjust.reasonPlaceholder')"
 									class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								/>
-								<p class="text-xs leading-5 text-stone-500">บันทึกเหตุผลไว้ช่วยตรวจสอบย้อนหลัง</p>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("products.costAdjust.reasonHint") }}</p>
+							</div>
+
+							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+								<UCheckbox v-model="productCostAdjustForm.lockCost" :label="$t('products.costAdjust.lockLabel')" />
+								<p class="mt-1.5 text-xs leading-5 text-stone-500">
+									{{ productCostAdjustForm.lockCost ? $t("products.costAdjust.lockHint") : $t("products.costAdjust.unlockHint") }}
+								</p>
 							</div>
 
 							<div class="space-y-3">
 								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-sm font-semibold text-stone-950">ประวัติล่าสุด</h3>
-									<UBadge color="neutral" variant="soft" :label="`${productCostAdjustments.length} รายการ`" />
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.costAdjust.recentHistory") }}</h3>
+									<UBadge color="neutral" variant="soft" :label="$t('products.costAdjust.itemCount', { count: productCostAdjustments.length })" />
 								</div>
 
 								<div v-if="productCostAdjustmentsPending" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-									กำลังโหลดประวัติ...
+									{{ $t("products.costAdjust.loadingHistory") }}
 								</div>
 								<div v-else-if="productCostAdjustmentsError" class="rounded-md bg-white px-4 py-4 text-sm text-rose-600 ring-1 ring-neutral-200">
 									{{ productCostAdjustmentsError }}
 								</div>
 								<div v-else-if="!productCostAdjustments.length" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-									ยังไม่มีประวัติการปรับต้นทุน
+									{{ $t("products.costAdjust.noHistory") }}
 								</div>
 								<div v-else class="space-y-2">
 									<div
@@ -5158,11 +5291,11 @@ onBeforeUnmount(() => {
 											<div class="min-w-0">
 												<p class="truncate text-sm font-semibold text-stone-900">{{ formatApiDate(adjustment.occurred_at) }}</p>
 												<p class="mt-1 text-sm text-stone-500">
-													ทุน {{ formatMoney(adjustment.before_cost_base) }}
+													{{ $t("products.costAdjust.costLabel") }} {{ formatMoney(adjustment.before_cost_base) }}
 													→ {{ formatMoney(adjustment.after_cost_base) }}
 													({{ adjustment.delta >= 0 ? "+" : "" }}{{ formatMoney(adjustment.delta) }})
 												</p>
-												<p v-if="adjustment.reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ adjustment.reason }}</p>
+												<p v-if="adjustment.reason" class="mt-1 text-xs text-stone-400">{{ $t("products.costAdjust.reasonPrefix") }}: {{ adjustment.reason }}</p>
 											</div>
 											<div class="shrink-0 text-right">
 												<UBadge color="neutral" variant="soft" :label="adjustment.actor_role || 'user'" />
@@ -5178,7 +5311,7 @@ onBeforeUnmount(() => {
 								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 							>
 								<div class="grid w-full grid-cols-2 gap-2">
-									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCostAdjustOpen = false">ยกเลิก</AppButton>
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCostAdjustOpen = false">{{ $t("products.costAdjust.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -5187,10 +5320,10 @@ onBeforeUnmount(() => {
 									:block="true"
 									:loading="productCostAdjustSaving"
 									:spin-icon-on-loading="true"
-									:disabled="productCostAdjustSaving || !canUpdateProductCost || costAdjustDelta === 0"
+									:disabled="productCostAdjustSaving || !canUpdateProductCost || !costAdjustHasChange"
 									@click="saveProductCostAdjust"
 								>
-									บันทึกต้นทุน
+									{{ $t("products.costAdjust.submit") }}
 								</AppButton>
 							</div>
 						</div>
@@ -5200,8 +5333,8 @@ onBeforeUnmount(() => {
 					<AppResponsivePanel
 						v-if="selectedProduct"
 						v-model="productVariantMatrixOpen"
-						title="เพิ่มตัวเลือก (Matrix)"
-						description="สร้างหลาย SKU อัตโนมัติ (สูงสุด 2 แกน) และเลือกสร้างบาร์โค้ดแบบกดปุ่มได้"
+						:title="$t('products.matrix.title')"
+						:description="$t('products.matrix.description')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -5213,11 +5346,11 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">รุ่นสินค้า</p>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.matrix.productModel") }}</p>
 										<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.name }}</p>
-										<p class="mt-1 text-xs text-stone-500">SKU ฐาน: {{ selectedProduct.sku }}</p>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.matrix.baseSku") }}: {{ selectedProduct.sku }}</p>
 									</div>
-									<UBadge color="neutral" variant="soft" :label="`${variantMatrixRows.length} รายการ`" />
+									<UBadge color="neutral" variant="soft" :label="$t('products.matrix.itemCount', { count: variantMatrixRows.length })" />
 								</div>
 							</div>
 
@@ -5225,28 +5358,28 @@ onBeforeUnmount(() => {
 								<div class="grid gap-4 md:grid-cols-2">
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">แกนที่ 1</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.matrix.axis1") }}</label>
 											<span aria-hidden="true" class="h-6 w-11 opacity-0" />
 										</div>
 										<UInput
 											v-model="variantAxis1.label"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น สี"
+											:placeholder="$t('products.matrix.axis1Placeholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 										<UInput
 											v-model="variantAxis1.valuesRaw"
 											size="lg"
 											color="neutral"
-											placeholder="ค่าคั่นด้วย , เช่น แดง,ขาว,ดำ"
+											:placeholder="$t('products.matrix.axis1ValuesPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">แกนที่ 2 (ไม่บังคับ)</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.matrix.axis2") }}</label>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="variantAxis2Enabled" type="checkbox" class="peer sr-only">
 												<span class="h-6 w-11 rounded-full bg-stone-200 transition peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-200 peer-checked:bg-primary-600" />
@@ -5258,7 +5391,7 @@ onBeforeUnmount(() => {
 											:disabled="!variantAxis2Enabled"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น ไซซ์"
+											:placeholder="$t('products.matrix.axis2Placeholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 disabled:opacity-60 disabled:[&_input]:bg-neutral-50 disabled:[&_input]:cursor-not-allowed"
 										/>
 										<UInput
@@ -5266,7 +5399,7 @@ onBeforeUnmount(() => {
 											:disabled="!variantAxis2Enabled"
 											size="lg"
 											color="neutral"
-											placeholder="ค่าคั่นด้วย , เช่น S,M,L"
+											:placeholder="$t('products.matrix.axis2ValuesPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 disabled:opacity-60 disabled:[&_input]:bg-neutral-50 disabled:[&_input]:cursor-not-allowed"
 										/>
 									</div>
@@ -5278,7 +5411,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-table-cells-20-solid"
-										label="สร้างตาราง"
+										:label="$t('products.matrix.buildTable')"
 										@click="generateVariantMatrixRows"
 									/>
 									<AppButton
@@ -5286,7 +5419,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-trash-20-solid"
-										label="ล้างตาราง"
+										:label="$t('products.matrix.clearTable')"
 										:disabled="!variantMatrixRows.length"
 										@click="variantMatrixRows = []"
 									/>
@@ -5295,7 +5428,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-barcode-20-solid"
-										label="สร้างบาร์โค้ดทั้งหมด"
+										:label="$t('products.matrix.generateAllBarcodes')"
 										:disabled="!variantMatrixRows.length"
 										@click="generateVariantBarcodesAll"
 									/>
@@ -5307,9 +5440,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="flex items-start justify-between gap-4">
 									<span class="min-w-0">
-										<span class="block text-sm font-medium text-stone-900">ขาย “สินค้าแม่” (ไม่มีตัวเลือก) ด้วย</span>
+										<span class="block text-sm font-medium text-stone-900">{{ $t("products.matrix.sellParent") }}</span>
 										<span class="mt-1 block text-xs leading-5 text-stone-500">
-											ค่าเริ่มต้นจะปิดไว้ เพื่อให้ขายเฉพาะ SKU ตัวเลือก และตั้งสินค้าแม่เป็น “ปิดขาย” อัตโนมัติหลังสร้างเสร็จ
+											{{ $t("products.matrix.sellParentHint") }}
 										</span>
 									</span>
 									<label class="relative inline-flex shrink-0 cursor-pointer items-center">
@@ -5323,22 +5456,22 @@ onBeforeUnmount(() => {
 							<div v-if="variantMatrixRows.length" class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">รายการที่จะสร้าง</h3>
-										<p class="mt-1 text-xs text-stone-500">แก้ SKU/บาร์โค้ด/ราคา/ต้นทุนได้ก่อนบันทึก</p>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.matrix.rowsToCreate") }}</h3>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.matrix.rowsToCreateHint") }}</p>
 									</div>
-									<UBadge color="neutral" variant="soft" :label="`Prefix บาร์โค้ดออโต้: 21`" />
+									<UBadge color="neutral" variant="soft" :label="$t('products.matrix.barcodePrefix')" />
 								</div>
 
 								<div class="mt-4 overflow-x-auto">
 									<table class="min-w-full text-left text-sm">
 										<thead class="text-xs uppercase tracking-wide text-stone-400">
 											<tr>
-												<th class="py-2 pr-3 whitespace-nowrap">ตัวเลือก</th>
+												<th class="py-2 pr-3 whitespace-nowrap">{{ $t("products.matrix.option") }}</th>
 												<th class="py-2 pr-3">SKU</th>
-												<th class="py-2 pr-3 whitespace-nowrap">บาร์โค้ด</th>
-												<th class="py-2 pr-3">ราคาขาย</th>
-												<th class="py-2 pr-3">ต้นทุน</th>
-												<th class="py-2 whitespace-nowrap">ขาย</th>
+												<th class="py-2 pr-3 whitespace-nowrap">{{ $t("products.matrix.barcode") }}</th>
+												<th class="py-2 pr-3">{{ $t("products.matrix.salePrice") }}</th>
+												<th class="py-2 pr-3">{{ $t("products.matrix.cost") }}</th>
+												<th class="py-2 whitespace-nowrap">{{ $t("products.matrix.sell") }}</th>
 											</tr>
 										</thead>
 										<tbody class="divide-y divide-neutral-200 text-stone-900">
@@ -5356,7 +5489,7 @@ onBeforeUnmount(() => {
 													<div class="flex items-center gap-2">
 														<input
 															v-model="row.barcode"
-															placeholder="เว้นว่างได้"
+															:placeholder="$t('products.matrix.blankAllowed')"
 															class="w-44 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 														>
 														<AppButton
@@ -5364,7 +5497,7 @@ onBeforeUnmount(() => {
 															variant="soft"
 															size="xs"
 															icon="i-heroicons-arrow-path-20-solid"
-															label="ออโต้"
+															:label="$t('products.matrix.auto')"
 															class="shrink-0 whitespace-nowrap"
 															@click="generateVariantBarcodeRow(row.id)"
 														/>
@@ -5373,7 +5506,7 @@ onBeforeUnmount(() => {
 															variant="soft"
 															size="xs"
 															icon="i-heroicons-qr-code-20-solid"
-															label="สแกน"
+															:label="$t('products.matrix.scan')"
 															class="shrink-0 whitespace-nowrap"
 															@click="openVariantBarcodeScanner(row.id)"
 														/>
@@ -5424,7 +5557,7 @@ onBeforeUnmount(() => {
 								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 							>
 								<div class="grid w-full grid-cols-2 gap-2">
-									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">ยกเลิก</AppButton>
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">{{ $t("products.matrix.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -5436,7 +5569,7 @@ onBeforeUnmount(() => {
 									:disabled="productVariantMatrixSaving || !variantMatrixRows.length"
 									@click="saveVariantMatrix"
 								>
-									สร้างตัวเลือก
+									{{ $t("products.matrix.submit") }}
 								</AppButton>
 							</div>
 						</div>
@@ -5445,8 +5578,8 @@ onBeforeUnmount(() => {
 
 					<AppResponsivePanel
 						v-model="productUnitEditorOpen"
-						:title="selectedProductUnit ? 'แก้หน่วยขาย' : 'เพิ่มหน่วยขาย'"
-						:description="selectedProduct ? `กำหนด conversion สำหรับ ${selectedProduct.name}` : 'กำหนดหน่วยขายของสินค้า'"
+						:title="selectedProductUnit ? $t('products.unitEditor.editTitle') : $t('products.unitEditor.addTitle')"
+						:description="selectedProduct ? $t('products.unitEditor.descriptionFor', { name: selectedProduct.name }) : $t('products.unitEditor.descriptionFallback')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -5458,16 +5591,16 @@ onBeforeUnmount(() => {
 								<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Base unit</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.unitLabel }}</p>
-								<p class="mt-1 text-xs text-stone-500">ตัวอย่าง conversion: {{ productUnitSummary }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ $t("products.unitEditor.conversionExample", { summary: productUnitSummary }) }}</p>
 							</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">หน่วยขาย</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.saleUnit") }}</label>
 							<select
 								v-model="productUnitForm.unitId"
 								class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 							>
-								<option value="">เลือกหน่วยขาย</option>
+								<option value="">{{ $t("products.unitEditor.selectSaleUnit") }}</option>
 								<option
 									v-for="unit in availableSaleUnits"
 									:key="unit.id"
@@ -5479,7 +5612,7 @@ onBeforeUnmount(() => {
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">1 หน่วยขาย เท่ากับกี่ {{ selectedProduct?.unitLabel || "หน่วยหลัก" }}</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.multiplierLabel", { unit: selectedProduct?.unitLabel || $t("products.unitEditor.baseUnitFallback") }) }}</label>
 							<UInput
 								v-model="productUnitForm.multiplierToBase"
 								type="number"
@@ -5489,11 +5622,11 @@ onBeforeUnmount(() => {
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 							/>
-							<p class="text-xs leading-5 text-stone-500">เช่น `12` หมายถึง 1 แพ็ค = 12 {{ selectedProduct?.unitLabel || "หน่วยหลัก" }}</p>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.multiplierHint", { unit: selectedProduct?.unitLabel || $t("products.unitEditor.baseUnitFallback") }) }}</p>
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">ราคาขายของหน่วยนี้ (ไม่บังคับ)</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.unitPrice") }}</label>
 							<UInput
 								v-model="productUnitForm.pricePerUnit"
 								type="number"
@@ -5503,7 +5636,7 @@ onBeforeUnmount(() => {
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 							/>
-							<p class="text-xs leading-5 text-stone-500">ถ้าเว้นว่าง ระบบจะใช้ราคาหลักของสินค้าแทน</p>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.unitPriceHint") }}</p>
 						</div>
 
 						<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
@@ -5513,8 +5646,8 @@ onBeforeUnmount(() => {
 								class="mt-0.5 h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-300"
 							>
 							<span class="min-w-0">
-								<span class="block text-sm font-medium text-stone-900">เปิดขายหน่วยนี้ใน POS</span>
-								<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ จะเก็บ conversion นี้ได้ แต่ยังไม่ให้เลือกขายในหน้าขาย</span>
+								<span class="block text-sm font-medium text-stone-900">{{ $t("products.unitEditor.enableInPos") }}</span>
+								<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.enableInPosHint") }}</span>
 							</span>
 							</label>
 							</div>
@@ -5524,7 +5657,7 @@ onBeforeUnmount(() => {
 							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 						>
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">ยกเลิก</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">{{ $t("products.unitEditor.cancel") }}</AppButton>
 								<AppButton
 								color="primary"
 								variant="solid"
@@ -5536,7 +5669,7 @@ onBeforeUnmount(() => {
 								:disabled="productUnitSaving || !canSaveProductUnit"
 								@click="saveProductUnit"
 							>
-									{{ selectedProductUnit ? "บันทึกหน่วยขาย" : "เพิ่มหน่วยขาย" }}
+									{{ selectedProductUnit ? $t("products.unitEditor.saveEdit") : $t("products.unitEditor.saveAdd") }}
 								</AppButton>
 							</div>
 						</div>
@@ -5591,8 +5724,8 @@ onBeforeUnmount(() => {
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productDeleteOpen"
-				title="ลบสินค้า"
-				description="ยืนยันการลบสินค้าออกจากรายการ"
+				:title="$t('products.detail.deleteTitle')"
+				:description="$t('products.detail.deleteDescription')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -5602,11 +5735,13 @@ onBeforeUnmount(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="space-y-4 pb-6">
-								<div class="rounded-md border border-error-200 bg-error-50 p-4">
-								<p class="text-sm font-semibold text-stone-950">ลบแบบซ่อน (Soft delete)</p>
-								<p class="mt-1 text-xs leading-5 text-stone-600">
-									สินค้าจะถูกซ่อนจากหน้า “สินค้า” แต่ข้อมูลเก่าที่อ้างอิง (เช่น ประวัติการขาย/เอกสาร) ยังอยู่เพื่อการตรวจสอบย้อนหลัง
-								</p>
+								<div class="rounded-md border border-neutral-200 bg-white p-4">
+								<p class="text-sm font-semibold text-stone-950">{{ $t("products.detail.deleteKeepsTitle") }}</p>
+								<ul class="mt-2 space-y-1.5 text-xs leading-5 text-stone-600">
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsSales") }}</li>
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsReports") }}</li>
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsPo") }}</li>
+								</ul>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -5620,7 +5755,7 @@ onBeforeUnmount(() => {
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productDeleteOpen = false">ยกเลิก</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productDeleteOpen = false">{{ $t("products.detail.deleteCancel") }}</AppButton>
 							<AppButton
 								color="error"
 								variant="solid"
@@ -5632,7 +5767,7 @@ onBeforeUnmount(() => {
 								:block="true"
 								@click="deleteSelectedProduct"
 							>
-								ลบสินค้า
+								{{ $t("products.detail.deleteConfirm") }}
 							</AppButton>
 						</div>
 					</div>
@@ -5893,23 +6028,34 @@ onBeforeUnmount(() => {
 	border: none;
 	border-radius: 0;
 	box-sizing: border-box;
-	font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+	/* Matches the app font so Lao product names print the same shapes they are
+	   shown in; a generic system stack falls back to a different Lao face. */
+	font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif;
 	color: #0f172a;
 }
 
 .barcode-print-name {
-	font-size: 12pt;
+	font-size: 11pt;
 	font-weight: 700;
-	line-height: 1.2;
-	margin-bottom: 3mm;
-	max-height: 10mm;
+	/* Lao stacks vowel and tone marks above the base glyph, so the ink box is
+	   taller than a 1.2 line box and the marks get cut by overflow: hidden.
+	   Measured: 1.2 clipped 2px off the top, 1.75 clears the tallest stack. */
+	line-height: 1.75;
+	margin-bottom: 1.5mm;
+	max-height: 8mm;
 	overflow: hidden;
 	text-align: center;
+	/* One line only: a wrapped second line would be sliced mid-glyph by the
+	   label's fixed height, so long names end in an ellipsis instead. */
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .barcode-print-svg {
 	width: 100%;
-	height: 20mm;
+	/* Trimmed from 20mm so name + barcode + digits fit the 40mm label without
+	   the last row spilling past overflow: hidden. */
+	height: 18mm;
 	display: flex;
 	align-items: center;
 	justify-content: center;

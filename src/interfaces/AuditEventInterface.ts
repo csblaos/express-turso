@@ -371,14 +371,11 @@ export class AuditEventInterface {
 		return result.rows.map((row) => mapRow(row as Record<string, unknown>));
 	}
 
-	static async create(payload: AuditEventCreatePayload): Promise<AuditEventRecord> {
-		await AuditEventInterface.ensureTable();
-
-		const db = DbConn.getClient();
-		const id = randomUUID();
-		const occurredAt = payload.occurred_at || new Date().toISOString();
-
-		await db.execute({
+	// Exposed as a statement so a caller already inside a write transaction can
+	// append the audit row to its own batch instead of spending another round
+	// trip on a separate connection.
+	static buildInsertStatement(id: string, payload: AuditEventCreatePayload, occurredAt: string) {
+		return {
 			sql: `
 				INSERT INTO audit_events (
 					id,
@@ -420,8 +417,18 @@ export class AuditEventInterface {
 				serializeJson(payload.before),
 				serializeJson(payload.after),
 				occurredAt,
-			],
-		});
+			] as InValue[],
+		};
+	}
+
+	static async create(payload: AuditEventCreatePayload): Promise<AuditEventRecord> {
+		await AuditEventInterface.ensureTable();
+
+		const db = DbConn.getClient();
+		const id = randomUUID();
+		const occurredAt = payload.occurred_at || new Date().toISOString();
+
+		await db.execute(AuditEventInterface.buildInsertStatement(id, payload, occurredAt));
 
 		const created = await AuditEventInterface.findById(id);
 		if (!created) {

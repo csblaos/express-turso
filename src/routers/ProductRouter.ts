@@ -23,6 +23,7 @@ export class ProductRouter {
 		);
 		this.router.get("/:id", PermissionMiddleware.require("products.view"), CommonValidator.resourceId, ProductController.getById);
 		this.router.post("/:id/variants/bulk", PermissionMiddleware.require("products.create"), ProductValidator.bulkCreateVariants, ProductController.bulkCreateVariants);
+		this.router.get("/:id/base-unit-check", PermissionMiddleware.require("products.update"), CommonValidator.resourceId, ProductController.getBaseUnitCheck);
 		this.router.get("/:id/cost-adjustments", PermissionMiddleware.require("products.update_cost"), CommonValidator.resourceId, ProductController.listCostAdjustments);
 		this.router.post("/:id/cost-adjustments", PermissionMiddleware.require("products.update_cost"), ProductValidator.adjustCost, ProductController.adjustCost);
 		this.router.patch(

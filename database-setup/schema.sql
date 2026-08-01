@@ -902,11 +902,11 @@ CREATE INDEX IF NOT EXISTS `store_type_templates_app_layout_idx` ON `store_type_
 
 CREATE INDEX IF NOT EXISTS `stores_created_at_idx` ON `stores` (`created_at`);
 
-CREATE UNIQUE INDEX IF NOT EXISTS units_store_code_unique ON units(store_id, code) WHERE scope='STORE';
+CREATE UNIQUE INDEX IF NOT EXISTS units_store_code_unique ON units(store_id, code) WHERE LOWER(scope)='store';
 
 CREATE INDEX IF NOT EXISTS units_store_id_idx ON units(store_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS units_system_code_unique ON units(code) WHERE scope='SYSTEM';
+CREATE UNIQUE INDEX IF NOT EXISTS units_system_code_unique ON units(code) WHERE LOWER(scope)='system';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_restaurant_checkout_idempotency
 			ON orders(store_id, checkout_idempotency_key)

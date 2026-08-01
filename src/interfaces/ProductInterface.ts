@@ -11,6 +11,20 @@ export type ProductListItem = Product & {
 	category_name: string | null;
 	base_unit_name: string | null;
 	extra_sale_unit_count: number;
+	has_purchase_cost: number;
+};
+
+export type ProductBaseUnitCheck = {
+	product_id: string;
+	can_change: boolean;
+	counts: {
+		stock_on_hand: number;
+		inventory_movements: number;
+		order_items: number;
+		purchase_order_items: number;
+		extra_units: number;
+	};
+	reasons: string[];
 };
 
 export type ProductListResult = {
@@ -205,10 +219,15 @@ export class ProductInterface {
 				sql: `SELECT p.*,
 					pc.name AS category_name,
 					COALESCE(u.name_th, u.code) AS base_unit_name,
-					(SELECT COUNT(DISTINCT pu.unit_id) FROM product_units pu WHERE pu.product_id = p.id AND pu.enabled_for_sale = 1) AS extra_sale_unit_count
+					(SELECT COUNT(DISTINCT pu.unit_id) FROM product_units pu WHERE pu.product_id = p.id AND pu.enabled_for_sale = 1) AS extra_sale_unit_count,
+					-- cost_source only records whether the cost is pinned, so the
+					-- receipt ledger is what proves a cost genuinely came from a
+					-- purchase order rather than being typed in at creation.
+					CASE WHEN ics.product_id IS NULL THEN 0 ELSE 1 END AS has_purchase_cost
 				FROM products p
 				LEFT JOIN product_categories pc ON pc.id = p.category_id
 				LEFT JOIN units u ON u.id = p.base_unit_id
+				LEFT JOIN inventory_cost_summaries ics ON ics.product_id = p.id AND ics.store_id = p.store_id
 				WHERE ${where}
 				ORDER BY ${orderBy}
 				LIMIT ? OFFSET ?`,
@@ -436,6 +455,40 @@ export class ProductInterface {
 		if (!created) throw new Error("Failed to create product");
 
 		return created;
+	}
+
+	// Every quantity and money column on a product is denominated in its base
+	// unit, and none of them are rewritten when the unit changes. Swapping the
+	// unit is therefore only safe while the product has no history at all.
+	static async checkBaseUnitChange(id: string): Promise<ProductBaseUnitCheck> {
+		await ProductInterface.ensureColumns();
+		const db = DbConn.getClient();
+
+		const result = await db.batch([
+			{ sql: "SELECT COALESCE(on_hand_base, 0) AS total FROM inventory_balances WHERE product_id = ?", args: [ id ] },
+			{ sql: "SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id = ?", args: [ id ] },
+			{ sql: "SELECT COUNT(*) AS total FROM order_items WHERE product_id = ?", args: [ id ] },
+			{ sql: "SELECT COUNT(*) AS total FROM purchase_order_items WHERE product_id = ?", args: [ id ] },
+			{ sql: "SELECT COUNT(*) AS total FROM product_units WHERE product_id = ?", args: [ id ] },
+		], "read");
+
+		const readTotal = (index: number) => Number(result[index]?.rows[0]?.total || 0);
+		const counts = {
+			stock_on_hand: readTotal(0),
+			inventory_movements: readTotal(1),
+			order_items: readTotal(2),
+			purchase_order_items: readTotal(3),
+			extra_units: readTotal(4),
+		};
+
+		const reasons: string[] = [];
+		if (counts.stock_on_hand !== 0) reasons.push(`ສິນຄ້ານີ້ຍັງມີສະຕັອກຄົງເຫຼືອ ${counts.stock_on_hand}`);
+		if (counts.inventory_movements > 0) reasons.push(`ມີປະຫວັດການເຄື່ອນໄຫວສະຕັອກແລ້ວ ${counts.inventory_movements} ລາຍການ`);
+		if (counts.order_items > 0) reasons.push(`ຖືກຂາຍໄປແລ້ວ ${counts.order_items} ລາຍການ`);
+		if (counts.purchase_order_items > 0) reasons.push(`ຢູ່ໃນໃບສັ່ງຊື້ແລ້ວ ${counts.purchase_order_items} ລາຍການ`);
+		if (counts.extra_units > 0) reasons.push(`ມີຫົວໜ່ວຍຂາຍເພີ່ມທີ່ອ້າງອີງຫົວໜ່ວຍຫຼັກ ${counts.extra_units} ລາຍການ`);
+
+		return { product_id: id, can_change: reasons.length === 0, counts, reasons };
 	}
 
 	static async update(id: string, data: UpdateProductInput): Promise<Product> {

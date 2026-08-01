@@ -48,6 +48,10 @@ const mobileTicketOpen = ref(false);
 const moreActionsOpen = ref(false);
 const tableActionsOpen = ref(false);
 const promotionPanelOpen = ref(false);
+const menuAvailabilityOpen = ref(false);
+const menuAvailabilityPendingId = ref("");
+const menuAvailabilitySearch = ref("");
+const catalogLoadedOnce = ref(false);
 const zones = ref<Zone[]>([]);
 const tables = ref<DiningTable[]>([]);
 const products = ref<Product[]>([]);
@@ -246,6 +250,28 @@ const manualPromotions = computed(() => {
 });
 const promotionOptions = computed(() => availablePromotions.value.filter(isManualPromotion));
 const promotionOptionCount = computed(() => promotionOptions.value.length);
+// Only untracked menu items have a sold-out switch; stocked products are
+// governed by their stock balance instead.
+const menuAvailabilityItems = computed(() => products.value.filter((product) => product.inventory_mode === "untracked"));
+// Sold-out items float to the top: the usual reason for opening this panel is
+// to put something back on sale once the kitchen restocks.
+const menuAvailabilityVisible = computed(() => {
+	const keyword = menuAvailabilitySearch.value.trim().toLowerCase();
+	const matched = keyword
+		? menuAvailabilityItems.value.filter((product) => (
+			product.name.toLowerCase().includes(keyword)
+			|| String(product.sku || "").toLowerCase().includes(keyword)
+		))
+		: menuAvailabilityItems.value.slice();
+
+	return matched.sort((a, b) => {
+		const soldOut = Number(Boolean(b.manual_sold_out)) - Number(Boolean(a.manual_sold_out));
+		return soldOut !== 0 ? soldOut : a.name.localeCompare(b.name);
+	});
+});
+const menuAvailabilitySearchable = computed(() => menuAvailabilityItems.value.length > 8);
+const menuSoldOutCount = computed(() => menuAvailabilityItems.value.filter((product) => Boolean(product.manual_sold_out)).length);
+const canManageMenuAvailability = computed(() => can("products.update"));
 const selectedPromotionTotal = computed(() => selectedPromotionIds.value.reduce((total, id) => total + Math.max(1, selectedPromotionCounts.value[id] || 1), 0));
 const canClearCartDraft = computed(() => order.value ? tableDraft.value.length > 0 : localCart.value.length > 0);
 const clearCartTitle = computed(() => t(order.value ? "posPanels.clearNewTitle" : "posPanels.clearCartTitle"));
@@ -343,12 +369,12 @@ function productImageForItem(item: Pick<OrderItem, "product_id">) {
 function promotionBlockedReason(promotion: AvailablePromotion | Promotion) {
 	const giftProductId = "gift_product_id" in promotion ? promotion.gift_product_id : null;
 	const giftProduct = products.value.find((product) => product.id === giftProductId);
-	if (giftProduct && isProductUnavailable(giftProduct)) return `ของแถม ${giftProduct.name} หมด`;
+	if (giftProduct && isProductUnavailable(giftProduct)) return t("restaurantPos.promotionGiftSoldOut", { name: giftProduct.name });
 	if (promotion.type === "buy_x_get_y" && promotion.qualifying_product_id) {
 		const qualifyingProduct = products.value.find((product) => product.id === promotion.qualifying_product_id);
-		if (qualifyingProduct && isProductUnavailable(qualifyingProduct)) return `สินค้าในโปร ${qualifyingProduct.name} หมด`;
+		if (qualifyingProduct && isProductUnavailable(qualifyingProduct)) return t("restaurantPos.promotionProductSoldOut", { name: qualifyingProduct.name });
 		const requiredQty = Math.max(1, Number(promotion.qualifying_qty || 1));
-		if (qualifyingProduct?.inventory_mode === "tracked" && Number(qualifyingProduct.available_base || 0) < requiredQty) return `สินค้าในโปร ${qualifyingProduct.name} เหลือไม่พอ`;
+		if (qualifyingProduct?.inventory_mode === "tracked" && Number(qualifyingProduct.available_base || 0) < requiredQty) return t("restaurantPos.promotionProductInsufficient", { name: qualifyingProduct.name });
 	}
 	return "";
 }
@@ -455,14 +481,19 @@ async function loadDashboard() {
 	pending.value = true;
 	loadError.value = "";
 	try {
-		if (props.initialCatalog) applyCatalog(props.initialCatalog);
+		// The parent fetches the catalogue once for first paint, so reuse it on
+		// the initial load only. Every later reload has to hit the API again or
+		// changes such as menu availability would keep showing the stale prop.
+		const useInitialCatalog = Boolean(props.initialCatalog) && !catalogLoadedOnce.value;
+		if (useInitialCatalog && props.initialCatalog) applyCatalog(props.initialCatalog);
 		const [ dashboard, opened, catalog ] = await Promise.all([
 			apiFetch<Envelope<{ zones: Zone[]; tables: DiningTable[]; pickup_queue_enabled: number }>>(`/pos/restaurant/tables?store_id=${encodeURIComponent(props.storeId)}`),
 			apiFetch<Envelope<OpenOrder[]>>(`/pos/restaurant/orders/open?store_id=${encodeURIComponent(props.storeId)}`),
-			props.initialCatalog
+			useInitialCatalog
 				? Promise.resolve(null)
 				: apiFetch<Envelope<PosCatalog>>(`/pos/products?store_id=${encodeURIComponent(props.storeId)}`),
 		]);
+		catalogLoadedOnce.value = true;
 		zones.value = dashboard.data.zones.filter((zone) => zone.is_active);
 		tables.value = dashboard.data.tables;
 		pickupQueueEnabled.value = Number(dashboard.data.pickup_queue_enabled || 0) !== 0;
@@ -1136,13 +1167,28 @@ async function cancelOrder() {
 	finally { actionPending.value = false; }
 }
 
-async function toggleAvailability(product: Product) {
-	actionPending.value = true;
+// Deliberately lives in its own panel rather than on the product tiles: the
+// tiles are the tap target used constantly while selling, and this change is
+// silent and instant, so a mis-tap there would take a menu item off sale
+// without anyone noticing.
+async function setMenuAvailability(product: Product, soldOut: boolean) {
+	if (menuAvailabilityPendingId.value) return;
+	menuAvailabilityPendingId.value = product.id;
 	try {
-		await apiFetch(`/pos/restaurant/products/${product.id}/availability`, { method: "PATCH", body: { store_id: props.storeId, sold_out: !Boolean(product.manual_sold_out) } });
+		await apiFetch(`/pos/restaurant/products/${product.id}/availability`, {
+			method: "PATCH",
+			body: { store_id: props.storeId, sold_out: soldOut },
+		});
 		await loadDashboard();
-	} catch (error) { toast.error({ title: t("toastMessages.menuStatusChangeFailed"), description: localizedApiError(error) }); }
-	finally { actionPending.value = false; }
+		toast.success({
+			title: soldOut ? t("restaurantPos.menuMarkedSoldOut") : t("restaurantPos.menuMarkedAvailable"),
+			description: product.name,
+		});
+	} catch (error) {
+		toast.error({ title: t("toastMessages.menuStatusChangeFailed"), description: localizedApiError(error) });
+	} finally {
+		menuAvailabilityPendingId.value = "";
+	}
 }
 
 async function applyPromotion(promotion: Promotion) {
@@ -1226,6 +1272,8 @@ watch(() => props.storeId, () => {
 	order.value = null;
 	mobileTicketOpen.value = false;
 	view.value = "quick";
+	// A different store gets a fresh catalogue, so the prop is usable again.
+	catalogLoadedOnce.value = false;
 	restoreLocalCart();
 	void loadDashboard();
 	void evaluateLocalPromotions();
@@ -1288,6 +1336,20 @@ onBeforeUnmount(() => {
 					</AppButton>
 					<AppButton v-else-if="view === 'pickupQueue'" class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-clock" :aria-label="t('pickupQueueHistory.title')" :title="t('pickupQueueHistory.title')" @click="openPickupQueueHistory">
 						<span class="hidden sm:inline">{{ t('pickupQueueHistory.title') }}</span>
+					</AppButton>
+					<AppButton
+						v-if="canManageMenuAvailability && menuAvailabilityItems.length"
+						class="shrink-0"
+						size="sm"
+						:color="menuSoldOutCount ? 'warning' : 'neutral'"
+						variant="soft"
+						icon="i-heroicons-clipboard-document-check"
+						:aria-label="t('restaurantPos.manageMenu')"
+						:title="t('restaurantPos.manageMenu')"
+						@click="menuAvailabilityOpen = true"
+					>
+						<span class="hidden sm:inline">{{ t('restaurantPos.manageMenu') }}</span>
+						<span v-if="menuSoldOutCount" class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-current/15 px-1.5 text-[11px] font-bold tabular-nums">{{ menuSoldOutCount }}</span>
 					</AppButton>
 					<AppButton class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-path" :loading="pending" :aria-label="t('restaurantPos.reload')" :title="t('restaurantPos.reload')" @click="loadDashboard">
 						<span class="hidden lg:inline">{{ t('restaurantPos.reload') }}</span>
@@ -1409,9 +1471,6 @@ onBeforeUnmount(() => {
 								<span v-if="productCartQty(product.id)" class="pointer-events-none absolute right-1.5 top-1.5 flex min-w-5 items-center justify-center rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white shadow-sm">
 									{{ productCartQty(product.id) }}
 								</span>
-								<AppButton v-if="product.inventory_mode === 'untracked' && can('products.update')" class="mt-1.5" block size="xs" :color="product.manual_sold_out ? 'success' : 'neutral'" variant="soft" @click="toggleAvailability(product)">
-									{{ product.manual_sold_out ? t('restaurantPos.available') : t('restaurantPos.soldOut') }}
-								</AppButton>
 							</article>
 						</div>
 					</section>
@@ -1755,17 +1814,17 @@ onBeforeUnmount(() => {
 				<div class="mx-auto flex h-full max-h-[min(760px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl">
 					<header class="flex items-start justify-between gap-4 border-b border-neutral-100 px-4 py-4 sm:px-5">
 						<div class="min-w-0">
-							<h2 class="text-lg font-semibold text-stone-950">เลือกโปรโมชั่น</h2>
-							<p class="mt-1 text-sm text-stone-500">เลือกโปรที่ใช้กับบิลนี้ ระบบจะคำนวณของแถมตามเงื่อนไขที่ตั้งไว้</p>
+							<h2 class="text-lg font-semibold text-stone-950">{{ t('restaurantPos.promotionPickerTitle') }}</h2>
+							<p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.promotionPickerHint') }}</p>
 						</div>
-						<AppButton color="neutral" variant="soft" icon="i-heroicons-x-mark-20-solid" aria-label="ปิดโปรโมชั่น" @click="promotionPanelOpen = false" />
+						<AppButton color="neutral" variant="soft" icon="i-heroicons-x-mark-20-solid" :aria-label="t('restaurantPos.promotionPickerClose')" @click="promotionPanelOpen = false" />
 					</header>
 
 					<div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
 						<div v-if="!promotionOptionCount" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
 							<UIcon name="i-heroicons-gift" class="size-10 text-stone-300" />
-							<h3 class="mt-3 font-semibold text-stone-800">ยังไม่มีโปรโมชั่นที่ใช้ได้</h3>
-							<p class="mt-1 max-w-sm text-sm text-stone-500">ยังไม่มีโปรโมชั่น active สำหรับร้านนี้ในช่วงวันที่ปัจจุบัน</p>
+							<h3 class="mt-3 font-semibold text-stone-800">{{ t('restaurantPos.noPromotions') }}</h3>
+							<p class="mt-1 max-w-sm text-sm text-stone-500">{{ t('restaurantPos.noPromotionsHint') }}</p>
 						</div>
 
 						<div class="grid gap-3 sm:grid-cols-2">
@@ -1778,7 +1837,7 @@ onBeforeUnmount(() => {
 										<span class="min-w-0">
 											<span class="block line-clamp-2 text-sm font-semibold text-stone-950">{{ promotion.name }}</span>
 											<span class="mt-1 block text-xs text-stone-500">
-												{{ promotionBlockedReason(promotion) || (promotion.eligible === false ? promotion.remaining_qty ? `เพิ่มอีก ${promotion.remaining_qty} ชิ้น` : `เพิ่มยอดอีก ${money(promotion.remaining_amount || 0)}` : isDiscountPromotion(promotion) ? `${t('pos.discount')} -${money(Number(promotion.discount_amount || 0))}` : `ใช้ได้ ${promotion.applications} รอบ · ${t('restaurantPos.free')} × ${promotion.gift_qty}`) }}
+												{{ promotionBlockedReason(promotion) || (promotion.eligible === false ? promotion.remaining_qty ? t('restaurantPos.promotionAddMoreQty', { count: promotion.remaining_qty }) : t('restaurantPos.promotionAddMoreAmount', { amount: money(promotion.remaining_amount || 0) }) : isDiscountPromotion(promotion) ? `${t('pos.discount')} -${money(Number(promotion.discount_amount || 0))}` : `${t('restaurantPos.promotionRounds', { count: promotion.applications })} · ${t('restaurantPos.free')} × ${promotion.gift_qty}`) }}
 											</span>
 										</span>
 									</span>
@@ -1786,10 +1845,10 @@ onBeforeUnmount(() => {
 								</span>
 								<div class="mt-auto flex items-center justify-between gap-2 pt-4">
 									<UBadge class="w-fit shrink-0" :color="promotionBlockedReason(promotion) ? 'error' : promotion.eligible === false ? 'neutral' : 'success'" variant="soft">
-										{{ promotionBlockedReason(promotion) ? 'สินค้าในโปรหมด' : promotion.eligible === false ? 'เงื่อนไขยังไม่ครบ' : isDiscountPromotion(promotion) ? t('restaurantPos.readyDiscount') : 'พร้อมแถม' }}
+										{{ promotionBlockedReason(promotion) ? t('restaurantPos.promotionGiftOut') : promotion.eligible === false ? t('restaurantPos.promotionNotEligible') : isDiscountPromotion(promotion) ? t('restaurantPos.readyDiscount') : t('restaurantPos.promotionReadyGift') }}
 									</UBadge>
 									<AppButton class="min-w-[116px] justify-center shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-plus" :disabled="Boolean(promotionBlockedReason(promotion))" @click="applyLocalPromotion(promotion)">
-										{{ selectedPromotionIds.includes(promotion.promotion_id) ? 'ใช้อีก' : 'ใช้โปรโมชั่น' }}
+										{{ selectedPromotionIds.includes(promotion.promotion_id) ? t('restaurantPos.promotionApplyAgain') : t('restaurantPos.applyPromotion') }}
 									</AppButton>
 								</div>
 							</article>
@@ -1797,13 +1856,79 @@ onBeforeUnmount(() => {
 					</div>
 
 					<footer class="flex items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 sm:px-5">
-						<p class="text-xs text-stone-500">{{ !order && selectedPromotionTotal ? `เลือกแล้ว ${selectedPromotionTotal} ครั้ง` : 'โปรโมชั่นจะถูกบันทึกกับบิลนี้' }}</p>
-						<AppButton color="neutral" variant="soft" @click="promotionPanelOpen = false">เสร็จ</AppButton>
+						<p class="text-xs text-stone-500">{{ !order && selectedPromotionTotal ? t('restaurantPos.promotionSelectedCount', { count: selectedPromotionTotal }) : t('restaurantPos.promotionSaveHint') }}</p>
+						<AppButton color="neutral" variant="soft" @click="promotionPanelOpen = false">{{ t('restaurantPos.done') }}</AppButton>
 					</footer>
 				</div>
 			</div>
 		</Transition>
 	</Teleport>
+
+	<AppResponsivePanel
+		v-model="menuAvailabilityOpen"
+		:title="t('restaurantPos.manageMenu')"
+		:description="t('restaurantPos.manageMenuHint')"
+		desktop-width="560px"
+		desktop-placement="center"
+		mobile-max-height="88vh"
+	>
+		<div class="space-y-3">
+			<UInput
+				v-if="menuAvailabilitySearchable"
+				v-model="menuAvailabilitySearch"
+				size="md"
+				color="neutral"
+				icon="i-heroicons-magnifying-glass-20-solid"
+				:placeholder="t('restaurantPos.searchMenu')"
+				class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white"
+			/>
+
+			<div v-if="menuSoldOutCount" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+				{{ t('restaurantPos.menuSoldOutSummary', { count: menuSoldOutCount }) }}
+			</div>
+
+			<div
+				v-if="!menuAvailabilityVisible.length"
+				class="flex h-[min(60vh,420px)] items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-4 text-center text-sm text-stone-500"
+			>
+				{{ menuAvailabilityItems.length ? t('restaurantPos.noMenuMatch') : t('restaurantPos.noMenuItems') }}
+			</div>
+
+			<!-- Fixed height, not a cap: the panel then opens at the same size for
+				 every store and in every state, so the close button and rows stay
+				 where staff expect them. Only the rows scroll, keeping the search
+				 box and the sold-out summary in view. -->
+			<div v-else class="scrollbar-soft h-[min(60vh,420px)] space-y-3 overflow-y-auto">
+				<div
+					v-for="product in menuAvailabilityVisible"
+					:key="product.id"
+					class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-3"
+				>
+					<div class="min-w-0">
+						<p class="truncate text-sm font-semibold text-stone-950">{{ product.name }}</p>
+						<p class="mt-0.5 truncate text-xs text-stone-500">{{ product.sku }} · {{ money(product.price_base) }}</p>
+					</div>
+					<div class="flex shrink-0 items-center gap-2">
+						<UBadge :color="product.manual_sold_out ? 'error' : 'success'" variant="soft" class="text-[10px]">
+							{{ product.manual_sold_out ? t('restaurantPos.soldOut') : t('restaurantPos.available') }}
+						</UBadge>
+						<AppButton
+							size="xs"
+							class="min-w-[92px] justify-center"
+							:color="product.manual_sold_out ? 'success' : 'error'"
+							variant="solid"
+							:icon="product.manual_sold_out ? 'i-heroicons-arrow-path-rounded-square' : 'i-heroicons-no-symbol'"
+							:loading="menuAvailabilityPendingId === product.id"
+							:disabled="Boolean(menuAvailabilityPendingId)"
+							@click="setMenuAvailability(product, !product.manual_sold_out)"
+						>
+							{{ product.manual_sold_out ? t('restaurantPos.reopenMenu') : t('restaurantPos.markSoldOut') }}
+						</AppButton>
+					</div>
+				</div>
+			</div>
+		</div>
+	</AppResponsivePanel>
 
 	<AppResponsivePanel v-model="guestPanel" :title="t('restaurantPos.chooseTable')" :description="selectedTable ? `${selectedTable.zone_name} · ${selectedTable.name}` : ''" desktop-width="520px" desktop-placement="center" mobile-max-height="88vh">
 		<div class="space-y-4">

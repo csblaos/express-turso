@@ -13,6 +13,7 @@ export class ReportRouter {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/dashboard", PermissionMiddleware.require("reports.view"), ReportValidator.dashboard, ReportController.dashboard);
 		this.router.get("/products", PermissionMiddleware.require("reports.view"), ReportValidator.products, ReportController.products);
+		this.router.get("/purchasing", PermissionMiddleware.require("reports.view"), ReportValidator.dashboard, ReportController.purchasing);
 		this.router.get("/products/:productId/trend", PermissionMiddleware.require("reports.view"), ReportValidator.productTrend, ReportController.productTrend);
 	}
 	static getInstance(): ReportRouter { return ReportRouter.instance ||= new ReportRouter(); }

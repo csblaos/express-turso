@@ -40,7 +40,7 @@ export class UnitInterface {
 
 		if (filters?.storeId && filters?.scope) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE store_id = ? AND scope = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE store_id = ? AND scope = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.storeId, filters.scope ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
@@ -48,7 +48,7 @@ export class UnitInterface {
 
 		if (filters?.storeId) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE store_id = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE store_id = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.storeId ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
@@ -56,13 +56,13 @@ export class UnitInterface {
 
 		if (filters?.scope) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE scope = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE scope = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.scope ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
 		}
 
-		const result = await db.execute("SELECT * FROM units ORDER BY code ASC");
+		const result = await db.execute("SELECT * FROM units ORDER BY name_th ASC, code ASC");
 		return result.rows.map(UnitInterface.mapRow);
 	}
 
@@ -123,7 +123,7 @@ export class UnitInterface {
 
 		const placeholders = pending.map(() => "?").join(", ");
 		const result = await db.execute({
-			sql: `SELECT * FROM units WHERE id IN (${placeholders}) ORDER BY code ASC`,
+			sql: `SELECT * FROM units WHERE id IN (${placeholders}) ORDER BY name_th ASC, code ASC`,
 			args: pending.map((unit) => unit.id),
 		});
 		return result.rows.map(UnitInterface.mapRow);

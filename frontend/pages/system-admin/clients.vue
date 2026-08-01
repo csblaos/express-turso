@@ -110,15 +110,13 @@ const systemDefaults = ref<ApiSystemConfig>({
 	default_can_create_branches: 1,
 	default_max_branches_per_store: 5,
 });
-// Branch creation is not supported yet, so the create form only drafts the
-// store quota.
+// Branch creation is not supported yet, so both forms only draft the store
+// quota.
 const createBranchDraft = reactive({
 	max_stores: "1",
 });
 const detailBranchDraft = reactive({
 	max_stores: "1",
-	max_branches_per_store: "",
-	can_create_branches: true,
 });
 
 const createForm = reactive({
@@ -137,8 +135,6 @@ const detailForm = reactive({
 	ui_locale: "th",
 	can_create_stores: true,
 	max_stores: "1",
-	max_branches_per_store: "",
-	can_create_branches: true,
 	must_change_password: false,
 	suspend_reason: "",
 });
@@ -175,8 +171,6 @@ const detailHasChanges = computed(() => {
 		|| detailForm.ui_locale !== (selectedClient.value.ui_locale || "th")
 		|| detailForm.can_create_stores !== Boolean(selectedClient.value.can_create_stores)
 		|| detailForm.max_stores !== (selectedClient.value.max_stores === null ? "" : String(selectedClient.value.max_stores))
-		|| detailForm.max_branches_per_store !== (selectedClient.value.max_branches_per_store === null ? "" : String(selectedClient.value.max_branches_per_store))
-		|| detailForm.can_create_branches !== Boolean(selectedClient.value.can_create_branches)
 		|| detailForm.must_change_password !== Boolean(selectedClient.value.must_change_password)
 	);
 });
@@ -204,12 +198,6 @@ const detailStorePermissionHint = computed(() => (
 		? "ບັນຊີນີ້ສາມາດ login ແລ້ວເລີ່ມສ້າງຮ້ານທຳອິດຂອງຕົນເອງໄດ້ ລວມເຖິງເພີ່ມຮ້ານຕໍ່ໄປຕາມ quota"
 		: "ບັນຊີນີ້ login ໄດ້ ແຕ່ຍັງເລີ່ມສ້າງຮ້ານທຳອິດ ຫຼື ເພີ່ມຮ້ານໃໝ່ບໍ່ໄດ້"
 ));
-const detailBranchPermissionHint = computed(() => {
-	if (!detailForm.can_create_stores) return "ຕ້ອງອະນຸຍາດໃຫ້ສ້າງຮ້ານກ່ອນ ຈຶ່ງຈະຕັ້ງຄ່າສາຂາໄດ້";
-	return detailForm.can_create_branches
-		? "ຫຼັງມີຮ້ານແລ້ວ ບັນຊີນີ້ສາມາດເພີ່ມສາຂາໄດ້ຕາມ quota ສາຂາຕໍ່ຮ້ານ"
-		: "ຫຼັງມີຮ້ານແລ້ວ ບັນຊີນີ້ຈະບໍ່ສາມາດເພີ່ມສາຂາໃໝ່ໄດ້ ເຖິງແມ່ນ quota ຈະຍັງເຫຼືອ";
-});
 
 watch(selectedClient, (client) => {
 	if (!client) return;
@@ -218,13 +206,9 @@ watch(selectedClient, (client) => {
 	detailForm.ui_locale = client.ui_locale || "th";
 	detailForm.can_create_stores = Boolean(client.can_create_stores);
 	detailForm.max_stores = client.max_stores === null ? "" : String(client.max_stores);
-	detailForm.max_branches_per_store = client.max_branches_per_store === null ? "" : String(client.max_branches_per_store);
-	detailForm.can_create_branches = Boolean(client.can_create_branches);
 	detailForm.must_change_password = Boolean(client.must_change_password);
 	detailForm.suspend_reason = client.client_suspended_reason || "";
 	detailBranchDraft.max_stores = detailForm.max_stores;
-	detailBranchDraft.max_branches_per_store = detailForm.max_branches_per_store;
-	detailBranchDraft.can_create_branches = detailForm.can_create_branches;
 }, { immediate: true });
 
 watch(() => createForm.can_create_stores, (enabled, previous) => {
@@ -243,18 +227,12 @@ watch(() => detailForm.can_create_stores, (enabled, previous) => {
 	if (enabled) {
 		if (previous === false) {
 			detailForm.max_stores = detailBranchDraft.max_stores || "1";
-			detailForm.max_branches_per_store = detailBranchDraft.max_branches_per_store;
-			detailForm.can_create_branches = detailBranchDraft.can_create_branches;
 		}
 		return;
 	}
 
 	detailBranchDraft.max_stores = detailForm.max_stores;
-	detailBranchDraft.max_branches_per_store = detailForm.max_branches_per_store;
-	detailBranchDraft.can_create_branches = detailForm.can_create_branches;
 	detailForm.max_stores = "";
-	detailForm.max_branches_per_store = "";
-	detailForm.can_create_branches = false;
 });
 
 watch(createOpen, (opened) => {
@@ -623,8 +601,8 @@ async function saveClient() {
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
 				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
-				max_branches_per_store: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_branches_per_store) : null,
-				can_create_branches: detailForm.can_create_stores && detailForm.can_create_branches ? 1 : 0,
+				max_branches_per_store: null,
+				can_create_branches: 0,
 				must_change_password: detailForm.must_change_password,
 				actor_user_id: currentUser.value?.id || null,
 			},
@@ -1119,30 +1097,15 @@ onMounted(async () => {
 									</div>
 								</label>
 
-								<div v-if="detailForm.can_create_stores" class="grid gap-4 sm:grid-cols-2">
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">ຮ້ານທີ່ສ້າງໄດ້</label>
-										<input v-model="detailForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<p class="mt-2 text-xs leading-5 text-stone-500">ປັບຈຳນວນຮ້ານລວມທີ່ບັນຊີນີ້ສ້າງໄດ້ ລວມຮ້ານທຳອິດທີ່ client ຈະເລີ່ມສ້າງຕອນ onboarding</p>
-									</div>
-									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">ສາຂາຕໍ່ຮ້ານ</label>
-										<input v-model="detailForm.max_branches_per_store" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<p class="mt-2 text-xs leading-5 text-stone-500">ປັບຈຳນວນສາຂາທີ່ແຕ່ລະຮ້ານສ້າງໄດ້ສຳລັບບັນຊີນີ້</p>
-									</div>
+								<div v-if="detailForm.can_create_stores">
+									<label class="mb-2 block text-xs font-medium text-stone-500">ຮ້ານທີ່ສ້າງໄດ້</label>
+									<input v-model="detailForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<p class="mt-2 text-xs leading-5 text-stone-500">ປັບຈຳນວນຮ້ານລວມທີ່ບັນຊີນີ້ສ້າງໄດ້ ລວມຮ້ານທຳອິດທີ່ client ຈະເລີ່ມສ້າງຕອນ onboarding</p>
 								</div>
 
-								<label v-if="detailForm.can_create_stores" class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_branches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-									<div>
-										<p class="text-sm font-medium text-stone-900">ອະນຸຍາດໃຫ້ສ້າງສາຂາ</p>
-										<p class="mt-1 text-xs leading-5 text-stone-500">{{ detailBranchPermissionHint }}</p>
-									</div>
-								</label>
-
 								<div v-else class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
-									<p class="text-sm font-medium text-stone-900">ເຊື່ອງການຕັ້ງຄ່າສາຂາໄວ້ກ່ອນ</p>
-									<p class="mt-1 text-xs leading-5 text-stone-500">ເມື່ອເປີດສິດສ້າງຮ້ານ ລະບົບຈະສະແດງຈຳນວນຮ້ານລວມທີ່ສ້າງໄດ້, ສາຂາຕໍ່ຮ້ານ ແລະ ສິດສ້າງສາຂາໃຫ້ອີກຄັ້ງ</p>
+									<p class="text-sm font-medium text-stone-900">ເຊື່ອງການຕັ້ງຄ່າ quota ໄວ້ກ່ອນ</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">ເມື່ອເປີດສິດສ້າງຮ້ານ ລະບົບຈະສະແດງຈຳນວນຮ້ານລວມທີ່ສ້າງໄດ້ໃຫ້ອັດຕະໂນມັດ</p>
 								</div>
 
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">

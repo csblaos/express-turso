@@ -89,6 +89,11 @@ export class ProductController {
 		SuccessHandler.send(res, req.requestId);
 	});
 
+	static getBaseUnitCheck = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await ProductComponent.getBaseUnitCheck(req.requestId, req.params.id as string);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static listCostAdjustments = SyncFunction.handler(async (req: Request, res: Response) => {
 		const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
 		const data = await ProductComponent.getCostAdjustments(req.requestId, req.params.id as string, limit);
@@ -103,6 +108,7 @@ export class ProductController {
 			reason: typeof (req.body as Record<string, unknown>)?.reason === "string"
 				? String((req.body as Record<string, unknown>).reason)
 				: null,
+			lockCost: (req.body as Record<string, unknown>)?.lock_cost !== false,
 			actor: auth ? { userId: auth.userId, role: auth.systemRole, storeId: auth.storeId } : null,
 			ipAddress: req.ip || null,
 			userAgent: req.header("user-agent") || null,

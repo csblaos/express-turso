@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrencySymbol, formatMoneyWithSymbol } from "~/utils/currency";
+import { getCurrencySymbol, formatMoneyWithSymbol, normalizeMoneyTyping } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
 import { formatAppDateTime } from "~/utils/date-format";
 
@@ -145,7 +145,10 @@ const stores = ref<StoreRecord[]>([]);
 const selectedOrderId = ref("");
 const selectedOrderDetail = ref<ApiPurchaseOrderDetail | null>(null);
 const purchaseOrderDetailCache = ref<Record<string, ApiPurchaseOrderDetail>>({});
-const purchaseOrderDetailRequests = new Set<string>();
+// Holds the in-flight promise per order, not just its id: a prefetch already
+// running must be awaitable, otherwise a detail open that lands mid-prefetch
+// has nothing to show and the panel renders empty.
+const purchaseOrderDetailRequests = new Map<string, Promise<ApiPurchaseOrderDetail | null>>();
 const detailPending = ref(false);
 const detailError = ref<string | null>(null);
 
@@ -183,8 +186,8 @@ const createForm = reactive({
 	supplierContact: "",
 	purchaseCurrency: "LAK",
 	exchangeRate: "1",
-	shippingCost: "0",
-	otherCost: "0",
+	shippingCost: "",
+	otherCost: "",
 	otherCostNote: "",
 	expectedAt: "",
 	note: "",
@@ -201,12 +204,12 @@ const pageSizeOptions = [10, 20, 50];
 
 const poFormText = computed(() => {
 	if (locale.value === "en") return {
-		store: "Store", restricted: "This status only allows rate, shipping, other costs, and notes to be edited.", poInfo: "PO information", poInfoHint: "Enter the supplier, currency, and expected delivery date.", supplier: "Supplier", supplierPlaceholder: "Supplier name", supplierContact: "Supplier contact", supplierContactPlaceholder: "Phone number or contact channel", currency: "Currency", expectedAt: "Expected delivery", extraCosts: "Exchange rate and additional costs", extraCostsHint: "Enter an estimated rate now and adjust it at final settlement.", extraCostsEditHint: "You can edit the rate, shipping, and other costs before receiving stock.", estimatedRate: "Estimated exchange rate", estimatedRatePlaceholder: "e.g. 1 or 21,500", estimatedRateHint: "If the rate is not known yet, keep the current value when creating the PO.", estimatedShipping: "Estimated shipping", estimatedShippingHint: "Enter the actual shipping cost after goods arrive.", estimatedOtherCost: "Estimated other costs", otherCostNote: "Other-cost note", items: "Product items", itemsHint: "Add only products that will be received into stock.", itemsCostHint: "Enter actual costs from Lazada, Taobao, or the supplier for each item.", addItem: "Add item", product: "Product", loadingProducts: "Loading products…", selectProduct: "Select product", quantity: "Quantity", cost: "Cost", perUnit: "Per unit", total: "Total", totalCost: "Total cost", removeItem: "Remove item", note: "Note", notePlaceholder: "Additional details (optional)", cancel: "Cancel", saveCost: "Save costs", saveChanges: "Save changes", saveDraft: "Save draft", createPo: "Create PO",
+		optional: "(optional)", expectedAtSet: "Set an expected date", expectedAtUnset: "Not specified", rateLockedHint: "The PO uses {currency}, the same currency as the store, so the exchange rate is always 1 and cannot be edited.", store: "Store", restricted: "This status only allows rate, shipping, other costs, and notes to be edited.", poInfo: "PO information", poInfoHint: "Enter the supplier, currency, and expected delivery date.", supplier: "Supplier", supplierPlaceholder: "Supplier name", supplierContact: "Supplier contact", supplierContactPlaceholder: "Phone number or contact channel", currency: "Currency", expectedAt: "Expected delivery", extraCosts: "Exchange rate and additional costs", extraCostsHint: "Enter an estimated rate now and adjust it at final settlement.", extraCostsEditHint: "You can edit the rate, shipping, and other costs before receiving stock.", estimatedRate: "Estimated exchange rate", estimatedRatePlaceholder: "e.g. 1 or 21,500", estimatedRateHint: "If the rate is not known yet, keep the current value when creating the PO.", estimatedShipping: "Estimated shipping", estimatedShippingHint: "Enter the actual shipping cost after goods arrive.", estimatedOtherCost: "Estimated other costs", otherCostNote: "Other-cost note", otherCostNotePlaceholder: "e.g. fees, customs, handling", items: "Product items", itemsHint: "Add only products that will be received into stock.", itemsCostHint: "Enter actual costs from Lazada, Taobao, or the supplier for each item.", addItem: "Add item", product: "Product", loadingProducts: "Loading products…", selectProduct: "Select product", quantity: "Quantity", cost: "Cost", perUnit: "Per unit", total: "Total", totalCost: "Total cost", unitCostPlaceholder: "Enter the actual cost from the supplier", removeItem: "Remove item", note: "Note", notePlaceholder: "Additional details (optional)", cancel: "Cancel", saveCost: "Save costs", saveChanges: "Save changes", saveDraft: "Save draft", createPo: "Create PO", previewItems: "Items subtotal", previewCount: "{count} items", previewExtra: "Additional costs", previewShippingShort: "Shipping", previewOtherShort: "Other", previewTotal: "Grand total", previewPerUnit: "Additional cost per unit", previewPerUnitHint: "Shipping and other costs are spread evenly across every unit on this PO.", previewEmpty: "Enter a quantity and a cost to see the totals", previewRate: "rate {rate}", lineLanded: "Real cost/unit",
 	};
 	if (locale.value === "lo") return {
-		store: "ຮ້ານ", restricted: "ສະຖານະນີ້ແກ້ໄຂໄດ້ສະເພາະອັດຕາແລກປ່ຽນ, ຄ່າຂົນສົ່ງ, ຄ່າໃຊ້ຈ່າຍອື່ນ ແລະ ໝາຍເຫດ.", poInfo: "ຂໍ້ມູນ PO", poInfoHint: "ລະບຸຜູ້ສະໜອງ, ສະກຸນເງິນ ແລະ ວັນຄາດວ່າຈະໄດ້ຮັບ.", supplier: "ຜູ້ສະໜອງ", supplierPlaceholder: "ຊື່ຜູ້ສະໜອງ", supplierContact: "ຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", supplierContactPlaceholder: "ເບີໂທ ຫຼື ຊ່ອງທາງຕິດຕໍ່", currency: "ສະກຸນເງິນ", expectedAt: "ວັນຄາດວ່າຈະໄດ້ຮັບ", extraCosts: "ອັດຕາແລກປ່ຽນ ແລະ ຄ່າໃຊ້ຈ່າຍເພີ່ມ", extraCostsHint: "ລະບຸອັດຕາໂດຍປະມານໄດ້ ແລະ ປັບຕອນປິດບິນຈິງ.", extraCostsEditHint: "ແກ້ໄຂອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າອື່ນໄດ້ກ່ອນຮັບສິນຄ້າ.", estimatedRate: "ອັດຕາແລກປ່ຽນ (ປະມານ)", estimatedRatePlaceholder: "ເຊັ່ນ 1 ຫຼື 21500", estimatedRateHint: "ຖ້າຍັງບໍ່ຮູ້ອັດຕາ ໃຫ້ໃຊ້ຄ່າເດີມໄດ້.", estimatedShipping: "ຄ່າຂົນສົ່ງ (ປະມານ)", estimatedShippingHint: "ລະບຸຄ່າຂົນສົ່ງຈິງຫຼັງສິນຄ້າມາຮອດ.", estimatedOtherCost: "ຄ່າໃຊ້ຈ່າຍອື່ນ (ປະມານ)", otherCostNote: "ໝາຍເຫດຄ່າໃຊ້ຈ່າຍອື່ນ", items: "ລາຍການສິນຄ້າ", itemsHint: "ໃສ່ສະເພາະສິນຄ້າທີ່ຈະຮັບເຂົ້າສະຕັອກ.", itemsCostHint: "ລະບຸຕົ້ນທຶນຈິງຈາກ Lazada, Taobao ຫຼື ຜູ້ສະໜອງໃນແຕ່ລະລາຍການ.", addItem: "ເພີ່ມລາຍການ", product: "ສິນຄ້າ", loadingProducts: "ກຳລັງໂຫຼດສິນຄ້າ…", selectProduct: "ເລືອກສິນຄ້າ", quantity: "ຈຳນວນ", cost: "ຕົ້ນທຶນ", perUnit: "ຕໍ່ໜ່ວຍ", total: "ລວມ", totalCost: "ຕົ້ນທຶນລວມ", removeItem: "ລົບລາຍການ", note: "ໝາຍເຫດ", notePlaceholder: "ລາຍລະອຽດເພີ່ມ (ຖ້າມີ)", cancel: "ຍົກເລີກ", saveCost: "ບັນທຶກຕົ້ນທຶນ", saveChanges: "ບັນທຶກການແກ້ໄຂ", saveDraft: "ບັນທຶກຮ່າງ", createPo: "ສ້າງ PO",
+		optional: "(ບໍ່ບັງຄັບ)", expectedAtSet: "ລະບຸວັນຄາດວ່າຈະໄດ້ຮັບ", expectedAtUnset: "ບໍ່ລະບຸ", rateLockedHint: "ສະກຸນເງິນ PO ເປັນ {currency} ດຽວກັບຮ້ານ ອັດຕາແລກປ່ຽນຈຶ່ງເປັນ 1 ສະເໝີ ແກ້ໄຂບໍ່ໄດ້", store: "ຮ້ານ", restricted: "ສະຖານະນີ້ແກ້ໄຂໄດ້ສະເພາະອັດຕາແລກປ່ຽນ, ຄ່າຂົນສົ່ງ, ຄ່າໃຊ້ຈ່າຍອື່ນ ແລະ ໝາຍເຫດ.", poInfo: "ຂໍ້ມູນ PO", poInfoHint: "ລະບຸຜູ້ສະໜອງ, ສະກຸນເງິນ ແລະ ວັນຄາດວ່າຈະໄດ້ຮັບ.", supplier: "ຜູ້ສະໜອງ", supplierPlaceholder: "ຊື່ຜູ້ສະໜອງ", supplierContact: "ຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", supplierContactPlaceholder: "ເບີໂທ ຫຼື ຊ່ອງທາງຕິດຕໍ່", currency: "ສະກຸນເງິນ", expectedAt: "ວັນຄາດວ່າຈະໄດ້ຮັບ", extraCosts: "ອັດຕາແລກປ່ຽນ ແລະ ຄ່າໃຊ້ຈ່າຍເພີ່ມ", extraCostsHint: "ລະບຸອັດຕາໂດຍປະມານໄດ້ ແລະ ປັບຕອນປິດບິນຈິງ.", extraCostsEditHint: "ແກ້ໄຂອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າອື່ນໄດ້ກ່ອນຮັບສິນຄ້າ.", estimatedRate: "ອັດຕາແລກປ່ຽນ (ປະມານ)", estimatedRatePlaceholder: "ເຊັ່ນ 1 ຫຼື 21500", estimatedRateHint: "ຖ້າຍັງບໍ່ຮູ້ອັດຕາ ໃຫ້ໃຊ້ຄ່າເດີມໄດ້.", estimatedShipping: "ຄ່າຂົນສົ່ງ (ປະມານ)", estimatedShippingHint: "ລະບຸຄ່າຂົນສົ່ງຈິງຫຼັງສິນຄ້າມາຮອດ.", estimatedOtherCost: "ຄ່າໃຊ້ຈ່າຍອື່ນ (ປະມານ)", otherCostNote: "ໝາຍເຫດຄ່າໃຊ້ຈ່າຍອື່ນ", otherCostNotePlaceholder: "ເຊັ່ນ ຄ່າທຳນຽມ, ພາສີ, ຄ່າດຳເນີນການ", items: "ລາຍການສິນຄ້າ", itemsHint: "ໃສ່ສະເພາະສິນຄ້າທີ່ຈະຮັບເຂົ້າສະຕັອກ.", itemsCostHint: "ລະບຸຕົ້ນທຶນຈິງຈາກ Lazada, Taobao ຫຼື ຜູ້ສະໜອງໃນແຕ່ລະລາຍການ.", addItem: "ເພີ່ມລາຍການ", product: "ສິນຄ້າ", loadingProducts: "ກຳລັງໂຫຼດສິນຄ້າ…", selectProduct: "ເລືອກສິນຄ້າ", quantity: "ຈຳນວນ", cost: "ຕົ້ນທຶນ", perUnit: "ຕໍ່ໜ່ວຍ", total: "ລວມ", totalCost: "ຕົ້ນທຶນລວມ", unitCostPlaceholder: "ລະບຸຕົ້ນທຶນຈິງຈາກຜູ້ສະໜອງ", removeItem: "ລົບລາຍການ", note: "ໝາຍເຫດ", notePlaceholder: "ລາຍລະອຽດເພີ່ມ (ຖ້າມີ)", cancel: "ຍົກເລີກ", saveCost: "ບັນທຶກຕົ້ນທຶນ", saveChanges: "ບັນທຶກການແກ້ໄຂ", saveDraft: "ບັນທຶກຮ່າງ", createPo: "ສ້າງ PO", previewItems: "ລວມຄ່າສິນຄ້າ", previewCount: "{count} ລາຍການ", previewExtra: "ຄ່າໃຊ້ຈ່າຍເພີ່ມ", previewShippingShort: "ຂົນສົ່ງ", previewOtherShort: "ອື່ນໆ", previewTotal: "ລວມທັງໝົດ", previewPerUnit: "ຄ່າໃຊ້ຈ່າຍເພີ່ມສະເລ່ຍຕໍ່ໜ່ວຍ", previewPerUnitHint: "ຄ່າຂົນສົ່ງ ແລະ ຄ່າໃຊ້ຈ່າຍອື່ນ ຖືກສະເລ່ຍຕາມຈຳນວນຫົວໜ່ວຍທັງໝົດໃນ PO ນີ້", previewEmpty: "ກອກຈຳນວນ ແລະ ຕົ້ນທຶນ ເພື່ອເບິ່ງຍອດລວມ", previewRate: "ອັດຕາ {rate}", lineLanded: "ຕົ້ນທຶນຈິງ/ໜ່ວຍ",
 	};
-	return { store: "ร้าน", restricted: "สถานะนี้แก้ได้เฉพาะ rate / shipping / other cost และหมายเหตุเท่านั้น", poInfo: "ข้อมูล PO", poInfoHint: "กรอก supplier, สกุลเงิน และวันคาดรับของ", supplier: "Supplier", supplierPlaceholder: "ชื่อ supplier", supplierContact: "Supplier contact", supplierContactPlaceholder: "เบอร์โทร/ช่องทางติดต่อ", currency: "Currency", expectedAt: "Expected at", extraCosts: "อัตราแลกเปลี่ยนและค่าใช้จ่ายเพิ่มเติม", extraCostsHint: "กรอก rate แบบประมาณได้ แล้วค่อยปรับตอน settle จริง", extraCostsEditHint: "แก้ rate / shipping / ค่าใช้จ่ายอื่นได้ก่อนรับของ", estimatedRate: "อัตราแลกเปลี่ยน (ประมาณ)", estimatedRatePlaceholder: "เช่น 1 หรือ 21500", estimatedRateHint: "ถ้ายังไม่รู้ rate ตอนสร้าง PO ให้ปล่อยค่าเดิมไว้ได้", estimatedShipping: "ค่าขนส่ง (ประมาณ)", estimatedShippingHint: "กรอกตอนรู้ค่าขนส่งจริงหลังของมาถึงได้", estimatedOtherCost: "ค่าใช้จ่ายอื่น (ประมาณ)", otherCostNote: "หมายเหตุค่าใช้จ่ายอื่น", items: "รายการสินค้า", itemsHint: "ใส่เฉพาะสินค้าที่จะเข้าสต็อก", itemsCostHint: "กรอกต้นทุนจริงจาก Lazada / Taobao / Supplier ในแต่ละรายการ", addItem: "เพิ่มรายการ", product: "สินค้า", loadingProducts: "กำลังโหลดสินค้า...", selectProduct: "เลือกสินค้า", quantity: "จำนวน", cost: "ต้นทุน", perUnit: "ต่อหน่วย", total: "รวม", totalCost: "ต้นทุนรวม", removeItem: "ลบรายการ", note: "หมายเหตุ", notePlaceholder: "รายละเอียดเพิ่มเติม (ถ้ามี)", cancel: "ยกเลิก", saveCost: "บันทึกต้นทุน", saveChanges: "บันทึกการแก้ไข", saveDraft: "บันทึก Draft", createPo: "สร้าง PO" };
+	return { optional: "(ไม่บังคับ)", expectedAtSet: "ระบุวันคาดรับ", expectedAtUnset: "ไม่ระบุ", rateLockedHint: "สกุลเงิน PO เป็น {currency} เดียวกับร้าน อัตราแลกเปลี่ยนจึงเป็น 1 เสมอ แก้ไม่ได้", store: "ร้าน", restricted: "สถานะนี้แก้ได้เฉพาะ rate / shipping / other cost และหมายเหตุเท่านั้น", poInfo: "ข้อมูล PO", poInfoHint: "กรอก supplier, สกุลเงิน และวันคาดรับของ", supplier: "Supplier", supplierPlaceholder: "ชื่อ supplier", supplierContact: "Supplier contact", supplierContactPlaceholder: "เบอร์โทร/ช่องทางติดต่อ", currency: "Currency", expectedAt: "Expected at", extraCosts: "อัตราแลกเปลี่ยนและค่าใช้จ่ายเพิ่มเติม", extraCostsHint: "กรอก rate แบบประมาณได้ แล้วค่อยปรับตอน settle จริง", extraCostsEditHint: "แก้ rate / shipping / ค่าใช้จ่ายอื่นได้ก่อนรับของ", estimatedRate: "อัตราแลกเปลี่ยน (ประมาณ)", estimatedRatePlaceholder: "เช่น 1 หรือ 21500", estimatedRateHint: "ถ้ายังไม่รู้ rate ตอนสร้าง PO ให้ปล่อยค่าเดิมไว้ได้", estimatedShipping: "ค่าขนส่ง (ประมาณ)", estimatedShippingHint: "กรอกตอนรู้ค่าขนส่งจริงหลังของมาถึงได้", estimatedOtherCost: "ค่าใช้จ่ายอื่น (ประมาณ)", otherCostNote: "หมายเหตุค่าใช้จ่ายอื่น", otherCostNotePlaceholder: "เช่น ค่าธรรมเนียม, ภาษี, ค่าดำเนินการ", items: "รายการสินค้า", itemsHint: "ใส่เฉพาะสินค้าที่จะเข้าสต็อก", itemsCostHint: "กรอกต้นทุนจริงจาก Lazada / Taobao / Supplier ในแต่ละรายการ", addItem: "เพิ่มรายการ", product: "สินค้า", loadingProducts: "กำลังโหลดสินค้า...", selectProduct: "เลือกสินค้า", quantity: "จำนวน", cost: "ต้นทุน", perUnit: "ต่อหน่วย", total: "รวม", totalCost: "ต้นทุนรวม", unitCostPlaceholder: "กรอกราคาจริงจาก supplier", removeItem: "ลบรายการ", note: "หมายเหตุ", notePlaceholder: "รายละเอียดเพิ่มเติม (ถ้ามี)", cancel: "ยกเลิก", saveCost: "บันทึกต้นทุน", saveChanges: "บันทึกการแก้ไข", saveDraft: "บันทึก Draft", createPo: "สร้าง PO", previewItems: "รวมค่าสินค้า", previewCount: "{count} รายการ", previewExtra: "ค่าใช้จ่ายเพิ่ม", previewShippingShort: "ขนส่ง", previewOtherShort: "อื่นๆ", previewTotal: "รวมทั้งหมด", previewPerUnit: "ค่าใช้จ่ายเพิ่มเฉลี่ยต่อหน่วย", previewPerUnitHint: "ค่าขนส่งและค่าใช้จ่ายอื่นถูกเฉลี่ยตามจำนวนหน่วยทั้งหมดใน PO นี้", previewEmpty: "กรอกจำนวนและต้นทุนเพื่อดูยอดรวม", previewRate: "อัตรา {rate}", lineLanded: "ต้นทุนจริง/หน่วย", };
 });
 
 const poListText = computed(() => {
@@ -216,9 +219,21 @@ const poListText = computed(() => {
 });
 
 const poDetailText = computed(() => {
-	if (locale.value === "en") return { unspecifiedSupplier: "Unspecified supplier", edit: "Edit", editCost: "Edit costs", items: "{count} items", overview: "Overview", supplier: "Supplier", expected: "Expected delivery", totalCost: "Total cost", note: "Note", productItems: "Product items", paymentSummary: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", retry: "Try again", copySupplier: "Copy supplier contact", copy: "Copy", baseUnit: "Base unit", ordered: "Ordered {count}", received: "Received {count}", remaining: "Remaining {count}", paymentItems: "{count} payments", lastPaid: "Last paid {date}", reference: "Reference", noPayments: "No payment entries", close: "Close", confirmOrder: "Confirm order", receiveStock: "Receive into stock", savePayment: "Record payment" };
-	if (locale.value === "lo") return { unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", edit: "ແກ້ໄຂ", editCost: "ແກ້ໄຂຕົ້ນທຶນ", items: "{count} ລາຍການ", overview: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", supplier: "ຜູ້ສະໜອງ", expected: "ຄາດຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", productItems: "ລາຍການສິນຄ້າ", paymentSummary: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", retry: "ລອງໃໝ່", copySupplier: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", copy: "ຄັດລອກ", baseUnit: "ຫົວໜ່ວຍຫຼັກ", ordered: "ສັ່ງ {count}", received: "ຮັບແລ້ວ {count}", remaining: "ຄົງເຫຼືອ {count}", paymentItems: "{count} ລາຍການຊຳລະ", lastPaid: "ຊຳລະລ່າສຸດ {date}", reference: "ເລກອ້າງອີງ", noPayments: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", confirmOrder: "ຢືນຢັນສັ່ງຊື້", receiveStock: "ຮັບເຂົ້າສະຕັອກ", savePayment: "ບັນທຶກການຊຳລະ" };
-	return { unspecifiedSupplier: "ไม่ระบุ supplier", edit: "แก้ไข", editCost: "แก้ไขต้นทุน", items: "{count} รายการ", overview: "สรุปข้อมูลหลัก", supplier: "Supplier", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", productItems: "รายการสินค้า", paymentSummary: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", retry: "ลองใหม่", copySupplier: "คัดลอก contact supplier", copy: "คัดลอก", baseUnit: "หน่วยหลัก", ordered: "สั่ง {count}", received: "รับแล้ว {count}", remaining: "คงเหลือ {count}", paymentItems: "{count} รายการชำระ", lastPaid: "ชำระล่าสุด {date}", reference: "Reference", noPayments: "ยังไม่มี payment entry", close: "ปิด", confirmOrder: "ยืนยันสั่งซื้อ", receiveStock: "รับของเข้าสต็อก", savePayment: "บันทึกชำระเงิน" };
+	if (locale.value === "en") return { unspecifiedSupplier: "Unspecified supplier", edit: "Edit", editCost: "Edit costs", items: "{count} items", overview: "Overview", supplier: "Supplier", expected: "Expected delivery", totalCost: "Total cost", note: "Note", productItems: "Product items", paymentSummary: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", retry: "Try again", copySupplier: "Copy supplier contact", copy: "Copy", baseUnit: "Base unit", ordered: "Ordered {count}", received: "Received {count}", remaining: "Remaining {count}", paymentItems: "{count} payments", lastPaid: "Last paid {date}", reference: "Reference", noPayments: "No payment entries", close: "Close", confirmOrder: "Confirm order", receiveStock: "Receive into stock", savePayment: "Record payment", costTitle: "PO cost", costGoods: "Goods", costShipping: "Shipping", costOther: "Other costs", costTotal: "Grand total", costPerUnit: "Additional cost per unit", costPerUnitHint: "Shipping and other costs are spread evenly across every unit on this PO, which is what each product cost becomes when the stock is received.", costLanded: "Real cost/unit", costRate: "rate {rate}", };
+	if (locale.value === "lo") return { unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", edit: "ແກ້ໄຂ", editCost: "ແກ້ໄຂຕົ້ນທຶນ", items: "{count} ລາຍການ", overview: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", supplier: "ຜູ້ສະໜອງ", expected: "ຄາດຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", productItems: "ລາຍການສິນຄ້າ", paymentSummary: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", retry: "ລອງໃໝ່", copySupplier: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", copy: "ຄັດລອກ", baseUnit: "ຫົວໜ່ວຍຫຼັກ", ordered: "ສັ່ງ {count}", received: "ຮັບແລ້ວ {count}", remaining: "ຄົງເຫຼືອ {count}", paymentItems: "{count} ລາຍການຊຳລະ", lastPaid: "ຊຳລະລ່າສຸດ {date}", reference: "ເລກອ້າງອີງ", noPayments: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", confirmOrder: "ຢືນຢັນສັ່ງຊື້", receiveStock: "ຮັບເຂົ້າສະຕັອກ", savePayment: "ບັນທຶກການຊຳລະ", costTitle: "ຕົ້ນທຶນ PO", costGoods: "ຄ່າສິນຄ້າ", costShipping: "ຄ່າຂົນສົ່ງ", costOther: "ຄ່າໃຊ້ຈ່າຍອື່ນ", costTotal: "ລວມທັງໝົດ", costPerUnit: "ຄ່າໃຊ້ຈ່າຍເພີ່ມສະເລ່ຍຕໍ່ໜ່ວຍ", costPerUnitHint: "ຄ່າຂົນສົ່ງ ແລະ ຄ່າໃຊ້ຈ່າຍອື່ນ ຖືກສະເລ່ຍຕາມຈຳນວນຫົວໜ່ວຍທັງໝົດ ແລະ ກາຍເປັນຕົ້ນທຶນສິນຄ້າຕອນຮັບເຂົ້າສະຕັອກ", costLanded: "ຕົ້ນທຶນຈິງ/ໜ່ວຍ", costRate: "ອັດຕາ {rate}", };
+	return { unspecifiedSupplier: "ไม่ระบุ supplier", edit: "แก้ไข", editCost: "แก้ไขต้นทุน", items: "{count} รายการ", overview: "สรุปข้อมูลหลัก", supplier: "Supplier", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", productItems: "รายการสินค้า", paymentSummary: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", retry: "ลองใหม่", copySupplier: "คัดลอก contact supplier", copy: "คัดลอก", baseUnit: "หน่วยหลัก", ordered: "สั่ง {count}", received: "รับแล้ว {count}", remaining: "คงเหลือ {count}", paymentItems: "{count} รายการชำระ", lastPaid: "ชำระล่าสุด {date}", reference: "Reference", noPayments: "ยังไม่มี payment entry", close: "ปิด", confirmOrder: "ยืนยันสั่งซื้อ", receiveStock: "รับของเข้าสต็อก", savePayment: "บันทึกชำระเงิน", costTitle: "ต้นทุน PO", costGoods: "ค่าสินค้า", costShipping: "ค่าขนส่ง", costOther: "ค่าใช้จ่ายอื่น", costTotal: "รวมทั้งหมด", costPerUnit: "ค่าใช้จ่ายเพิ่มเฉลี่ยต่อหน่วย", costPerUnitHint: "ค่าขนส่งและค่าใช้จ่ายอื่นถูกเฉลี่ยตามจำนวนหน่วยทั้งหมด และกลายเป็นต้นทุนสินค้าตอนรับเข้าสต็อก", costLanded: "ต้นทุนจริง/หน่วย", costRate: "อัตรา {rate}", };
+});
+
+const poPaymentText = computed(() => {
+	if (locale.value === "en") return { title: "Record payment", description: "Update the real rate, shipping, and other costs at settlement without changing the stock cost.", stockCostNote: "The stock cost stays as recorded when the goods were received; this screen only changes the real rate, shipping, and other costs at settlement.", unspecifiedSupplier: "Unspecified supplier", itemCount: "{count} items", settlementInfo: "Settlement details", settlementHint: "Adjust the rate, shipping, and other costs before recording the payment.", actualRate: "Actual exchange rate", actualRatePlaceholder: "e.g. 21,500", actualShipping: "Actual shipping", actualOtherCost: "Actual other costs", paidAt: "Payment date", reference: "Reference / document number", referencePlaceholder: "Invoice or reference number", note: "Payment note", notePlaceholder: "Additional details (optional)", settlementTotal: "Settlement total", variance: "Variance", status: "Status", matchesEstimate: "Matches the estimate", hasVariance: "Has a variance", cancel: "Cancel", submit: "Record payment" };
+	if (locale.value === "lo") return { title: "ບັນທຶກຊຳລະເງິນ", description: "ອັບເດດອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າໃຊ້ຈ່າຍຈິງຕອນປິດບິນ ໂດຍບໍ່ປ່ຽນຕົ້ນທຶນສິນຄ້າໃນສະຕັອກ.", stockCostNote: "ຕົ້ນທຶນສິນຄ້າໃນສະຕັອກຈະຄົງເດີມຫຼັງຢືນຢັນຮັບເຂົ້າສະຕັອກ ສ່ວນທີ່ແກ້ໃນໜ້ານີ້ຄືອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າໃຊ້ຈ່າຍຈິງຕອນປິດບິນເທົ່ານັ້ນ", unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", itemCount: "{count} ລາຍການ", settlementInfo: "ຂໍ້ມູນປິດບິນ", settlementHint: "ແກ້ອັດຕາ, ຄ່າຂົນສົ່ງ ແລະ ຄ່າໃຊ້ຈ່າຍຈິງໄດ້ກ່ອນບັນທຶກຊຳລະເງິນ", actualRate: "ອັດຕາແລກປ່ຽນຈິງ", actualRatePlaceholder: "ເຊັ່ນ 21500", actualShipping: "ຄ່າຂົນສົ່ງຈິງ", actualOtherCost: "ຄ່າໃຊ້ຈ່າຍອື່ນຈິງ", paidAt: "ວັນທີ່ຊຳລະ", reference: "Reference / ເລກທີ່ເອກະສານ", referencePlaceholder: "ເລກທີ່ບິນ / reference", note: "ໝາຍເຫດການຊຳລະ", notePlaceholder: "ລາຍລະອຽດເພີ່ມ (ຖ້າມີ)", settlementTotal: "ຍອດລວມປິດບິນ", variance: "ສ່ວນຕ່າງ", status: "ສະຖານະ", matchesEstimate: "ຕົງຕາມປະມານ", hasVariance: "ມີສ່ວນຕ່າງ", cancel: "ຍົກເລີກ", submit: "ບັນທຶກຊຳລະເງິນ" };
+	return { title: "บันทึกชำระเงิน", description: "อัปเดต rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิล โดยไม่เปลี่ยนต้นทุนสินค้าใน stock", stockCostNote: "ต้นทุนสินค้าใน stock จะคงเดิมหลังยืนยันรับเข้าสต็อก ส่วนที่แก้ในหน้านี้คือ rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิลเท่านั้น", unspecifiedSupplier: "ไม่ระบุ supplier", itemCount: "{count} รายการ", settlementInfo: "ข้อมูลปิดบิล", settlementHint: "แก้ rate, shipping และค่าใช้จ่ายจริงได้ก่อนบันทึกชำระเงิน", actualRate: "อัตราแลกเปลี่ยนจริง", actualRatePlaceholder: "เช่น 21500", actualShipping: "ค่าขนส่งจริง", actualOtherCost: "ค่าใช้จ่ายอื่นจริง", paidAt: "วันที่ชำระ", reference: "Reference / เลขที่เอกสาร", referencePlaceholder: "เลขที่บิล / reference", note: "หมายเหตุชำระเงิน", notePlaceholder: "รายละเอียดเพิ่มเติม (ถ้ามี)", settlementTotal: "ยอดรวมปิดบิล", variance: "ส่วนต่าง", status: "สถานะ", matchesEstimate: "ตรงตามประมาณ", hasVariance: "มีส่วนต่าง", cancel: "ยกเลิก", submit: "บันทึกชำระเงิน" };
+});
+
+const poReceiveText = computed(() => {
+	if (locale.value === "en") return { title: "Receive into stock", description: "Receive everything now, or receive part of it and come back for the rest later.", chooseMethod: "Choose how to receive", chooseMethodHint: "Pick the option that matches the situation, then confirm once.", badgeNow: "Receive all", badgePartial: "Receive part", badgeLater: "Awaiting stock", nowTitle: "Receive into stock now", nowHint: "Receive everything and update stock immediately.", partialTitle: "Receive part of it", partialHint: "Receive only what arrived, then come back for the rest.", laterTitle: "Not receiving yet", laterHint: "Keep the PO and mark it as awaiting stock.", summaryNow: "Everything still outstanding is received into stock immediately.", summaryPartial: "Enter the quantity actually received for each line, and that amount goes into stock.", summaryLater: "The PO is saved as awaiting stock and can be received later from this same dialog.", poDetails: "PO details", poNumber: "PO number", unspecifiedSupplier: "Unspecified supplier", linesAndUnits: "Items / units", linesAndUnitsValue: "{items} items · {units} units", receiveLineByLine: "Receive line by line", productItems: "Product items", lineSummary: "Ordered {ordered} · Received {received} · Remaining {remaining}", receiveQty: "Quantity received", cancel: "Cancel", confirmNow: "Confirm receipt into stock", confirmPartial: "Confirm partial receipt", confirmLater: "Save as awaiting stock" };
+	if (locale.value === "lo") return { title: "ຮັບສິນຄ້າເຂົ້າສະຕັອກ", description: "ຮັບຄົບຕອນນີ້ ຫຼື ຮັບບາງສ່ວນແລ້ວກັບມາຮັບຕໍ່ພາຍຫຼັງໄດ້", chooseMethod: "ເລືອກວິທີຮັບສິນຄ້າ", chooseMethodHint: "ເລືອກແບບທີ່ຕົງກັບສະຖານະການຕອນນີ້ ແລ້ວກົດຢືນຢັນພຽງຄັ້ງດຽວ", badgeNow: "ຮັບຄົບ", badgePartial: "ຮັບບາງສ່ວນ", badgeLater: "ລໍຮັບສະຕັອກ", nowTitle: "ຮັບເຂົ້າສະຕັອກຕອນນີ້", nowHint: "ຮັບຄົບທັງໝົດ ແລະ ອັບເດດສະຕັອກທັນທີ", partialTitle: "ຮັບບາງສ່ວນ", partialHint: "ຮັບແຕ່ຈຳນວນທີ່ມາຮອດ ແລ້ວກັບມາຮັບຕໍ່ພາຍຫຼັງ", laterTitle: "ຍັງບໍ່ຮັບຕອນນີ້", laterHint: "ເກັບ PO ໄວ້ກ່ອນ ແລ້ວບັນທຶກເປັນລໍຮັບສະຕັອກ", summaryNow: "ລະບົບຈະຮັບຈຳນວນທີ່ຄ້າງທັງໝົດເຂົ້າສະຕັອກທັນທີ", summaryPartial: "ປ້ອນຈຳນວນຮັບຈິງໃນແຕ່ລະລາຍການ ແລ້ວລະບົບຈະຮັບເຂົ້າສະຕັອກຕາມຈຳນວນທີ່ໃສ່", summaryLater: "PO ຈະຖືກບັນທຶກເປັນລໍຮັບສະຕັອກ ແລະ ກັບມາຮັບພາຍຫຼັງໄດ້ຈາກໜ້ານີ້", poDetails: "ລາຍລະອຽດ PO", poNumber: "ເລກ PO", unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", linesAndUnits: "ລາຍການ / ຫົວໜ່ວຍ", linesAndUnitsValue: "{items} ລາຍການ · {units} ຫົວໜ່ວຍ", receiveLineByLine: "ຮັບເຂົ້າສະຕັອກເທື່ອລະລາຍການ", productItems: "ລາຍການສິນຄ້າ", lineSummary: "ສັ່ງ {ordered} · ຮັບແລ້ວ {received} · ເຫຼືອ {remaining}", receiveQty: "ຮັບຈຳນວນ", cancel: "ຍົກເລີກ", confirmNow: "ຢືນຢັນຮັບເຂົ້າສະຕັອກ", confirmPartial: "ຢືນຢັນຮັບບາງສ່ວນ", confirmLater: "ບັນທຶກເປັນລໍຮັບສະຕັອກ" };
+	return { title: "รับสินค้าเข้าสต็อก", description: "รับครบตอนนี้หรือรับบางส่วนแล้วกลับมารับต่อภายหลังได้", chooseMethod: "เลือกวิธีรับสินค้า", chooseMethodHint: "เลือกแบบที่ตรงกับสถานการณ์ตอนนี้ แล้วค่อยกดยืนยันเพียงครั้งเดียว", badgeNow: "รับครบ", badgePartial: "รับบางส่วน", badgeLater: "รอรับสต็อก", nowTitle: "รับเข้าสต็อกตอนนี้", nowHint: "รับครบทั้งหมดและอัปเดต stock ทันที", partialTitle: "รับบางส่วน", partialHint: "รับแค่จำนวนที่มาถึง แล้วกลับมารับต่อภายหลัง", laterTitle: "ยังไม่รับตอนนี้", laterHint: "เก็บ PO ไว้ก่อน แล้วบันทึกเป็นรอรับสต็อก", summaryNow: "ระบบจะรับจำนวนที่ค้างทั้งหมดเข้าสต็อกทันที", summaryPartial: "กรอกจำนวนรับจริงในแต่ละรายการ แล้วระบบจะรับเข้า stock ตามจำนวนที่ใส่", summaryLater: "PO จะถูกบันทึกเป็นรอรับสต็อก และกลับมารับภายหลังได้จาก modal เดิม", poDetails: "รายละเอียด PO", poNumber: "เลข PO", unspecifiedSupplier: "ไม่ระบุ supplier", linesAndUnits: "รายการ / หน่วย", linesAndUnitsValue: "{items} รายการ · {units} หน่วย", receiveLineByLine: "รับเข้าสต็อกทีละรายการ", productItems: "รายการสินค้า", lineSummary: "สั่ง {ordered} · รับแล้ว {received} · เหลือ {remaining}", receiveQty: "รับจำนวน", cancel: "ยกเลิก", confirmNow: "ยืนยันรับเข้าสต็อก", confirmPartial: "ยืนยันรับบางส่วน", confirmLater: "บันทึกเป็นรอรับสต็อก" };
 });
 
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -253,7 +268,7 @@ function clearOrderFilters() {
 const showReceiveLaterOption = computed(() => selectedOrderDetail.value?.order.status !== "arrived");
 const paymentSettledBase = computed(() => {
 	if (!selectedOrderDetail.value) return 0;
-	const exchangeRate = Number(paymentForm.exchangeRate || 1) || 1;
+	const exchangeRate = paymentExchangeRateLocked.value ? 1 : (parseMoneyInputValue(paymentForm.exchangeRate) || 1);
 	const shippingOriginal = parseMoneyInputValue(paymentForm.shippingCost) ?? 0;
 	const otherOriginal = parseMoneyInputValue(paymentForm.otherCost) ?? 0;
 	const itemsBase = selectedOrderDetail.value.items.reduce((sum, item) => sum + (Number(item.qty_ordered || 0) * Number(item.unit_cost_base || 0)), 0);
@@ -278,6 +293,61 @@ const storeCurrency = computed(() => (
 	stores.value.find((store) => store.id === effectiveStoreId.value)?.currency?.trim()?.toUpperCase()
 	|| "LAK"
 ));
+// Buying in the store's own currency means there is nothing to convert, and
+// every line cost is multiplied by this rate, so anything other than 1 would
+// silently inflate the whole purchase order.
+const exchangeRateLocked = computed(() => (
+	String(createForm.purchaseCurrency || "").trim().toUpperCase() === storeCurrency.value
+));
+// Settlement reads the currency off the order being closed, not the create form.
+const paymentExchangeRateLocked = computed(() => (
+	String(selectedOrderDetail.value?.order.purchase_currency || "").trim().toUpperCase() === storeCurrency.value
+));
+
+// Mirrors the server's total_estimated_base formula (PurchaseOrderInterface
+// findById) so the live preview and the saved order can never disagree:
+// SUM(qty * unit_cost) + shipping + other, converted at the same rate.
+const createTotals = computed(() => {
+	const exchangeRate = exchangeRateLocked.value ? 1 : (parseMoneyInputValue(createForm.exchangeRate) || 1);
+
+	let itemsOriginal = 0;
+	let qtyTotal = 0;
+	let pricedLines = 0;
+
+	for (const line of createForm.items) {
+		const lineTotal = getLineOriginalTotal(line);
+		if (lineTotal === null) continue;
+		itemsOriginal += lineTotal;
+		qtyTotal += getLineQtyValue(line);
+		pricedLines += 1;
+	}
+
+	const shippingOriginal = parseMoneyInputValue(createForm.shippingCost) ?? 0;
+	const otherOriginal = parseMoneyInputValue(createForm.otherCost) ?? 0;
+	const extraOriginal = shippingOriginal + otherOriginal;
+	const totalOriginal = itemsOriginal + extraOriginal;
+
+	return {
+		// Showing 0 before anything is priced reads like the goods are free.
+		ready: pricedLines > 0,
+		pricedLines,
+		qtyTotal,
+		exchangeRate,
+		shippingOriginal,
+		otherOriginal,
+		hasExtra: extraOriginal > 0,
+		itemsOriginal,
+		extraOriginal,
+		totalOriginal,
+		itemsBase: itemsOriginal * exchangeRate,
+		extraBase: extraOriginal * exchangeRate,
+		totalBase: totalOriginal * exchangeRate,
+		// Receiving spreads freight evenly over every base unit on the PO
+		// (PurchaseOrderInterface.receive), so this is the amount that will be
+		// added to each unit's cost, not a display-only average.
+		extraPerUnitBase: qtyTotal > 0 ? (extraOriginal * exchangeRate) / qtyTotal : 0,
+	};
+});
 const pageLabel = computed(() => t("purchaseOrdersPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	orders.value.length === 0
@@ -308,8 +378,67 @@ const selectedOrderPaymentSummary = computed(() => {
 	};
 });
 
+// Splits the stored total back into its parts for the detail modal. The order
+// only persists the combined total_estimated_base, so the goods subtotal is
+// re-derived from the item rows the same way the server summed it.
+//
+// Freight is deliberately NOT read from purchase_order_items.landed_cost_per_unit:
+// despite the name that column is only ever written as unit_cost_purchase *
+// exchange_rate and never picks up shipping, so it equals unit_cost_base. The
+// per-unit allocation below repeats what receive() actually does when it writes
+// products.cost_base.
+const selectedOrderCosts = computed(() => {
+	const detail = selectedOrderDetail.value;
+	if (!detail) return null;
+
+	const shippingBase = Number(detail.order.shipping_cost || 0);
+	const otherBase = Number(detail.order.other_cost || 0);
+	const goodsBase = detail.items.reduce((sum, item) => sum + (Number(item.qty_ordered || 0) * Number(item.unit_cost_base || 0)), 0);
+	const qtyBaseOrdered = detail.items.reduce((sum, item) => sum + (Number(item.qty_ordered || 0) * Number(item.multiplier_to_base || 1)), 0);
+	const extraBase = shippingBase + otherBase;
+	const exchangeRate = Number(detail.order.exchange_rate) > 0 ? Number(detail.order.exchange_rate) : 1;
+
+	return {
+		goodsBase,
+		shippingBase,
+		otherBase,
+		extraBase,
+		hasExtra: extraBase > 0,
+		totalBase: goodsBase + extraBase,
+		itemCount: detail.items.length,
+		exchangeRate,
+		isForeign: String(detail.order.purchase_currency || "").trim().toUpperCase() !== storeCurrency.value,
+		purchaseCurrency: detail.order.purchase_currency || storeCurrency.value,
+		otherCostNote: detail.order.other_cost_note || "",
+		extraPerUnitBase: qtyBaseOrdered > 0 ? extraBase / qtyBaseOrdered : 0,
+	};
+});
+
+// The unit cost this line actually contributes to products.cost_base once
+// freight has been spread across the order.
+function detailLandedUnitBase(item: ApiPurchaseOrderDetailItem) {
+	return Number(item.unit_cost_base || 0) + (selectedOrderCosts.value?.extraPerUnitBase ?? 0);
+}
+
 const validStoreIdSet = computed(() => new Set(stores.value.map((store) => store.id)));
 const isHistoryRoute = computed(() => route.path.startsWith("/purchase-orders/history"));
+
+// "No expected date" is the default; the picker only appears once the user asks
+// for it, so an empty datetime-local never sits there looking half-filled.
+const expectedAtEnabled = ref(false);
+watch(expectedAtEnabled, (enabled) => {
+	if (!enabled) createForm.expectedAt = "";
+});
+
+// Keeps the stored rate honest whenever the currency selection changes, so a
+// rate typed while the currencies differed cannot survive switching back.
+watch(exchangeRateLocked, (locked) => {
+	if (locked) createForm.exchangeRate = "1";
+}, { immediate: true });
+
+watch(paymentExchangeRateLocked, (locked) => {
+	if (locked) paymentForm.exchangeRate = "1";
+}, { immediate: true });
 
 watch([searchQuery, activeStatus, activePaymentStatus], () => {
 	currentPage.value = 1;
@@ -452,11 +581,6 @@ function productLabel(productId: string) {
 	return product ? `${product.name} · ${product.sku}` : "เลือกสินค้า";
 }
 
-function unitCostPlaceholder(productId: string) {
-	void productId;
-	return "กรอกราคาจริงจาก supplier";
-}
-
 function parseMoneyInputValue(value: string | number | null | undefined) {
 	const rawValue = String(value ?? "").trim().replace(/,/g, "");
 	if (!rawValue) return null;
@@ -464,10 +588,18 @@ function parseMoneyInputValue(value: string | number | null | undefined) {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Blank for zero so the field shows its "0" placeholder instead of a literal
+// zero the user has to delete before typing.
+function formatOptionalMoneyInputValue(value: number) {
+	return Number.isFinite(value) && value !== 0 ? formatMoneyInputValue(value) : "";
+}
+
 function formatMoneyInputValue(value: number) {
 	if (!Number.isFinite(value)) return "";
+	// Grouped so the derived side of the unit/total pair reads the same as the
+	// side being typed; parseMoneyInputValue strips the separators again.
 	return new Intl.NumberFormat("en-US", {
-		useGrouping: false,
+		useGrouping: true,
 		maximumFractionDigits: 2,
 	}).format(value);
 }
@@ -513,13 +645,13 @@ function handleLineQtyInput(line: CreateLine, value: string | number) {
 }
 
 function handleLineUnitCostInput(line: CreateLine, value: string | number) {
-	line.unitCost = String(value ?? "");
+	line.unitCost = normalizeMoneyTyping(String(value ?? ""), { maxDecimals: 2 });
 	line.costMode = "unit";
 	syncLineCostFields(line);
 }
 
 function handleLineTotalCostInput(line: CreateLine, value: string | number) {
-	line.lineTotalCost = String(value ?? "");
+	line.lineTotalCost = normalizeMoneyTyping(String(value ?? ""), { maxDecimals: 2 });
 	line.costMode = "total";
 	syncLineCostFields(line);
 }
@@ -530,20 +662,43 @@ function setLineCostMode(line: CreateLine, mode: "unit" | "total") {
 	syncLineCostFields(line);
 }
 
-function lineCostDisplayValue(line: CreateLine) {
+// The purchase-currency total for one line, computed the same way submitCreate
+// builds unit_cost_purchase so the preview matches what gets posted. In "total"
+// mode the typed total is authoritative; line.unitCost is a rounded echo of it.
+function getLineOriginalTotal(line: CreateLine) {
 	const qty = getLineQtyValue(line);
-	if (!qty) return "-";
-
-	const unitCost = parseMoneyInputValue(line.unitCost);
-	const totalCost = parseMoneyInputValue(line.lineTotalCost);
+	if (!qty) return null;
 
 	if (line.costMode === "total") {
-		if (totalCost === null) return "-";
-		return formatMoneyInputValue(totalCost / qty);
+		return parseMoneyInputValue(line.lineTotalCost);
 	}
 
-	if (unitCost === null) return "-";
-	return formatMoneyInputValue(unitCost * qty);
+	const unitCost = parseMoneyInputValue(line.unitCost);
+	return unitCost === null ? null : unitCost * qty;
+}
+
+function lineUnitCostOriginal(line: CreateLine) {
+	const qty = getLineQtyValue(line);
+	const lineTotal = getLineOriginalTotal(line);
+	if (!qty || lineTotal === null) return null;
+	return lineTotal / qty;
+}
+
+// "100 x 11,000 = 1,100,000" under the input, so a mistyped extra digit is
+// obvious before the PO is saved.
+function lineBreakdownText(line: CreateLine) {
+	const qty = getLineQtyValue(line);
+	const unitCost = lineUnitCostOriginal(line);
+	const lineTotal = getLineOriginalTotal(line);
+	if (!qty || unitCost === null || lineTotal === null) return "";
+	return `${receiveQtyFormatter.value.format(qty)} x ${formatMoneyInputValue(unitCost)} = ${formatMoneyInputValue(lineTotal)}`;
+}
+
+// What this product's cost_base actually becomes once freight is allocated.
+function lineLandedUnitBase(line: CreateLine) {
+	const unitCost = lineUnitCostOriginal(line);
+	if (unitCost === null) return null;
+	return (unitCost * createTotals.value.exchangeRate) + createTotals.value.extraPerUnitBase;
 }
 
 function addLine() {
@@ -567,10 +722,11 @@ function resetPurchaseOrderForm() {
 	createForm.supplierContact = "";
 	createForm.purchaseCurrency = "LAK";
 	createForm.exchangeRate = "1";
-	createForm.shippingCost = "0";
-	createForm.otherCost = "0";
+	createForm.shippingCost = "";
+	createForm.otherCost = "";
 	createForm.otherCostNote = "";
 	createForm.expectedAt = "";
+	expectedAtEnabled.value = false;
 	createForm.note = "";
 	createForm.createdBy = currentUser.value?.id || "";
 	createForm.items = [];
@@ -605,10 +761,11 @@ function hydratePurchaseOrderForm(detail: ApiPurchaseOrderDetail) {
 	createForm.supplierContact = detail.order.supplier_contact || "";
 	createForm.purchaseCurrency = detail.order.purchase_currency || "LAK";
 	createForm.exchangeRate = String(detail.order.exchange_rate_initial || exchangeRate || 1);
-	createForm.shippingCost = String(detail.order.shipping_cost_original ?? (detail.order.shipping_cost / exchangeRate) ?? 0);
-	createForm.otherCost = String(detail.order.other_cost_original ?? (detail.order.other_cost / exchangeRate) ?? 0);
+	createForm.shippingCost = formatOptionalMoneyInputValue(Number(detail.order.shipping_cost_original ?? (detail.order.shipping_cost / exchangeRate) ?? 0));
+	createForm.otherCost = formatOptionalMoneyInputValue(Number(detail.order.other_cost_original ?? (detail.order.other_cost / exchangeRate) ?? 0));
 	createForm.otherCostNote = detail.order.other_cost_note || "";
 	createForm.expectedAt = toDatetimeLocalInput(detail.order.expected_at);
+	expectedAtEnabled.value = Boolean(createForm.expectedAt);
 	createForm.note = detail.order.note || "";
 	createForm.createdBy = detail.order.created_by || currentUser.value?.id || "";
 	createForm.items = detail.items.map((item) => ({
@@ -616,7 +773,7 @@ function hydratePurchaseOrderForm(detail: ApiPurchaseOrderDetail) {
 		productId: item.product_id,
 		qtyOrdered: String(item.qty_ordered),
 		costMode: "unit",
-		unitCost: String(item.unit_cost_purchase),
+		unitCost: formatMoneyInputValue(Number(item.unit_cost_purchase || 0)),
 		lineTotalCost: formatMoneyInputValue(Number(item.unit_cost_purchase || 0) * Number(item.qty_ordered || 0)),
 	}));
 	if (!createForm.items.length) {
@@ -860,7 +1017,7 @@ function closePaymentFlow() {
 async function submitPaymentSettlement() {
 	if (!selectedOrderDetail.value) return;
 	const payload = {
-		exchange_rate: Number(paymentForm.exchangeRate || 1),
+		exchange_rate: paymentExchangeRateLocked.value ? 1 : (parseMoneyInputValue(paymentForm.exchangeRate) ?? 1),
 		shipping_cost: parseMoneyInputValue(paymentForm.shippingCost) ?? 0,
 		other_cost: parseMoneyInputValue(paymentForm.otherCost) ?? 0,
 		payment_reference: paymentForm.paymentReference || null,
@@ -956,41 +1113,44 @@ async function syncActiveStoreSelection(storeRecords: StoreRecord[]) {
 	createForm.storeId = availableStoreId;
 }
 
+function fetchOrderDetail(id: string) {
+	const inFlight = purchaseOrderDetailRequests.get(id);
+	if (inFlight) return inFlight;
+
+	const request = apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${id}`)
+		.then((response) => {
+			purchaseOrderDetailCache.value[id] = response.data;
+			return response.data;
+		})
+		.finally(() => {
+			purchaseOrderDetailRequests.delete(id);
+		});
+
+	purchaseOrderDetailRequests.set(id, request);
+	return request;
+}
+
 async function loadOrderDetail(id: string) {
-	if (purchaseOrderDetailRequests.has(id)) return;
-	purchaseOrderDetailRequests.add(id);
 	detailPending.value = true;
 	detailError.value = null;
 
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${id}`);
-		selectedOrderDetail.value = response.data;
-		purchaseOrderDetailCache.value[id] = response.data;
+		const detail = await fetchOrderDetail(id);
+		// The user may have moved on to another order while this was in flight.
+		if (detail && selectedOrderId.value === id) selectedOrderDetail.value = detail;
 	} catch (err) {
 		detailError.value = err instanceof Error ? err.message : "โหลดรายละเอียด PO ไม่สำเร็จ";
 	} finally {
 		detailPending.value = false;
-		purchaseOrderDetailRequests.delete(id);
 	}
 }
 
 async function prefetchOrderDetails(orderIds: string[]) {
-	const uniqueOrderIds = Array.from(new Set(orderIds)).filter((id) => !!id && !purchaseOrderDetailCache.value[id] && !purchaseOrderDetailRequests.has(id));
+	const uniqueOrderIds = Array.from(new Set(orderIds)).filter((id) => !!id && !purchaseOrderDetailCache.value[id]);
 	if (!uniqueOrderIds.length) return;
 
-	const tasks = uniqueOrderIds.map(async (id) => {
-		purchaseOrderDetailRequests.add(id);
-		try {
-			const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${id}`);
-			purchaseOrderDetailCache.value[id] = response.data;
-		} catch {
-			// Ignore prefetch errors; the user can still open and retry normally.
-		} finally {
-			purchaseOrderDetailRequests.delete(id);
-		}
-	});
-
-	await Promise.allSettled(tasks);
+	// Ignore prefetch failures; opening the order will surface the error properly.
+	await Promise.allSettled(uniqueOrderIds.map((id) => fetchOrderDetail(id)));
 }
 
 function buildPurchaseOrderPayload(status: "draft" | "ordered", includeCreator = true) {
@@ -999,13 +1159,15 @@ function buildPurchaseOrderPayload(status: "draft" | "ordered", includeCreator =
 		supplier_name: createForm.supplierName || null,
 		supplier_contact: createForm.supplierContact || null,
 		purchase_currency: createForm.purchaseCurrency,
-		exchange_rate: Number(createForm.exchangeRate || 1),
-		exchange_rate_initial: Number(createForm.exchangeRate || 1),
-		shipping_cost: Number(createForm.shippingCost || 0),
-		shipping_cost_original: Number(createForm.shippingCost || 0),
+		// These read from grouped inputs ("1,000"), which Number() turns into
+		// NaN, so they go through the comma-stripping parser instead.
+		exchange_rate: parseMoneyInputValue(createForm.exchangeRate) ?? 1,
+		exchange_rate_initial: parseMoneyInputValue(createForm.exchangeRate) ?? 1,
+		shipping_cost: parseMoneyInputValue(createForm.shippingCost) ?? 0,
+		shipping_cost_original: parseMoneyInputValue(createForm.shippingCost) ?? 0,
 		shipping_cost_currency: createForm.purchaseCurrency,
-		other_cost: Number(createForm.otherCost || 0),
-		other_cost_original: Number(createForm.otherCost || 0),
+		other_cost: parseMoneyInputValue(createForm.otherCost) ?? 0,
+		other_cost_original: parseMoneyInputValue(createForm.otherCost) ?? 0,
 		other_cost_currency: createForm.purchaseCurrency,
 		other_cost_note: createForm.otherCostNote || null,
 		expected_at: createForm.expectedAt ? new Date(createForm.expectedAt).toISOString() : null,
@@ -1192,7 +1354,7 @@ async function submitEditPurchaseOrder() {
 
 									<AppButton
 										color="primary"
-										variant="soft"
+										variant="solid"
 										size="md"
 										icon="i-heroicons-plus-20-solid"
 										class="justify-center rounded-md"
@@ -1535,10 +1697,6 @@ async function submitEditPurchaseOrder() {
 											<dt class="text-stone-500">{{ poDetailText.expected }}</dt>
 											<dd class="text-right font-medium text-stone-900">-</dd>
 										</div>
-										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">{{ poDetailText.totalCost }}</dt>
-											<dd class="text-right font-medium text-stone-900">-</dd>
-										</div>
 										<div class="flex items-start justify-between gap-4">
 											<dt class="text-stone-500">{{ poDetailText.note }}</dt>
 											<dd class="max-w-[220px] text-right font-medium text-stone-900">-</dd>
@@ -1614,13 +1772,47 @@ async function submitEditPurchaseOrder() {
 											<dt class="text-stone-500">{{ poDetailText.expected }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrderDetail.order.expected_at) }}</dd>
 										</div>
-										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">{{ poDetailText.totalCost }}</dt>
-											<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrderDetail.order.total_estimated_base, storeCurrency) }}</dd>
-										</div>
 										<div class="flex items-start justify-between gap-4">
 											<dt class="text-stone-500">{{ poDetailText.note }}</dt>
 											<dd class="max-w-[220px] text-right font-medium text-stone-900">{{ selectedOrderDetail.order.note || "-" }}</dd>
+										</div>
+									</dl>
+								</div>
+
+								<div v-if="selectedOrderCosts" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<h3 class="text-sm font-semibold text-stone-950">{{ poDetailText.costTitle }}</h3>
+									<dl class="mt-4 space-y-2.5 text-sm tabular-nums">
+										<div class="flex items-start justify-between gap-4">
+											<dt class="text-stone-500">
+												{{ poDetailText.costGoods }}
+												<span class="text-stone-400">{{ poDetailText.items.replace('{count}', String(selectedOrderCosts.itemCount)) }}</span>
+											</dt>
+											<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrderCosts.goodsBase, storeCurrency) }}</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4">
+											<dt :class="selectedOrderCosts.shippingBase > 0 ? 'text-stone-500' : 'text-stone-400'">{{ poDetailText.costShipping }}</dt>
+											<dd :class="selectedOrderCosts.shippingBase > 0 ? 'text-right font-medium text-stone-900' : 'text-right font-medium text-stone-400'">{{ formatMoney(selectedOrderCosts.shippingBase, storeCurrency) }}</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4">
+											<dt :class="selectedOrderCosts.otherBase > 0 ? 'text-stone-500' : 'text-stone-400'">
+												{{ poDetailText.costOther }}
+												<span v-if="selectedOrderCosts.otherCostNote" class="block max-w-[220px] text-xs leading-4 text-stone-400">{{ selectedOrderCosts.otherCostNote }}</span>
+											</dt>
+											<dd :class="selectedOrderCosts.otherBase > 0 ? 'text-right font-medium text-stone-900' : 'text-right font-medium text-stone-400'">{{ formatMoney(selectedOrderCosts.otherBase, storeCurrency) }}</dd>
+										</div>
+										<div class="flex items-baseline justify-between gap-4 border-t border-[#ece6dc] pt-2.5">
+											<dt class="text-sm font-semibold text-stone-950">{{ poDetailText.costTotal }}</dt>
+											<dd class="text-right">
+												<span class="text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderCosts.totalBase, storeCurrency) }}</span>
+												<span v-if="selectedOrderCosts.isForeign" class="mt-0.5 block text-xs font-normal text-stone-500">
+													{{ formatPurchaseAmount(selectedOrderCosts.totalBase, selectedOrderCosts.exchangeRate, selectedOrderCosts.purchaseCurrency) }}
+													· {{ poDetailText.costRate.replace('{rate}', numberFormatter.format(selectedOrderCosts.exchangeRate)) }}
+												</span>
+											</dd>
+										</div>
+										<div v-if="selectedOrderCosts.extraPerUnitBase > 0" class="flex items-start justify-between gap-4 text-xs">
+											<dt class="text-stone-500" :title="poDetailText.costPerUnitHint">{{ poDetailText.costPerUnit }}</dt>
+											<dd class="text-right font-medium text-primary-700">+{{ formatMoney(selectedOrderCosts.extraPerUnitBase, storeCurrency) }}</dd>
 										</div>
 									</dl>
 								</div>
@@ -1637,7 +1829,12 @@ async function submitEditPurchaseOrder() {
 													<p class="truncate text-sm font-semibold text-stone-900">{{ item.product_name || item.product_id }}</p>
 														<p class="mt-1 text-xs text-stone-500">{{ item.product_sku || "-" }} · {{ item.unit_name || poDetailText.baseUnit }}</p>
 												</div>
-												<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base, storeCurrency) }}</p>
+												<div class="shrink-0 text-right">
+													<p class="text-sm font-semibold text-stone-900">{{ formatMoney(item.unit_cost_base, storeCurrency) }}</p>
+													<p v-if="(selectedOrderCosts?.extraPerUnitBase ?? 0) > 0" class="mt-0.5 text-xs text-primary-700">
+														{{ poDetailText.costLanded }} {{ formatMoney(detailLandedUnitBase(item), storeCurrency) }}
+													</p>
+												</div>
 											</div>
 											<div class="mt-3 flex flex-wrap gap-2">
 												<UBadge color="neutral" variant="soft" :label="poDetailText.ordered.replace('{count}', numberFormatter.format(item.qty_ordered))" />
@@ -1782,8 +1979,8 @@ async function submitEditPurchaseOrder() {
 
 					<AppResponsivePanel
 						v-model="paymentOpen"
-						title="บันทึกชำระเงิน"
-						description="อัปเดต rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิล โดยไม่เปลี่ยนต้นทุนสินค้าใน stock"
+						:title="poPaymentText.title"
+						:description="poPaymentText.description"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -1795,20 +1992,20 @@ async function submitEditPurchaseOrder() {
 							<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 								<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 									<div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-										ต้นทุนสินค้าใน stock จะคงเดิมหลังยืนยันรับเข้าสต็อก ส่วนที่แก้ในหน้านี้คือ rate / shipping / ค่าใช้จ่ายจริงตอนปิดบิลเท่านั้น
+										{{ poPaymentText.stockCostNote }}
 									</div>
 
 									<div v-if="selectedOrderDetail" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
 												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrderDetail.order.po_number }}</h3>
-												<p class="mt-1 text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</p>
+												<p class="mt-1 text-sm text-stone-500">{{ selectedOrderDetail.order.supplier_name || poPaymentText.unspecifiedSupplier }}</p>
 											</div>
 											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrderDetail.order.payment_status)" />
 										</div>
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
-											<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} รายการ`" />
+											<UBadge color="neutral" variant="soft" :label="poPaymentText.itemCount.replace('{count}', String(selectedOrderDetail.items.length))" />
 											<UBadge color="neutral" variant="soft" :label="formatMoney(paymentSettledBase, storeCurrency)" />
 										</div>
 									</div>
@@ -1817,28 +2014,35 @@ async function submitEditPurchaseOrder() {
 										<div class="space-y-4">
 											<div class="flex items-start justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">ข้อมูลปิดบิล</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">แก้ rate, shipping และค่าใช้จ่ายจริงได้ก่อนบันทึกชำระเงิน</p>
+													<p class="text-sm font-semibold text-stone-950">{{ poPaymentText.settlementInfo }}</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ poPaymentText.settlementHint }}</p>
 												</div>
 											</div>
 
 											<div class="grid gap-4 md:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">อัตราแลกเปลี่ยนจริง</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.actualRate }}</label>
+													<div v-if="paymentExchangeRateLocked" class="flex min-h-[46px] items-center rounded-md border border-neutral-200 bg-neutral-100 px-4 py-2.5 text-sm font-medium tabular-nums text-stone-600">
+														1
+													</div>
 													<UInput
+														v-else
 														v-model="paymentForm.exchangeRate"
 														type="text"
 														inputmode="decimal"
 														pattern="[0-9.,-]*"
 														size="lg"
 														color="neutral"
-														placeholder="เช่น 21500"
+														:placeholder="poPaymentText.actualRatePlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
+													<p v-if="paymentExchangeRateLocked" class="mt-1 text-xs leading-5 text-stone-500">
+														{{ poFormText.rateLockedHint.replace('{currency}', storeCurrency) }}
+													</p>
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าขนส่งจริง</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.actualShipping }}</label>
 													<UInput
 														v-model="paymentForm.shippingCost"
 														type="text"
@@ -1852,7 +2056,7 @@ async function submitEditPurchaseOrder() {
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ค่าใช้จ่ายอื่นจริง</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.actualOtherCost }}</label>
 													<UInput
 														v-model="paymentForm.otherCost"
 														type="text"
@@ -1866,7 +2070,7 @@ async function submitEditPurchaseOrder() {
 												</div>
 
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">วันที่ชำระ</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.paidAt }}</label>
 													<UInput
 														v-model="paymentForm.paidAt"
 														type="datetime-local"
@@ -1877,23 +2081,23 @@ async function submitEditPurchaseOrder() {
 												</div>
 
 												<div class="md:col-span-2">
-													<label class="mb-2 block text-xs font-medium text-stone-500">Reference / เลขที่เอกสาร</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.reference }}</label>
 													<UInput
 														v-model="paymentForm.paymentReference"
 														type="text"
 														size="lg"
 														color="neutral"
-														placeholder="เลขที่บิล / reference"
+														:placeholder="poPaymentText.referencePlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
 												</div>
 
 												<div class="md:col-span-2">
-													<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุชำระเงิน</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poPaymentText.note }}</label>
 													<textarea
 														v-model="paymentForm.paymentNote"
 														rows="3"
-														placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+														:placeholder="poPaymentText.notePlaceholder"
 														class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 													/>
 												</div>
@@ -1904,19 +2108,19 @@ async function submitEditPurchaseOrder() {
 									<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 										<div class="grid gap-3 sm:grid-cols-3">
 											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ยอดรวมปิดบิล</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poPaymentText.settlementTotal }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(paymentSettledBase, storeCurrency) }}</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poPaymentText.variance }}</p>
 												<p class="mt-2 text-base font-semibold" :class="paymentVarianceBase >= 0 ? 'text-amber-600' : 'text-emerald-600'">
 													{{ formatMoney(Math.abs(paymentVarianceBase), storeCurrency) }}
 												</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">สถานะ</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ poPaymentText.status }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">
-													{{ paymentVarianceBase === 0 ? 'ตรงตามประมาณ' : 'มีส่วนต่าง' }}
+													{{ paymentVarianceBase === 0 ? poPaymentText.matchesEstimate : poPaymentText.hasVariance }}
 												</p>
 											</div>
 										</div>
@@ -1928,7 +2132,7 @@ async function submitEditPurchaseOrder() {
 									:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 								>
 									<div class="grid w-full grid-cols-2 gap-2">
-										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closePaymentFlow">ยกเลิก</AppButton>
+										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closePaymentFlow">{{ poPaymentText.cancel }}</AppButton>
 										<AppButton
 											color="primary"
 											variant="solid"
@@ -1941,7 +2145,7 @@ async function submitEditPurchaseOrder() {
 											:block="true"
 											@click="submitPaymentSettlement"
 										>
-											บันทึกชำระเงิน
+											{{ poPaymentText.submit }}
 										</AppButton>
 									</div>
 								</div>
@@ -1951,8 +2155,8 @@ async function submitEditPurchaseOrder() {
 
 					<AppResponsivePanel
 						v-model="receiveOpen"
-						title="รับสินค้าเข้าสต็อก"
-						description="รับครบตอนนี้หรือรับบางส่วนแล้วกลับมารับต่อภายหลังได้"
+						:title="poReceiveText.title"
+						:description="poReceiveText.description"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -1968,16 +2172,16 @@ async function submitEditPurchaseOrder() {
 											<div class="min-w-0">
 												<div class="flex items-center gap-2">
 													<UIcon name="i-heroicons-clipboard-document-check-20-solid" class="h-4 w-4 text-primary-600" />
-													<h3 class="text-sm font-semibold text-stone-950">เลือกวิธีรับสินค้า</h3>
+													<h3 class="text-sm font-semibold text-stone-950">{{ poReceiveText.chooseMethod }}</h3>
 												</div>
 												<p class="mt-1 text-xs leading-5 text-stone-600">
-													เลือกแบบที่ตรงกับสถานการณ์ตอนนี้ แล้วค่อยกดยืนยันเพียงครั้งเดียว
+													{{ poReceiveText.chooseMethodHint }}
 												</p>
 											</div>
 											<UBadge
 												color="neutral"
 												variant="soft"
-												:label="receiveMode === 'now' ? 'รับครบ' : receiveMode === 'partial' ? 'รับบางส่วน' : 'รอรับสต็อก'"
+												:label="receiveMode === 'now' ? poReceiveText.badgeNow : receiveMode === 'partial' ? poReceiveText.badgePartial : poReceiveText.badgeLater"
 											/>
 										</div>
 										<div class="mt-4 grid gap-2" :class="showReceiveLaterOption ? 'md:grid-cols-3' : 'md:grid-cols-2'">
@@ -1991,8 +2195,8 @@ async function submitEditPurchaseOrder() {
 											>
 												<div class="flex items-start justify-between gap-3">
 													<div class="min-w-0">
-														<p class="text-sm font-semibold text-stone-950">รับเข้าสต็อกตอนนี้</p>
-														<p class="mt-1 text-xs leading-5 text-stone-600">รับครบทั้งหมดและอัปเดต stock ทันที</p>
+														<p class="text-sm font-semibold text-stone-950">{{ poReceiveText.nowTitle }}</p>
+														<p class="mt-1 text-xs leading-5 text-stone-600">{{ poReceiveText.nowHint }}</p>
 													</div>
 													<div
 														class="mt-0.5 h-4 w-4 shrink-0 rounded-full border"
@@ -2010,8 +2214,8 @@ async function submitEditPurchaseOrder() {
 											>
 												<div class="flex items-start justify-between gap-3">
 													<div class="min-w-0">
-														<p class="text-sm font-semibold text-stone-950">รับบางส่วน</p>
-														<p class="mt-1 text-xs leading-5 text-stone-600">รับแค่จำนวนที่มาถึง แล้วกลับมารับต่อภายหลัง</p>
+														<p class="text-sm font-semibold text-stone-950">{{ poReceiveText.partialTitle }}</p>
+														<p class="mt-1 text-xs leading-5 text-stone-600">{{ poReceiveText.partialHint }}</p>
 													</div>
 													<div
 														class="mt-0.5 h-4 w-4 shrink-0 rounded-full border"
@@ -2030,8 +2234,8 @@ async function submitEditPurchaseOrder() {
 											>
 												<div class="flex items-start justify-between gap-3">
 													<div class="min-w-0">
-														<p class="text-sm font-semibold text-stone-950">ยังไม่รับตอนนี้</p>
-														<p class="mt-1 text-xs leading-5 text-stone-600">เก็บ PO ไว้ก่อน แล้วบันทึกเป็นรอรับสต็อก</p>
+														<p class="text-sm font-semibold text-stone-950">{{ poReceiveText.laterTitle }}</p>
+														<p class="mt-1 text-xs leading-5 text-stone-600">{{ poReceiveText.laterHint }}</p>
 													</div>
 													<div
 														class="mt-0.5 h-4 w-4 shrink-0 rounded-full border"
@@ -2041,27 +2245,27 @@ async function submitEditPurchaseOrder() {
 											</button>
 										</div>
 										<div class="mt-3 rounded-md border border-dashed border-neutral-200 bg-white px-4 py-3 text-xs leading-5 text-stone-600">
-											<span v-if="receiveMode === 'now'">ระบบจะรับจำนวนที่ค้างทั้งหมดเข้าสต็อกทันที</span>
-											<span v-else-if="receiveMode === 'partial'">กรอกจำนวนรับจริงในแต่ละรายการ แล้วระบบจะรับเข้า stock ตามจำนวนที่ใส่</span>
-											<span v-else>PO จะถูกบันทึกเป็นรอรับสต็อก และกลับมารับภายหลังได้จาก modal เดิม</span>
+											<span v-if="receiveMode === 'now'">{{ poReceiveText.summaryNow }}</span>
+											<span v-else-if="receiveMode === 'partial'">{{ poReceiveText.summaryPartial }}</span>
+											<span v-else>{{ poReceiveText.summaryLater }}</span>
 										</div>
 									</div>
 
 									<div v-if="selectedOrderDetail" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<h3 class="text-sm font-semibold text-stone-950">รายละเอียด PO</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ poReceiveText.poDetails }}</h3>
 										<dl class="mt-4 space-y-3 text-sm">
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">เลข PO</dt>
+												<dt class="text-stone-500">{{ poReceiveText.poNumber }}</dt>
 												<dd class="text-right font-medium text-stone-900">{{ selectedOrderDetail.order.po_number }}</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 												<dt class="text-stone-500">Supplier</dt>
-												<dd class="text-right font-medium text-stone-900">{{ selectedOrderDetail.order.supplier_name || "ไม่ระบุ supplier" }}</dd>
+												<dd class="text-right font-medium text-stone-900">{{ selectedOrderDetail.order.supplier_name || poReceiveText.unspecifiedSupplier }}</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4">
-												<dt class="text-stone-500">รายการ / หน่วย</dt>
+												<dt class="text-stone-500">{{ poReceiveText.linesAndUnits }}</dt>
 												<dd class="text-right font-medium text-stone-900">
-													{{ numberFormatter.format(selectedOrderDetail.items.length) }} รายการ · {{ numberFormatter.format(selectedOrderDetail.order.total_qty_ordered) }} หน่วย
+													{{ poReceiveText.linesAndUnitsValue.replace('{items}', numberFormatter.format(selectedOrderDetail.items.length)).replace('{units}', numberFormatter.format(selectedOrderDetail.order.total_qty_ordered)) }}
 												</dd>
 											</div>
 										</dl>
@@ -2069,7 +2273,7 @@ async function submitEditPurchaseOrder() {
 
 									<div v-if="receiveLines.length && receiveMode === 'partial'" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">รับเข้าสต็อกทีละรายการ</h3>
+											<h3 class="text-sm font-semibold text-stone-950">{{ poReceiveText.receiveLineByLine }}</h3>
 											<UBadge color="neutral" variant="soft" :label="`${receiveLines.length} lines`" />
 										</div>
 										<div class="mt-4 space-y-3">
@@ -2079,12 +2283,12 @@ async function submitEditPurchaseOrder() {
 														<p class="truncate text-sm font-semibold text-stone-900">{{ line.productName }}</p>
 														<p v-if="line.productSku" class="mt-1 text-xs text-stone-500">{{ line.productSku }}</p>
 														<p class="mt-1 text-xs text-stone-500">
-															สั่ง {{ numberFormatter.format(line.orderedQty) }} · รับแล้ว {{ numberFormatter.format(line.receivedQty) }} · เหลือ {{ numberFormatter.format(line.remainingQty) }}
+															{{ poReceiveText.lineSummary.replace('{ordered}', numberFormatter.format(line.orderedQty)).replace('{received}', numberFormatter.format(line.receivedQty)).replace('{remaining}', numberFormatter.format(line.remainingQty)) }}
 														</p>
 													</div>
 												</div>
 												<div class="mt-3">
-													<label class="mb-2 block text-xs font-medium text-stone-500">รับจำนวน</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poReceiveText.receiveQty }}</label>
 													<UInput
 														:model-value="line.receiveQty"
 														type="text"
@@ -2114,7 +2318,7 @@ async function submitEditPurchaseOrder() {
 									</div>
 									<div v-else-if="receiveLines.length" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+											<h3 class="text-sm font-semibold text-stone-950">{{ poReceiveText.productItems }}</h3>
 											<UBadge color="neutral" variant="soft" :label="`${receiveLines.length} lines`" />
 										</div>
 										<div class="mt-4 space-y-3">
@@ -2124,7 +2328,7 @@ async function submitEditPurchaseOrder() {
 														<p class="truncate text-sm font-semibold text-stone-900">{{ line.productName }}</p>
 														<p v-if="line.productSku" class="mt-1 text-xs text-stone-500">{{ line.productSku }}</p>
 														<p class="mt-1 text-xs text-stone-500">
-															สั่ง {{ numberFormatter.format(line.orderedQty) }} · รับแล้ว {{ numberFormatter.format(line.receivedQty) }} · เหลือ {{ numberFormatter.format(line.remainingQty) }}
+															{{ poReceiveText.lineSummary.replace('{ordered}', numberFormatter.format(line.orderedQty)).replace('{received}', numberFormatter.format(line.receivedQty)).replace('{remaining}', numberFormatter.format(line.remainingQty)) }}
 														</p>
 													</div>
 												</div>
@@ -2138,7 +2342,7 @@ async function submitEditPurchaseOrder() {
 										:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 									>
 										<div class="grid w-full grid-cols-2 gap-2">
-										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="receiveOpen = false">ยกเลิก</AppButton>
+										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="receiveOpen = false">{{ poReceiveText.cancel }}</AppButton>
 										<AppButton
 											color="primary"
 											variant="solid"
@@ -2150,7 +2354,7 @@ async function submitEditPurchaseOrder() {
 											:block="true"
 											@click="confirmReceiveSelectedOrder"
 										>
-											{{ receiveMode === 'now' ? 'ยืนยันรับเข้าสต็อก' : receiveMode === 'partial' ? 'ยืนยันรับบางส่วน' : 'บันทึกเป็นรอรับสต็อก' }}
+											{{ receiveMode === 'now' ? poReceiveText.confirmNow : receiveMode === 'partial' ? poReceiveText.confirmPartial : poReceiveText.confirmLater }}
 										</AppButton>
 									</div>
 								</div>
@@ -2204,7 +2408,7 @@ async function submitEditPurchaseOrder() {
 
 											<div class="grid gap-4 sm:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplier }}</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplier }} <span class="font-normal text-stone-400">{{ poFormText.optional }}</span></label>
 													<UInput
 														v-model="createForm.supplierName"
 														type="text"
@@ -2216,7 +2420,7 @@ async function submitEditPurchaseOrder() {
 													/>
 												</div>
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplierContact }}</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.supplierContact }} <span class="font-normal text-stone-400">{{ poFormText.optional }}</span></label>
 													<UInput
 														v-model="createForm.supplierContact"
 														type="text"
@@ -2246,13 +2450,23 @@ async function submitEditPurchaseOrder() {
 													</div>
 												</div>
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.expectedAt }}</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.expectedAt }} <span class="font-normal text-stone-400">{{ poFormText.optional }}</span></label>
+													<label class="flex min-h-[46px] items-center gap-2 rounded-md border border-neutral-200 bg-white px-4 py-2.5">
+														<input
+															v-model="expectedAtEnabled"
+															type="checkbox"
+															class="h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200"
+															:disabled="purchaseOrderCostOnlyEdit"
+														>
+														<span class="text-sm text-stone-700">{{ expectedAtEnabled ? poFormText.expectedAtSet : poFormText.expectedAtUnset }}</span>
+													</label>
 													<UInput
+														v-if="expectedAtEnabled"
 														v-model="createForm.expectedAt"
 														type="datetime-local"
 														size="lg"
 														color="neutral"
-														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
+														class="mt-2 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 														:disabled="purchaseOrderCostOnlyEdit"
 													/>
 												</div>
@@ -2275,7 +2489,11 @@ async function submitEditPurchaseOrder() {
 											<div class="grid gap-4 md:grid-cols-2">
 												<div>
 													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedRate }}</label>
+													<div v-if="exchangeRateLocked" class="flex min-h-[46px] items-center rounded-md border border-neutral-200 bg-neutral-100 px-4 py-2.5 text-sm font-medium tabular-nums text-stone-600">
+														1
+													</div>
 													<UInput
+														v-else
 														v-model="createForm.exchangeRate"
 														type="text"
 														inputmode="decimal"
@@ -2285,13 +2503,16 @@ async function submitEditPurchaseOrder() {
 														:placeholder="poFormText.estimatedRatePlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
-													<p class="mt-1 text-xs leading-5 text-stone-500">{{ poFormText.estimatedRateHint }}</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">
+														{{ exchangeRateLocked ? poFormText.rateLockedHint.replace('{currency}', storeCurrency) : poFormText.estimatedRateHint }}
+													</p>
 												</div>
 
 												<div>
 													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedShipping }}</label>
 													<UInput
-														v-model="createForm.shippingCost"
+														:model-value="createForm.shippingCost"
+														@update:model-value="(v: string | number) => createForm.shippingCost = normalizeMoneyTyping(String(v ?? ''), { maxDecimals: 2 })"
 														type="text"
 														inputmode="decimal"
 														pattern="[0-9.,-]*"
@@ -2306,7 +2527,8 @@ async function submitEditPurchaseOrder() {
 												<div>
 													<label class="mb-2 block text-xs font-medium text-stone-500">{{ poFormText.estimatedOtherCost }}</label>
 													<UInput
-														v-model="createForm.otherCost"
+														:model-value="createForm.otherCost"
+														@update:model-value="(v: string | number) => createForm.otherCost = normalizeMoneyTyping(String(v ?? ''), { maxDecimals: 2 })"
 														type="text"
 														inputmode="decimal"
 														pattern="[0-9.,-]*"
@@ -2324,7 +2546,7 @@ async function submitEditPurchaseOrder() {
 														type="text"
 														size="lg"
 														color="neutral"
-														placeholder="เช่น fee, customs, handling"
+														:placeholder="poFormText.otherCostNotePlaceholder"
 														class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 													/>
 												</div>
@@ -2414,7 +2636,7 @@ async function submitEditPurchaseOrder() {
 																pattern="[0-9.,-]*"
 																size="lg"
 																color="neutral"
-																:placeholder="line.costMode === 'total' ? poFormText.totalCost : unitCostPlaceholder(line.productId)"
+																:placeholder="line.costMode === 'total' ? poFormText.totalCost : poFormText.unitCostPlaceholder"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 																:disabled="purchaseOrderCostOnlyEdit"
 																@update:model-value="(value) => line.costMode === 'total' ? handleLineTotalCostInput(line, value) : handleLineUnitCostInput(line, value)"
@@ -2423,6 +2645,13 @@ async function submitEditPurchaseOrder() {
 														<div v-if="!purchaseOrderCostOnlyEdit" class="flex items-end justify-end">
 															<AppButton color="neutral" variant="soft" size="sm" class="h-11 w-11 rounded-md p-0" icon="i-heroicons-trash-20-solid" :aria-label="poFormText.removeItem" :title="poFormText.removeItem" @click="removeLine(line.id)" />
 														</div>
+													</div>
+
+													<div v-if="lineBreakdownText(line)" class="mt-3 flex flex-col gap-1 border-t border-neutral-200 pt-2.5 text-[11px] leading-4 tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+														<span class="text-stone-500">{{ lineBreakdownText(line) }}</span>
+														<span v-if="createTotals.extraPerUnitBase > 0" class="text-primary-700">
+															{{ poFormText.lineLanded }} {{ formatPurchaseMoney(lineLandedUnitBase(line) ?? 0, storeCurrency) }}
+														</span>
 													</div>
 												</div>
 											</div>
@@ -2446,6 +2675,41 @@ async function submitEditPurchaseOrder() {
 									class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm"
 									:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 								>
+											<div class="mb-2.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+												<p v-if="!createTotals.ready" class="text-xs leading-5 text-stone-500">{{ poFormText.previewEmpty }}</p>
+												<div v-else class="space-y-1 text-xs tabular-nums">
+													<div class="flex items-baseline justify-between gap-3">
+														<span class="text-stone-500">
+															{{ poFormText.previewItems }}
+															<span class="text-stone-400">{{ poFormText.previewCount.replace('{count}', String(createTotals.pricedLines)) }}</span>
+														</span>
+														<span class="font-medium text-stone-800">{{ formatPurchaseMoney(createTotals.itemsOriginal, createForm.purchaseCurrency) }}</span>
+													</div>
+													<div v-if="createTotals.hasExtra" class="flex items-baseline justify-between gap-3">
+														<span class="text-stone-500">
+															{{ poFormText.previewExtra }}
+															<span class="text-stone-400">
+																<template v-if="createTotals.shippingOriginal > 0">{{ poFormText.previewShippingShort }} {{ formatMoneyInputValue(createTotals.shippingOriginal) }}</template><template v-if="createTotals.shippingOriginal > 0 && createTotals.otherOriginal > 0"> + </template><template v-if="createTotals.otherOriginal > 0">{{ poFormText.previewOtherShort }} {{ formatMoneyInputValue(createTotals.otherOriginal) }}</template>
+															</span>
+														</span>
+														<span class="font-medium text-stone-800">{{ formatPurchaseMoney(createTotals.extraOriginal, createForm.purchaseCurrency) }}</span>
+													</div>
+													<div class="flex items-baseline justify-between gap-3 border-t border-neutral-200 pt-1.5">
+														<span class="text-sm font-semibold text-stone-950">{{ poFormText.previewTotal }}</span>
+														<span class="text-right">
+															<span class="text-sm font-semibold text-stone-950">{{ formatPurchaseMoney(createTotals.totalOriginal, createForm.purchaseCurrency) }}</span>
+															<span v-if="!exchangeRateLocked" class="ml-2 text-[11px] font-normal text-stone-500">
+																≈ {{ formatPurchaseMoney(createTotals.totalBase, storeCurrency) }} ({{ poFormText.previewRate.replace('{rate}', formatMoneyInputValue(createTotals.exchangeRate)) }})
+															</span>
+														</span>
+													</div>
+													<div v-if="createTotals.extraPerUnitBase > 0" class="flex items-baseline justify-between gap-3 text-[11px] text-stone-500">
+														<span :title="poFormText.previewPerUnitHint">{{ poFormText.previewPerUnit }}</span>
+														<span class="font-medium text-primary-700">+{{ formatPurchaseMoney(createTotals.extraPerUnitBase, storeCurrency) }}</span>
+													</div>
+												</div>
+											</div>
+
 											<div class="grid w-full gap-2" :class="purchaseOrderFormMode === 'edit' ? 'grid-cols-2' : 'grid-cols-3'">
 										<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateDrawer">{{ poFormText.cancel }}</AppButton>
 										<template v-if="purchaseOrderFormMode === 'edit'">

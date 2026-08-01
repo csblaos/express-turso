@@ -37,7 +37,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		name: nonEmptyString,
 		base_unit_id: nonEmptyString,
 		price_base: finiteNumber,
-		cost_base: finiteNumber,
+		// Cost is optional at creation: a tracked product usually has no known
+		// cost until its first purchase order is received.
+		cost_base: optionalNumber,
 		barcode: optionalString,
 		active: optionalNumber,
 		image_url: optionalString,
@@ -86,6 +88,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly costAdjustmentBodySchema = z.object({
 		cost_base: finiteNumber,
 		reason: z.string().trim().max(280).nullish(),
+		// Defaults to pinning the cost; send false to hand the product back to
+		// the purchase-order receive path.
+		lock_cost: z.boolean().optional(),
 	});
 
 	private static readonly bulkVariantItemSchema = z.object({

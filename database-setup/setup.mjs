@@ -63,7 +63,7 @@ function normalizeAccounts(input) {
 		};
 		if (!account.name) fail(`${key}.name จำเป็นต้องระบุ`);
 		if (!account.email.includes("@")) fail(`${key}.email ไม่ถูกต้อง`);
-		if (account.password.length < 12) fail(`${key}.password ต้องมีอย่างน้อย 12 ตัวอักษร`);
+		if (account.password.length < 6) fail(`${key}.password ต้องมีอย่างน้อย 6 ตัวอักษร`);
 		accounts.push(account);
 	}
 

@@ -46,12 +46,10 @@ const stores = ref<StoreRecord[]>([]);
 const units = ref<UnitRecord[]>([]);
 
 const createForm = reactive({
-	code: "",
 	name_th: "",
 });
 
 const detailForm = reactive({
-	code: "",
 	name_th: "",
 });
 
@@ -120,24 +118,18 @@ const pageSummaryText = computed(() => (
 const overviewStats = computed(() => ([
 	{ label: t("unitsPage.totalUnits"), value: units.value.length },
 	{ label: t("unitsPage.shownResults"), value: filteredUnits.value.length },
-	{ label: t("unitsPage.uniqueCodes"), value: new Set(units.value.map((unit) => unit.code.trim().toLowerCase())).size },
 	{ label: t("unitsPage.storeScoped"), value: units.value.filter((unit) => unit.store_id === effectiveStoreId.value).length },
 ]));
 const canCreateUnit = computed(() => (
 	Boolean(effectiveStoreId.value)
-	&& createForm.code.trim().length > 0
 	&& createForm.name_th.trim().length > 0
 ));
 const detailHasChanges = computed(() => {
 	if (!selectedUnit.value) return false;
-	return (
-		detailForm.code.trim() !== selectedUnit.value.code
-		|| detailForm.name_th.trim() !== selectedUnit.value.name_th
-	);
+	return detailForm.name_th.trim() !== selectedUnit.value.name_th;
 });
 const canSaveDetail = computed(() => (
 	Boolean(selectedUnit.value)
-	&& detailForm.code.trim().length > 0
 	&& detailForm.name_th.trim().length > 0
 	&& detailHasChanges.value
 ));
@@ -182,13 +174,11 @@ watch(pageSize, () => {
 
 watch(createOpen, (isOpen) => {
 	if (!isOpen) return;
-	createForm.code = "";
 	createForm.name_th = "";
 });
 
 watch(detailOpen, (isOpen) => {
 	if (!isOpen || !selectedUnit.value) return;
-	detailForm.code = selectedUnit.value.code;
 	detailForm.name_th = selectedUnit.value.name_th;
 });
 
@@ -245,7 +235,6 @@ function updatePageSize(nextPageSize: number | string) {
 function openUnitDetail(unitId: string) {
 	selectedUnitId.value = unitId;
 	if (selectedUnit.value) {
-		detailForm.code = selectedUnit.value.code;
 		detailForm.name_th = selectedUnit.value.name_th;
 	}
 	detailOpen.value = true;
@@ -296,7 +285,6 @@ async function createUnit() {
 		await apiFetch<ApiEnvelope<UnitRecord>>("/units", {
 			method: "POST",
 			body: {
-				code: createForm.code.trim(),
 				name_th: createForm.name_th.trim(),
 				scope: "store",
 				store_id: effectiveStoreId.value,
@@ -355,7 +343,6 @@ async function saveUnitDetail() {
 		await apiFetch<ApiEnvelope<UnitRecord>>(`/units/${encodeURIComponent(selectedUnit.value.id)}`, {
 			method: "PUT",
 			body: {
-				code: detailForm.code.trim(),
 				name_th: detailForm.name_th.trim(),
 			},
 		});
@@ -499,7 +486,7 @@ onMounted(async () => {
 
 				<div class="grid gap-3 lg:pr-1">
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-						<div class="grid grid-cols-4 gap-2.5 sm:gap-3">
+						<div class="grid grid-cols-3 gap-2.5 sm:gap-3">
 							<div
 								v-for="stat in overviewStats"
 								:key="stat.label"
@@ -536,7 +523,6 @@ onMounted(async () => {
 												<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
 														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.productUnit") }}</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.code") }}</th>
 														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.scope") }}</th>
 														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.store") }}</th>
 														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("unitsPage.action") }}</th>
@@ -554,9 +540,6 @@ onMounted(async () => {
 															<div class="min-w-0">
 																<p class="truncate font-semibold text-stone-950">{{ unit.name_th }}</p>
 															</div>
-														</td>
-														<td class="border-b border-[#f1ede6] px-4 py-4">
-															<UBadge color="neutral" variant="soft" :label="unit.code" />
 														</td>
 														<td class="border-b border-[#f1ede6] px-4 py-4">
 															<UBadge :color="scopeTone(unit.scope)" variant="soft" :label="scopeLabel(unit.scope)" />
@@ -662,12 +645,8 @@ onMounted(async () => {
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("unitsPage.unitId") }}</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedUnit.id }}</p>
 								<p class="mt-1 text-xs text-stone-500">{{ $t("unitsPage.store") }}: {{ selectedStoreLabel }}</p>
-							</div>
-
-							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.shortCode") }}</label>
-								<UInput v-model="detailForm.code" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
-								<p class="text-xs leading-5 text-stone-500">{{ $t("unitsPage.shortCodeHint") }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ $t("unitsPage.shortCode") }}: {{ selectedUnit.code }}</p>
+								<p class="mt-2 text-xs leading-5 text-stone-500">{{ $t("unitsPage.shortCodeReadonlyHint") }}</p>
 							</div>
 
 							<div class="space-y-2">
@@ -713,7 +692,6 @@ onMounted(async () => {
 
 							<div v-if="selectedUnit" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-sm font-medium text-stone-900">{{ selectedUnit.name_th }}</p>
-								<p class="mt-1 text-xs text-stone-500">code: {{ selectedUnit.code }}</p>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
@@ -761,14 +739,9 @@ onMounted(async () => {
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.shortCode") }}</label>
-							<UInput v-model="createForm.code" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
-							<p class="text-xs leading-5 text-stone-500">{{ $t("unitsPage.createCodeHint") }}</p>
-						</div>
-
-						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("unitsPage.unitName") }}</label>
-							<UInput v-model="createForm.name_th" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<UInput v-model="createForm.name_th" size="lg" color="neutral" :placeholder="$t('unitsPage.unitNamePlaceholder')" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<p class="text-xs leading-5 text-stone-500">{{ $t("unitsPage.unitNameHint") }}</p>
 						</div>
 					</div>
 
