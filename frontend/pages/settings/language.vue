@@ -80,7 +80,7 @@ const languageOptions: LanguageOption[] = [
 ];
 
 const { locale, setLocale, t } = useI18n();
-const currentLanguage = computed(() => locale.value || "th");
+const currentLanguage = computed(() => locale.value || "lo");
 const draftLanguage = ref(currentLanguage.value);
 
 watch(currentLanguage, (value) => {
