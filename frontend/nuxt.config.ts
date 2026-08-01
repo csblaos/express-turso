@@ -1,3 +1,17 @@
+// The API base is frozen into the bundle at build time, so a missing value ships
+// a site that silently calls its own origin and 404s. Fail the deploy instead.
+// Local builds keep the fallback so `npm run build` still works offline.
+const isDeployBuild = Boolean(process.env.CF_PAGES || process.env.CI);
+if (isDeployBuild && !process.env.NUXT_PUBLIC_API_BASE?.trim()) {
+	throw new Error(
+		"NUXT_PUBLIC_API_BASE is required for deploy builds.\n"
+		+ "Set it on the Production environment in Cloudflare Pages "
+		+ "(Settings > Variables and secrets), for example "
+		+ "https://api.okhaidee.codesabai.com/api, then redeploy.\n"
+		+ "Adding the variable alone does not update an existing deployment.",
+	);
+}
+
 export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
