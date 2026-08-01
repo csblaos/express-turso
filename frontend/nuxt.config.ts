@@ -1,8 +1,10 @@
-// The API base is frozen into the bundle at build time, so a missing value ships
-// a site that silently calls its own origin and 404s. Fail the deploy instead.
-// Local builds keep the fallback so `npm run build` still works offline.
+// The API base is frozen into the bundle at generate time, so a missing value
+// ships a site that silently calls its own origin and 404s. Validate only during
+// `npm run generate`: Cloudflare also loads this config from the install-time
+// `postinstall -> nuxt prepare` hook, before build variables are made available.
 const isDeployBuild = Boolean(process.env.CF_PAGES || process.env.CI);
-if (isDeployBuild && !process.env.NUXT_PUBLIC_API_BASE?.trim()) {
+const isGenerateBuild = process.env.npm_lifecycle_event === "generate";
+if (isDeployBuild && isGenerateBuild && !process.env.NUXT_PUBLIC_API_BASE?.trim()) {
 	throw new Error(
 		"NUXT_PUBLIC_API_BASE is required for deploy builds.\n"
 		+ "Set it on the Production environment in Cloudflare Pages "
