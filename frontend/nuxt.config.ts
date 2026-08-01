@@ -1,18 +1,4 @@
-// The API base is frozen into the bundle at generate time, so a missing value
-// ships a site that silently calls its own origin and 404s. Validate only during
-// `npm run generate`: Cloudflare also loads this config from the install-time
-// `postinstall -> nuxt prepare` hook, before build variables are made available.
-const isDeployBuild = Boolean(process.env.CF_PAGES || process.env.CI);
-const isGenerateBuild = process.env.npm_lifecycle_event === "generate";
-if (isDeployBuild && isGenerateBuild && !process.env.NUXT_PUBLIC_API_BASE?.trim()) {
-	throw new Error(
-		"NUXT_PUBLIC_API_BASE is required for deploy builds.\n"
-		+ "Set it on the Production environment in Cloudflare Pages "
-		+ "(Settings > Variables and secrets), for example "
-		+ "https://api.okhaidee.codesabai.com/api, then redeploy.\n"
-		+ "Adding the variable alone does not update an existing deployment.",
-	);
-}
+const productionApiBase = "https://api.okhaidee.codesabai.com/api";
 
 export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
@@ -47,7 +33,9 @@ export default defineNuxtConfig({
 	},
 	runtimeConfig: {
 		public: {
-			apiBase: process.env.NUXT_PUBLIC_API_BASE || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:3005/api"),
+			apiBase: process.env.CF_PAGES
+				? productionApiBase
+				: process.env.NUXT_PUBLIC_API_BASE || (process.env.NODE_ENV === "production" ? productionApiBase : "http://localhost:3005/api"),
 			r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || "https://cdn.codesabai.com",
 		},
 	},
