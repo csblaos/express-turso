@@ -2,6 +2,7 @@
 import { normalizeMoneyTyping } from "~/utils/currency";
 import { getCurrencySymbol, normalizeCurrencyCode } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
+import { downloadCsv } from "~/utils/csv";
 import { formatAppDateTime } from "~/utils/date-format";
 
 type StockState = "ready" | "low" | "inactive";
@@ -878,26 +879,6 @@ function formatMoney(value: number) {
 	return `${numberFormatter.value.format(value)}${getCurrencySymbol(storeCurrency.value)}`;
 }
 
-function escapeCsvValue(value: unknown) {
-	if (value === null || value === undefined) return "";
-	const stringValue = String(value);
-	const escaped = stringValue.replace(/"/g, '""');
-	return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
-}
-
-function downloadTextFile(filename: string, content: string, mimeType: string) {
-	if (!import.meta.client) return;
-	const blob = new Blob([content], { type: mimeType });
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = filename;
-	document.body.appendChild(link);
-	link.click();
-	link.remove();
-	URL.revokeObjectURL(url);
-}
-
 const productCsvHeaders = [
 	"name",
 	"sku",
@@ -995,11 +976,7 @@ function productCsvSampleRows() {
 }
 
 function downloadProductCsvTemplate() {
-	const csv = [
-		productCsvHeaders.join(","),
-		...productCsvSampleRows().map((row) => row.map(escapeCsvValue).join(",")),
-	].join("\r\n");
-	downloadTextFile("products-import-template.csv", `\ufeff${csv}\r\n`, "text/csv;charset=utf-8");
+	downloadCsv("products-import-template.csv", [ ...productCsvHeaders ], productCsvSampleRows());
 	appToast.success({
 		title: t("products.csv.templateDownloaded"),
 		description: t("products.csv.templateDownloadedHint"),
@@ -1050,11 +1027,7 @@ async function exportFilteredProductsCsv() {
 		const now = new Date();
 		const fileStamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
 		const filename = `products-${fileStamp}.csv`;
-		const csv = [
-			productCsvHeaders.join(","),
-			...rows.map((row) => row.map(escapeCsvValue).join(",")),
-		].join("\r\n");
-		downloadTextFile(filename, `\ufeff${csv}`, "text/csv;charset=utf-8");
+		downloadCsv(filename, [ ...productCsvHeaders ], rows);
 		appToast.success({ title: t("products.csv.exported"), description: filename });
 	} catch (error) {
 		appToast.error({
@@ -1229,7 +1202,7 @@ function getStockTone(product: ProductRecord) {
 		return product.manualSoldOut ? "warning" : "neutral";
 	}
 	if (product.stockState === "ready") return "success";
-	if (product.stockState === "low") return "warning";
+	if (product.stockState === "low") return "neutral";
 	return "neutral";
 }
 
