@@ -20,6 +20,9 @@ type PosCatalogStore = {
 	receipt_show_payment_method: number;
 	receipt_show_queue: number;
 	pickup_queue_enabled: number;
+	customer_display_enabled: number;
+	customer_display_ads: string | null;
+	customer_display_ad_url: string | null;
 	currency: string | null;
 	vat_enabled: number;
 	vat_rate: number;
@@ -203,6 +206,11 @@ export class PosComponent {
 				receipt_show_payment_method: Number(store?.receipt_show_payment_method ?? 1),
 				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
 				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
+				// The POS drives the customer screen, so it needs these here too;
+				// this payload is a whitelist and silently drops anything missing.
+				customer_display_enabled: Number(store?.customer_display_enabled ?? 0),
+				customer_display_ads: store?.customer_display_ads || null,
+				customer_display_ad_url: store?.customer_display_ad_url || null,
 				currency: store?.currency || null,
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),

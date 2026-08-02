@@ -9,10 +9,25 @@ import { UnitInterface } from "@interfaces/UnitInterface";
 import { CreateStoreInput, Store } from "@models/Store";
 import { R2Storage } from "@storage/R2Storage";
 
+const MAX_CUSTOMER_DISPLAY_ADS = 3;
+
+function parseAdKeys(value: unknown): string[] {
+	if (typeof value !== "string" || !value.trim()) return [];
+	try {
+		const parsed = JSON.parse(value);
+		return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+	} catch {
+		return [];
+	}
+}
+
 const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"name",
 	"logo_name",
 	"logo_url",
+	"customer_display_enabled",
+	"customer_display_ad_url",
+	"customer_display_ads",
 	"address",
 	"phone_number",
 	"store_type",
@@ -152,6 +167,28 @@ export class StoreComponent {
 				dataUrl: updateData.logo_url,
 			});
 			updateData.logo_url = uploaded.key;
+		}
+		// The advert gallery arrives as an array mixing freshly picked data URLs with
+		// keys that are already stored. New ones are uploaded, dropped ones are
+		// removed from R2 so deleting in the UI frees the object too.
+		if (Array.isArray((data as Record<string, unknown>).customer_display_ads)) {
+			const incoming = (data as Record<string, unknown>).customer_display_ads as unknown[];
+			const resolved: string[] = [];
+			for (const entry of incoming.slice(0, MAX_CUSTOMER_DISPLAY_ADS)) {
+				if (typeof entry !== "string" || !entry.trim()) continue;
+				if (entry.trim().startsWith("data:")) {
+					const uploaded = await R2Storage.uploadStoreLogo({ storeId: id, dataUrl: entry });
+					resolved.push(uploaded.key);
+					continue;
+				}
+				resolved.push(entry.trim());
+			}
+			const previous = parseAdKeys(existing.customer_display_ads);
+			if (existing.customer_display_ad_url) previous.push(existing.customer_display_ad_url);
+			const removed = previous.filter((key) => !resolved.includes(key));
+			await Promise.allSettled(removed.map((key) => R2Storage.deleteObject(key)));
+			updateData.customer_display_ads = JSON.stringify(resolved);
+			updateData.customer_display_ad_url = null;
 		}
 
 		const costMethodChanged = typeof updateData.cost_method === "string" && updateData.cost_method !== existing.cost_method;

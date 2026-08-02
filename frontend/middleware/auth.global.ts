@@ -20,6 +20,14 @@ function isChooseStoreRoute(path: string) {
 	return path === "/choose-store";
 }
 
+// The customer-facing screen is fed entirely over BroadcastChannel by the POS
+// window. It must never authenticate, fetch, or redirect.
+function isCustomerDisplayRoute(path: string) {
+	// The static build serves directory URLs, so this arrives as
+	// "/customer-display/" in production and "/customer-display" in dev.
+	return path.replace(/\/+$/, "") === "/customer-display";
+}
+
 function getDefaultAuthedPath(systemRole?: string | null) {
 	return systemRole === "system_admin" ? "/system-admin/dashboard" : "/";
 }
@@ -46,6 +54,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
 	const isLoginRoute = to.path === "/login";
 	const isOnboardingRoute = to.path === "/onboarding";
 	const isChooseStore = isChooseStoreRoute(to.path);
+
+	if (isCustomerDisplayRoute(to.path)) return;
+
 	const accessTokenCookie = useCookie<string | null>("pos.auth.accessToken", {
 		sameSite: "lax",
 		path: "/",

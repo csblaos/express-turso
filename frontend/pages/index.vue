@@ -1212,6 +1212,10 @@ watch(effectiveStoreId, () => {
 	catalogStoreType.value = "";
 	restaurantInitialCatalog.value = null;
 	products.value = [];
+	// The catalog request needs the token and store id that only exist in client
+	// storage. Running it during SSR always failed, which rendered the retail
+	// fallback on the server and left the POS blank after hydration.
+	if (!import.meta.client) return;
 	void loadPosProducts();
 	void evaluatePromotions();
 }, { immediate: true });
@@ -1256,6 +1260,7 @@ onBeforeUnmount(() => {
 
 <template>
 	<AppSidebarShell
+		key="pos-loading"
 		v-if="posExperience === 'loading'"
 		:nav-items="appNavItems"
 		:active-ids="['pos']"
@@ -1272,11 +1277,13 @@ onBeforeUnmount(() => {
 		</template>
 	</AppSidebarShell>
 	<RestaurantPos
+		key="pos-restaurant"
 		v-else-if="posExperience === 'restaurant' && effectiveStoreId"
 		:store-id="effectiveStoreId"
 		:initial-catalog="restaurantInitialCatalog"
 	/>
 	<AppSidebarShell
+		key="pos-retail"
 		v-else
 		:nav-items="appNavItems"
 		:active-ids="['pos']"

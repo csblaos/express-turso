@@ -3,6 +3,7 @@ import { Banknote, Loader } from "@lucide/vue";
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
 import { formatMoneyWithSymbol } from "~/utils/currency";
+import type { CustomerDisplayLine, CustomerDisplayState } from "~/composables/useCustomerDisplay";
 
 type Envelope<T> = { data: T };
 type PosView = "quick" | "tables" | "open" | "pickupQueue";
@@ -19,7 +20,7 @@ type OpenOrder = Pick<Order, "id" | "order_no" | "service_mode" | "queue_no" | "
 type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
 type LocalCartEntry = { product_id: string; qty: number; note?: string | null };
 type TableDraftEntry = { product_id: string; qty: number; note?: string | null; is_gift?: boolean; promotion_id?: string | null };
-type PaymentAccount = { id: string; display_name: string; is_active: number };
+type PaymentAccount = { id: string; display_name: string; is_active: number; qr_image_url?: string | null };
 type AvailablePromotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode?: "automatic" | "manual"; applications: number; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id: string | null; gift_product_name?: string; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number; discount_amount?: number; eligible?: boolean; remaining_qty?: number; remaining_amount?: number };
 type PromotionRecord = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; minimum_subtotal?: number | null; gift_product_id: string | null; gift_product_name?: string | null; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number | null; starts_at?: string | null; ends_at?: string | null; is_active: number };
 type CheckoutResult = {
@@ -68,6 +69,11 @@ const activeZone = ref("");
 const search = ref("");
 const storeName = ref("ร้านค้า");
 const storeLogo = ref("");
+const customerDisplayEnabled = ref(false);
+const customerDisplayAdKeys = ref<string[]>([]);
+const customerDisplayAds = computed(() => customerDisplayAdKeys.value
+	.map((key) => resolveProductImageUrl(key))
+	.filter((url): url is string => Boolean(url)));
 const storeAddress = ref("");
 const storePhone = ref("");
 const receiptShowStoreName = ref(true);
@@ -205,6 +211,7 @@ const billingVat = computed(() => {
 	return Math.round(vatMode.value === "INCLUSIVE" ? billingDiscountedSubtotal.value * rate / (100 + rate) : billingDiscountedSubtotal.value * rate / 100);
 });
 const billingNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, billingDiscountedSubtotal.value - billingVat.value) : billingDiscountedSubtotal.value);
+
 const vatRateLabel = computed(() => {
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
 	return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, "");
@@ -216,6 +223,69 @@ const displayTotal = computed(() => {
 	const vat = vatEnabled.value ? Math.round(vatMode.value === "INCLUSIVE" ? subtotal * rate / (100 + rate) : subtotal * rate / 100) : 0;
 	return vatMode.value === "INCLUSIVE" ? subtotal : subtotal + vat;
 });
+// Mirror of the bill the cashier is working on, pushed to the customer screen.
+// Only the active bill is sent, so a customer never sees another table's order.
+const customerDisplayStoreId = computed(() => props.storeId);
+const { publish: publishCustomerDisplay, openDisplay: openCustomerDisplay } = useCustomerDisplayPublisher(
+	customerDisplayStoreId,
+	() => customerDisplayState.value,
+);
+const customerDisplayLines = computed<CustomerDisplayLine[]>(() => {
+	const source = order.value
+		? [ ...(order.value.items || []).filter((item) => item.line_status !== "cancelled"), ...tableDraftItems.value ]
+		: localItems.value;
+	return source.map((item) => ({
+		id: item.id,
+		name: item.name,
+		qty: Number(item.qty || 0),
+		unitPrice: Number(item.qty || 0) > 0 ? Number(item.line_total || 0) / Number(item.qty) : 0,
+		lineTotal: Number(item.line_total || 0),
+		isGift: Number(item.is_gift || 0) === 1,
+	}));
+});
+// The QR only helps before the customer has paid, and only when they are
+// actually paying by transfer.
+const awaitingQrPayment = computed(() => Boolean(
+	checkoutPanel.value
+	&& !checkoutReceipt.value
+	&& checkoutStep.value === "payment"
+	&& paymentMethod.value === "qr_transfer",
+));
+const activePaymentQr = computed(() => {
+	const account = paymentAccounts.value.find((candidate) => candidate.id === paymentAccountId.value)
+		|| paymentAccounts.value[0];
+	return resolveProductImageUrl(account?.qr_image_url || null);
+});
+const customerDisplayState = computed<CustomerDisplayState>(() => {
+	const receipt = checkoutReceipt.value;
+	const lines = customerDisplayLines.value;
+	return {
+		status: !customerDisplayEnabled.value
+			? "disabled"
+			: receipt
+				? "paid"
+				: awaitingQrPayment.value
+					? "awaiting_payment"
+					: lines.length ? "active" : "idle",
+		storeId: props.storeId,
+		storeName: storeName.value,
+		storeLogo: resolveProductImageUrl(storeLogo.value) || "",
+		currency: currency.value,
+		qrImageUrl: awaitingQrPayment.value ? activePaymentQr.value : null,
+		adImages: customerDisplayAds.value,
+		lines: customerDisplayEnabled.value ? lines : [],
+		subtotal: billingSubtotal.value,
+		discount: billingDiscount.value,
+		vat: billingVat.value,
+		vatLabel: vatEnabled.value ? `VAT ${vatRateLabel.value}%` : "",
+		total: receipt ? Number(receipt.total || 0) : displayTotal.value,
+		tendered: receipt ? Number(receipt.amount_tendered || 0) : null,
+		change: receipt ? Number(receipt.change_amount || 0) : null,
+		updatedAt: Date.now(),
+	};
+});
+watch(customerDisplayState, (next) => publishCustomerDisplay(next), { deep: true, immediate: true });
+
 const cashQuickAmounts = [10_000, 20_000, 50_000, 100_000];
 const hasLocalTableDraft = computed(() => Boolean(order.value) && tableDraft.value.length > 0);
 const sentGroups = computed(() => {
@@ -460,6 +530,20 @@ function applyCatalog(catalog: PosCatalog) {
 	const store = catalog.store || {};
 	storeName.value = String(store.name || "ร้านค้า");
 	storeLogo.value = String(store.logo_url || "");
+	customerDisplayEnabled.value = Number(store.customer_display_enabled ?? 0) !== 0;
+	let adKeys: string[] = [];
+	const storedAds = store.customer_display_ads;
+	if (typeof storedAds === "string" && storedAds.trim()) {
+		try {
+			const parsed = JSON.parse(storedAds);
+			if (Array.isArray(parsed)) adKeys = parsed.filter((item): item is string => typeof item === "string" && Boolean(item));
+		} catch {
+			adKeys = [];
+		}
+	} else if (store.customer_display_ad_url) {
+		adKeys = [ String(store.customer_display_ad_url) ];
+	}
+	customerDisplayAdKeys.value = adKeys;
 	storeAddress.value = String(store.address || "");
 	storePhone.value = String(store.phone_number || "");
 	receiptShowStoreName.value = Number(store.receipt_show_store_name ?? 1) !== 0;
@@ -1330,6 +1414,7 @@ onBeforeUnmount(() => {
 						<AppButton class="shrink-0" size="sm" :color="view === 'open' ? 'primary' : 'neutral'" :variant="view === 'open' ? 'solid' : 'soft'" icon="i-heroicons-queue-list" @click="view = 'open'">{{ t('restaurantPos.openOrders') }} <span v-if="openOrders.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ openOrders.length }}</span></AppButton>
 						<AppButton v-if="pickupQueueEnabled" class="shrink-0" size="sm" :color="view === 'pickupQueue' ? 'primary' : 'neutral'" :variant="view === 'pickupQueue' ? 'solid' : 'soft'" icon="i-lucide-list-ordered" @click="view = 'pickupQueue'">{{ t('restaurantPos.pickupQueue') }} <span v-if="pickupQueue.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ pickupQueue.length }}</span></AppButton>
 					</div>
+					<AppButton v-if="customerDisplayEnabled" class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-computer-desktop" :aria-label="t('restaurantPos.customerScreen')" :title="t('restaurantPos.customerScreen')" @click="openCustomerDisplay" />
 					<AppButton v-if="view === 'quick'" class="shrink-0 shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-gift" :aria-label="t('restaurantPos.promotions')" :title="t('restaurantPos.promotions')" @click="promotionPanelOpen = true">
 						<span class="hidden sm:inline">{{ t('restaurantPos.promotions') }}</span>
 						<span v-if="promotionOptionCount" class="ml-1 hidden min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold tabular-nums sm:inline-flex">{{ promotionOptionCount }}</span>

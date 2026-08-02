@@ -34,6 +34,18 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN owner_user_id TEXT");
 			}
 
+			if (!existingColumns.has("customer_display_enabled")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_enabled INTEGER NOT NULL DEFAULT 0");
+			}
+
+			if (!existingColumns.has("customer_display_ads")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_ads TEXT");
+			}
+
+			if (!existingColumns.has("customer_display_ad_url")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_ad_url TEXT");
+			}
+
 			if (!existingColumns.has("allow_negative_stock")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
 			}
