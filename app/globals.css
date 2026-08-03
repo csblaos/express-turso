@@ -219,6 +219,25 @@ h2 { font-size:clamp(38px,4vw,56px); line-height:1.16; text-wrap:balance; }
   .chart-bars { height:74px; }
 }
 
+/* Keep the mobile WhatsApp action circular and clear of device safe areas. */
+@media (max-width:640px) {
+  .whatsapp-float {
+    right:16px;
+    bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+    width:52px;
+    min-width:52px;
+    height:52px;
+    min-height:52px;
+    padding:0;
+    display:grid;
+    place-items:center;
+    gap:0;
+    border-radius:50%;
+  }
+  .whatsapp-float svg { width:22px; height:22px; }
+  .whatsapp-float span { display:none; }
+}
+
 /* Balanced density: keep useful breathing room without dead space */
 .hero { min-height:700px; max-height:none; padding-top:42px; padding-bottom:68px; }
 .section { padding-block:clamp(76px,7vw,102px); }
