@@ -270,3 +270,51 @@ h2 { font-size:clamp(38px,4vw,56px); line-height:1.16; text-wrap:balance; }
   .cta-section { margin-block:54px; padding-block:34px; }
 }
 @media (max-width:390px) { .hero-visual { min-height:372px; } }
+
+/* Real product screen */
+.real-screen-visual { min-height:450px; align-items:center; }
+.product-screen { position:relative; z-index:2; width:min(100%,680px); margin:0; overflow:hidden; border:1px solid rgba(20,92,57,.14); border-radius:24px; background:#fff; box-shadow:0 30px 80px rgba(9,81,48,.18); transform:perspective(1200px) rotateY(-2deg) rotateX(1deg); animation:productScreenFloat 7s ease-in-out infinite; }
+.screen-bar { height:40px; padding:0 15px; display:flex; align-items:center; gap:7px; color:#75857c; background:#f8fbf9; border-bottom:1px solid #e9f0ec; }
+.screen-bar > span { width:8px; height:8px; border-radius:50%; background:#cbd7d0; }
+.screen-bar small { margin-left:auto; font-size:12px; font-weight:650; }
+.product-screen > img { display:block; width:100%; height:auto; aspect-ratio:1241/763; object-fit:cover; }
+.product-screen figcaption { position:absolute; right:18px; bottom:18px; display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid rgba(13,148,79,.14); border-radius:999px; color:#087942; background:rgba(255,255,255,.94); box-shadow:0 10px 30px rgba(8,73,44,.15); font-size:13px; font-weight:750; backdrop-filter:blur(10px); }
+@keyframes productScreenFloat { 0%,100%{transform:perspective(1200px) rotateY(-2deg) rotateX(1deg) translateY(0)} 50%{transform:perspective(1200px) rotateY(-1deg) rotateX(0) translateY(-8px)} }
+
+/* Pricing */
+.pricing-section { max-width:1120px; }
+.pricing-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; max-width:900px; margin:0 auto; align-items:stretch; }
+.pricing-card { position:relative; display:flex; flex-direction:column; padding:36px; border:1px solid #dce9e1; border-radius:26px; background:#fff; box-shadow:0 16px 48px rgba(18,72,48,.08); }
+.pricing-card.featured { border:2px solid #12ad5c; background:linear-gradient(160deg,#f4fff8 0%,#fff 58%); box-shadow:0 22px 58px rgba(18,173,92,.16); }
+.plan-badge { position:absolute; top:18px; right:18px; padding:6px 11px; border-radius:999px; color:#087942; background:#dff8e9; font-size:12px; font-weight:800; }
+.pricing-card h3 { margin:0 0 24px; color:#11271c; font-size:24px; }
+.price { display:flex; align-items:baseline; gap:7px; margin-bottom:10px; }
+.price strong { color:#0a7e44; font-size:clamp(30px,4vw,42px); letter-spacing:-1.5px; }
+.price span,.annual-price span { color:#718078; font-size:13px; }
+.annual-price { display:flex; align-items:center; gap:7px; padding-bottom:24px; border-bottom:1px solid #e5eee8; }
+.annual-price strong { color:#1b3426; font-size:17px; }
+.pricing-card ul { display:grid; gap:15px; margin:26px 0 30px; padding:0; list-style:none; }
+.pricing-card li { display:flex; align-items:flex-start; gap:10px; color:#52635a; line-height:1.55; }
+.pricing-card li svg { flex:none; margin-top:3px; color:#10a957; }
+.pricing-card .button { width:100%; margin-top:auto; }
+.button-outline { color:#098248; background:#fff; border:1px solid #9ed9ba; box-shadow:none; }
+.button-outline:hover { color:#fff; background:#0da85a; }
+.store-rule { display:flex; gap:18px; max-width:900px; margin:26px auto 0; padding:24px 28px; border:1px solid #dce9e1; border-radius:20px; background:#f4faf6; }
+.store-rule > div:first-child { flex:none; display:grid; place-items:center; width:50px; height:50px; border-radius:15px; color:#fff; background:#0da85a; }
+.store-rule strong { display:block; margin-bottom:6px; color:#153223; font-size:18px; }
+.store-rule p { margin:0; color:#617168; line-height:1.65; }
+
+@media (max-width:760px) {
+  .real-screen-visual { min-height:280px; padding:6px 0 22px; }
+  .product-screen { border-radius:16px; transform:none; animation:productScreenMobile 6s ease-in-out infinite; }
+  .screen-bar { height:32px; padding-inline:11px; }
+  .screen-bar small { font-size:10px; }
+  .product-screen figcaption { right:10px; bottom:10px; padding:7px 10px; font-size:10px; }
+  .pricing-grid { grid-template-columns:1fr; }
+  .pricing-card { padding:28px 24px; }
+  .store-rule { padding:20px; }
+  @keyframes productScreenMobile { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+}
+@media (max-width:390px) { .real-screen-visual { min-height:250px; } .product-screen figcaption { display:none; } }
+
+@media (prefers-reduced-motion:reduce) { .product-screen { animation:none; } }
