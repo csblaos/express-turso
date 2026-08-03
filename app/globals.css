@@ -1,9 +1,11 @@
 @import "tailwindcss";
 
+@font-face { font-family: "Google Sans Lao"; src: url("/fonts/GoogleSans-Lao-Variable.ttf") format("truetype"); font-style: normal; font-weight: 100 900; font-display: swap; unicode-range: U+0E80-0EFF; }
+
 :root { --green: #13a856; --green-dark: #08763d; --green-deep: #064b30; --mint: #e9f8ef; --ink: #12231a; --muted: #637168; --line: #dfe9e2; --cream: #f7faf7; --white: #fff; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: #fff; color: var(--ink); font-family: var(--font-thai), Arial, sans-serif; }
+body { margin: 0; background: #fff; color: var(--ink); font-family: "Google Sans Lao", "Noto Sans Thai", "Avenir Next", "Segoe UI", sans-serif; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
 main { overflow: hidden; }
@@ -14,6 +16,10 @@ main { overflow: hidden; }
 .brand span span { color: var(--green); }
 .site-header nav { display: flex; gap: 34px; color: #526159; font-size: 14px; font-weight: 600; }
 .site-header nav a:hover { color: var(--green); }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.language-switcher { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: #f7faf7; }
+.language-switcher button { border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer; background: transparent; color: #728078; font: 700 10px var(--font-jakarta), sans-serif; }
+.language-switcher button.active { background: #fff; color: var(--green-dark); box-shadow: 0 1px 5px rgba(22,74,44,.12); }
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 10px; border-radius: 13px; background: var(--green); color: #fff; padding: 15px 21px; font-weight: 700; box-shadow: 0 13px 28px rgba(19,168,86,.19); transition: transform .2s, box-shadow .2s; }
 .button:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(19,168,86,.26); }
 .button-small { padding: 11px 17px; border-radius: 10px; font-size: 14px; box-shadow: none; }

@@ -1,210 +1,49 @@
 "use client";
 
-import {
-  ArrowRight,
-  BadgeCheck,
-  BarChart3,
-  Boxes,
-  Check,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
-  Cloud,
-  LayoutDashboard,
-  MessageCircle,
-  PackageCheck,
-  ReceiptText,
-  Share2,
-  ShieldCheck,
-  ShoppingBag,
-  Smartphone,
-  Sparkles,
-  Store,
-  Users,
-  Wifi,
-  Zap,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, BarChart3, Boxes, Check, ChevronRight, CircleDollarSign, ClipboardList, Cloud, LayoutDashboard, MessageCircle, PackageCheck, ReceiptText, Share2, ShieldCheck, ShoppingBag, Sparkles, Store, Users, Zap, BadgeCheck } from "lucide-react";
 
+type Locale = "lo" | "th" | "en";
 const whatsappNumber = "8562077964565";
-const whatsappMessage = encodeURIComponent(
-  "ສະບາຍດີ / สวัสดีครับ สนใจใช้งาน POS O KhaiDee+ สำหรับร้านของฉัน กรุณาส่งรายละเอียดฟีเจอร์และแพ็กเกจให้ด้วยครับ",
-);
-const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
+const featureIcons = [ReceiptText, Boxes, BarChart3, Store, ClipboardList, ShieldCheck];
+const businessIcons = [ShoppingBag, Store, PackageCheck];
 
-const features = [
-  {
-    icon: ReceiptText,
-    title: "ขายหน้าร้านได้คล่อง",
-    description: "รับออเดอร์ คิดเงิน และออกบิลได้รวดเร็ว ลดขั้นตอนที่ทำให้ลูกค้าต้องรอ",
+const copy = {
+  lo: {
+    lang:"ພາສາ", nav:["ຟີເຈີ","ເໝາະກັບໃຜ","ຄຳຖາມ"], talk:"ລົມກັບພວກເຮົາ", eyebrow:"POS ສຳລັບຮ້ານຍຸກໃໝ່", hero:["ຂາຍງ່າຍຂຶ້ນ","ຈັດການຮ້ານໄດ້","ຄົບກວ່າ"], lead:"O KhaiDee+ ລວມການຂາຍ, ສະຕັອກ, ລາຍງານ ແລະ ທີມງານໄວ້ໃນລະບົບດຽວ ໃຫ້ທ່ານມີເວລາເຕີບໂຕຮ້ານໄດ້ຫຼາຍຂຶ້ນ", interested:"ສົນໃຈໃຊ້ O KhaiDee+", see:"ເບິ່ງຟີເຈີທັງໝົດ", trust:["ເລີ່ມຕົ້ນງ່າຍ","ໃຊ້ໄດ້ຫຼາຍອຸປະກອນ","ພ້ອມຮອງຮັບການເຕີບໂຕ"],
+    dash:["ພາບລວມຮ້ານມື້ນີ້","ສະບາຍດີ 👋","ຂໍ້ມູນຮ້ານແບບທັນທີ","ຍອດຂາຍມື້ນີ້","ພ້ອມຕິດຕາມ","ອໍເດີ","ຈັດການງ່າຍ","ສິນຄ້າຄົງເຫຼືອ","ແຍກຕາມຮ້ານ","ພາບລວມຍອດຂາຍ","7 ມື້ຜ່ານມາ","ລະບົບພ້ອມໃຊ້","ຂາຍໄດ້ຕໍ່ເນື່ອງ","ຈັດການສະຕັອກ","ໝັ້ນໃຈທຸກການຂາຍ"], proof:["ລະບົບດຽວສຳລັບວຽກໜ້າຮ້ານ ແລະ ຫຼັງຮ້ານ","ຈຸດຂາຍ","ສະຕັອກ","ລາຍງານ","ທີມງານ","ອອນລາຍ"],
+    featureKicker:"ທຸກເລື່ອງຮ້ານ ຈົບໃນບ່ອນດຽວ", featureTitle:["ເຄື່ອງມືທີ່ຊ່ວຍໃຫ້ຮ້ານ","ເຮັດວຽກສະຫຼາດຂຶ້ນ"], featureLead:"ຫຼຸດວຽກຊ້ຳຊ້ອນ ເຫັນຂໍ້ມູນສຳຄັນ ແລະ ເບິ່ງແຍງທີມໄດ້ງ່າຍ ຕັ້ງແຕ່ຮ້ານທຳອິດຈົນເຖິງຫຼາຍຮ້ານ", more:"ຮຽນຮູ້ເພີ່ມ", features:[["ຂາຍໜ້າຮ້ານໄດ້ຄ່ອງ","ຮັບອໍເດີ, ຄິດເງິນ ແລະ ອອກບິນໄດ້ໄວ"],["ສະຕັອກທີ່ເຊື່ອຖືໄດ້","ເຫັນຍອດຄົງເຫຼືອ ແລະ ວາງແຜນເຕີມສິນຄ້າໄດ້ແມ່ນຍຳ"],["ລາຍງານພ້ອມຕັດສິນໃຈ","ຕິດຕາມຍອດຂາຍ ແລະ ສິນຄ້າຂາຍດີໄດ້ງ່າຍ"],["ຮອງຮັບຫຼາຍຮ້ານ","ຈັດການຫຼາຍຮ້ານ, ທີມງານ ແລະ ຂໍ້ມູນຈາກລະບົບດຽວ"],["ການຈັດຊື້ເປັນລະບົບ","ສ້າງ ແລະ ຕິດຕາມໃບສັ່ງຊື້ເຊື່ອມກັບສະຕັອກ"],["ກຳນົດສິດທີມງານ","ແຍກບົດບາດ ແລະ ສິດເຂົ້າເຖິງໃຫ້ເໝາະກັບໜ້າທີ່"]],
+    businessKicker:"ອອກແບບເພື່ອຮ້ານທີ່ຢາກເຕີບໂຕ", businessTitle:["ບໍ່ວ່າຈະເປັນຮ້ານແບບໃດ","ກໍຈັດການໄດ້ເປັນລະບົບ"], businessLead:"ເລີ່ມຈາກຮ້ານດຽວ ຫຼື ກຳລັງເພີ່ມຫຼາຍຮ້ານ O KhaiDee+ ຊ່ວຍວາງພື້ນຖານໃຫ້ພ້ອມເຕີບໂຕ", tell:"ເລົ່າເລື່ອງຮ້ານຂອງທ່ານ", businesses:[["ຮ້ານຄ້າປີກ","ສິນຄ້າ, ລາຄາ ແລະ ສະຕັອກຢູ່ໃນບ່ອນດຽວ"],["ຮ້ານອາຫານ","ຮັບອໍເດີ ແລະ ຈັດການຄິວຢ່າງເປັນລະບົບ"],["ທຸລະກິດຫຼາຍຮ້ານ","ຕິດຕາມພາບລວມ ແລະ ທີມງານຂອງທຸກຮ້ານ"]],
+    processKicker:"ເລີ່ມຕົ້ນໄດ້ບໍ່ຫຍຸ້ງຍາກ", processTitle:["ພ້ອມໃຊ້ໃນ","3 ຂັ້ນຕອນ"], processLead:"ພວກເຮົາຊ່ວຍຕັ້ງແຕ່ເຂົ້າໃຈຮ້ານ ຈົນຮອດມື້ທີ່ທີມເລີ່ມໃຊ້", steps:[["ບອກພວກເຮົາກ່ຽວກັບຮ້ານ","ລົມຜ່ານ WhatsApp ເພື່ອໃຫ້ເຮົາເຂົ້າໃຈທຸລະກິດ"],["ກຽມລະບົບ","ຈັດສິນຄ້າ, ຜູ້ໃຊ້ ແລະ ຮ້ານໃຫ້ເໝາະກັບວິທີເຮັດວຽກ"],["ເລີ່ມຂາຍຢ່າງໝັ້ນໃຈ","ທົດລອງໃຊ້ກັບທີມ ພ້ອມຄຳແນະນຳເລີ່ມຕົ້ນ"]],
+    faqKicker:"ຄຳຖາມທີ່ພົບເລື້ອຍ", faqTitle:["ກ່ອນເລີ່ມໃຊ້","ຢາກຮູ້ຫຍັງ?"], faqLead:"ຖ້າຍັງມີຄຳຖາມ ທີມງານຍິນດີຕອບຜ່ານ WhatsApp", ask:"ຖາມທີມງານໂດຍກົງ", faqs:[["ຕ້ອງຕິດຕັ້ງໂປຣແກຣມໃນເຄື່ອງບໍ?","O KhaiDee+ ເປັນລະບົບອອນລາຍ ໃຊ້ຜ່ານອຸປະກອນທີ່ເຊື່ອມອິນເຕີເນັດ"],["ຮອງຮັບການຈັດການຫຼາຍຮ້ານບໍ?","ຮອງຮັບຫຼາຍຮ້ານພາຍໃຕ້ບັນຊີດຽວ ພ້ອມກຳນົດທີມງານ ແລະ ສິດໃຫ້ເໝາະກັບແຕ່ລະຮ້ານ"],["ຂໍ້ມູນຮ້ານປອດໄພພຽງໃດ?","ລະບົບແຍກສິດຜູ້ໃຊ້ ແລະ ການເຂົ້າເຖິງຕາມບົດບາດ"],["ຂໍເບິ່ງຕົວຢ່າງກ່ອນໄດ້ບໍ?","ໄດ້ເລີຍ ກົດປຸ່ມລົມກັບພວກເຮົາທາງ WhatsApp"]],
+    ctaTop:"ພ້ອມໃຫ້ການຈັດການຮ້ານງ່າຍຂຶ້ນບໍ?", ctaTitle:["ໃຫ້ O KhaiDee+ ຊ່ວຍເບິ່ງແຍງ","ວຽກຮ້ານໃນທຸກມື້"], ctaLead:"ສົ່ງຂໍ້ຄວາມພ້ອມບອກປະເພດຮ້ານ ທີມງານຈະຕິດຕໍ່ກັບ", ctaButton:"ຕິດຕໍ່ຜ່ານ WhatsApp", footer:"ລະບົບ POS ທີ່ຊ່ວຍໃຫ້ການຂາຍ ແລະ ຈັດການຮ້ານເປັນເລື່ອງງ່າຍ", product:"ຜະລິດຕະພັນ", contact:"ຕິດຕໍ່", share:"ແຊຣ໌ O KhaiDee+", rights:"ສະຫງວນລິຂະສິດ", built:"ສ້າງເພື່ອທຸລະກິດໃນລາວ 🇱🇦", whatsapp:"ສະບາຍດີ ຂ້ອຍສົນໃຈໃຊ້ POS O KhaiDee+ ສຳລັບຮ້ານ ກະລຸນາສົ່ງລາຍລະອຽດໃຫ້ແດ່"
   },
-  {
-    icon: Boxes,
-    title: "สต็อกที่เชื่อถือได้",
-    description: "เห็นยอดคงเหลือและความเคลื่อนไหวของสินค้า ช่วยวางแผนเติมของได้แม่นยำขึ้น",
+  th: {
+    lang:"ภาษา", nav:["ฟีเจอร์","เหมาะกับใคร","คำถาม"], talk:"คุยกับเรา", eyebrow:"POS สำหรับร้านยุคใหม่", hero:["ขายง่ายขึ้น","จัดการร้านได้","ครบกว่า"], lead:"O KhaiDee+ รวมงานขาย สต็อก รายงาน และทีมงานไว้ในระบบเดียว ให้คุณมีเวลาโฟกัสกับการเติบโตของร้าน", interested:"สนใจใช้งาน O KhaiDee+", see:"ดูฟีเจอร์ทั้งหมด", trust:["เริ่มต้นง่าย","ใช้ได้หลายอุปกรณ์","พร้อมรองรับการเติบโต"], dash:["ภาพรวมร้านวันนี้","สวัสดี 👋","ข้อมูลร้านแบบเรียลไทม์","ยอดขายวันนี้","พร้อมติดตาม","ออเดอร์","จัดการง่าย","สินค้าคงเหลือ","แยกตามร้าน","ภาพรวมยอดขาย","7 วันที่ผ่านมา","ระบบพร้อมใช้งาน","ขายได้ต่อเนื่อง","จัดการสต็อก","มั่นใจทุกการขาย"], proof:["ระบบเดียวสำหรับงานหน้าร้านและหลังร้าน","จุดขาย","สต็อก","รายงาน","ทีมงาน","ออนไลน์"], featureKicker:"ทุกเรื่องร้าน จบในที่เดียว", featureTitle:["เครื่องมือที่ช่วยให้ร้าน","ทำงานได้ฉลาดขึ้น"], featureLead:"ลดงานซ้ำซ้อน เห็นข้อมูลสำคัญ และดูแลทีมได้ง่าย ตั้งแต่ร้านแรกจนถึงหลายร้าน", more:"เรียนรู้เพิ่มเติม", features:[["ขายหน้าร้านได้คล่อง","รับออเดอร์ คิดเงิน และออกบิลได้รวดเร็ว"],["สต็อกที่เชื่อถือได้","เห็นยอดคงเหลือและวางแผนเติมสินค้าได้แม่นยำ"],["รายงานพร้อมตัดสินใจ","ติดตามยอดขายและสินค้าขายดีได้ง่าย"],["รองรับหลายร้าน","จัดการหลายร้าน ทีมงาน และข้อมูลจากระบบเดียว"],["จัดซื้อเป็นระบบ","สร้างและติดตามใบสั่งซื้อเชื่อมกับสต็อก"],["กำหนดสิทธิ์ทีมงาน","แยกบทบาทและสิทธิ์ให้เหมาะกับหน้าที่"]], businessKicker:"ออกแบบมาเพื่อร้านที่อยากเติบโต", businessTitle:["ไม่ว่าร้านแบบไหน","ก็จัดการได้เป็นระบบ"], businessLead:"เริ่มจากร้านเดียวหรือกำลังเพิ่มหลายร้าน O KhaiDee+ ช่วยวางพื้นฐานให้พร้อมเติบโต", tell:"เล่าเรื่องร้านของคุณ", businesses:[["ร้านค้าปลีก","สินค้า ราคา และสต็อกอยู่ในที่เดียว"],["ร้านอาหาร","รับออเดอร์และจัดการคิวได้เป็นระบบ"],["ธุรกิจหลายร้าน","ติดตามภาพรวมและทีมงานของทุกร้าน"]], processKicker:"เริ่มต้นโดยไม่ยุ่งยาก", processTitle:["พร้อมใช้ใน","3 ขั้นตอน"], processLead:"เราช่วยตั้งแต่ทำความเข้าใจร้านจนถึงวันที่ทีมเริ่มใช้งาน", steps:[["บอกเราเกี่ยวกับร้าน","คุยผ่าน WhatsApp เพื่อให้เราเข้าใจธุรกิจ"],["จัดเตรียมระบบ","วางสินค้า ผู้ใช้งาน และร้านให้เหมาะกับวิธีทำงาน"],["เริ่มขายอย่างมั่นใจ","ทดลองใช้กับทีม พร้อมคำแนะนำเริ่มต้น"]], faqKicker:"คำถามที่พบบ่อย", faqTitle:["ก่อนเริ่มใช้งาน","อยากรู้อะไร?"], faqLead:"หากยังมีคำถาม ทีมงานยินดีตอบผ่าน WhatsApp", ask:"ถามทีมงานโดยตรง", faqs:[["ต้องติดตั้งโปรแกรมในเครื่องไหม?","O KhaiDee+ เป็นระบบออนไลน์ ใช้ผ่านอุปกรณ์ที่เชื่อมต่ออินเทอร์เน็ต"],["รองรับการจัดการหลายร้านหรือไม่?","รองรับหลายร้านภายใต้บัญชีเดียว พร้อมกำหนดทีมงานและสิทธิ์การใช้งานให้เหมาะกับแต่ละร้าน"],["ข้อมูลร้านปลอดภัยแค่ไหน?","ระบบแยกสิทธิ์ผู้ใช้งานและการเข้าถึงตามบทบาท"],["ขอดูตัวอย่างก่อนตัดสินใจได้ไหม?","ได้เลย กดปุ่มคุยกับเราทาง WhatsApp"]], ctaTop:"พร้อมให้การจัดการร้านง่ายขึ้นหรือยัง?", ctaTitle:["ให้ O KhaiDee+ ช่วยดูแล","งานร้านในทุกวัน"], ctaLead:"ส่งข้อความพร้อมบอกประเภทร้าน ทีมงานจะติดต่อกลับ", ctaButton:"ติดต่อผ่าน WhatsApp", footer:"ระบบ POS ที่ช่วยให้การขายและจัดการร้านเป็นเรื่องง่าย", product:"ผลิตภัณฑ์", contact:"ติดต่อ", share:"แชร์ O KhaiDee+", rights:"สงวนลิขสิทธิ์", built:"สร้างเพื่อธุรกิจในลาว 🇱🇦", whatsapp:"สวัสดีครับ สนใจใช้งาน POS O KhaiDee+ สำหรับร้านของฉัน กรุณาส่งรายละเอียดให้ด้วยครับ"
   },
-  {
-    icon: BarChart3,
-    title: "รายงานพร้อมตัดสินใจ",
-    description: "ติดตามยอดขาย สินค้าขายดี และภาพรวมร้านจากข้อมูลที่เข้าใจง่าย",
-  },
-  {
-    icon: Store,
-    title: "รองรับหลายสาขา",
-    description: "จัดการสาขา ทีมงาน และข้อมูลร้านจากระบบเดียว พร้อมเติบโตไปกับธุรกิจ",
-  },
-  {
-    icon: ClipboardList,
-    title: "จัดซื้อเป็นระบบ",
-    description: "สร้างและติดตามใบสั่งซื้อ พร้อมเชื่อมการรับสินค้าเข้ากับสต็อกของร้าน",
-  },
-  {
-    icon: ShieldCheck,
-    title: "กำหนดสิทธิ์ทีมงาน",
-    description: "แยกบทบาทและสิทธิ์การเข้าถึง ให้แต่ละคนเห็นเฉพาะงานที่รับผิดชอบ",
-  },
-];
-
-const businessTypes = [
-  { icon: ShoppingBag, title: "ร้านค้าปลีก", detail: "สินค้า ราคา และสต็อกอยู่ในที่เดียว" },
-  { icon: Store, title: "ร้านอาหาร", detail: "รับออเดอร์และจัดการคิวได้เป็นระบบ" },
-  { icon: PackageCheck, title: "ร้านค้าหลายสาขา", detail: "ติดตามภาพรวมและทีมงานทุกสาขา" },
-];
-
-const steps = [
-  { number: "01", title: "บอกเราเกี่ยวกับร้าน", text: "คุยผ่าน WhatsApp เพื่อให้เราเข้าใจประเภทธุรกิจและสิ่งที่ต้องการ" },
-  { number: "02", title: "จัดเตรียมระบบ", text: "วางโครงสินค้า ผู้ใช้งาน และสาขาให้เหมาะกับวิธีทำงานของร้าน" },
-  { number: "03", title: "เริ่มขายอย่างมั่นใจ", text: "ทดลองใช้งานกับทีม พร้อมคำแนะนำสำหรับการเริ่มต้นอย่างราบรื่น" },
-];
-
-const faqs = [
-  ["ต้องติดตั้งโปรแกรมในเครื่องไหม?", "O KhaiDee+ เป็นระบบออนไลน์ เปิดใช้งานผ่านอุปกรณ์ที่เชื่อมต่ออินเทอร์เน็ตได้ โดยรายละเอียดอุปกรณ์ที่เหมาะสมสามารถปรึกษาทีมงานก่อนเริ่มใช้"],
-  ["รองรับร้านที่มีหลายสาขาหรือไม่?", "รองรับการจัดการหลายสาขา พร้อมกำหนดทีมงานและสิทธิ์การใช้งานให้เหมาะกับแต่ละหน้าที่"],
-  ["ข้อมูลร้านปลอดภัยแค่ไหน?", "ระบบมีการแยกสิทธิ์ผู้ใช้งานและออกแบบการเข้าถึงข้อมูลตามบทบาท เพื่อลดความเสี่ยงจากการเข้าถึงที่ไม่จำเป็น"],
-  ["ขอดูตัวอย่างก่อนตัดสินใจได้ไหม?", "ได้เลย กดปุ่มคุยกับเราทาง WhatsApp เพื่อแจ้งประเภทร้านและนัดดูภาพรวมการใช้งาน"],
-];
+  en: {
+    lang:"Language", nav:["Features","Who it’s for","FAQ"], talk:"Talk to us", eyebrow:"POS for modern stores", hero:["Sell with ease","Manage your store","all in one place"], lead:"O KhaiDee+ brings sales, inventory, reports, and your team into one system—giving you more time to grow your store.", interested:"I’m interested in O KhaiDee+", see:"Explore all features", trust:["Easy to start","Works across devices","Ready to grow"], dash:["Today’s store overview","Hello 👋","Real-time store data","Today’s sales","Ready to track","Orders","Easy to manage","Inventory","By store","Sales overview","Last 7 days","System ready","Keep selling","Inventory control","Confidence in every sale"], proof:["One system for your whole store","Point of sale","Inventory","Reports","Team","Online"], featureKicker:"Everything your store needs", featureTitle:["Tools that help your store","work smarter"], featureLead:"Cut repetitive work, see key data, and manage your team—from your first store to multiple stores.", more:"Learn more", features:[["Fast point of sale","Take orders, payments, and issue receipts quickly."],["Reliable inventory","See stock levels and replenish with confidence."],["Decision-ready reports","Track sales and best sellers with clear data."],["Multiple stores supported","Manage multiple stores, teams, and data in one system."],["Structured purchasing","Connect purchase orders and receiving to inventory."],["Team permissions","Assign roles and access for each responsibility."]], businessKicker:"Built for stores ready to grow", businessTitle:["Whatever your store type","manage it with structure"], businessLead:"Start with one store or add more stores. O KhaiDee+ gives you a foundation for growth.", tell:"Tell us about your store", businesses:[["Retail stores","Products, pricing, and inventory in one place"],["Restaurants","Take orders and manage queues with structure"],["Multi-store businesses","Track performance and teams across every store"]], processKicker:"A simple start", processTitle:["Ready in","3 steps"], processLead:"We help from understanding your store through your team’s first day.", steps:[["Tell us about your store","Chat on WhatsApp so we understand your business."],["Set up your system","Organize products, users, and stores around your workflow."],["Start selling confidently","Try it with your team and get launch guidance."]], faqKicker:"Frequently asked questions", faqTitle:["Before you begin","what would you like to know?"], faqLead:"Have another question? Our team is happy to help on WhatsApp.", ask:"Ask our team directly", faqs:[["Do I need to install software?","O KhaiDee+ is an online system for internet-connected devices."],["Does it support multiple stores?","Yes. Manage multiple stores under one account, with teams and permissions tailored to each store."],["How secure is my store data?","The system separates user permissions and role-based access."],["Can I see a demo first?","Yes. Message us on WhatsApp to arrange a product overview."]], ctaTop:"Ready to make store management easier?", ctaTitle:["Let O KhaiDee+ support","your store every day"], ctaLead:"Message us and tell us about your store. Our team will get back to you.", ctaButton:"Contact us on WhatsApp", footer:"A POS system that makes selling and store management easier.", product:"Product", contact:"Contact", share:"Share O KhaiDee+", rights:"All rights reserved", built:"Built for better business in Laos 🇱🇦", whatsapp:"Hello, I’m interested in O KhaiDee+ POS for my store. Please send me more details."
+  }
+} as const;
 
 export default function Home() {
-  return (
-    <main>
-      <header className="site-header">
-        <a className="brand" href="#top" aria-label="O KhaiDee+ หน้าแรก">
-          <img src="/okhaidee-logo.png" alt="โลโก้ O KhaiDee+" />
-          <span>O KhaiDee<span>+</span></span>
-        </a>
-        <nav aria-label="เมนูหลัก">
-          <a href="#features">ฟีเจอร์</a>
-          <a href="#business">เหมาะกับใคร</a>
-          <a href="#faq">คำถามที่พบบ่อย</a>
-        </nav>
-        <a className="button button-small" href={whatsappUrl} target="_blank" rel="noreferrer">
-          <MessageCircle size={18} /> คุยกับเรา
-        </a>
-      </header>
+  const [locale, setLocale] = useState<Locale>("lo");
+  const t = copy[locale];
+  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(t.whatsapp)}`;
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
 
-      <section className="hero section" id="top">
-        <div className="hero-copy">
-          <div className="eyebrow"><Sparkles size={16} /> POS สำหรับร้านยุคใหม่</div>
-          <h1>ขายง่ายขึ้น<br />จัดการร้านได้<span>ครบกว่า</span></h1>
-          <p className="hero-lead">O KhaiDee+ ช่วยรวมงานขาย สต็อก รายงาน และทีมงานไว้ในระบบเดียว ให้คุณมีเวลาโฟกัสกับสิ่งสำคัญ—การเติบโตของร้าน</p>
-          <div className="hero-actions">
-            <a className="button" href={whatsappUrl} target="_blank" rel="noreferrer">
-              <MessageCircle size={20} /> สนใจใช้งาน O KhaiDee+ <ArrowRight size={18} />
-            </a>
-            <a className="text-link" href="#features">ดูฟีเจอร์ทั้งหมด <ChevronRight size={17} /></a>
-          </div>
-          <div className="trust-row">
-            <span><Check size={16} /> เริ่มต้นง่าย</span>
-            <span><Check size={16} /> ใช้งานได้หลายอุปกรณ์</span>
-            <span><Check size={16} /> พร้อมรองรับการเติบโต</span>
-          </div>
-        </div>
-
-        <div className="hero-visual" aria-label="ตัวอย่างหน้าจอภาพรวมร้าน">
-          <div className="glow glow-one" />
-          <div className="glow glow-two" />
-          <div className="dashboard-window">
-            <div className="window-bar"><span /><span /><span /><small>ภาพรวมร้านวันนี้</small></div>
-            <div className="dashboard-body">
-              <aside>
-                <div className="mini-brand"><img src="/okhaidee-logo.png" alt="" /></div>
-                {[LayoutDashboard, ReceiptText, Boxes, Users].map((Icon, i) => <div className={i === 0 ? "side-icon active" : "side-icon"} key={i}><Icon size={17} /></div>)}
-              </aside>
-              <div className="dashboard-content">
-                <div className="dash-title"><span>ສະບາຍດີ 👋</span><small>ข้อมูลร้านแบบเรียลไทม์</small></div>
-                <div className="stat-grid">
-                  <div className="stat-card green"><CircleDollarSign size={19} /><small>ยอดขายวันนี้</small><strong>พร้อมติดตาม</strong><span>อัปเดตล่าสุด</span></div>
-                  <div className="stat-card"><ReceiptText size={19} /><small>ออเดอร์</small><strong>จัดการง่าย</strong><span>ทุกช่องทาง</span></div>
-                  <div className="stat-card"><Boxes size={19} /><small>สินค้าคงเหลือ</small><strong>เห็นชัดเจน</strong><span>แยกตามสาขา</span></div>
-                </div>
-                <div className="chart-card">
-                  <div><strong>ภาพรวมยอดขาย</strong><small>7 วันที่ผ่านมา</small></div>
-                  <div className="chart-bars">{[38, 54, 44, 72, 60, 82, 68, 91, 78, 100].map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="floating-card sale"><Zap size={18} /><div><small>ระบบพร้อมใช้งาน</small><strong>ขายได้ต่อเนื่อง</strong></div></div>
-          <div className="floating-card stock"><BadgeCheck size={19} /><div><small>จัดการสต็อก</small><strong>มั่นใจทุกการขาย</strong></div></div>
-        </div>
-      </section>
-
-      <section className="proof-strip">
-        <p>ระบบเดียวสำหรับงานหน้าร้านและหลังร้าน</p>
-        <div><span><ReceiptText /> จุดขาย</span><span><Boxes /> สต็อก</span><span><BarChart3 /> รายงาน</span><span><Users /> ทีมงาน</span><span><Cloud /> ออนไลน์</span></div>
-      </section>
-
-      <section className="section features-section" id="features">
-        <div className="section-heading">
-          <div><span className="section-kicker">ทุกเรื่องร้าน จบในที่เดียว</span><h2>เครื่องมือที่ช่วยให้ร้าน<br />ทำงานได้<span>ฉลาดขึ้น</span></h2></div>
-          <p>ลดงานซ้ำซ้อน เห็นข้อมูลสำคัญ และดูแลทีมได้ง่ายขึ้นตั้งแต่การขายครั้งแรกจนถึงการขยายสาขา</p>
-        </div>
-        <div className="feature-grid">
-          {features.map(({ icon: Icon, title, description }) => (
-            <article className="feature-card" key={title}><div className="icon-box"><Icon /></div><h3>{title}</h3><p>{description}</p><span>เรียนรู้เพิ่มเติม <ArrowRight size={15} /></span></article>
-          ))}
-        </div>
-      </section>
-
-      <section className="section business-section" id="business">
-        <div className="business-copy">
-          <span className="section-kicker light">ออกแบบมาเพื่อร้านที่อยากไปต่อ</span>
-          <h2>ไม่ว่าร้านแบบไหน<br />ก็จัดการได้<span>เป็นระบบ</span></h2>
-          <p>เริ่มจากร้านเดียวหรือกำลังขยายหลายสาขา O KhaiDee+ ช่วยวางพื้นฐานข้อมูลและการทำงานให้พร้อมเติบโต</p>
-          <a className="button button-light" href={whatsappUrl} target="_blank" rel="noreferrer">เล่าเรื่องร้านของคุณ <MessageCircle size={19} /></a>
-        </div>
-        <div className="business-cards">
-          {businessTypes.map(({ icon: Icon, title, detail }, index) => <article key={title}><div><Icon /></div><span>0{index + 1}</span><h3>{title}</h3><p>{detail}</p></article>)}
-        </div>
-      </section>
-
-      <section className="section process-section">
-        <div className="center-heading"><span className="section-kicker">เริ่มต้นโดยไม่ยุ่งยาก</span><h2>พร้อมใช้ใน <span>3 ขั้นตอน</span></h2><p>เราช่วยดูแลตั้งแต่ทำความเข้าใจร้านจนถึงวันที่ทีมเริ่มใช้งาน</p></div>
-        <div className="steps">
-          {steps.map((step, i) => <article key={step.number}><div className="step-number">{step.number}</div>{i < steps.length - 1 && <div className="step-line" />}<h3>{step.title}</h3><p>{step.text}</p></article>)}
-        </div>
-      </section>
-
-      <section className="section faq-section" id="faq">
-        <div className="faq-intro"><span className="section-kicker">คำถามที่พบบ่อย</span><h2>ก่อนเริ่มใช้งาน<br /><span>อยากรู้อะไร?</span></h2><p>หากยังมีคำถามอื่น ทีมงานยินดีให้รายละเอียดผ่าน WhatsApp</p><a className="text-link green-link" href={whatsappUrl} target="_blank" rel="noreferrer">ถามทีมงานโดยตรง <ArrowRight size={17} /></a></div>
-        <div className="faq-list">
-          {faqs.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}
-        </div>
-      </section>
-
-      <section className="cta-section">
-        <div className="cta-shape one" /><div className="cta-shape two" />
-        <div className="cta-logo"><img src="/okhaidee-logo.png" alt="" /></div>
-        <div><span>พร้อมเปลี่ยนร้านให้จัดการง่ายขึ้นหรือยัง?</span><h2>ให้ O KhaiDee+ ช่วยดูแล<br />งานร้านในทุกวัน</h2><p>ส่งข้อความหาเรา พร้อมบอกประเภทร้าน ทีมงานจะติดต่อกลับพร้อมรายละเอียดที่เหมาะกับคุณ</p></div>
-        <a className="button button-white" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={21} /> สนใจใช้งาน ติดต่อ WhatsApp</a>
-      </section>
-
-      <footer>
-        <div className="footer-brand"><a className="brand" href="#top"><img src="/okhaidee-logo.png" alt="" /><span>O KhaiDee<span>+</span></span></a><p>ระบบ POS ที่ช่วยให้การขายและการจัดการร้านเป็นเรื่องง่าย</p></div>
-        <div className="footer-links"><div><strong>ผลิตภัณฑ์</strong><a href="#features">ฟีเจอร์</a><a href="#business">ประเภทธุรกิจ</a><a href="#faq">คำถามที่พบบ่อย</a></div><div><strong>ติดต่อ</strong><a href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={15} /> +856 20 7796 4565</a><a href="#top"><Share2 size={15} /> แชร์ O KhaiDee+</a></div></div>
-        <div className="footer-bottom"><span>© {new Date().getFullYear()} O KhaiDee+. All rights reserved.</span><span>Built for better business in Laos 🇱🇦</span></div>
-      </footer>
-
-      <a className="whatsapp-float" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="ติดต่อ O KhaiDee+ ทาง WhatsApp"><MessageCircle /><span>คุยกับเรา</span></a>
-    </main>
-  );
+  return <main>
+    <header className="site-header"><a className="brand" href="#top" aria-label="O KhaiDee+"><img src="/okhaidee-logo.png" alt="O KhaiDee+" /><span>O KhaiDee<span>+</span></span></a><nav aria-label={t.lang}><a href="#features">{t.nav[0]}</a><a href="#business">{t.nav[1]}</a><a href="#faq">{t.nav[2]}</a></nav><div className="header-actions"><div className="language-switcher" role="group" aria-label={t.lang}>{(["lo","th","en"] as Locale[]).map(code => <button key={code} className={locale === code ? "active" : ""} aria-pressed={locale === code} onClick={() => setLocale(code)}>{code.toUpperCase()}</button>)}</div><a className="button button-small" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={18}/>{t.talk}</a></div></header>
+    <section className="hero section" id="top"><div className="hero-copy"><div className="eyebrow"><Sparkles size={16}/>{t.eyebrow}</div><h1>{t.hero[0]}<br/>{t.hero[1]}<span>{t.hero[2]}</span></h1><p className="hero-lead">{t.lead}</p><div className="hero-actions"><a className="button" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={20}/>{t.interested}<ArrowRight size={18}/></a><a className="text-link" href="#features">{t.see}<ChevronRight size={17}/></a></div><div className="trust-row">{t.trust.map(x => <span key={x}><Check size={16}/>{x}</span>)}</div></div>
+      <div className="hero-visual"><div className="glow glow-one"/><div className="glow glow-two"/><div className="dashboard-window"><div className="window-bar"><span/><span/><span/><small>{t.dash[0]}</small></div><div className="dashboard-body"><aside><div className="mini-brand"><img src="/okhaidee-logo.png" alt=""/></div>{[LayoutDashboard,ReceiptText,Boxes,Users].map((Icon,i)=><div className={i===0?"side-icon active":"side-icon"} key={i}><Icon size={17}/></div>)}</aside><div className="dashboard-content"><div className="dash-title"><span>{t.dash[1]}</span><small>{t.dash[2]}</small></div><div className="stat-grid"><div className="stat-card green"><CircleDollarSign/><small>{t.dash[3]}</small><strong>{t.dash[4]}</strong></div><div className="stat-card"><ReceiptText/><small>{t.dash[5]}</small><strong>{t.dash[6]}</strong></div><div className="stat-card"><Boxes/><small>{t.dash[7]}</small><strong>{t.dash[8]}</strong></div></div><div className="chart-card"><div><strong>{t.dash[9]}</strong><small>{t.dash[10]}</small></div><div className="chart-bars">{[38,54,44,72,60,82,68,91,78,100].map((h,i)=><span key={i} style={{height:`${h}%`}}/>)}</div></div></div></div></div><div className="floating-card sale"><Zap/><div><small>{t.dash[11]}</small><strong>{t.dash[12]}</strong></div></div><div className="floating-card stock"><BadgeCheck/><div><small>{t.dash[13]}</small><strong>{t.dash[14]}</strong></div></div></div>
+    </section>
+    <section className="proof-strip"><p>{t.proof[0]}</p><div>{[ReceiptText,Boxes,BarChart3,Users,Cloud].map((Icon,i)=><span key={t.proof[i+1]}><Icon/>{t.proof[i+1]}</span>)}</div></section>
+    <section className="section features-section" id="features"><div className="section-heading"><div><span className="section-kicker">{t.featureKicker}</span><h2>{t.featureTitle[0]}<br/><span>{t.featureTitle[1]}</span></h2></div><p>{t.featureLead}</p></div><div className="feature-grid">{t.features.map(([title,description],i)=>{const Icon=featureIcons[i];return <article className="feature-card" key={title}><div className="icon-box"><Icon/></div><h3>{title}</h3><p>{description}</p><span>{t.more}<ArrowRight size={15}/></span></article>})}</div></section>
+    <section className="section business-section" id="business"><div className="business-copy"><span className="section-kicker light">{t.businessKicker}</span><h2>{t.businessTitle[0]}<br/><span>{t.businessTitle[1]}</span></h2><p>{t.businessLead}</p><a className="button button-light" href={whatsappUrl} target="_blank" rel="noreferrer">{t.tell}<MessageCircle/></a></div><div className="business-cards">{t.businesses.map(([title,detail],i)=>{const Icon=businessIcons[i];return <article key={title}><div><Icon/></div><span>0{i+1}</span><h3>{title}</h3><p>{detail}</p></article>})}</div></section>
+    <section className="section process-section"><div className="center-heading"><span className="section-kicker">{t.processKicker}</span><h2>{t.processTitle[0]} <span>{t.processTitle[1]}</span></h2><p>{t.processLead}</p></div><div className="steps">{t.steps.map(([title,text],i)=><article key={title}><div className="step-number">0{i+1}</div>{i<2&&<div className="step-line"/>}<h3>{title}</h3><p>{text}</p></article>)}</div></section>
+    <section className="section faq-section" id="faq"><div className="faq-intro"><span className="section-kicker">{t.faqKicker}</span><h2>{t.faqTitle[0]}<br/><span>{t.faqTitle[1]}</span></h2><p>{t.faqLead}</p><a className="text-link green-link" href={whatsappUrl} target="_blank" rel="noreferrer">{t.ask}<ArrowRight/></a></div><div className="faq-list">{t.faqs.map(([q,a],i)=><details key={q} open={i===0}><summary>{q}<span>+</span></summary><p>{a}</p></details>)}</div></section>
+    <section className="cta-section"><div className="cta-shape one"/><div className="cta-shape two"/><div className="cta-logo"><img src="/okhaidee-logo.png" alt=""/></div><div><span>{t.ctaTop}</span><h2>{t.ctaTitle[0]}<br/>{t.ctaTitle[1]}</h2><p>{t.ctaLead}</p></div><a className="button button-white" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle/>{t.ctaButton}</a></section>
+    <footer><div className="footer-brand"><a className="brand" href="#top"><img src="/okhaidee-logo.png" alt=""/><span>O KhaiDee<span>+</span></span></a><p>{t.footer}</p></div><div className="footer-links"><div><strong>{t.product}</strong><a href="#features">{t.nav[0]}</a><a href="#business">{t.nav[1]}</a><a href="#faq">{t.nav[2]}</a></div><div><strong>{t.contact}</strong><a href={whatsappUrl}><MessageCircle size={15}/>+856 20 7796 4565</a><a href="#top"><Share2 size={15}/>{t.share}</a></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} O KhaiDee+. {t.rights}.</span><span>{t.built}</span></div></footer>
+    <a className="whatsapp-float" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label={t.talk}><MessageCircle/><span>{t.talk}</span></a>
+  </main>;
 }

@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
-import { Noto_Sans_Thai, Plus_Jakarta_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
-
-const thai = Noto_Sans_Thai({
-  variable: "--font-thai",
-  subsets: ["thai", "latin"],
-  display: "swap",
-});
 
 const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
@@ -16,17 +10,18 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://okhaidee.codesabai.com"),
-  title: "O KhaiDee+ | POS ขายง่าย จัดการร้านได้ครบกว่า",
-  description: "ระบบ POS สำหรับร้านค้าในลาว จัดการงานขาย สต็อก รายงาน ทีมงาน และหลายสาขาในระบบเดียว ติดต่อเพื่อขอดูตัวอย่างผ่าน WhatsApp",
+  title: "O KhaiDee+ | POS ຂາຍງ່າຍ ຈັດການຮ້ານໄດ້ຄົບ",
+  description: "ລະບົບ POS ສຳລັບຮ້ານໃນລາວ ຈັດການການຂາຍ ສະຕັອກ ລາຍງານ ທີມງານ ແລະ ຫຼາຍຮ້ານໃນລະບົບດຽວ",
   keywords: ["POS Laos", "ระบบ POS", "โปรแกรมขายหน้าร้าน", "จัดการร้านค้า", "O KhaiDee", "ระบบสต็อก", "POS ร้านอาหาร"],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    locale: "th_TH",
+    locale: "lo_LA",
+    alternateLocale: ["th_TH", "en_US"],
     url: "/",
     siteName: "O KhaiDee+",
-    title: "O KhaiDee+ — ขายง่าย จัดการร้านได้ครบกว่า",
-    description: "รวมงานขาย สต็อก รายงาน และทีมงานไว้ในระบบเดียว พร้อมเติบโตไปกับร้านของคุณ",
+    title: "O KhaiDee+ — ຂາຍງ່າຍ ຈັດການຮ້ານໄດ້ຄົບ",
+    description: "ລວມການຂາຍ ສະຕັອກ ລາຍງານ ແລະ ທີມງານໄວ້ໃນລະບົບດຽວ",
     images: [{ url: "/og.png", width: 1200, height: 630, alt: "O KhaiDee+ ระบบ POS สำหรับร้านยุคใหม่" }],
   },
   twitter: { card: "summary_large_image", title: "O KhaiDee+ — POS สำหรับร้านยุคใหม่", description: "ขายง่าย จัดการร้านได้ครบกว่า", images: ["/og.png"] },
@@ -35,5 +30,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="th"><body className={`${thai.variable} ${jakarta.variable}`}>{children}</body></html>;
+  return <html lang="lo"><body className={jakarta.variable}>{children}</body></html>;
 }

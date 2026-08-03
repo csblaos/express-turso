@@ -22,7 +22,9 @@ test("server-renders the O KhaiDee+ landing page", async () => {
 
   const html = await response.text();
   assert.match(html, /O KhaiDee\+/);
-  assert.match(html, /ขายง่าย/);
+  assert.match(html, /ຂາຍງ່າຍ/);
+  assert.match(html, /ຮອງຮັບຫຼາຍຮ້ານ/);
+  assert.doesNotMatch(html, /หลายสาขา/);
   assert.match(html, /8562077964565/);
   assert.match(html, /og:image/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
