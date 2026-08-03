@@ -5,7 +5,7 @@
 :root { --green: #13a856; --green-dark: #08763d; --green-deep: #064b30; --mint: #e9f8ef; --ink: #12231a; --muted: #637168; --line: #dfe9e2; --cream: #f7faf7; --white: #fff; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: #fff; color: var(--ink); font-family: "Google Sans Lao", "Noto Sans Thai", "Avenir Next", "Segoe UI", sans-serif; }
+body { margin: 0; background: #fff; color: var(--ink); font-family: var(--font-jakarta), "Avenir Next", "Segoe UI", sans-serif; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
 main { overflow: hidden; }
@@ -87,9 +87,18 @@ footer { max-width: 1136px; margin: 0 auto; padding: 25px 0 30px; display: grid;
 /* Modern responsive design system */
 body { background: linear-gradient(180deg,#fbfefc 0,#fff 32%); font-family: var(--font-jakarta), "Avenir Next", "Segoe UI", Arial, sans-serif; font-weight: 400; text-rendering: optimizeLegibility; }
 .locale-lo { font-family: "Google Sans Lao", var(--font-jakarta), "Avenir Next", "Segoe UI", sans-serif; }
-.locale-th { font-family: "Noto Sans Thai", "Leelawadee UI", Tahoma, var(--font-jakarta), sans-serif; }
-.locale-en { font-family: var(--font-jakarta), "Avenir Next", "Segoe UI", Arial, sans-serif; }
-.locale-lo h1,.locale-lo h2,.locale-lo h3,.locale-lo strong { font-weight: 720; }
+.locale-th { font-family: "Google Sans Lao", "Noto Sans Thai", "Leelawadee UI", Tahoma, var(--font-jakarta), sans-serif; }
+.locale-en { font-family: "Google Sans Lao", var(--font-jakarta), "Avenir Next", "Segoe UI", Arial, sans-serif; }
+.locale-lo { font-weight:400; }
+.locale-lo h1 { font-weight:760; }
+.locale-lo h2 { font-weight:700; }
+.locale-lo h3 { font-weight:640; }
+.locale-lo strong { font-weight:650; }
+.locale-lo .eyebrow,.locale-lo .section-kicker { font-weight:620; }
+.locale-lo .hero-lead,.locale-lo .section-heading>p,.locale-lo .business-copy p,.locale-lo .faq-intro p { font-weight:380; }
+.locale-lo .button,.locale-lo .text-link,.locale-lo .language-switcher button { font-weight:650; }
+.locale-lo .trust-row,.locale-lo .feature-card p,.locale-lo .steps p,.locale-lo .faq-list details p,.locale-lo footer { font-weight:400; }
+.locale-lo .faq-list summary,.locale-lo .feature-card>span,.locale-lo .proof-strip span { font-weight:600; }
 .locale-th h1,.locale-th h2,.locale-th h3,.locale-en h1,.locale-en h2,.locale-en h3 { font-weight: 750; }
 p { font-weight: 400; }
 
