@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { normalizeCurrencyCode, type CurrencyCode } from "~/utils/currency";
+import { Landmark } from "@lucide/vue";
+import { LAO_BANKS, findLaoBank, type LaoBank } from "~/utils/lao-banks";
 
 type ApiEnvelope<T> = { success: true; requestId: string; data: T };
 
@@ -64,6 +66,66 @@ const qrImageInputRef = ref<HTMLInputElement | null>(null);
 const qrImageName = ref("");
 const qrPreviewOpen = ref(false);
 const qrPreviewAccount = ref<StorePaymentAccountRecord | null>(null);
+
+const bankPickerOpen = ref(false);
+const bankTriggerRef = ref<HTMLElement | null>(null);
+// The picker lives inside a scrolling modal, so an absolutely positioned menu is
+// clipped by it. Rendering to <body> at a fixed position removes the clipping,
+// and measuring the trigger lets it open upwards when there is no room below —
+// what a native select does.
+const bankMenuStyle = ref<Record<string, string>>({});
+const MENU_MAX_HEIGHT = 288;
+
+function positionBankMenu() {
+	const element = bankTriggerRef.value;
+	if (!element) return;
+	const rect = element.getBoundingClientRect();
+	const below = window.innerHeight - rect.bottom - 8;
+	const above = rect.top - 8;
+	// Open downwards unless the space above is genuinely better.
+	const openUp = below < Math.min(MENU_MAX_HEIGHT, above) && above > below;
+	bankMenuStyle.value = {
+		position: "fixed",
+		left: `${rect.left}px`,
+		width: `${rect.width}px`,
+		maxHeight: `${Math.max(160, Math.min(MENU_MAX_HEIGHT, openUp ? above : below))}px`,
+		...(openUp ? { bottom: `${window.innerHeight - rect.top + 4}px` } : { top: `${rect.bottom + 4}px` }),
+	};
+}
+
+function toggleBankPicker() {
+	if (bankPickerOpen.value) { bankPickerOpen.value = false; return; }
+	positionBankMenu();
+	bankPickerOpen.value = true;
+}
+
+onMounted(() => {
+	// Scrolling or resizing moves the trigger, and a fixed menu would stay behind.
+	const reposition = () => { if (bankPickerOpen.value) positionBankMenu(); };
+	window.addEventListener("resize", reposition);
+	window.addEventListener("scroll", reposition, true);
+	onBeforeUnmount(() => {
+		window.removeEventListener("resize", reposition);
+		window.removeEventListener("scroll", reposition, true);
+	});
+});
+// Set when the shop banks somewhere not on the list, so the free-text field is
+// shown instead. bank_name itself stays free text either way.
+const bankNameCustom = ref(false);
+const selectedBank = computed(() => findLaoBank(form.bank_name));
+// One lookup per row, and no TypeScript-only syntax inside the template.
+function bankLogo(bankName: string | null | undefined) {
+	return findLaoBank(bankName)?.logo || "";
+}
+function selectBank(bank: LaoBank) {
+	form.bank_name = bank.name;
+	bankNameCustom.value = false;
+	bankPickerOpen.value = false;
+}
+function startCustomBank() {
+	bankNameCustom.value = true;
+	bankPickerOpen.value = false;
+}
 
 const form = reactive({
 	display_name: "",
@@ -258,6 +320,8 @@ function resetForm(next?: StorePaymentAccountRecord | null) {
 		editingAccountId.value = null;
 		form.display_name = "";
 		form.bank_name = "";
+	bankNameCustom.value = false;
+	bankPickerOpen.value = false;
 		form.account_name = "";
 		form.account_number = "";
 		form.qr_id = "";
@@ -271,6 +335,9 @@ function resetForm(next?: StorePaymentAccountRecord | null) {
 	editingAccountId.value = next.id;
 	form.display_name = next.display_name || "";
 	form.bank_name = next.bank_name || "";
+	// A name that is not one of the listed banks keeps its free-text field.
+	bankNameCustom.value = Boolean(form.bank_name) && !findLaoBank(form.bank_name);
+	bankPickerOpen.value = false;
 	form.account_name = next.account_name || "";
 	form.account_number = next.account_number || "";
 	form.qr_id = next.qr_id || "";
@@ -948,9 +1015,16 @@ onMounted(async () => {
 												/>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
-												<div class="space-y-1 text-sm text-stone-700">
-													<p class="font-medium text-stone-900">{{ account.bank_name || "-" }}</p>
-													<p class="text-xs text-stone-500">{{ t('storePaymentsPage.bankDescription') }}</p>
+												<div class="flex items-center gap-2.5 text-sm text-stone-700">
+													<img v-if="bankLogo(account.bank_name)" :src="bankLogo(account.bank_name)" alt="" class="size-8 shrink-0 rounded object-contain">
+													<!-- A bank typed by hand has no logo; a neutral mark keeps the column aligned. -->
+													<span v-else-if="account.bank_name" class="grid size-8 shrink-0 place-items-center rounded bg-neutral-100 text-stone-400 dark:bg-white/5">
+														<Landmark class="size-4" />
+													</span>
+													<div class="min-w-0 space-y-1">
+														<p class="truncate font-medium text-stone-900">{{ account.bank_name || "-" }}</p>
+														<p class="text-xs text-stone-500">{{ t('storePaymentsPage.bankDescription') }}</p>
+													</div>
 												</div>
 											</td>
 											<td class="border-b border-neutral-100 px-4 py-4 dark:border-[#342d26]">
@@ -1178,12 +1252,60 @@ onMounted(async () => {
 									<div class="grid gap-4 sm:grid-cols-2">
 										<div class="space-y-2">
 											<label class="text-sm font-medium text-stone-700">{{ t('storePaymentsPage.bankName') }}</label>
+											<div class="relative">
+												<button
+													ref="bankTriggerRef"
+													type="button"
+													class="flex w-full items-center gap-2.5 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-start text-sm shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 dark:border-[#3a332a] dark:bg-[#221d18]"
+													@click="toggleBankPicker"
+												>
+													<img v-if="selectedBank" :src="selectedBank.logo" alt="" class="size-6 shrink-0 rounded object-contain">
+													<span v-else-if="form.bank_name" class="grid size-6 shrink-0 place-items-center rounded bg-neutral-100 text-stone-400 dark:bg-white/5">
+														<Landmark class="size-3.5" />
+													</span>
+													<span class="min-w-0 flex-1 truncate" :class="form.bank_name ? 'text-stone-900 dark:text-stone-100' : 'text-stone-400'">
+														{{ form.bank_name || t('storePaymentsPage.bankNamePlaceholder') }}
+													</span>
+													<UIcon name="i-heroicons-chevron-up-down-20-solid" class="size-4 shrink-0 text-stone-400" />
+												</button>
+
+												<Teleport to="body">
+													<div v-if="bankPickerOpen" class="fixed inset-0 z-[60]" @click="bankPickerOpen = false" />
+													<div v-if="bankPickerOpen" :style="bankMenuStyle" class="z-[61] flex flex-col overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-[#3a332a] dark:bg-[#221d18]">
+														<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto p-1">
+														<button
+															v-for="bank in LAO_BANKS"
+															:key="bank.code"
+															type="button"
+															class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-start transition hover:bg-neutral-50 dark:hover:bg-white/5"
+															:class="form.bank_name === bank.name ? 'bg-primary-50 dark:bg-primary-500/10' : ''"
+															@click="selectBank(bank)"
+														>
+															<img :src="bank.logo" alt="" class="size-8 shrink-0 rounded object-contain">
+															<span class="min-w-0 flex-1">
+																<span class="block text-sm font-medium text-stone-900 dark:text-stone-100">{{ bank.code }}</span>
+																<span class="block truncate text-xs leading-4 text-stone-500">{{ bank.name }}</span>
+															</span>
+															<UIcon v-if="form.bank_name === bank.name" name="i-heroicons-check-20-solid" class="size-4 shrink-0 text-primary-600" />
+														</button>
+													</div>
+														<!-- A shop banking somewhere not listed must still be able to say so. -->
+														<div class="shrink-0 border-t border-neutral-100 p-1 dark:border-[#3a332a]">
+															<button type="button" class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-sm text-stone-600 transition hover:bg-neutral-50 dark:text-stone-300 dark:hover:bg-white/5" @click="startCustomBank">
+																<UIcon name="i-heroicons-pencil-square-20-solid" class="size-4 shrink-0 text-stone-400" />
+																{{ t('storePaymentsPage.bankNameOther') }}
+															</button>
+														</div>
+													</div>
+												</Teleport>
+											</div>
 											<UInput
+												v-if="bankNameCustom"
 												v-model="form.bank_name"
 												size="lg"
 												color="neutral"
 												:placeholder="t('storePaymentsPage.bankNamePlaceholder')"
-											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18] dark:[&_input]:text-stone-100"
+												class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#221d18]"
 											/>
 										</div>
 

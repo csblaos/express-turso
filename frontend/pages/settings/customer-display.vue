@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
+import { resolveStoredImageUrl } from "~/utils/image";
+import { publishCustomerDisplayBranding } from "~/composables/useCustomerDisplay";
 
 type ApiEnvelope<T> = { success: true; requestId: string; data: T };
 type StoreRecord = {
 	id: string;
 	name: string;
+	logo_url?: string | null;
+	currency?: string | null;
 	customer_display_enabled: number;
 	customer_display_ads: string | null;
+	customer_display_ad_interval?: number | null;
+	customer_display_banner_enabled?: number | null;
 	customer_display_ad_url: string | null;
 };
 
@@ -24,9 +30,13 @@ const copy = computed(() => {
 		settings: "ຕັ້ງຄ່າ", title: "ໜ້າຈໍລູກຄ້າ", description: "ເປີດໜ້າຈໍທີ່ສອງສຳລັບລູກຄ້າ ແລະ ຕັ້ງຮູບໂຄສະນາ",
 		enable: "ເປີດໃຊ້ໜ້າຈໍລູກຄ້າ", enableHint: "ເມື່ອເປີດ ຈະມີປຸ່ມເປີດໜ້າຈໍລູກຄ້າຢູ່ໜ້າຂາຍ",
 		disabledNote: "ປິດຢູ່ ຈຶ່ງບໍ່ມີປຸ່ມເປີດໜ້າຈໍລູກຄ້າ",
+		bannerEnable: "ສະແດງຮູບໂຄສະນາ", bannerEnableHint: "ປິດໄວ້ ໜ້າຈໍຈະສະແດງໂລໂກ້ ແລະ ຄຳຕ້ອນຮັບແທນ ຮູບທີ່ອັບໄວ້ຍັງຢູ່ຄືເກົ່າ",
+		bannerOffNote: "ຕອນນີ້ສະແດງໂລໂກ້ ແລະ ຄຳຕ້ອນຮັບ",
+		interval: "ສະຫຼັບຮູບທຸກ", intervalHint: "ມີຜົນເມື່ອມີຮູບຫຼາຍກວ່າ 1 ຮູບ",
+		intervalManual: "ບໍ່ສະຫຼັບ", intervalSeconds: "{count} ວິນາທີ",
 		linkTitle: "ລິ້ງໜ້າຈໍລູກຄ້າ", linkHint: "ເປີດລິ້ງນີ້ໃນໜ້າຈໍທີ່ສອງ ຫຼື ກົດປຸ່ມຮູບຈໍຢູ່ໜ້າຂາຍກໍ່ໄດ້",
 		linkCopy: "ສຳເນົາລິ້ງ", linkCopied: "ສຳເນົາລິ້ງແລ້ວ", linkOpen: "ເປີດເລີຍ", linkCopyFailed: "ສຳເນົາບໍ່ສຳເລັດ",
-		ads: "ຮູບໂຄສະນາ", adsHint: `ໃສ່ໄດ້ສູງສຸດ ${MAX_ADS} ຮູບ ສະຫຼັບອັດຕະໂນມັດທຸກ 5 ວິນາທີ`,
+		ads: "ຮູບໂຄສະນາ", adsHint: `ໃສ່ໄດ້ສູງສຸດ ${MAX_ADS} ຮູບ`,
 		adsOptional: "ບໍ່ໃສ່ກໍ່ໄດ້ ຖ້າບໍ່ມີຈະສະແດງໂລໂກ້ຮ້ານແທນ",
 		adsSize: "ແນະນຳຮູບແນວນອນ 16:9 ຂະໜາດ 1280 × 720 px ວາງເນື້ອຫາສຳຄັນໄວ້ກາງຮູບ",
 		addImage: "ເພີ່ມຮູບ", full: `ຄົບ ${MAX_ADS} ຮູບແລ້ວ`,
@@ -39,9 +49,13 @@ const copy = computed(() => {
 		settings: "ตั้งค่า", title: "จอลูกค้า", description: "เปิดจอที่สองสำหรับลูกค้า และตั้งรูปโฆษณา",
 		enable: "เปิดใช้จอลูกค้า", enableHint: "เมื่อเปิด จะมีปุ่มเปิดจอลูกค้าอยู่ที่หน้าขาย",
 		disabledNote: "ปิดอยู่ จึงไม่มีปุ่มเปิดจอลูกค้า",
+		bannerEnable: "แสดงรูปโฆษณา", bannerEnableHint: "ปิดไว้ จอจะแสดงโลโก้และคำต้อนรับแทน รูปที่อัปไว้ยังอยู่เหมือนเดิม",
+		bannerOffNote: "ตอนนี้แสดงโลโก้และคำต้อนรับ",
+		interval: "สลับรูปทุก", intervalHint: "มีผลเมื่อมีรูปมากกว่า 1 รูป",
+		intervalManual: "ไม่สลับ", intervalSeconds: "{count} วินาที",
 		linkTitle: "ลิงก์จอลูกค้า", linkHint: "เปิดลิงก์นี้บนจอที่สอง หรือกดปุ่มรูปจอที่หน้าขายก็ได้",
 		linkCopy: "คัดลอกลิงก์", linkCopied: "คัดลอกลิงก์แล้ว", linkOpen: "เปิดเลย", linkCopyFailed: "คัดลอกไม่สำเร็จ",
-		ads: "รูปโฆษณา", adsHint: `ใส่ได้สูงสุด ${MAX_ADS} รูป สลับอัตโนมัติทุก 5 วินาที`,
+		ads: "รูปโฆษณา", adsHint: `ใส่ได้สูงสุด ${MAX_ADS} รูป`,
 		adsOptional: "ไม่ใส่ก็ได้ ถ้าไม่มีจะแสดงโลโก้ร้านแทน",
 		adsSize: "แนะนำรูปแนวนอน 16:9 ขนาด 1280 × 720 px วางเนื้อหาสำคัญไว้กลางรูป",
 		addImage: "เพิ่มรูป", full: `ครบ ${MAX_ADS} รูปแล้ว`,
@@ -54,9 +68,13 @@ const copy = computed(() => {
 		settings: "Settings", title: "Customer display", description: "Turn on the second screen for customers and set its advert images",
 		enable: "Enable customer display", enableHint: "When on, the POS shows a button that opens the customer screen",
 		disabledNote: "Turned off, so the POS has no customer screen button",
+		bannerEnable: "Show banner images", bannerEnableHint: "Turn off to show the shop logo and welcome instead; uploaded images are kept",
+		bannerOffNote: "Currently showing the logo and welcome",
+		interval: "Change image every", intervalHint: "Applies once there is more than one image",
+		intervalManual: "Do not change", intervalSeconds: "{count} seconds",
 		linkTitle: "Customer screen link", linkHint: "Open this on the second monitor, or use the screen button on the POS",
 		linkCopy: "Copy link", linkCopied: "Link copied", linkOpen: "Open", linkCopyFailed: "Could not copy",
-		ads: "Advert images", adsHint: `Up to ${MAX_ADS} images, rotating every 5 seconds`,
+		ads: "Advert images", adsHint: `Up to ${MAX_ADS} images`,
 		adsOptional: "Optional. Without any, the store logo is shown instead",
 		adsSize: "Best as landscape 16:9 at 1280 × 720 px, with the important part centred",
 		addImage: "Add image", full: `${MAX_ADS} images already added`,
@@ -70,12 +88,21 @@ const copy = computed(() => {
 const storeId = computed(() => currentStoreId.value || currentAccess.value?.store_id || currentAccess.value?.memberships?.[0]?.store_id || "");
 const elevated = computed(() => currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin");
 const canUpdate = computed(() => elevated.value || can("settings.store.update"));
+// Only once the session is actually known - otherwise every refresh flashes a
+// permission warning at people who do have the permission.
+const canShowPermissionWarning = computed(() => (
+	!loading.value && Boolean(currentUser.value || currentAccess.value) && !canUpdate.value
+));
 const loading = ref(true);
 const saving = ref(false);
 const preparingImage = ref(false);
 const adInput = ref<HTMLInputElement | null>(null);
 const error = ref("");
 const enabled = ref(false);
+const bannerEnabled = ref(true);
+// 0 holds on one image; the rest are seconds between adverts.
+const AD_INTERVAL_OPTIONS = [ 0, 5, 10, 15 ] as const;
+const adInterval = ref(5);
 const ads = ref<string[]>([]);
 const pendingRemoveIndex = ref<number | null>(null);
 
@@ -95,6 +122,8 @@ const displayUrl = computed(() => {
 
 function hydrate(store: StoreRecord) {
 	enabled.value = Number(store.customer_display_enabled || 0) !== 0;
+	bannerEnabled.value = Number(store.customer_display_banner_enabled ?? 1) !== 0;
+	adInterval.value = Number(store.customer_display_ad_interval ?? 5);
 	let parsed: string[] = [];
 	const stored = store.customer_display_ads;
 	if (typeof stored === "string" && stored.trim()) {
@@ -110,6 +139,20 @@ function hydrate(store: StoreRecord) {
 		parsed = [ store.customer_display_ad_url ];
 	}
 	ads.value = parsed.slice(0, MAX_ADS);
+
+	// The display screen has no API access of its own and only learns the shop
+	// from a POS broadcast. Opening the link from here with no POS window running
+	// would otherwise show a nameless screen with the system logo, so seed the
+	// cache the screen reads on load.
+	// Announced, not just cached: a display already open on the second monitor
+	// has to follow a settings change without being closed and reopened.
+	publishCustomerDisplayBranding(store.id || storeId.value, {
+		storeName: store.name || "",
+		storeLogo: resolveStoredImageUrl(store.logo_url || "", String(runtimeConfig.public.r2PublicBaseUrl || "")) || "",
+		currency: String(store.currency || "LAK"),
+		adImages: bannerEnabled.value ? ads.value.map(resolveAdUrl) : [],
+		adIntervalSeconds: adInterval.value,
+	});
 }
 
 async function load() {
@@ -129,11 +172,13 @@ async function load() {
 // Every change writes straight away. A separate save step here only created a
 // state where the screen and the settings disagreed until someone remembered
 // to press it.
-async function persist(next: { enabled?: boolean; ads?: string[] }) {
+async function persist(next: { enabled?: boolean; ads?: string[]; bannerEnabled?: boolean; adInterval?: number }) {
 	if (!canUpdate.value || !storeId.value) return;
-	const previous = { enabled: enabled.value, ads: [ ...ads.value ] };
+	const previous = { enabled: enabled.value, ads: [ ...ads.value ], bannerEnabled: bannerEnabled.value, adInterval: adInterval.value };
 	if (next.enabled !== undefined) enabled.value = next.enabled;
 	if (next.ads) ads.value = next.ads;
+	if (next.bannerEnabled !== undefined) bannerEnabled.value = next.bannerEnabled;
+	if (next.adInterval !== undefined) adInterval.value = next.adInterval;
 	saving.value = true;
 	error.value = "";
 	try {
@@ -142,6 +187,8 @@ async function persist(next: { enabled?: boolean; ads?: string[] }) {
 			body: {
 				customer_display_enabled: enabled.value ? 1 : 0,
 				customer_display_ads: ads.value,
+				customer_display_banner_enabled: bannerEnabled.value ? 1 : 0,
+				customer_display_ad_interval: adInterval.value,
 			},
 		});
 		hydrate(response.data);
@@ -149,6 +196,8 @@ async function persist(next: { enabled?: boolean; ads?: string[] }) {
 	} catch (cause) {
 		enabled.value = previous.enabled;
 		ads.value = previous.ads;
+		bannerEnabled.value = previous.bannerEnabled;
+		adInterval.value = previous.adInterval;
 		error.value = resolveApiErrorMessage(cause, copy.value.saveFailed);
 		toast.error({ title: copy.value.saveFailed, description: error.value });
 	} finally {
@@ -167,7 +216,10 @@ async function copyDisplayUrl() {
 
 function openDisplayUrl() {
 	if (!import.meta.client) return;
-	window.open(displayUrl.value, "pos-customer-display", "width=1024,height=768");
+	// Matches the POS opener: the bill shows more lines on a taller window.
+	const width = Math.max(1024, Math.round((window.screen?.availWidth || 1024) * 0.9));
+	const height = Math.max(768, Math.round((window.screen?.availHeight || 768) * 0.9));
+	window.open(displayUrl.value, "pos-customer-display", `width=${width},height=${height},left=0,top=0`);
 }
 
 function openAdPicker() {
@@ -250,7 +302,7 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 	>
 		<template #default="{ openSidebar }">
 			<div class="space-y-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-4">
-				<AppPageHeader :title="copy.title" :description="copy.description" :title-badge="false" tablet-layout compact @menu="openSidebar">
+				<AppPageHeader :title="copy.title" :description="copy.description" :title-badge="false" actions-align="center" compact @menu="openSidebar">
 					<template #actions>
 						<AppButton color="neutral" variant="soft" icon="i-heroicons-arrow-path-20-solid" :loading="loading || saving" :disabled="loading" @click="load">
 							{{ copy.reload }}
@@ -258,7 +310,7 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 					</template>
 				</AppPageHeader>
 
-				<p v-if="!canUpdate" class="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ copy.noPermission }}</p>
+				<p v-if="canShowPermissionWarning" class="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ copy.noPermission }}</p>
 				<p v-if="error" class="rounded-md bg-error-50 px-4 py-3 text-sm text-error">{{ error }}</p>
 
 				<UCard>
@@ -278,6 +330,43 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 						</button>
 					</div>
 					<p v-if="!enabled" class="mt-3 rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">{{ copy.disabledNote }}</p>
+				</UCard>
+
+				<UCard v-if="enabled">
+					<div class="flex items-start justify-between gap-4">
+						<div class="min-w-0">
+							<p class="text-sm font-semibold text-stone-900">{{ copy.bannerEnable }}</p>
+							<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.bannerEnableHint }}</p>
+						</div>
+						<button
+							type="button"
+							class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
+							:class="bannerEnabled ? 'bg-primary-600' : 'bg-stone-200'"
+							:disabled="!canUpdate || saving"
+							@click="persist({ bannerEnabled: !bannerEnabled })"
+						>
+							<span class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition" :class="bannerEnabled ? 'translate-x-5' : 'translate-x-0.5'" />
+						</button>
+					</div>
+					<p v-if="!bannerEnabled" class="mt-3 rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">{{ copy.bannerOffNote }}</p>
+
+					<div v-if="bannerEnabled" class="mt-4 border-t border-stone-200 pt-4">
+						<p class="text-sm font-semibold text-stone-900">{{ copy.interval }}</p>
+						<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.intervalHint }}</p>
+						<div class="mt-3 flex flex-wrap gap-2">
+							<button
+								v-for="option in AD_INTERVAL_OPTIONS"
+								:key="option"
+								type="button"
+								class="rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50"
+								:class="adInterval === option ? 'border-primary-600 bg-primary-600 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-primary-200'"
+								:disabled="!canUpdate || saving"
+								@click="persist({ adInterval: option })"
+							>
+								{{ option === 0 ? copy.intervalManual : copy.intervalSeconds.replace('{count}', String(option)) }}
+							</button>
+						</div>
+					</div>
 				</UCard>
 
 				<UCard v-if="enabled">

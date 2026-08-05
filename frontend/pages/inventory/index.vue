@@ -48,6 +48,8 @@ type ApiInventoryList = {
 		out: number;
 		negative: number;
 		totalAvailableQty: number;
+		totalValue: number;
+		currency: string;
 	};
 	categories: Array<{
 		id: string;
@@ -168,6 +170,8 @@ const pageSizeOptions = [10, 20, 50, 100];
 		out: 0,
 		negative: 0,
 		totalAvailableQty: 0,
+		totalValue: 0,
+		currency: "LAK",
 	});
 	const inventoryCategories = ref<ApiInventoryList["categories"]>([]);
 

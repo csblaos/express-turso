@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto";
+import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
+import { inventoryValueStatement } from "@interfaces/ReportInterface";
 
 import { Client, InValue } from "@libsql/client";
 
@@ -89,6 +91,10 @@ export type InventoryListResult = {
 		out: number;
 		negative: number;
 		totalAvailableQty: number;
+		// What the stock on hand is worth. Uses the one definition the reports use,
+		// so the stock page and the report can never quote different totals.
+		totalValue: number;
+		currency: string;
 	};
 	categories: Array<{
 		id: string;
@@ -314,6 +320,18 @@ export class InventoryInterface {
 			],
 		});
 
+		// A write-off or a downward recount takes real goods off the shelf, so it
+		// draws the cost layers down the same way a sale does. Stock added by hand
+		// deliberately creates no layer: nobody has said what it cost.
+		if (delta < 0) {
+			const { statements } = await InventoryCostInterface.planIssues(
+				input.store_id,
+				[ { product_id: input.product_id, qty_base: -delta } ],
+				db,
+			);
+			for (const statement of statements) await db.execute(statement);
+		}
+
 		const balance: InventoryBalanceListItem = {
 			store_id: String(productRow.store_id),
 			product_id: String(productRow.product_id),
@@ -422,6 +440,9 @@ export class InventoryInterface {
 
 	static async findBalancePage(filters: InventoryPageFilters): Promise<InventoryListResult> {
 		await ProductInterface.ensureColumns();
+		// The stock value joins inventory_cost_summaries, created lazily by the
+		// receipt flow, so a shop that never received a purchase order would fail.
+		await InventoryCostInterface.ensureTables();
 		const db = DbConn.getClient();
 		const page = Math.max(1, Math.floor(filters.page));
 		const limit = Math.min(100, Math.max(1, Math.floor(filters.limit)));
@@ -430,7 +451,7 @@ export class InventoryInterface {
 		const orderBy = getBalanceOrderBy(filters.sort);
 		const storeArgs: InValue[] = [ filters.storeId ];
 
-		const [ itemsResult, countResult, statsResult, categoriesResult ] = await db.batch([
+		const [ itemsResult, countResult, statsResult, categoriesResult, valueResult, currencyResult ] = await db.batch([
 			{
 				sql: `
 					SELECT
@@ -506,6 +527,8 @@ export class InventoryInterface {
 				`,
 				args: storeArgs,
 			},
+			inventoryValueStatement(filters.storeId),
+			{ sql: "SELECT currency FROM stores WHERE id = ? LIMIT 1", args: [ filters.storeId ] as InValue[] },
 		], "read");
 
 		const total = Number(countResult.rows[0]?.total || 0);
@@ -524,6 +547,8 @@ export class InventoryInterface {
 				out: Number(stats.out || 0),
 				negative: Number(stats.negative || 0),
 				totalAvailableQty: Number(stats.total_available_qty || 0),
+				totalValue: Number(valueResult.rows[0]?.inventory_value || 0),
+				currency: String(currencyResult.rows[0]?.currency || "LAK"),
 			},
 			categories: categoriesResult.rows.map((row) => ({
 				id: String(row.category_id),
@@ -673,6 +698,10 @@ export class InventoryInterface {
 		input: InventoryAdjustmentInput,
 		options: { refType?: string; refId?: string | null } = {},
 	): Promise<InventoryAdjustmentResult> {
+		// Both of these issue DDL on their own connection, so they have to finish
+		// before the write transaction opens or they deadlock against it.
+		await ProductInterface.ensureColumns();
+		await InventoryCostInterface.ensureTables();
 		const db = DbConn.getClient();
 		const transaction = await db.transaction("write");
 		try {

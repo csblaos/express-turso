@@ -32,3 +32,10 @@ dev-accounts.local.md
 coverage
 .eslintcache
 .credentials/
+
+# Beszel runtime data and secrets
+monitoring/.env
+monitoring/data/
+monitoring/socket/
+monitoring/agent-data/
+monitoring/secrets/

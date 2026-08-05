@@ -16,6 +16,9 @@ export class StoreRouter {
 		this.router.get("/", PermissionMiddleware.require("stores.view"), StoreController.getAll);
 		this.router.use("/:storeId/payment-accounts", StorePaymentAccountRouter.getInstance().getRouter());
 		this.router.get("/:id", PermissionMiddleware.require("stores.view"), StoreController.getById);
+		// Only stores.view: every item carries the permission needed to act on it and
+		// the client hides what the user cannot fix.
+		this.router.get("/:id/setup-status", PermissionMiddleware.require("stores.view"), CommonValidator.resourceId, StoreController.getSetupStatus);
 		this.router.get("/:id/cost-method/history", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCostMethodHistory);
 		this.router.get("/:id/currency-rates", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRates);
 		this.router.get("/:id/currency-rates/history", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);

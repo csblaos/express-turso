@@ -91,6 +91,8 @@ export default class ProductValidator extends ValidatorMiddleware {
 		// Defaults to pinning the cost; send false to hand the product back to
 		// the purchase-order receive path.
 		lock_cost: z.boolean().optional(),
+		// Opt-in: fills the cost into past sale lines that never had one.
+		apply_to_past_sales: z.boolean().optional(),
 	});
 
 	private static readonly bulkVariantItemSchema = z.object({

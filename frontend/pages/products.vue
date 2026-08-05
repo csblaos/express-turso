@@ -518,14 +518,43 @@ const paginatedProducts = computed(() => products.value);
 			? (selectedProduct.value.costSource === "manual") !== productCostAdjustForm.lockCost
 			: false
 	));
-	const costAdjustHasChange = computed(() => costAdjustDelta.value !== 0 || costAdjustLockChanged.value);
+	// Zero is a legitimate cost for a giveaway, but it is also what someone types
+	// when they mean "I do not know". The two look identical afterwards and only
+	// one of them is honest, so this asks before storing it.
+	const costAdjustNeedsZeroConfirm = computed(() => (
+		Boolean(selectedProduct.value) && costAdjustAfterCost.value === 0 && selectedProduct.value?.costSource !== "manual"
+	));
+	const costAdjustZeroConfirmed = ref(false);
+	// Past sale lines keep the cost that was known when they were rung up, so
+	// setting a cost now leaves them alone. This is what is still uncosted, so the
+	// dialog can offer to fill it in instead of the owner wondering why the report
+	// did not move.
+	const costAdjustPastSales = ref<{ line_count: number; bill_count: number; revenue: number } | null>(null);
+	const costAdjustApplyToPast = ref(false);
+	const costAdjustHasPastSales = computed(() => (costAdjustPastSales.value?.line_count ?? 0) > 0);
+	const costAdjustHasChange = computed(() => {
+		if (costAdjustDelta.value !== 0) return true;
+		// Filling the existing cost into past sales is an action in its own right,
+		// even when the cost itself is not moving.
+		if (costAdjustApplyToPast.value && costAdjustHasPastSales.value) return true;
+		// A product with no cost is worth saving at an unchanged zero only when the
+		// user has deliberately confirmed that zero: that turns "we do not know"
+		// into "it really is free", which is a real change. The lock switch alone
+		// must not do it, or opening the dialog and clicking once would store a
+		// zero cost nobody meant.
+		if (selectedProduct.value?.costSource === "unknown") return costAdjustZeroConfirmed.value;
+		return costAdjustLockChanged.value;
+	});
+	// A menu item can never be received against a purchase order, so asking whether
+	// a purchase order may overwrite its cost is a question with no meaning.
+	const costAdjustShowsLock = computed(() => selectedProduct.value?.inventoryMode !== "untracked");
 	const costAdjustDeltaTone = computed(() => (
 		costAdjustDelta.value > 0 ? "warning" : costAdjustDelta.value < 0 ? "success" : "neutral"
 	));
 	const costAdjustDeltaLabel = computed(() => (
 		costAdjustDelta.value === 0
-			? "ไม่เปลี่ยน"
-			: `${costAdjustDelta.value > 0 ? "ทุนเพิ่ม" : "ทุนลด"} ${costAdjustDelta.value > 0 ? "+" : ""}${formatMoney(costAdjustDelta.value)}`
+			? t("products.costAdjust.deltaNoChange")
+			: `${costAdjustDelta.value > 0 ? t("products.costAdjust.deltaUp") : t("products.costAdjust.deltaDown")} ${costAdjustDelta.value > 0 ? "+" : ""}${formatMoney(costAdjustDelta.value)}`
 	));
 
 	const draftUnitMultiplierNumber = computed(() => {
@@ -578,7 +607,7 @@ const paginatedProducts = computed(() => products.value);
 });
 const productUnitSummary = computed(() => {
 	if (!selectedProduct.value) return "";
-	return `เช่น 1 แพ็ค = 12 ${selectedProduct.value.unitLabel}`;
+	return t("products.costAdjust.unitExample", { unit: selectedProduct.value.unitLabel });
 });
 
 const categoryCounts = computed(() =>
@@ -723,6 +752,17 @@ watch(currentPage, () => {
 		}
 	});
 
+	async function loadProductUncostedSales(productId: string) {
+		try {
+			const response = await apiFetch<ApiEnvelope<{ line_count: number; bill_count: number; revenue: number }>>(`/products/${productId}/uncosted-sales`);
+			costAdjustPastSales.value = response.data;
+		}
+		catch {
+			// Not being able to offer the backfill must never block setting a cost.
+			costAdjustPastSales.value = null;
+		}
+	}
+
 	async function loadProductCostAdjustments(productId: string) {
 		if (!canUpdateProductCost.value) return;
 		productCostAdjustmentsPending.value = true;
@@ -733,7 +773,7 @@ watch(currentPage, () => {
 			});
 			productCostAdjustments.value = response.data || [];
 		} catch (error) {
-			productCostAdjustmentsError.value = error instanceof Error ? error.message : "โหลดประวัติการปรับต้นทุนไม่สำเร็จ";
+			productCostAdjustmentsError.value = error instanceof Error ? error.message : t("products.costAdjust.historyLoadFailed");
 			productCostAdjustments.value = [];
 		} finally {
 			productCostAdjustmentsPending.value = false;
@@ -745,8 +785,14 @@ watch(currentPage, () => {
 		productCostAdjustForm.costBase = normalizeMoneyTyping(String(selectedProduct.value.cost ?? 0), { maxDecimals: 2 });
 		productCostAdjustForm.reason = "";
 		productCostAdjustForm.lockCost = true;
+		costAdjustZeroConfirmed.value = false;
+		// Off by default: a cost change is normally a new purchase price, and that
+		// must not reach back and restate a period already reported on.
+		costAdjustApplyToPast.value = false;
+		costAdjustPastSales.value = null;
 		productCostAdjustOpen.value = true;
 		void loadProductCostAdjustments(selectedProduct.value.id);
+		void loadProductUncostedSales(selectedProduct.value.id);
 	}
 
 		async function saveProductCostAdjust() {
@@ -754,19 +800,21 @@ watch(currentPage, () => {
 			if (!selectedProduct.value) return;
 			if (!canUpdateProductCost.value) return;
 
+			if (costAdjustNeedsZeroConfirm.value && !costAdjustZeroConfirmed.value) return;
+
 			const nextCost = parseLocaleNumber(productCostAdjustForm.costBase);
 			if (!Number.isFinite(nextCost) || nextCost < 0) {
 				appToast.error({
-					title: "ปรับต้นทุนไม่ได้",
-					description: "กรุณากรอกต้นทุนให้ถูกต้อง",
+					title: t("products.costAdjust.invalidTitle"),
+					description: t("products.costAdjust.invalidBody"),
 					timeout: 3200,
 				});
 				return;
 			}
-			if (Math.abs(nextCost - costAdjustBeforeCost.value) < 0.000001 && !costAdjustLockChanged.value) {
+			if (!costAdjustHasChange.value) {
 				appToast.info({
-					title: "ยังไม่เปลี่ยนต้นทุน",
-					description: "กรุณาแก้ไขต้นทุนก่อนกดบันทึก",
+					title: t("products.costAdjust.noChangeTitle"),
+					description: t("products.costAdjust.noChangeBody"),
 					timeout: 2400,
 				});
 				return;
@@ -780,6 +828,7 @@ watch(currentPage, () => {
 					cost_base: nextCost,
 					reason: productCostAdjustForm.reason.trim() || null,
 					lock_cost: productCostAdjustForm.lockCost,
+					apply_to_past_sales: costAdjustApplyToPast.value,
 				},
 			});
 
@@ -798,17 +847,21 @@ watch(currentPage, () => {
 			}
 
 			const adjustment = response.data.adjustment;
+			const appliedBills = Number((adjustment as { applied_to_past_bills?: number }).applied_to_past_bills || 0);
 			productCostAdjustments.value = [ adjustment, ...productCostAdjustments.value ].slice(0, 10);
 			appToast.success({
-				title: "ปรับต้นทุนแล้ว",
-				description: `ต้นทุนใหม่ ${formatMoney(updatedCost)}`,
+				title: t("products.costAdjust.savedTitle"),
+				// Say how much history moved, so a backfill is not a silent side effect.
+				description: appliedBills > 0
+					? t("products.costAdjust.savedWithPast", { amount: formatMoney(updatedCost), bills: appliedBills })
+					: t("products.costAdjust.savedBody", { amount: formatMoney(updatedCost) }),
 				timeout: 2400,
 			});
 			productCostAdjustOpen.value = false;
 		} catch (error) {
 			appToast.error({
-				title: "ปรับต้นทุนไม่ได้",
-				description: error instanceof Error ? error.message : "เกิดข้อผิดพลาด",
+				title: t("products.costAdjust.saveFailedTitle"),
+				description: error instanceof Error ? error.message : t("products.costAdjust.saveFailedBody"),
 				timeout: 3200,
 			});
 		} finally {
@@ -3027,8 +3080,38 @@ async function printSelectedProductBarcode() {
 		clearProductEditDeepLinkQuery();
 	}
 
+	// The report links here to set a missing cost. Opening the edit form instead
+	// dropped the owner into SKU, barcode and price fields that have nothing to do
+	// with the task, with the cost dialog still two clicks away.
+	async function tryHandleCostAdjustDeepLink() {
+		const productId = readQueryString(route.query.adjust_cost_product_id);
+		if (!productId) return;
+		if (productsPending.value) return;
+
+		const product = products.value.find((candidate) => candidate.id === productId);
+		if (!product) {
+			appToast.error({ title: t("products.detail.notFound"), timeout: 2800 });
+			clearCostAdjustDeepLinkQuery();
+			return;
+		}
+
+		selectedProductId.value = productId;
+		if (canUpdateProductCost.value) openProductCostAdjust();
+		else openProductDetail(productId);
+		clearCostAdjustDeepLinkQuery();
+	}
+
+	function clearCostAdjustDeepLinkQuery() {
+		const nextQuery = { ...route.query } as Record<string, unknown>;
+		delete nextQuery.adjust_cost_product_id;
+		router.replace({ query: nextQuery });
+	}
+
 	watch([() => route.query.edit_product_id, productsPending], () => {
 		void tryHandleProductEditDeepLink();
+	}, { immediate: true });
+	watch([() => route.query.adjust_cost_product_id, productsPending], () => {
+		void tryHandleCostAdjustDeepLink();
 	}, { immediate: true });
 
 function scrollProductsListToTop() {
@@ -5232,11 +5315,25 @@ onBeforeUnmount(() => {
 								<p class="text-xs leading-5 text-stone-500">{{ $t("products.costAdjust.reasonHint") }}</p>
 							</div>
 
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+							<div v-if="costAdjustShowsLock" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 								<UCheckbox v-model="productCostAdjustForm.lockCost" :label="$t('products.costAdjust.lockLabel')" />
 								<p class="mt-1.5 text-xs leading-5 text-stone-500">
 									{{ productCostAdjustForm.lockCost ? $t("products.costAdjust.lockHint") : $t("products.costAdjust.unlockHint") }}
 								</p>
+							</div>
+
+							<div v-if="costAdjustHasPastSales" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+								<UCheckbox v-model="costAdjustApplyToPast" :label="$t('products.costAdjust.applyPastLabel', { bills: costAdjustPastSales?.bill_count ?? 0, amount: formatMoney(costAdjustPastSales?.revenue ?? 0) })" />
+								<p class="mt-1.5 text-xs leading-5" :class="costAdjustApplyToPast ? 'text-amber-700' : 'text-stone-500'">
+									{{ costAdjustApplyToPast ? $t("products.costAdjust.applyPastOn") : $t("products.costAdjust.applyPastOff") }}
+								</p>
+							</div>
+
+							<div v-if="costAdjustNeedsZeroConfirm" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+								<p class="text-sm font-semibold text-amber-900">{{ $t("products.costAdjust.zeroTitle") }}</p>
+								<p class="mt-1 text-xs leading-5 text-amber-800">{{ $t("products.costAdjust.zeroBody", { name: selectedProduct.name }) }}</p>
+								<p class="mt-1 text-xs leading-5 text-amber-800">{{ $t("products.costAdjust.zeroPreferUnknown") }}</p>
+								<UCheckbox v-model="costAdjustZeroConfirmed" class="mt-2.5" :label="$t('products.costAdjust.zeroConfirm')" />
 							</div>
 
 							<div class="space-y-3">
@@ -5293,7 +5390,7 @@ onBeforeUnmount(() => {
 									:block="true"
 									:loading="productCostAdjustSaving"
 									:spin-icon-on-loading="true"
-									:disabled="productCostAdjustSaving || !canUpdateProductCost || !costAdjustHasChange"
+									:disabled="productCostAdjustSaving || !canUpdateProductCost || !costAdjustHasChange || (costAdjustNeedsZeroConfirm && !costAdjustZeroConfirmed)"
 									@click="saveProductCostAdjust"
 								>
 									{{ $t("products.costAdjust.submit") }}

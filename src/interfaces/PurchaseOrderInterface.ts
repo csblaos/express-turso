@@ -998,6 +998,10 @@ export class PurchaseOrderInterface {
 		input: PurchaseOrderSettlementInput,
 	): Promise<PurchaseOrderDetail | null> {
 		await PurchaseOrderInterface.ensureTables();
+		// Settling can re-price the stock this order brought in, so the cost tables
+		// have to exist before the write transaction opens: creating them issues DDL
+		// on its own connection and would deadlock against an open transaction.
+		await InventoryCostInterface.ensureTables();
 		const db = DbConn.getClient();
 		const transaction = await db.transaction("write");
 		try {
@@ -1064,6 +1068,40 @@ export class PurchaseOrderInterface {
 					id,
 				],
 			});
+
+			// Settling is where the real freight bill lands, and the goods are already
+			// on the shelf by then. Whatever the shipping figure moved by has to be
+			// spread over the same base units the receipt allocated it over, or the
+			// stock keeps the cost it was guessed at.
+			const previousExtraBase = toNumber(detail.order.shipping_cost) + toNumber(detail.order.other_cost);
+			const nextExtraBase = shippingBase + otherBase;
+			const totalOrderedQtyBase = detail.items.reduce((sum, item) => sum + toNumber(item.qty_base_ordered), 0);
+			const extraDeltaPerBaseUnit = totalOrderedQtyBase > 0 ? (nextExtraBase - previousExtraBase) / totalOrderedQtyBase : 0;
+			if (extraDeltaPerBaseUnit !== 0) {
+				for (const item of detail.items) {
+					if (toNumber(item.qty_base_received) <= 0) continue;
+					const reprice = await InventoryCostInterface.repriceReceipt({
+						store_id: detail.order.store_id,
+						product_id: item.product_id,
+						source_type: "purchase_order",
+						source_id: id,
+						source_line_id: item.id,
+						delta_per_base_unit: extraDeltaPerBaseUnit,
+					}, transaction);
+					for (const statement of reprice.statements) await transaction.execute(statement);
+					// The product cost follows the new average, the same way it does at
+					// receipt. A cost typed in by hand is still left alone.
+					await transaction.execute({
+						sql: `UPDATE products SET cost_base = (
+								SELECT average_unit_cost_base FROM inventory_cost_summaries
+								WHERE store_id = products.store_id AND product_id = products.id
+							), cost_source = 'purchase', updated_at = ?
+							WHERE id = ? AND store_id = ? AND COALESCE(cost_source, 'purchase') != 'manual'
+								AND EXISTS (SELECT 1 FROM inventory_cost_summaries WHERE store_id = products.store_id AND product_id = products.id AND qty_base_on_hand > 0)`,
+						args: [ now, item.product_id, detail.order.store_id ],
+					});
+				}
+			}
 
 			await transaction.execute({
 				sql: `

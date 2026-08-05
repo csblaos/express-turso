@@ -45,6 +45,11 @@ const copy = computed(() => {
 const storeId = computed(() => currentStoreId.value || currentAccess.value?.store_id || currentAccess.value?.memberships?.[0]?.store_id || "");
 const elevated = computed(() => currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin");
 const canUpdate = computed(() => elevated.value || can("settings.store.update"));
+// can() answers false until the session resolves, so waiting on loading alone
+// still lets the warning flash at someone who does have the permission.
+const canShowPermissionWarning = computed(() => (
+	!loading.value && Boolean(currentUser.value || currentAccess.value) && !canUpdate.value
+));
 const loading = ref(true);
 const saving = ref(false);
 const preparingImage = ref(false);
@@ -209,7 +214,7 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 				<div v-if="error" class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300">
 					{{ error }}
 				</div>
-				<div v-else-if="!canUpdate && !loading" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
+				<div v-else-if="canShowPermissionWarning" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
 					{{ copy.noPermission }}
 				</div>
 

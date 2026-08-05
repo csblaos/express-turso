@@ -383,6 +383,11 @@ export class ProductComponent {
 		};
 	}
 
+	static async getUncostedSales(requestId: string, productId: string) {
+		void requestId;
+		return ProductInterface.countUncostedSales(productId);
+	}
+
 	static async getCostAdjustments(
 		requestId: string,
 		productId: string,
@@ -433,6 +438,7 @@ export class ProductComponent {
 			costBase: number;
 			reason: string | null;
 			lockCost?: boolean;
+			applyToPastSales?: boolean;
 			actor: { userId: string; role: string; storeId?: string } | null;
 			ipAddress: string | null;
 			userAgent: string | null;
@@ -446,6 +452,8 @@ export class ProductComponent {
 			actor_role: string | null;
 			reason: string | null;
 			cost_source: string;
+			applied_to_past_sales: number;
+			applied_to_past_bills: number;
 			before_cost_base: number;
 			after_cost_base: number;
 			delta: number;
@@ -473,6 +481,18 @@ export class ProductComponent {
 			cost_source: nextCostSource,
 		});
 
+		// Only when asked. A cost change is normally a new purchase price, which must
+		// not reach back and restate a period that has already been reported on;
+		// filling in sales that never had a cost is a different act, so it is opt-in.
+		let backfill: { line_count: number; bill_count: number; revenue: number } | null = null;
+		if (input.applyToPastSales) {
+			const pending = await ProductInterface.countUncostedSales(input.productId);
+			if (pending.line_count > 0) {
+				await ProductInterface.applyCostToUncostedSales(input.productId, input.costBase);
+				backfill = pending;
+			}
+		}
+
 		const event = await AuditEventInterface.create({
 			scope: "products",
 			store_id: input.actor?.storeId ?? product.store_id ?? null,
@@ -486,6 +506,11 @@ export class ProductComponent {
 			request_id: requestId,
 			metadata: {
 				reason: input.reason?.trim() ? input.reason.trim() : null,
+				// What the backfill touched, so the change to historical profit is
+				// traceable to this action.
+				applied_to_past_sales: backfill ? backfill.line_count : 0,
+				applied_to_past_bills: backfill ? backfill.bill_count : 0,
+				applied_to_past_revenue: backfill ? backfill.revenue : 0,
 			},
 			before: { cost_base: beforeCost, cost_source: beforeCostSource },
 			after: { cost_base: updated.cost_base, cost_source: nextCostSource },
@@ -503,6 +528,8 @@ export class ProductComponent {
 				actor_role: event.actor_role,
 				reason,
 				cost_source: nextCostSource,
+				applied_to_past_sales: backfill ? backfill.line_count : 0,
+				applied_to_past_bills: backfill ? backfill.bill_count : 0,
 				before_cost_base: beforeCost,
 				after_cost_base: Number(updated.cost_base ?? 0),
 				delta: Number(updated.cost_base ?? 0) - beforeCost,

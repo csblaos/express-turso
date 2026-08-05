@@ -21,9 +21,13 @@ export type CustomerDisplayState = {
 	currency: string;
 	qrImageUrl: string | null;
 	adImages: string[];
+	adIntervalSeconds: number;
 	lines: CustomerDisplayLine[];
 	subtotal: number;
 	discount: number;
+	// Items total minus VAT, set only when VAT is folded into the shelf price.
+	// null the rest of the time, when the subtotal already is the pre-VAT figure.
+	netSubtotal: number | null;
 	vat: number;
 	vatLabel: string;
 	total: number;
@@ -35,7 +39,10 @@ export type CustomerDisplayState = {
 type Message =
 	| { type: "state"; state: CustomerDisplayState }
 	| { type: "hello" }
-	| { type: "bye" };
+	| { type: "bye" }
+	// Settings changed. Sent by the settings page so an already-open display and
+	// the POS both pick it up without either being reopened.
+	| { type: "branding"; storeId: string; branding: CustomerDisplayBranding };
 
 export function emptyCustomerDisplayState(storeName = "", currency = "LAK"): CustomerDisplayState {
 	return {
@@ -46,9 +53,11 @@ export function emptyCustomerDisplayState(storeName = "", currency = "LAK"): Cus
 		currency,
 		qrImageUrl: null,
 		adImages: [],
+		adIntervalSeconds: 5,
 		lines: [],
 		subtotal: 0,
 		discount: 0,
+		netSubtotal: null,
 		vat: 0,
 		vatLabel: "",
 		total: 0,
@@ -69,6 +78,7 @@ function openChannel() {
 export function useCustomerDisplayPublisher(
 	storeId: Ref<string> | ComputedRef<string>,
 	getState?: () => CustomerDisplayState,
+	onBranding?: (branding: CustomerDisplayBranding) => void,
 ) {
 	const channel = ref<BroadcastChannel | null>(null);
 	const lastState = ref<CustomerDisplayState | null>(null);
@@ -88,6 +98,13 @@ export function useCustomerDisplayPublisher(
 		channel.value = openChannel();
 		if (!channel.value) return;
 		channel.value.onmessage = (event: MessageEvent<Message>) => {
+			// Settings changed in another tab: adopt them before publishing again,
+			// otherwise the next bill would overwrite the display with stale ads.
+			if (event.data?.type === "branding") {
+				if (event.data.storeId && event.data.storeId !== storeId.value) return;
+				onBranding?.(event.data.branding);
+				return;
+			}
 			// A display that opens after the POS asks for the current bill.
 			if (event.data?.type !== "hello") return;
 			const current = getState?.() || lastState.value;
@@ -112,6 +129,15 @@ export function useCustomerDisplayPublisher(
 		}
 	}
 
+	// With no second monitor to fill, a fixed 1024x768 wasted whatever the screen
+	// actually had. Bill height is what limits how many lines a customer can see,
+	// so the window takes the available screen instead.
+	function fallbackWindowFeatures() {
+		const width = Math.max(1024, Math.round((window.screen?.availWidth || 1024) * 0.9));
+		const height = Math.max(768, Math.round((window.screen?.availHeight || 768) * 0.9));
+		return `width=${width},height=${height},left=0,top=0`;
+	}
+
 	async function openDisplay() {
 		if (!import.meta.client) return;
 		if (displayWindow.value && !displayWindow.value.closed) {
@@ -122,7 +148,7 @@ export function useCustomerDisplayPublisher(
 		displayWindow.value = window.open(
 			`/customer-display?store=${encodeURIComponent(storeId.value)}`,
 			"pos-customer-display",
-			features || "width=1024,height=768",
+			features || fallbackWindowFeatures(),
 		);
 		const current = getState?.();
 		if (current) publish(current);
@@ -141,39 +167,93 @@ export function useCustomerDisplayPublisher(
 
 const BRANDING_KEY = "pos.customer-display.branding";
 
-type Branding = { storeName: string; storeLogo: string; currency: string };
+export type CustomerDisplayBranding = {
+	storeName: string;
+	storeLogo: string;
+	currency: string;
+	// Adverts are shop identity, not bill data: without caching them the screen
+	// drops back to a bare logo the moment the cashier leaves the POS page.
+	adImages?: string[];
+	adIntervalSeconds?: number;
+};
 
-// Shop branding barely changes, so the screen caches it and paints the welcome
-// state immediately on load instead of waiting for the POS to answer. Without
-// this a refresh shows a nameless screen with the system logo.
-function readBranding(): Branding | null {
-	if (!import.meta.client) return null;
+// Cached per store: a ?store= screen must never paint another shop's name just
+// because that shop was the last one open in this browser.
+function brandingKey(storeId: string) {
+	return storeId ? `${BRANDING_KEY}:${storeId}` : `${BRANDING_KEY}:last`;
+}
+
+function parseBranding(raw: string | null): CustomerDisplayBranding | null {
+	if (!raw) return null;
 	try {
-		const raw = window.localStorage.getItem(BRANDING_KEY);
-		if (!raw) return null;
-		const parsed = JSON.parse(raw) as Partial<Branding>;
-		if (!parsed || typeof parsed !== "object") return null;
+		const parsed = JSON.parse(raw) as Partial<CustomerDisplayBranding>;
+		if (!parsed || typeof parsed !== "object" || !parsed.storeName) return null;
 		return {
 			storeName: String(parsed.storeName || ""),
 			storeLogo: String(parsed.storeLogo || ""),
 			currency: String(parsed.currency || "LAK"),
+			adImages: Array.isArray(parsed.adImages) ? parsed.adImages.filter((item): item is string => typeof item === "string" && Boolean(item)) : [],
+			adIntervalSeconds: Number.isFinite(Number(parsed.adIntervalSeconds)) ? Number(parsed.adIntervalSeconds) : 5,
 		};
 	} catch {
 		return null;
 	}
 }
 
-function writeBranding(state: CustomerDisplayState) {
-	if (!import.meta.client || !state.storeName) return;
+// Shop branding barely changes, so the screen caches it and paints the welcome
+// state immediately on load instead of waiting for the POS to answer. Without
+// this the screen shows a nameless header with the system logo.
+function readBranding(storeId: string): CustomerDisplayBranding | null {
+	if (!import.meta.client) return null;
 	try {
-		window.localStorage.setItem(BRANDING_KEY, JSON.stringify({
-			storeName: state.storeName,
-			storeLogo: state.storeLogo,
-			currency: state.currency,
-		} satisfies Branding));
+		const scoped = parseBranding(window.localStorage.getItem(brandingKey(storeId)));
+		if (scoped || storeId) return scoped;
+		// Only the store-agnostic screen may fall back to the pre-scoping key.
+		return parseBranding(window.localStorage.getItem(BRANDING_KEY));
+	} catch {
+		return null;
+	}
+}
+
+function saveBranding(storeId: string, branding: CustomerDisplayBranding) {
+	if (!import.meta.client || !branding.storeName) return;
+	try {
+		const payload = JSON.stringify(branding);
+		if (storeId) window.localStorage.setItem(brandingKey(storeId), payload);
+		window.localStorage.setItem(brandingKey(""), payload);
 	} catch {
 		// a full or blocked storage must never break the screen
 	}
+}
+
+// Seeds the cache from anywhere that already knows the shop, so the very first
+// open of the display link shows the real name and logo instead of waiting for
+// a POS window that may not even be open yet.
+export function cacheCustomerDisplayBranding(storeId: string, branding: CustomerDisplayBranding) {
+	saveBranding(storeId, branding);
+}
+
+// Caches the change and announces it, so a display already showing on the second
+// monitor and a POS already publishing bills both follow the new settings without
+// being reopened.
+export function publishCustomerDisplayBranding(storeId: string, branding: CustomerDisplayBranding) {
+	saveBranding(storeId, branding);
+	const channel = openChannel();
+	if (!channel) return;
+	channel.postMessage({ type: "branding", storeId, branding } satisfies Message);
+	// A BroadcastChannel delivers what was already posted, so closing right away
+	// is safe and avoids leaving a channel open on a page that only ever sends.
+	channel.close();
+}
+
+function writeBranding(state: CustomerDisplayState) {
+	saveBranding(state.storeId, {
+		storeName: state.storeName,
+		storeLogo: state.storeLogo,
+		currency: state.currency,
+		adImages: state.adImages,
+		adIntervalSeconds: state.adIntervalSeconds,
+	});
 }
 
 // Customer side: renders whatever the POS last sent, nothing else.
@@ -181,14 +261,14 @@ export function useCustomerDisplayReceiver(storeId: Ref<string>) {
 	// Read synchronously: waiting for onMounted paints the system logo first and
 	// then swaps it, which reads as a flash on every refresh.
 	const seeded = emptyCustomerDisplayState();
-	const initialBranding = readBranding();
+	const initialBranding = readBranding(storeId.value.trim());
 	const state = ref<CustomerDisplayState>(initialBranding ? { ...seeded, ...initialBranding } : seeded);
 	const connected = ref(false);
 	let channel: BroadcastChannel | null = null;
 	let helloTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function applyBranding() {
-		const branding = readBranding();
+		const branding = readBranding(storeId.value.trim());
 		if (!branding) return;
 		state.value = { ...state.value, ...branding };
 	}
@@ -221,6 +301,13 @@ export function useCustomerDisplayReceiver(storeId: Ref<string>) {
 				if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
 				return;
 			}
+			// Settings were saved elsewhere; repaint without waiting for a bill.
+			if (message?.type === "branding") {
+				const wanted = storeId.value.trim();
+				if (wanted && message.storeId && message.storeId !== wanted) return;
+				state.value = { ...state.value, ...message.branding };
+				return;
+			}
 			// The POS window closed; keep the branding so the screen still looks
 			// like the shop rather than resetting to the system logo.
 			if (message?.type === "bye") {
@@ -235,7 +322,10 @@ export function useCustomerDisplayReceiver(storeId: Ref<string>) {
 	}
 
 	onMounted(connect);
-	watch(storeId, connect);
+	watch(storeId, () => {
+		applyBranding();
+		connect();
+	});
 	onBeforeUnmount(() => {
 		if (helloTimer) clearTimeout(helloTimer);
 		channel?.close();

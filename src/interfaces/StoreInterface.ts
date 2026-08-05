@@ -46,6 +46,30 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_ad_url TEXT");
 			}
 
+			// Seconds between adverts. 0 means hold on one image instead of rotating.
+			if (!existingColumns.has("customer_display_ad_interval")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_ad_interval INTEGER NOT NULL DEFAULT 5");
+			}
+
+			// Separate from customer_display_enabled: a shop may want the screen on
+			// but showing only its logo, without deleting the adverts it uploaded.
+			// Empty means follow the interface language, which is what every store did
+			// before this existed. The receipt is read by the customer and the
+			// interface by the cashier, so they are not necessarily the same language.
+			// On by default: that is the existing behaviour, and switching it off is a
+			// deliberate choice a shop makes about its own receipt.
+			if (!existingColumns.has("receipt_show_powered_by")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_powered_by INTEGER NOT NULL DEFAULT 1");
+			}
+
+			if (!existingColumns.has("receipt_language")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN receipt_language TEXT NOT NULL DEFAULT ''");
+			}
+
+			if (!existingColumns.has("customer_display_banner_enabled")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN customer_display_banner_enabled INTEGER NOT NULL DEFAULT 1");
+			}
+
 			if (!existingColumns.has("allow_negative_stock")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0");
 			}

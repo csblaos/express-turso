@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { Banknote, Loader } from "@lucide/vue";
+import { Banknote, Landmark, Loader } from "@lucide/vue";
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
-import { formatMoneyWithSymbol } from "~/utils/currency";
+import { currencyDecimals, formatMoneyWithSymbol, getCurrencySymbol } from "~/utils/currency";
+import { resolveStoredImageUrl } from "~/utils/image";
+import { findLaoBank } from "~/utils/lao-banks";
+import { encodeCode128Bits } from "~/utils/barcode";
 import type { CustomerDisplayLine, CustomerDisplayState } from "~/composables/useCustomerDisplay";
 
 type Envelope<T> = { data: T };
@@ -15,24 +18,42 @@ type OrderItem = { id: string; product_id: string; name: string; sku: string; qt
 type PromotionType = "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount";
 type Promotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id?: string | null; gift_product_name: string; gift_qty: number; discount_amount?: number; eligible: boolean; remaining_qty: number; remaining_amount: number };
 type Round = { id: string; round_no: number; dispatch_mode: "kitchen" | "direct"; sent_at: string };
-type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; discount?: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
+type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; discount?: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; payment_currency?: string; payment_exchange_rate?: number; amount_tendered_foreign?: number | null; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
 type OpenOrder = Pick<Order, "id" | "order_no" | "service_mode" | "queue_no" | "status" | "total" | "guest_count" | "guest_count_specified" | "opened_at" | "version" | "table_name" | "zone_name"> & { draft_count: number; sent_count: number };
 type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
 type LocalCartEntry = { product_id: string; qty: number; note?: string | null };
 type TableDraftEntry = { product_id: string; qty: number; note?: string | null; is_gift?: boolean; promotion_id?: string | null };
-type PaymentAccount = { id: string; display_name: string; is_active: number; qr_image_url?: string | null };
+type PaymentAccount = { id: string; display_name: string; is_active: number; bank_name?: string | null; currency?: string | null; qr_image_url?: string | null };
 type AvailablePromotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode?: "automatic" | "manual"; applications: number; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id: string | null; gift_product_name?: string; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number; discount_amount?: number; eligible?: boolean; remaining_qty?: number; remaining_amount?: number };
 type PromotionRecord = { id: string; name: string; type: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; minimum_subtotal?: number | null; gift_product_id: string | null; gift_product_name?: string | null; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number | null; starts_at?: string | null; ends_at?: string | null; is_active: number };
 type CheckoutResult = {
-	order_id: string; order_no: string; queue_no: string | null; queue_date: string | null; subtotal: number; vat_amount: number; total: number;
+	order_id: string; order_no: string; queue_no: string | null; queue_date: string | null; subtotal: number; discount?: number; vat_amount: number; total: number;
 	payment_method: "cash" | "qr_transfer" | "credit_card"; amount_tendered: number; change_amount: number; completed_at: string;
+	payment_currency?: string; payment_exchange_rate?: number; amount_tendered_foreign?: number | null;
 	receipt: { lines: Array<{ product_id: string; name: string; sku: string; qty: number; unit_price: number; line_total: number; is_gift: boolean; promotion_id: string | null }> };
 };
 
 const props = defineProps<{ storeId: string; initialCatalog?: PosCatalog | null }>();
 const { apiFetch } = useApiClient();
 const toast = useAppToast();
-const { locale, t } = useI18n();
+const { locale, t, loadLocaleMessages } = useI18n();
+// Empty means follow the interface, which is what the store did before the
+// setting existed.
+const receiptLanguage = ref("");
+const receiptShowPoweredBy = ref(true);
+const receiptLocale = computed(() => receiptLanguage.value || locale.value);
+// Never switch locale.value for this: that would repaint the whole POS mid-print.
+const receiptMessagesReady = ref(0);
+watch(receiptLanguage, async (next) => {
+	if (!next) return;
+	await loadLocaleMessages(next);
+	// Bumped so anything built with pt() re-evaluates once the messages arrive.
+	receiptMessagesReady.value += 1;
+}, { immediate: true });
+function pt(key: string, params: Record<string, unknown> = {}) {
+	void receiptMessagesReady.value;
+	return receiptLanguage.value ? t(key, params, { locale: receiptLanguage.value }) : t(key, params);
+}
 const { can } = useAuthSession();
 const runtimeConfig = useRuntimeConfig();
 
@@ -67,13 +88,20 @@ const selectedPromotionIds = ref<string[]>([]);
 const selectedPromotionCounts = ref<Record<string, number>>({});
 const activeZone = ref("");
 const search = ref("");
-const storeName = ref("ร้านค้า");
+const storeName = ref("");
 const storeLogo = ref("");
 const customerDisplayEnabled = ref(false);
+const customerDisplayBannerEnabled = ref(true);
+// Seconds between adverts; 0 holds on the first image instead of rotating.
+const customerDisplayAdInterval = ref(5);
 const customerDisplayAdKeys = ref<string[]>([]);
-const customerDisplayAds = computed(() => customerDisplayAdKeys.value
-	.map((key) => resolveProductImageUrl(key))
-	.filter((url): url is string => Boolean(url)));
+// Set when the settings page announces a change; those images arrive as finished
+// URLs, so they must not be run through the key resolver a second time.
+const customerDisplayAdUrlOverride = ref<string[] | null>(null);
+const customerDisplayAds = computed(() => customerDisplayAdUrlOverride.value
+	?? customerDisplayAdKeys.value
+		.map((key) => resolveProductImageUrl(key))
+		.filter((url): url is string => Boolean(url)));
 const storeAddress = ref("");
 const storePhone = ref("");
 const receiptShowStoreName = ref(true);
@@ -100,6 +128,12 @@ const checkoutPanel = ref(false);
 const checkoutStep = ref<"payment" | "processing" | "success" | "receipt">("payment");
 const checkoutDispatch = ref<"existing" | "direct">("existing");
 const paymentMethod = ref<"cash" | "qr_transfer" | "credit_card">("cash");
+// Prices and totals are always in the shop's own currency. These only describe
+// how the customer settles the bill; nothing else in the till changes.
+const supportedCurrencies = ref<string[]>([]);
+const currencyRates = ref<Array<{ currency: string; rate_to_base: number }>>([]);
+const paymentCurrency = ref("");
+// Cash the customer handed over, counted in the currency they used.
 const cashTendered = ref(0);
 const cashTenderedHistory = ref<number[]>([]);
 const paymentAccounts = ref<PaymentAccount[]>([]);
@@ -211,6 +245,33 @@ const billingVat = computed(() => {
 	return Math.round(vatMode.value === "INCLUSIVE" ? billingDiscountedSubtotal.value * rate / (100 + rate) : billingDiscountedSubtotal.value * rate / 100);
 });
 const billingNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, billingDiscountedSubtotal.value - billingVat.value) : billingDiscountedSubtotal.value);
+// Shown as its own row only when VAT is folded into the shelf price: that is the
+// only case where the items total is not already the pre-VAT figure.
+const showNetSubtotalRow = computed(() => vatEnabled.value && vatMode.value === "INCLUSIVE" && billingVat.value > 0);
+
+// Only the rows that carry information. With no VAT and no discount the items
+// total equals the total already on screen, so repeating it would be noise on a
+// surface the cashier reads at a glance.
+const cartBreakdownRows = computed(() => {
+	const rows: Array<{ key: string; label: string; value: string }> = [];
+	const hasDiscount = billingDiscount.value > 0;
+	if (!hasDiscount && !vatEnabled.value) return rows;
+	// The items total is only worth its own row once a discount moves it away
+	// from the total below.
+	if (hasDiscount) {
+		rows.push({ key: "items", label: t("posPanels.productAmount"), value: money(billingSubtotal.value) });
+		rows.push({ key: "discount", label: t("pos.discount"), value: `-${money(billingDiscount.value)}` });
+	}
+	if (showNetSubtotalRow.value) rows.push({ key: "net", label: t("posPanels.productBeforeVat"), value: money(billingNetSubtotal.value) });
+	if (vatEnabled.value && billingVat.value > 0) {
+		rows.push({
+			key: "vat",
+			label: `VAT ${vatRateLabel.value}%${vatMode.value === "INCLUSIVE" ? ` (${t("posPanels.vatIncluded")})` : ""}`,
+			value: money(billingVat.value),
+		});
+	}
+	return rows;
+});
 
 const vatRateLabel = computed(() => {
 	const rate = vatRate.value > 100 ? vatRate.value / 100 : vatRate.value;
@@ -229,6 +290,13 @@ const customerDisplayStoreId = computed(() => props.storeId);
 const { publish: publishCustomerDisplay, openDisplay: openCustomerDisplay } = useCustomerDisplayPublisher(
 	customerDisplayStoreId,
 	() => customerDisplayState.value,
+	// Settings saved in another tab: adopt them so the next bill this page
+	// publishes carries the new adverts rather than the ones loaded at startup.
+	(branding) => {
+		if (branding.adImages) customerDisplayAdUrlOverride.value = branding.adImages;
+		if (branding.adIntervalSeconds !== undefined) customerDisplayAdInterval.value = branding.adIntervalSeconds;
+		if (branding.storeName) storeName.value = branding.storeName;
+	},
 );
 const customerDisplayLines = computed<CustomerDisplayLine[]>(() => {
 	const source = order.value
@@ -251,42 +319,93 @@ const awaitingQrPayment = computed(() => Boolean(
 	&& checkoutStep.value === "payment"
 	&& paymentMethod.value === "qr_transfer",
 ));
+// A transfer cannot be taken without an account to receive it, and the confirm
+// button is already disabled in that case — these drive the explanation that was
+// missing, so the cashier is not left with a dead grey button and no reason.
+const hasPaymentAccount = computed(() => payableAccounts.value.length > 0);
+const canManagePaymentAccounts = computed(() => can("settings.store.update"));
+// A missing QR image is not a blocker: the customer can still transfer to the
+// account number, they just cannot scan. Warn, do not stop the sale.
+const selectedPaymentAccount = computed(() => (
+	payableAccounts.value.find((candidate) => candidate.id === paymentAccountId.value)
+	|| payableAccounts.value[0]
+	|| null
+));
+const selectedAccountMissingQr = computed(() => Boolean(
+	selectedPaymentAccount.value && !String(selectedPaymentAccount.value.qr_image_url || "").trim(),
+));
+// Cards carry the bank logo so a busy cashier picks by sight rather than by
+// reading; a bank typed by hand has none and falls back to a neutral mark.
+function bankLogo(bankName: string | null | undefined) {
+	return findLaoBank(bankName)?.logo || "";
+}
+function goToPaymentSettings() {
+	// The cart lives in sessionStorage and is restored on mount, so navigating
+	// away and back keeps the sale intact.
+	void navigateTo("/settings/store-payments");
+}
+function switchToCashPayment() {
+	paymentMethod.value = "cash";
+}
+
 const activePaymentQr = computed(() => {
 	const account = paymentAccounts.value.find((candidate) => candidate.id === paymentAccountId.value)
 		|| paymentAccounts.value[0];
 	return resolveProductImageUrl(account?.qr_image_url || null);
 });
+// The screen sits at the counter, where the dine-in customer never stands: the
+// bill is carried to their table instead. Showing it here would only expose one
+// table's order to whoever is queueing at the counter, so a dine-in order keeps
+// the display on the idle advert for its whole life, checkout included.
+//
+// Read from service_mode rather than "is there an order": a parked quick-sale
+// ticket also has an order, and that customer IS at the counter.
+const customerDisplayHidesBill = computed(() => order.value?.service_mode === "dine-in");
+
 const customerDisplayState = computed<CustomerDisplayState>(() => {
-	const receipt = checkoutReceipt.value;
-	const lines = customerDisplayLines.value;
+	const hidden = customerDisplayHidesBill.value;
+	const receipt = hidden ? null : checkoutReceipt.value;
+	const lines = hidden ? [] : customerDisplayLines.value;
+	const showQr = !hidden && awaitingQrPayment.value;
 	return {
 		status: !customerDisplayEnabled.value
 			? "disabled"
 			: receipt
 				? "paid"
-				: awaitingQrPayment.value
+				: showQr
 					? "awaiting_payment"
 					: lines.length ? "active" : "idle",
 		storeId: props.storeId,
 		storeName: storeName.value,
 		storeLogo: resolveProductImageUrl(storeLogo.value) || "",
 		currency: currency.value,
-		qrImageUrl: awaitingQrPayment.value ? activePaymentQr.value : null,
-		adImages: customerDisplayAds.value,
+		qrImageUrl: showQr ? activePaymentQr.value : null,
+		// Turning the banner off keeps the uploads in place but shows the shop logo
+		// and welcome instead, so it can be switched back without re-uploading.
+		adImages: customerDisplayBannerEnabled.value ? customerDisplayAds.value : [],
+		adIntervalSeconds: customerDisplayAdInterval.value,
 		lines: customerDisplayEnabled.value ? lines : [],
-		subtotal: billingSubtotal.value,
-		discount: billingDiscount.value,
-		vat: billingVat.value,
+		// Zeroed rather than merely unrendered: a hidden bill must not travel to
+		// the display at all, so nothing can leak it later.
+		subtotal: hidden ? 0 : billingSubtotal.value,
+		discount: hidden ? 0 : billingDiscount.value,
+		// null unless VAT is inside the price, so the customer never sees a subtotal
+		// and a VAT line that refuse to add up to the total.
+		netSubtotal: hidden || !showNetSubtotalRow.value ? null : billingNetSubtotal.value,
+		vat: hidden ? 0 : billingVat.value,
 		vatLabel: vatEnabled.value ? `VAT ${vatRateLabel.value}%` : "",
-		total: receipt ? Number(receipt.total || 0) : displayTotal.value,
-		tendered: receipt ? Number(receipt.amount_tendered || 0) : null,
-		change: receipt ? Number(receipt.change_amount || 0) : null,
+		total: hidden ? 0 : (receipt ? Number(receipt.total || 0) : displayTotal.value),
+		// Only a cash payment has money handed over and change to give back. On a
+		// transfer or a card the pair is always 0, and showing "Change 0" invites
+		// the customer to wait for change that is never coming.
+		tendered: receipt && String(receipt.payment_method || "") === "cash" ? Number(receipt.amount_tendered || 0) : null,
+		change: receipt && String(receipt.payment_method || "") === "cash" ? Number(receipt.change_amount || 0) : null,
 		updatedAt: Date.now(),
 	};
 });
 watch(customerDisplayState, (next) => publishCustomerDisplay(next), { deep: true, immediate: true });
 
-const cashQuickAmounts = [10_000, 20_000, 50_000, 100_000];
+const cashQuickAmounts = computed(() => cashQuickAmountsByCurrency[activePaymentCurrency.value] || cashQuickAmountsByCurrency.LAK);
 const hasLocalTableDraft = computed(() => Boolean(order.value) && tableDraft.value.length > 0);
 const sentGroups = computed(() => {
 	const groups = new Map<number, OrderItem[]>();
@@ -391,29 +510,146 @@ const printItems = computed(() => checkoutReceipt.value
 		? printOrder.value?.items.filter((item) => item.line_status === "sent" && Number(item.round_no) === printRound.value) || []
 		: printOrder.value?.items.filter((item) => item.line_status !== "cancelled") || localItems.value);
 const orderLabel = computed(() => order.value?.service_mode === "pickup"
-	? `คิว ${displayQueueNo(order.value.queue_no)}`
-	: `${order.value?.zone_name || ""} · ${order.value?.table_name || "โต๊ะ"}`);
+	? `${t("posPanels.queue")} ${displayQueueNo(order.value.queue_no)}`
+	: `${order.value?.zone_name || ""} · ${order.value?.table_name || t("restaurantPos.table")}`);
 const printLabel = computed(() => checkoutReceipt.value
-	? `คิว ${displayQueueNo(checkoutReceipt.value.queue_no)} · ซื้อกลับบ้าน`
-	: printOrder.value ? (printOrder.value.service_mode === "pickup" ? `คิว ${displayQueueNo(printOrder.value.queue_no)}` : `${printOrder.value.zone_name || ""} · ${printOrder.value.table_name || "โต๊ะ"}`) : "ขายด่วน · ยังไม่ชำระ");
+	? `${pt("posPanels.queue")} ${displayQueueNo(checkoutReceipt.value.queue_no)} · ${pt("restaurantPos.takeaway")}`
+	: printOrder.value
+		? (printOrder.value.service_mode === "pickup"
+			? `${pt("posPanels.queue")} ${displayQueueNo(printOrder.value.queue_no)}`
+			: `${printOrder.value.zone_name || ""} · ${printOrder.value.table_name || pt("restaurantPos.table")}`)
+		: "");
 const printQueueText = computed(() => checkoutReceipt.value?.queue_no ? displayQueueNo(checkoutReceipt.value.queue_no) : (printOrder.value?.service_mode === "pickup" && printOrder.value.queue_no ? displayQueueNo(printOrder.value.queue_no) : ""));
-const printOrderNo = computed(() => checkoutReceipt.value?.order_no || printOrder.value?.order_no || (printKind.value === "estimate" ? "ใบประเมินยอด" : ""));
-const printSubtotal = computed(() => checkoutReceipt.value?.subtotal ?? printOrder.value?.subtotal ?? 0);
-const printVat = computed(() => checkoutReceipt.value?.vat_amount ?? printOrder.value?.vat_amount ?? 0);
-const printNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, printSubtotal.value - printVat.value) : printSubtotal.value);
-const printTotal = computed(() => checkoutReceipt.value?.total ?? printOrder.value?.total ?? displayTotal.value);
+// A scannable copy of the order number, so staff can pull up an old bill with the
+// scanner already on the counter instead of typing it. An estimate has no order
+// number yet, and a value that cannot be encoded yields null so the bill simply
+// omits the barcode rather than printing something that scans as nonsense.
+const printBarcodeBits = computed(() => (
+	printKind.value === "estimate" ? null : encodeCode128Bits(printOrderNo.value || "")
+));
+
+const printOrderNo = computed(() => checkoutReceipt.value?.order_no || printOrder.value?.order_no || "");
+// A check or estimate is a projection of what will be owed, so every figure on
+// it is computed from the live cart. A receipt is a record of what was actually
+// charged, so it uses the figures stored on the order.
+const printIsUnpaid = computed(() => printKind.value === "check" || printKind.value === "estimate");
+const printSubtotal = computed(() => (printIsUnpaid.value
+	? billingSubtotal.value
+	: checkoutReceipt.value?.subtotal ?? printOrder.value?.subtotal ?? billingSubtotal.value));
+const printVat = computed(() => (printIsUnpaid.value
+	? billingVat.value
+	: checkoutReceipt.value?.vat_amount ?? printOrder.value?.vat_amount ?? billingVat.value));
+// Printed whenever there is one: without it a discounted bill shows items and a
+// total that the customer cannot add up.
+const printDiscount = computed(() => Math.max(0, printIsUnpaid.value
+	? billingDiscount.value
+	: checkoutReceipt.value?.discount ?? printOrder.value?.discount ?? billingDiscount.value));
+const printNetSubtotal = computed(() => vatMode.value === "INCLUSIVE" ? Math.max(0, printSubtotal.value - printDiscount.value - printVat.value) : Math.max(0, printSubtotal.value - printDiscount.value));
+// Same rule as the payment panel: only worth a row when VAT is inside the price.
+const printShowNetSubtotal = computed(() => vatEnabled.value && vatMode.value === "INCLUSIVE" && printVat.value > 0);
+const printTotal = computed(() => (printIsUnpaid.value
+	? displayTotal.value
+	: checkoutReceipt.value?.total ?? printOrder.value?.total ?? displayTotal.value));
 const printPaymentMethod = computed(() => checkoutReceipt.value?.payment_method || printOrder.value?.payment_method || "");
 const printTendered = computed(() => checkoutReceipt.value?.amount_tendered ?? printOrder.value?.amount_tendered ?? 0);
 const printChange = computed(() => checkoutReceipt.value?.change_amount ?? printOrder.value?.change_amount ?? 0);
+// What the customer handed over, in the currency they used. Printing only the
+// converted kip would leave them unable to check their own change.
+const printPaymentCurrency = computed(() => String(
+	checkoutReceipt.value?.payment_currency || printOrder.value?.payment_currency || currency.value,
+));
+const printExchangeRate = computed(() => Number(
+	checkoutReceipt.value?.payment_exchange_rate ?? printOrder.value?.payment_exchange_rate ?? 1,
+));
+const printTenderedForeign = computed(() => {
+	const value = checkoutReceipt.value?.amount_tendered_foreign ?? printOrder.value?.amount_tendered_foreign ?? null;
+	return value === null || value === undefined ? null : Number(value);
+});
+const printIsForeign = computed(() => Boolean(
+	printPaymentCurrency.value && printPaymentCurrency.value !== currency.value && printTenderedForeign.value !== null,
+));
+const printTenderedForeignText = computed(() => (printIsForeign.value
+	? formatMoneyWithSymbol(Number(printTenderedForeign.value), printPaymentCurrency.value, {
+		maximumFractionDigits: currencyDecimals(printPaymentCurrency.value),
+		minimumFractionDigits: currencyDecimals(printPaymentCurrency.value),
+	})
+	: ""));
+const printExchangeRateText = computed(() => (printIsForeign.value
+	? `1${getCurrencySymbol(printPaymentCurrency.value)} = ${money(printExchangeRate.value)}`
+	: ""));
+// The payment method on the bill has to follow the receipt language like every
+// other line on it; paymentMethodOptions is built for the cashier's own UI and
+// stays in the interface language.
+const printPaymentMethodLabel = computed(() => {
+	const method = printPaymentMethod.value;
+	if (method === "cash") return pt("pos.cash");
+	if (method === "qr_transfer") return pt("pos.qr");
+	if (method === "credit_card") return pt("pos.card");
+	return method;
+});
 const receiptStoreLines = computed(() => [
 	receiptShowStoreAddress.value ? storeAddress.value : "",
-	receiptShowStorePhone.value && storePhone.value ? `ໂທ: ${storePhone.value}` : "",
+	receiptShowStorePhone.value && storePhone.value ? `${pt("posPanels.receiptPhone")}: ${storePhone.value}` : "",
 ].filter(Boolean));
 const receiptStoreLogoUrl = computed(() => resolveProductImageUrl(storeLogo.value));
 const checkoutTitle = computed(() => t(checkoutStep.value === "processing" ? "posPanels.processing" : checkoutStep.value === "success" ? "posPanels.success" : checkoutStep.value === "receipt" ? "posPanels.receiptPreview" : "posPanels.payment"));
 const checkoutDescription = computed(() => checkoutStep.value === "receipt" ? t("posPanels.receiptPreviewHint") : checkoutStep.value === "success" || checkoutStep.value === "processing" ? "" : (order.value ? orderLabel.value : ""));
 
 function money(value: number) { return formatMoneyWithSymbol(value, currency.value, locale.value); }
+
+// --- Paying in another currency -------------------------------------------
+// The bill is always in currency.value. Everything below only describes the
+// notes the customer hands over, and converts them straight back to base.
+const currencyRateMap = computed(() => new Map(currencyRates.value.map((rate) => [ rate.currency, rate.rate_to_base ])));
+// A currency with no rate saved cannot be quoted, so the till must not offer it.
+const payableCurrencies = computed(() => [
+	currency.value,
+	...supportedCurrencies.value.filter((code) => code !== currency.value && Number(currencyRateMap.value.get(code)) > 0),
+]);
+const multiCurrencyEnabled = computed(() => payableCurrencies.value.length > 1);
+const activePaymentCurrency = computed(() => (
+	payableCurrencies.value.includes(paymentCurrency.value) ? paymentCurrency.value : currency.value
+));
+const isForeignPayment = computed(() => activePaymentCurrency.value !== currency.value);
+const activeExchangeRate = computed(() => (
+	isForeignPayment.value ? Number(currencyRateMap.value.get(activePaymentCurrency.value)) || 0 : 1
+));
+function payMoney(value: number) {
+	// No locale passed, matching money() above: the two sit side by side in the
+	// payment panel and must group and punctuate their digits the same way.
+	return formatMoneyWithSymbol(value, activePaymentCurrency.value, {
+		maximumFractionDigits: currencyDecimals(activePaymentCurrency.value),
+		minimumFractionDigits: currencyDecimals(activePaymentCurrency.value),
+	});
+}
+// Rounded up, never down: a cashier who collects the rounded-down figure is
+// short, and the difference comes out of the till.
+const totalInPaymentCurrency = computed(() => {
+	if (!isForeignPayment.value || !activeExchangeRate.value) return displayTotal.value;
+	const step = 10 ** currencyDecimals(activePaymentCurrency.value);
+	return Math.ceil(displayTotal.value / activeExchangeRate.value * step) / step;
+});
+// Converting the tender, not the total, is what keeps the change whole.
+const cashTenderedBase = computed(() => (
+	isForeignPayment.value ? Math.round(cashTendered.value * activeExchangeRate.value) : cashTendered.value
+));
+const changeDue = computed(() => Math.max(0, cashTenderedBase.value - displayTotal.value));
+const exchangeRateLabel = computed(() => (
+	isForeignPayment.value
+		? `1${getCurrencySymbol(activePaymentCurrency.value)} = ${money(activeExchangeRate.value)}`
+		: ""
+));
+// Note denominations differ per currency; kip presets are meaningless in baht.
+const cashQuickAmountsByCurrency: Record<string, number[]> = {
+	LAK: [ 10_000, 20_000, 50_000, 100_000 ],
+	THB: [ 100, 500, 1_000, 2_000 ],
+	USD: [ 5, 10, 20, 100 ],
+};
+// Accounts are held in one currency, so paying in baht can only settle into a
+// baht account. An account saved before currencies existed counts as base.
+const payableAccounts = computed(() => paymentAccounts.value.filter((account) => (
+	(String(account.currency || "").trim().toUpperCase() || currency.value) === activePaymentCurrency.value
+)));
 function isProductUnavailable(product: Product) {
 	if (product.stock_state === "inactive") return true;
 	if (product.inventory_mode === "tracked") return product.stock_state === "out" || product.stock_state === "negative" || Number(product.available_base || 0) <= 0;
@@ -425,12 +661,7 @@ function productUnavailableMessage(product: Product) {
 	return t("restaurantPos.outOfStockCannotSell");
 }
 function resolveProductImageUrl(imageUrl: string | null | undefined) {
-	const normalized = String(imageUrl || "").trim();
-	if (!normalized) return null;
-	if (/^(https?:\/\/|data:|blob:)/i.test(normalized) || normalized.startsWith("//")) return normalized;
-	const base = String(runtimeConfig.public.r2PublicBaseUrl || "").replace(/\/$/, "");
-	const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
-	return `${base}${path}`;
+	return resolveStoredImageUrl(imageUrl, String(runtimeConfig.public.r2PublicBaseUrl || ""));
 }
 function productImageForItem(item: Pick<OrderItem, "product_id">) {
 	const product = products.value.find((candidate) => candidate.id === item.product_id);
@@ -506,7 +737,7 @@ function openOrderIcon(opened: OpenOrder) {
 	return "i-heroicons-table-cells";
 }
 function openOrderTitle(opened: OpenOrder) {
-	return opened.service_mode === "pickup" ? `คิว ${displayQueueNo(opened.queue_no)}` : `${opened.zone_name} · ${opened.table_name}`;
+	return opened.service_mode === "pickup" ? `${t("posPanels.queue")} ${displayQueueNo(opened.queue_no)}` : `${opened.zone_name} · ${opened.table_name}`;
 }
 function roundMode(roundNo: number) { return order.value?.rounds.find((round) => Number(round.round_no) === roundNo)?.dispatch_mode || "kitchen"; }
 function isItemPending(itemId: string) { return pendingItemIds.value.includes(itemId); }
@@ -528,9 +759,11 @@ function endItemMutation(itemId: string) { pendingItemIds.value = pendingItemIds
 function applyCatalog(catalog: PosCatalog) {
 	products.value = catalog.items;
 	const store = catalog.store || {};
-	storeName.value = String(store.name || "ร้านค้า");
+	storeName.value = String(store.name || t("restaurantPos.fallbackStoreName"));
 	storeLogo.value = String(store.logo_url || "");
 	customerDisplayEnabled.value = Number(store.customer_display_enabled ?? 0) !== 0;
+	customerDisplayBannerEnabled.value = Number(store.customer_display_banner_enabled ?? 1) !== 0;
+	customerDisplayAdInterval.value = Number(store.customer_display_ad_interval ?? 5);
 	let adKeys: string[] = [];
 	const storedAds = store.customer_display_ads;
 	if (typeof storedAds === "string" && storedAds.trim()) {
@@ -544,10 +777,13 @@ function applyCatalog(catalog: PosCatalog) {
 		adKeys = [ String(store.customer_display_ad_url) ];
 	}
 	customerDisplayAdKeys.value = adKeys;
+	customerDisplayAdUrlOverride.value = null;
 	storeAddress.value = String(store.address || "");
 	storePhone.value = String(store.phone_number || "");
 	receiptShowStoreName.value = Number(store.receipt_show_store_name ?? 1) !== 0;
 	receiptShowStoreLogo.value = Number(store.pdf_show_logo ?? 0) !== 0;
+	receiptLanguage.value = String(store.receipt_language || "");
+	receiptShowPoweredBy.value = Number(store.receipt_show_powered_by ?? 1) !== 0;
 	receiptShowStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
 	receiptShowStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
@@ -556,6 +792,15 @@ function applyCatalog(catalog: PosCatalog) {
 	pickupQueueEnabled.value = Number(store.pickup_queue_enabled ?? 0) !== 0;
 	receiptShowQueue.value = pickupQueueEnabled.value;
 	currency.value = String(store.currency || "LAK");
+	supportedCurrencies.value = String(store.supported_currencies || "")
+		.split(",").map((code) => code.trim().toUpperCase()).filter(Boolean);
+	currencyRates.value = Array.isArray(store.currency_rates)
+		? (store.currency_rates as Array<{ currency: string; rate_to_base: number }>)
+			.map((rate) => ({ currency: String(rate.currency).toUpperCase(), rate_to_base: Number(rate.rate_to_base) }))
+		: [];
+	// A currency the shop just turned off must not stay selected on a till that
+	// has been open all day.
+	if (!payableCurrencies.value.includes(paymentCurrency.value)) paymentCurrency.value = currency.value;
 	vatEnabled.value = Boolean(Number(store.vat_enabled));
 	vatRate.value = Number(store.vat_rate || 0);
 	vatMode.value = String(store.vat_mode || "EXCLUSIVE").toUpperCase();
@@ -1105,10 +1350,35 @@ function openCheckout(dispatch: "existing" | "direct") {
 	checkoutDispatch.value = dispatch;
 	cashTendered.value = 0;
 	cashTenderedHistory.value = [];
+	// Each bill starts in the shop's own currency; the last customer paying in
+	// baht must not silently decide how the next one is charged.
+	paymentCurrency.value = currency.value;
 	checkoutKey ||= crypto.randomUUID();
 	checkoutPanel.value = true;
 	if (!paymentAccounts.value.length) void loadPaymentAccounts();
 }
+
+// Sent on both checkout paths. The rate travels as `expected_` only: the server
+// reads the real one and refuses the sale if it moved while the cashier was
+// quoting it, so a tampered or stale rate can never price a bill.
+function paymentCurrencyBody() {
+	if (!isForeignPayment.value) return {};
+	return {
+		payment_currency: activePaymentCurrency.value,
+		amount_tendered_foreign: paymentMethod.value === "cash" ? cashTendered.value : null,
+		expected_exchange_rate: activeExchangeRate.value,
+	};
+}
+
+// Switching currency changes what the numbers on screen mean: 200,000 typed as
+// kip is not 200,000 baht, and a kip account cannot receive a baht transfer.
+watch(activePaymentCurrency, () => {
+	cashTendered.value = 0;
+	cashTenderedHistory.value = [];
+	if (!payableAccounts.value.some((account) => account.id === paymentAccountId.value)) {
+		paymentAccountId.value = payableAccounts.value[0]?.id || "";
+	}
+});
 
 function setCashTendered(amount: number) {
 	const nextAmount = Math.max(0, Math.round(Number(amount || 0)));
@@ -1195,7 +1465,7 @@ async function checkout() {
 		if (!order.value) {
 			const response = await apiFetch<Envelope<CheckoutResult>>("/pos/checkout", {
 				method: "POST", headers: { "Idempotency-Key": checkoutKey },
-				body: { store_id: props.storeId, service_mode: "pickup", payment_method: paymentMethod.value, items: localCart.value.map(({ product_id, qty }) => ({ product_id, qty })), promotion_ids: checkoutPromotionIds.value, amount_tendered: paymentMethod.value === "cash" ? cashTendered.value : null, payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null },
+				body: { store_id: props.storeId, service_mode: "pickup", payment_method: paymentMethod.value, items: localCart.value.map(({ product_id, qty }) => ({ product_id, qty })), promotion_ids: checkoutPromotionIds.value, amount_tendered: paymentMethod.value === "cash" && !isForeignPayment.value ? cashTendered.value : null, ...paymentCurrencyBody(), payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null },
 			});
 			checkoutReceipt.value = response.data;
 			if (pickupQueueEnabled.value) void loadPickupQueue();
@@ -1209,7 +1479,7 @@ async function checkout() {
 		}
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/checkout`, {
 			method: "POST", headers: { "Idempotency-Key": checkoutKey },
-			body: { store_id: props.storeId, expected_version: order.value.version, payment_method: paymentMethod.value, amount_tendered: paymentMethod.value === "cash" ? cashTendered.value : null, dispatch_mode: checkoutDispatch.value },
+			body: { store_id: props.storeId, expected_version: order.value.version, payment_method: paymentMethod.value, payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null, amount_tendered: paymentMethod.value === "cash" && !isForeignPayment.value ? cashTendered.value : null, ...paymentCurrencyBody(), dispatch_mode: checkoutDispatch.value },
 		});
 		completedOrder.value = response.data;
 		printKind.value = "receipt";
@@ -1220,7 +1490,9 @@ async function checkout() {
 	} catch (error) {
 		checkoutStep.value = "payment";
 		toast.error({ title: t("toastMessages.paymentFailed"), description: localizedApiError(error) });
-		if (!order.value) await loadDashboard();
+		// A refused foreign payment is usually the rate having moved under the
+		// cashier. Reload so the retry quotes the rate the server will accept.
+		if (!order.value || isForeignPayment.value) await loadDashboard();
 	}
 	finally { actionPending.value = false; }
 }
@@ -1306,7 +1578,7 @@ async function adjustSentItem() {
 	actionPending.value = true;
 	try {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/items/${cancellingItem.value.id}/cancel`, {
-			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, qty: sentItemQty.value, reason: (sentItemReasonPreset.value === "ອື່ນໆ" ? cancelReason.value : sentItemReasonPreset.value).trim() || undefined },
+			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, qty: sentItemQty.value, reason: (sentItemReasonPreset.value === t("posPanels.reasonOther") ? cancelReason.value : sentItemReasonPreset.value).trim() || undefined },
 		});
 		order.value = response.data;
 		sentItemPanel.value = false;
@@ -1473,10 +1745,11 @@ onBeforeUnmount(() => {
 								</div>
 								<AppButton class="shrink-0 lg:hidden" size="sm" color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.tableActions')" @click="tableActionsOpen = !tableActionsOpen" />
 							</div>
+							<div v-if="tableActionsOpen" class="fixed inset-0 z-30" @click="tableActionsOpen = false" />
 							<div v-if="tableActionsOpen" class="absolute right-2 top-[calc(100%-2px)] z-40 w-52 overflow-hidden rounded-md border border-neutral-200 bg-white p-1.5 shadow-xl lg:hidden">
-								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-sky-800 hover:bg-sky-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bolt" class="size-4" />ຂາຍດ່ວນ</button>
-								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-emerald-800 hover:bg-emerald-50" @click="tableActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4" />ປ່ຽນໂຕະ</button>
-								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-800 hover:bg-amber-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark" class="size-4" />ພັກບິນ</button>
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-sky-800 hover:bg-sky-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bolt" class="size-4" />{{ t('restaurantPos.quickSale') }}</button>
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-emerald-800 hover:bg-emerald-50" @click="tableActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4" />{{ t('restaurantPos.moveTable') }}</button>
+								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-800 hover:bg-amber-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark" class="size-4" />{{ t('restaurantPos.parkOrder') }}</button>
 							</div>
 						</div>
 						<div class="sticky top-0 z-20 -mx-1 bg-white/95 px-1 pb-2 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
@@ -1488,7 +1761,7 @@ onBeforeUnmount(() => {
 									<UIcon name="i-heroicons-wifi" class="size-5" />
 								</span>
 								<h2 class="mt-3 font-semibold text-stone-900">{{ t('restaurantPos.loadFailed') }}</h2>
-								<p class="mt-1 max-w-md text-sm text-stone-500">{{ locale === 'lo' ? 'ອາດເກີດຈາກສັນຍານບໍ່ດີ ຫຼື server ບໍ່ພ້ອມ ກະລຸນາລອງໃໝ່' : 'The connection may be unstable or the server may be unavailable. Please try again.' }}</p>
+								<p class="mt-1 max-w-md text-sm text-stone-500">{{ t('restaurantPos.loadFailedHint') }}</p>
 								<AppButton class="mt-4" color="success" variant="solid" icon="i-heroicons-arrow-path" :loading="pending" @click="loadDashboard">{{ t('restaurantPos.retry') }}</AppButton>
 							</div>
 							<div v-else-if="hasEmptyCatalog" class="col-span-full flex min-h-[55vh] flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50/60 p-8 text-center">
@@ -1574,7 +1847,7 @@ onBeforeUnmount(() => {
 									<div class="flex shrink-0 items-center gap-2">
 										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">{{ t('restaurantPos.clear') }}</AppButton>
 										<UBadge :color="order.status === 'ready_to_pay' ? 'warning' : 'success'" variant="soft">{{ order.status === 'ready_to_pay' ? t('restaurantPos.readyToPay') : t('restaurantPos.open') }}</UBadge>
-										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" aria-label="ปิดบิล" @click="mobileTicketOpen = false" />
+										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" :aria-label="t('common.close')" @click="mobileTicketOpen = false" />
 									</div>
 								</template>
 								<template v-else>
@@ -1585,7 +1858,7 @@ onBeforeUnmount(() => {
 									<div class="flex shrink-0 items-center gap-2">
 										<UBadge v-if="selectedPromotionTotal" color="success" variant="soft">{{ t('restaurantPos.selectedCount', { count: selectedPromotionTotal }) }}</UBadge>
 										<AppButton v-if="canClearCartDraft" size="xs" color="error" variant="soft" icon="i-heroicons-trash" @click="openClearCartPanel">{{ t('restaurantPos.clear') }}</AppButton>
-										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" aria-label="ปิดบิล" @click="mobileTicketOpen = false" />
+										<AppButton class="lg:hidden" size="xs" color="neutral" variant="ghost" icon="i-heroicons-x-mark" :aria-label="t('common.close')" @click="mobileTicketOpen = false" />
 									</div>
 								</template>
 							</div>
@@ -1598,12 +1871,12 @@ onBeforeUnmount(() => {
 										<UIcon name="i-heroicons-gift" class="size-4" />
 									</span>
 									<div class="min-w-0 flex-1">
-										<p class="text-sm font-semibold text-emerald-950">มีโปรโมชั่นที่รับได้</p>
+										<p class="text-sm font-semibold text-emerald-950">{{ t('restaurantPos.promotionAvailable') }}</p>
 										<p class="mt-0.5 truncate text-xs text-emerald-700">{{ suggestedLocalPromotions[0]?.name }} · {{ suggestedLocalPromotions[0] ? promotionBenefitLabel(suggestedLocalPromotions[0]) : '' }}</p>
 									</div>
 									<AppButton class="shrink-0 shadow-sm" size="xs" color="success" variant="solid" icon="i-heroicons-plus" @click="suggestedLocalPromotions[0] && (isDiscountPromotion(suggestedLocalPromotions[0]) ? applyLocalPromotion(suggestedLocalPromotions[0]) : addLocalPromotionGift(suggestedLocalPromotions[0]))">{{ suggestedLocalPromotions[0] && isDiscountPromotion(suggestedLocalPromotions[0]) ? t('restaurantPos.applyPromotion') : t('restaurantPos.addGift') }}</AppButton>
 								</div>
-								<button v-if="suggestedLocalPromotions.length > 1" class="mt-2 text-xs font-medium text-emerald-700" @click="promotionPanelOpen = true">ดูโปรโมชั่นทั้งหมด {{ suggestedLocalPromotions.length }} รายการ</button>
+								<button v-if="suggestedLocalPromotions.length > 1" class="mt-2 text-xs font-medium text-emerald-700" @click="promotionPanelOpen = true">{{ t('restaurantPos.promotionSeeAll', { count: suggestedLocalPromotions.length }) }}</button>
 							</div>
 							<section v-if="draftItems.length">
 								<div class="divide-y divide-orange-100 rounded-md border border-orange-200 bg-orange-50/60 dark:divide-emerald-400/15 dark:border-emerald-400/30 dark:bg-emerald-500/10">
@@ -1628,7 +1901,7 @@ onBeforeUnmount(() => {
 												<AppButton class="dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700" size="xs" color="neutral" variant="ghost" :disabled="actionPending || isItemPending(item.id)" @click="changeQty(item, 1)">+</AppButton>
 											</template>
 											<span v-else class="text-sm">× {{ item.qty }}</span>
-											<AppButton class="dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20" size="xs" color="error" variant="ghost" icon="i-heroicons-trash" :disabled="actionPending || isItemPending(item.id)" :aria-label="`ลบ ${item.name}`" @click="removeItem(item)" />
+											<AppButton class="dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20" size="xs" color="error" variant="ghost" icon="i-heroicons-trash" :disabled="actionPending || isItemPending(item.id)" :aria-label="t('restaurantPos.removeItem', { name: item.name })" @click="removeItem(item)" />
 										</div>
 									</div>
 								</div>
@@ -1651,21 +1924,27 @@ onBeforeUnmount(() => {
 											<p class="font-semibold tabular-nums">{{ money(item.line_total) }}</p>
 											<p class="text-xs text-stone-500">× {{ item.qty }}</p>
 										</div>
-									<AppButton v-if="!item.is_gift" size="xs" color="primary" variant="soft" icon="i-heroicons-pencil-square" aria-label="ແກ້ໄຂຈຳນວນ" title="ແກ້ໄຂຈຳນວນ" @click="editSentItem(item)" />
+									<AppButton v-if="!item.is_gift" size="xs" color="primary" variant="soft" icon="i-heroicons-pencil-square" :aria-label="t('restaurantPos.editQty')" :title="t('restaurantPos.editQty')" @click="editSentItem(item)" />
 									</div>
-									<AppButton v-if="roundMode(round) === 'kitchen'" class="m-2" size="xs" color="neutral" variant="soft" icon="i-heroicons-printer" @click="printDocument('kitchen', round)">พิมพ์รายการ</AppButton>
+									<AppButton v-if="roundMode(round) === 'kitchen'" class="m-2" size="xs" color="neutral" variant="soft" icon="i-heroicons-printer" @click="printDocument('kitchen', round)">{{ t('restaurantPos.printRoundItems') }}</AppButton>
 								</div>
 							</section>
 						</div>
 						<footer v-if="order || localCart.length" class="relative border-t bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pb-3">
 							<div class="space-y-2">
+								<!-- Breakdown above the total, in the same order as the payment panel
+								     and the bill, so the rows read downwards to the figure they make up.
+								     billing* is the shared source, so the cart can never disagree with
+								     what the customer is then charged. -->
+								<div v-if="cartBreakdownRows.length" class="space-y-1 text-xs text-stone-500 [@media(max-height:760px)]:space-y-0.5">
+									<div v-for="row in cartBreakdownRows" :key="row.key" class="flex items-center justify-between gap-3" :class="row.key === 'discount' ? 'text-emerald-700' : ''">
+										<span>{{ row.label }}</span>
+										<span class="tabular-nums">{{ row.value }}</span>
+									</div>
+								</div>
 								<div class="flex items-center justify-between">
 									<span class="text-sm text-stone-500">{{ t('restaurantPos.total') }}</span>
 									<strong class="text-xl tabular-nums">{{ money(displayTotal) }}</strong>
-								</div>
-								<div v-if="!order && localDiscount > 0" class="flex items-center justify-between rounded-md bg-emerald-50 px-2.5 py-2 text-sm text-emerald-800">
-									<span>{{ t('pos.discount') }}</span>
-									<strong class="tabular-nums">-{{ money(localDiscount) }}</strong>
 								</div>
 								<template v-if="!order">
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
@@ -1673,13 +1952,13 @@ onBeforeUnmount(() => {
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
 										</AppButton>
 										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-table-cells" :disabled="actionPending" @click="beginCartTable">{{ t('restaurantPos.openTableWithCart') }}</AppButton>
-										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
+										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
 								</template>
 								<template v-else-if="draftItems.length">
-									<div v-if="hasLocalTableDraft" class="flex min-w-0 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800" title="ມີລາຍການໃໝ່ ກະລຸນາບັນທຶກກ່ອນຊຳລະ">
+									<div v-if="hasLocalTableDraft" class="flex min-w-0 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800" :title="t('restaurantPos.unsavedDraftHint')">
 										<UIcon name="i-heroicons-exclamation-circle" class="size-3.5 shrink-0" />
-										<p class="truncate text-[11px] font-medium leading-none">ມີລາຍການໃໝ່ · ບັນທຶກກ່ອນຊຳລະ</p>
+										<p class="truncate text-[11px] font-medium leading-none">{{ t('restaurantPos.unsavedDraftShort') }}</p>
 									</div>
 									<AppButton v-if="!hasLocalTableDraft" block color="primary" :loading="actionPending" @click="openCheckout('direct')">
 										<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
@@ -1689,7 +1968,7 @@ onBeforeUnmount(() => {
 										<AppButton class="w-full justify-center" color="neutral" variant="soft" :disabled="hasLocalTableDraft" @click="openCheckout('existing')">
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
 										</AppButton>
-										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
+										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
 								</template>
 								<template v-else>
@@ -1698,12 +1977,18 @@ onBeforeUnmount(() => {
 										<AppButton class="w-full justify-center" color="primary" :loading="actionPending" @click="openCheckout('existing')">
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
 										</AppButton>
-										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" aria-label="คำสั่งเพิ่มเติม" @click="moreActionsOpen = !moreActionsOpen" />
+										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
 								</template>
 							</div>
+							<div v-if="moreActionsOpen" class="fixed inset-0 z-20" @click="moreActionsOpen = false" />
 							<div v-if="moreActionsOpen" class="absolute inset-x-3 bottom-[calc(100%-0.25rem)] z-30 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl ring-1 ring-black/5">
-								<div class="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-xs font-semibold text-stone-500">{{ t('restaurantPos.additionalActions') }}</div>
+								<div class="flex items-center justify-between gap-2 border-b border-neutral-100 bg-neutral-50 px-3 py-2">
+									<span class="text-xs font-semibold text-stone-500">{{ t('restaurantPos.additionalActions') }}</span>
+									<button type="button" class="-me-1 grid size-7 place-items-center rounded-md text-stone-400 transition hover:bg-neutral-200 hover:text-stone-700" :aria-label="t('common.close')" @click="moreActionsOpen = false">
+										<UIcon name="i-heroicons-x-mark-20-solid" class="size-4" />
+									</button>
+								</div>
 								<div class="p-1.5">
 									<button v-if="!order" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="openEstimate"><UIcon name="i-heroicons-document-text" class="size-4 text-stone-500" />{{ t('restaurantPos.printEstimate') }}</button>
 									<template v-else>
@@ -2034,20 +2319,20 @@ onBeforeUnmount(() => {
 						<h4 class="font-semibold text-stone-950">{{ t('restaurantPos.guestCount') }}</h4>
 						<p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.guestCountHint') }}</p>
 					</div>
-					<AppButton size="sm" color="neutral" :variant="guestCount === null ? 'solid' : 'soft'" @click="setGuestCount(null)">{{ t('restaurantPos.unspecified') }}</AppButton>
+					<AppButton class="shrink-0 whitespace-nowrap" size="sm" color="neutral" :variant="guestCount === null ? 'solid' : 'soft'" @click="setGuestCount(null)">{{ t('restaurantPos.unspecified') }}</AppButton>
 				</div>
 
 				<div class="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
-					<AppButton color="neutral" variant="soft" icon="i-heroicons-minus" :disabled="guestCount === null || guestCount <= 1" aria-label="ลดจำนวนลูกค้า" @click="setGuestCount((guestCount || 1) - 1)" />
+					<AppButton color="neutral" variant="soft" icon="i-heroicons-minus" :disabled="guestCount === null || guestCount <= 1" :aria-label="t('restaurantPos.guestCountDown')" @click="setGuestCount((guestCount || 1) - 1)" />
 					<button
 						type="button"
-						class="min-h-12 rounded-md border text-center font-semibold tabular-nums transition"
+						class="min-h-12 whitespace-nowrap rounded-md border px-2 text-center font-semibold tabular-nums transition"
 						:class="guestCount === null ? 'border-neutral-200 bg-neutral-50 text-stone-500' : 'border-emerald-200 bg-emerald-50 text-emerald-950'"
 						@click="setGuestCount(guestCount || selectedTable?.capacity || 1)"
 					>
 						{{ guestCount === null ? t('restaurantPos.unspecified') : t('restaurantPos.people', { count: guestCount }) }}
 					</button>
-					<AppButton color="neutral" variant="soft" icon="i-heroicons-plus" :disabled="guestCount !== null && guestCount >= 100" aria-label="เพิ่มจำนวนลูกค้า" @click="setGuestCount((guestCount || 0) + 1)" />
+					<AppButton color="neutral" variant="soft" icon="i-heroicons-plus" :disabled="guestCount !== null && guestCount >= 100" :aria-label="t('restaurantPos.guestCountUp')" @click="setGuestCount((guestCount || 0) + 1)" />
 				</div>
 
 				<div class="mt-3 grid grid-cols-4 gap-2">
@@ -2073,7 +2358,7 @@ onBeforeUnmount(() => {
 		fill-mobile-height
 		compact-header
 		close-button-size="sm"
-		panel-class="lg:h-[min(720px,calc(100dvh-2rem))]"
+		panel-class="lg:h-[min(820px,calc(100dvh-1.5rem))]"
 		content-class="flex flex-col !overflow-hidden !px-4 !py-4"
 	>
 		<div v-if="checkoutStep === 'processing'" class="-mx-4 -mb-4 -mt-3 flex min-h-0 flex-1 flex-col items-center justify-center border-t border-emerald-100 bg-emerald-50/60 px-6 py-8 text-center">
@@ -2109,8 +2394,11 @@ onBeforeUnmount(() => {
 					<div class="space-y-2">
 						<div v-for="item in printItems" :key="item.id" class="flex justify-between gap-3">
 							<div class="min-w-0">
-							<p class="truncate font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="font-sans text-emerald-600">· {{ t('posPanels.free') }}</span></p>
+							<p class="truncate font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="font-sans text-emerald-600">· {{ pt('posPanels.free') }}</span></p>
 								<p class="text-[11px] text-stone-500">× {{ item.qty }}</p>
+								<!-- A customer who asked for no ice should see it on the receipt too,
+								     not only on the estimate they were handed earlier. -->
+								<p v-if="item.note" class="text-[10px] text-stone-500">{{ item.note }}</p>
 							</div>
 							<span class="shrink-0 font-mono tabular-nums">{{ money(item.line_total) }}</span>
 						</div>
@@ -2118,37 +2406,63 @@ onBeforeUnmount(() => {
 					<div class="my-3 border-t border-dashed border-neutral-300" />
 					<div class="space-y-2">
 						<div class="flex justify-between gap-3">
-						<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
+						<span>{{ pt('posPanels.productAmount') }}</span>
+							<span class="font-mono tabular-nums">{{ money(printSubtotal) }}</span>
+						</div>
+						<!-- Without this row a discounted bill lists items and a total the
+						     customer cannot reconcile. -->
+						<div v-if="printDiscount" class="flex justify-between gap-3">
+							<span>{{ pt('pos.discount') }}</span>
+							<span class="font-mono tabular-nums">-{{ money(printDiscount) }}</span>
+						</div>
+						<div v-if="printShowNetSubtotal" class="flex justify-between gap-3">
+							<span>{{ pt('posPanels.productBeforeVat') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printNetSubtotal) }}</span>
 						</div>
 						<div v-if="printVat" class="flex justify-between gap-3">
-						<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${t('posPanels.vatIncluded')})` : '' }}</span>
+						<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${pt('posPanels.vatIncluded')})` : '' }}</span>
 							<span class="font-mono tabular-nums">{{ money(printVat) }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold">
-						<span>{{ t('posPanels.amountDue') }}</span>
+						<span>{{ pt('posPanels.amountDue') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printTotal) }}</span>
 						</div>
 						<div v-if="receiptShowPaymentMethod" class="flex justify-between gap-3 text-stone-600">
-						<span>{{ t('posPanels.paymentMethod') }}</span>
-							<span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span>
+						<span>{{ pt('posPanels.paymentMethod') }}</span>
+							<span>{{ printPaymentMethodLabel }}</span>
+						</div>
+						<!-- Only when the customer paid in another currency: they need
+						     their own figure and the rate to check the change against. -->
+						<div v-if="printIsForeign" class="flex justify-between gap-3 text-stone-600">
+							<span>{{ pt('posPanels.paidInCurrency', { currency: printPaymentCurrency }) }}</span>
+							<span class="font-mono tabular-nums">{{ printTenderedForeignText }}</span>
+						</div>
+						<div v-if="printIsForeign" class="flex justify-between gap-3 text-stone-600">
+							<span>{{ pt('posPanels.exchangeRate') }}</span>
+							<span class="font-mono tabular-nums">{{ printExchangeRateText }}</span>
 						</div>
 						<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="flex justify-between gap-3 text-stone-600">
-						<span>{{ t('posPanels.cashReceived') }}</span>
+						<span>{{ pt('posPanels.cashReceived') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printTendered) }}</span>
 						</div>
 						<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="flex justify-between gap-3 text-stone-600">
-						<span>{{ t('pos.change') }}</span>
+						<span>{{ pt('pos.change') }}</span>
 							<span class="font-mono tabular-nums">{{ money(printChange) }}</span>
 						</div>
 					</div>
 					<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
 						<div v-if="receiptShowQueue && printQueueText" class="mb-3">
-						<p class="font-sans text-[11px] text-stone-500">{{ t('posPanels.queue') }}</p>
+						<p class="font-sans text-[11px] text-stone-500">{{ pt('posPanels.queue') }}</p>
 							<p class="text-lg font-bold leading-tight text-stone-950">{{ printQueueText }}</p>
 						</div>
-					<p class="font-sans text-[11px] text-stone-500">{{ t('posPanels.thankYou') }}</p>
-						<p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
+					<p class="font-sans text-[11px] text-stone-500">{{ pt('posPanels.thankYou') }}</p>
+						<template v-if="printBarcodeBits">
+							<svg class="mx-auto mt-3 block h-8 w-[46mm] max-w-full" :viewBox="`0 0 ${printBarcodeBits.length} 30`" preserveAspectRatio="none" role="img" :aria-label="printOrderNo">
+								<rect v-for="(bit, index) in printBarcodeBits.split('')" v-show="bit === '1'" :key="index" :x="index" y="0" width="1" height="30" fill="#000" />
+							</svg>
+							<p class="mt-0.5 text-center font-mono text-[10px] tracking-[0.12em] text-stone-500">{{ printOrderNo }}</p>
+						</template>
+						<p v-if="receiptShowPoweredBy" class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
 					</div>
 				</div>
 			</div>
@@ -2157,97 +2471,203 @@ onBeforeUnmount(() => {
 				<AppButton color="primary" size="lg" block icon="i-heroicons-printer" @click="printReceiptAndFinish">{{ t('posPanels.printReceipt') }}</AppButton>
 			</div>
 		</div>
-		<div v-else class="scrollbar-soft flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto pr-1">
-			<div class="grid shrink-0 grid-cols-3 gap-1.5 md:gap-2">
-				<button
-					v-for="method in paymentMethodOptions"
-					:key="method.id"
-					type="button"
-					class="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-semibold transition md:min-h-11 md:text-sm"
-					:class="paymentMethod === method.id ? 'border-primary-600 bg-primary-600 text-white shadow-sm' : 'border-neutral-200 bg-neutral-50 text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
-					@click="paymentMethod = method.id"
-				>
-					<UIcon :name="method.icon" class="size-5" />
-					<span class="truncate">{{ method.label }}</span>
-				</button>
-			</div>
-			<div class="min-h-[166px] shrink-0">
-				<div v-if="paymentMethod === 'cash'" class="space-y-2">
-					<div class="rounded-md border border-neutral-200 bg-white px-3 py-1.5">
-						<div class="flex items-center justify-between gap-3">
-							<p class="text-[11px] font-semibold uppercase text-stone-400">{{ t('posPanels.cashReceived') }}</p>
-							<div class="flex items-center gap-1.5">
+		<div v-else class="flex min-h-0 flex-1 flex-col gap-3">
+			<div class="scrollbar-soft flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto pr-1">
+				<div class="grid shrink-0 grid-cols-3 gap-1.5 md:gap-2">
+					<button
+						v-for="method in paymentMethodOptions"
+						:key="method.id"
+						type="button"
+						class="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-semibold transition md:min-h-11 md:text-sm"
+						:class="paymentMethod === method.id ? 'border-primary-600 bg-primary-600 text-white shadow-sm' : 'border-neutral-200 bg-neutral-50 text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
+						@click="paymentMethod = method.id"
+					>
+						<UIcon :name="method.icon" class="size-5" />
+						<span class="truncate">{{ method.label }}</span>
+					</button>
+				</div>
+				<!-- Hidden entirely for a single-currency shop: a row that can only be
+				     left as it is would just crowd the till. Sits above the account and
+				     keypad because both depend on which currency was picked. -->
+				<div class="min-h-[166px] shrink-0 [@media(max-height:760px)]:min-h-0">
+					<div v-if="paymentMethod === 'cash'" class="space-y-2">
+						<!-- The caption sits above both cards because it names the whole row: the
+						     currency taken and the amount handed over. Inside the left card it read
+						     as labelling only the picker, and left the amount card unlabelled. -->
+						<p class="text-[11px] font-semibold uppercase leading-none text-stone-400">{{ t('posPanels.cashReceived') }}</p>
+						<div class="flex items-stretch gap-2">
+							<!-- Dropped entirely for a single-currency shop, so it never leaves an empty
+							     box and the amount card simply takes the full width. -->
+							<div v-if="multiCurrencyEnabled" class="flex w-[132px] shrink-0 flex-col justify-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5">
+								<PosCurrencyPicker
+									block
+									:currencies="payableCurrencies"
+									:active="activePaymentCurrency"
+									@select="paymentCurrency = $event"
+								/>
+								<!-- Always rendered, never v-if: the base currency has no rate, and letting
+								     the line vanish shortened the card and shifted the keypad under it every
+								     time the cashier switched currency. min-h reserves the one line. -->
+								<p class="min-h-[11px] whitespace-nowrap text-center text-[11px] leading-none text-stone-500">{{ exchangeRateLabel }}</p>
+							</div>
+							<div class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5">
+								<div class="flex items-center justify-end gap-1.5">
 								<button type="button" class="grid size-7 place-items-center rounded-md bg-neutral-100 text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!cashTenderedHistory.length" :aria-label="t('posPanels.undoCash')" @click="undoCashTendered">
 									<UIcon name="i-heroicons-arrow-uturn-left" class="size-3.5" />
 								</button>
 								<button type="button" class="min-h-7 rounded-md bg-neutral-100 px-2 text-[11px] font-semibold text-stone-600 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40" :disabled="cashTendered <= 0" @click="setCashTendered(0)">
 									{{ t('posPanels.clear') }}
 								</button>
+								</div>
+								<p class="text-right text-xl font-bold leading-tight tabular-nums text-stone-950">{{ payMoney(cashTendered) }}</p>
 							</div>
 						</div>
-						<p class="text-right text-xl font-bold leading-tight tabular-nums text-stone-950">{{ money(cashTendered) }}</p>
+						<div class="grid grid-cols-4 gap-1.5">
+							<button
+								v-for="amount in cashQuickAmounts"
+								:key="amount"
+								type="button"
+								class="min-h-9 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1.5 text-xs font-semibold tabular-nums text-emerald-700 transition hover:border-emerald-200 hover:bg-emerald-100 active:scale-[0.98] md:min-h-10"
+								@click="addCashTendered(amount)"
+							>
+								+{{ payMoney(amount) }}
+							</button>
+						</div>
+						<div class="grid grid-cols-3 gap-1.5">
+							<button
+								v-for="digit in ['1','2','3','4','5','6','7','8','9']"
+								:key="digit"
+								type="button"
+								class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-base font-semibold tabular-nums text-stone-900 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11"
+								@click="appendCashDigit(digit)"
+							>
+								{{ digit }}
+							</button>
+							<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-sm font-semibold text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="setCashTendered(0)">
+								{{ t('posPanels.clear') }}
+							</button>
+							<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-base font-semibold tabular-nums text-stone-900 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="appendCashDigit('0')">
+								0
+							</button>
+							<button type="button" class="flex min-h-10 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" :aria-label="t('posPanels.deleteDigit')" @click="backspaceCashTendered">
+								<UIcon name="i-heroicons-backspace" class="size-5" />
+							</button>
+						</div>
 					</div>
-					<div class="grid grid-cols-4 gap-1.5">
-						<button
-							v-for="amount in cashQuickAmounts"
-							:key="amount"
-							type="button"
-							class="min-h-9 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1.5 text-xs font-semibold tabular-nums text-emerald-700 transition hover:border-emerald-200 hover:bg-emerald-100 active:scale-[0.98] md:min-h-10"
-							@click="addCashTendered(amount)"
-						>
-							+{{ money(amount) }}
-						</button>
-					</div>
-					<div class="grid grid-cols-3 gap-1.5">
-						<button
-							v-for="digit in ['1','2','3','4','5','6','7','8','9']"
-							:key="digit"
-							type="button"
-							class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-base font-semibold tabular-nums text-stone-900 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11"
-							@click="appendCashDigit(digit)"
-						>
-							{{ digit }}
-						</button>
-						<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-sm font-semibold text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="setCashTendered(0)">
-							{{ t('posPanels.clear') }}
-						</button>
-						<button type="button" class="min-h-10 rounded-md border border-neutral-200 bg-neutral-50 text-base font-semibold tabular-nums text-stone-900 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" @click="appendCashDigit('0')">
-							0
-						</button>
-						<button type="button" class="flex min-h-10 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 active:scale-[0.98] md:min-h-11" :aria-label="t('posPanels.deleteDigit')" @click="backspaceCashTendered">
-							<UIcon name="i-heroicons-backspace" class="size-5" />
-						</button>
-					</div>
+					<template v-if="paymentMethod === 'qr_transfer'">
+						<div v-if="!hasPaymentAccount" class="rounded-md border border-amber-200 bg-amber-50 p-3">
+							<p class="text-sm font-semibold text-amber-900">{{ t('posPanels.noAccountTitle') }}</p>
+							<p class="mt-1 text-xs leading-5 text-amber-800">
+								{{ canManagePaymentAccounts ? t('posPanels.noAccountBody') : t('posPanels.noAccountBodyStaff') }}
+							</p>
+							<div class="mt-3 flex flex-wrap gap-2">
+								<AppButton
+									v-if="canManagePaymentAccounts"
+									color="primary"
+									variant="solid"
+									size="sm"
+									icon="i-heroicons-cog-6-tooth-20-solid"
+									@click="goToPaymentSettings"
+								>
+									{{ t('posPanels.goToPaymentSettings') }}
+								</AppButton>
+								<AppButton color="neutral" variant="soft" size="sm" icon="i-heroicons-banknotes" @click="switchToCashPayment">
+									{{ t('posPanels.useCashInstead') }}
+								</AppButton>
+							</div>
+						</div>
+						<template v-else>
+							<!-- The same picker: the currency decides which accounts can receive the
+							     money, so it has to be reachable on this branch too. -->
+							<div v-if="multiCurrencyEnabled" class="mb-2 flex items-center justify-between gap-2">
+								<span class="min-w-0 truncate text-[11px] text-stone-500">{{ exchangeRateLabel }}</span>
+								<PosCurrencyPicker
+									:currencies="payableCurrencies"
+									:active="activePaymentCurrency"
+									@select="paymentCurrency = $event"
+								/>
+							</div>
+							<UFormField :label="t('pos.paymentAccount')">
+								<!-- Cards rather than a dropdown: the account is a one-tap choice on a
+								     touch till, and the logo is quicker to recognise than a name. -->
+								<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+									<button
+										v-for="account in payableAccounts"
+										:key="account.id"
+										type="button"
+										class="relative flex flex-col items-center gap-2 rounded-md border px-2 py-3 text-center transition active:scale-[0.98]"
+										:class="account.id === paymentAccountId
+											? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
+											: 'border-neutral-200 bg-white hover:border-primary-200 hover:bg-primary-50/40'"
+										:aria-pressed="account.id === paymentAccountId"
+										@click="paymentAccountId = account.id"
+									>
+										<UIcon
+											v-if="account.id === paymentAccountId"
+											name="i-heroicons-check-circle-20-solid"
+											class="absolute right-1.5 top-1.5 size-5 text-primary-600"
+										/>
+										<img v-if="bankLogo(account.bank_name)" :src="bankLogo(account.bank_name)" alt="" class="size-10 shrink-0 rounded object-contain">
+										<span v-else class="grid size-10 shrink-0 place-items-center rounded bg-neutral-100 text-stone-400">
+											<Landmark class="size-5" />
+										</span>
+										<span class="line-clamp-2 text-xs font-medium leading-tight text-stone-900">{{ account.display_name }}</span>
+										<span v-if="account.bank_name" class="line-clamp-1 text-[10px] leading-tight text-stone-500">{{ account.bank_name }}</span>
+									</button>
+								</div>
+							</UFormField>
+							<div v-if="selectedAccountMissingQr" class="rounded-md border border-sky-200 bg-sky-50 p-3">
+								<p class="text-sm font-semibold text-sky-900">{{ t('posPanels.noQrTitle') }}</p>
+								<p class="mt-1 text-xs leading-5 text-sky-800">{{ t('posPanels.noQrBody') }}</p>
+								<AppButton
+									v-if="canManagePaymentAccounts"
+									class="mt-3"
+									color="neutral"
+									variant="soft"
+									size="sm"
+									icon="i-heroicons-qr-code"
+									@click="goToPaymentSettings"
+								>
+									{{ t('posPanels.addQrImage') }}
+								</AppButton>
+							</div>
+						</template>
+					</template>
 				</div>
-				<template v-if="paymentMethod === 'qr_transfer' && !order">
-					<UFormField :label="t('pos.paymentAccount')">
-						<select v-model="paymentAccountId" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm md:min-h-11">
-							<option value="">{{ t('posPanels.selectAccount') }}</option>
-							<option v-for="account in paymentAccounts" :key="account.id" :value="account.id">{{ account.display_name }}</option>
-						</select>
-					</UFormField>
-				</template>
 			</div>
-			<div class="mt-auto shrink-0 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-				<div class="flex justify-between gap-3 text-sm">
-					<span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span>
+			<div class="shrink-0 rounded-md border border-neutral-200 bg-neutral-50 p-3 [@media(max-height:760px)]:p-2">
+				<div class="flex justify-between gap-3 text-sm [@media(max-height:760px)]:text-xs">
+					<span>{{ t('posPanels.productAmount') }}</span>
 					<span class="tabular-nums">{{ money(billingSubtotal) }}</span>
 				</div>
-				<div v-if="billingDiscount > 0" class="mt-2 flex justify-between gap-3 text-sm text-emerald-700">
+				<div v-if="billingDiscount > 0" class="mt-2 flex justify-between gap-3 text-sm text-emerald-700 [@media(max-height:760px)]:mt-1 [@media(max-height:760px)]:text-xs">
 					<span>{{ t('pos.discount') }}</span>
 					<span class="font-semibold tabular-nums">-{{ money(billingDiscount) }}</span>
 				</div>
-				<div v-if="vatEnabled" class="mt-2 flex justify-between gap-3 text-sm">
+				<div v-if="showNetSubtotalRow" class="mt-2 flex justify-between gap-3 text-sm [@media(max-height:760px)]:mt-1 [@media(max-height:760px)]:text-xs">
+					<span>{{ t('posPanels.productBeforeVat') }}</span>
+					<span class="tabular-nums">{{ money(billingNetSubtotal) }}</span>
+				</div>
+				<div v-if="vatEnabled" class="mt-2 flex justify-between gap-3 text-sm [@media(max-height:760px)]:mt-1 [@media(max-height:760px)]:text-xs">
 					<span>VAT {{ vatRateLabel }}%{{ vatMode === 'INCLUSIVE' ? ` (${t('posPanels.vatIncluded')})` : '' }}</span>
 					<span class="tabular-nums">{{ money(billingVat) }}</span>
 				</div>
-				<div class="mt-2 flex justify-between gap-3 border-t border-neutral-200 pt-2">
+				<div class="mt-2 flex justify-between gap-3 border-t border-neutral-200 pt-2 [@media(max-height:760px)]:mt-1.5 [@media(max-height:760px)]:pt-1.5">
 					<span>{{ t('posPanels.amountDue') }}</span>
-					<strong class="tabular-nums">{{ money(displayTotal) }}</strong>
+					<div class="text-right">
+						<strong class="block tabular-nums">{{ money(displayTotal) }}</strong>
+						<!-- The figure the cashier actually asks for, rounded up so the
+						     till is never left short by the conversion. -->
+						<span v-if="isForeignPayment" class="block text-xs font-semibold tabular-nums text-primary-700">
+							= {{ payMoney(totalInPaymentCurrency) }}
+						</span>
+					</div>
 				</div>
-				<div v-if="paymentMethod === 'cash'" class="mt-2 flex justify-between gap-3 text-sm">
+				<div v-if="paymentMethod === 'cash'" class="mt-2 flex justify-between gap-3 text-sm [@media(max-height:760px)]:mt-1 [@media(max-height:760px)]:text-xs">
 					<span>{{ t('pos.change') }}</span>
-					<span class="tabular-nums">{{ money(Math.max(0, cashTendered - displayTotal)) }}</span>
+					<!-- Always in the shop's own currency: the drawer holds kip, and
+					     handing back baht would leave it impossible to count. -->
+					<span class="tabular-nums">{{ money(changeDue) }}</span>
 				</div>
 			</div>
 			<AppButton
@@ -2256,7 +2676,7 @@ onBeforeUnmount(() => {
 				color="primary"
 				class="shrink-0"
 				:loading="actionPending"
-				:disabled="paymentMethod === 'cash' ? cashTendered < displayTotal : paymentMethod === 'qr_transfer' && !order ? !paymentAccountId : false"
+				:disabled="paymentMethod === 'cash' ? cashTenderedBase < displayTotal : paymentMethod === 'qr_transfer' ? !paymentAccountId : false"
 				@click="checkout"
 			>
 				{{ t('pos.confirmPayment') }}
@@ -2338,25 +2758,39 @@ onBeforeUnmount(() => {
 					<div class="text-center">
 						<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="mx-auto mb-2 size-14 object-contain">
 						<p v-if="receiptShowStoreName" class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
-						<p class="mt-1 font-semibold">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
-						<p v-if="printKind === 'check' || printKind === 'estimate'" class="mt-1 font-bold text-red-600">{{ t('posPanels.unpaid') }}</p>
-						<p v-if="printKind !== 'receipt'" class="mt-1 text-[11px] text-stone-500">{{ printLabel }}</p>
-						<p class="mt-0.5 text-[11px] text-stone-500">{{ printOrderNo }}<template v-if="printRound"> · {{ t('posPanels.round', { round: printRound }) }}</template></p>
+						<p v-for="line in receiptStoreLines" :key="line" class="text-[11px] text-stone-500">{{ line }}</p>
+						<p v-if="printKind === 'kitchen' || printKind === 'receipt'" class="mt-1 font-semibold">{{ pt(printKind === 'kitchen' ? 'posPanels.billItems' : 'posPanels.receipt') }}</p>
+						<p v-if="printKind === 'check' || printKind === 'estimate'" class="mt-1 font-bold text-stone-900">{{ pt('posPanels.unpaid') }}</p>
+						<p v-if="printKind !== 'receipt' && printLabel" class="mt-1 text-[11px] text-stone-500">{{ printLabel }}</p>
+						<p v-if="printOrderNo || printRound" class="mt-0.5 text-[11px] text-stone-500">{{ printOrderNo }}<template v-if="printRound"> · {{ pt('posPanels.round', { round: printRound }) }}</template></p>
 					</div>
 					<div class="my-3 border-t border-dashed border-neutral-300" />
 					<div class="space-y-2">
 						<div v-for="item in printItems" :key="item.id" class="flex justify-between gap-3">
 							<div class="min-w-0">
-								<p class="font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ t('posPanels.free') }}</span></p>
+								<p class="font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ pt('posPanels.free') }}</span></p>
+								<!-- Quantity under the name so the amounts stack into a column the
+								     customer can add up, matching the receipt and the settings
+								     preview. A kitchen slip carries no amount, so its quantity keeps
+								     the right-hand column where it is the one thing to read. -->
+								<p v-if="printKind !== 'kitchen'" class="text-[11px] text-stone-500">× {{ item.qty }}</p>
 								<p v-if="item.note" class="text-[10px] text-stone-500">{{ item.note }}</p>
 							</div>
-							<span class="shrink-0 font-mono tabular-nums">× {{ item.qty }}<template v-if="printKind !== 'kitchen'"> · {{ money(item.line_total) }}</template></span>
+							<span class="shrink-0 font-mono tabular-nums">{{ printKind === 'kitchen' ? `× ${item.qty}` : money(item.line_total) }}</span>
 						</div>
 					</div>
-					<p v-if="!printItems.length" class="py-5 text-center text-stone-500">{{ t('posPanels.noRoundItems') }}</p>
+					<p v-if="!printItems.length" class="py-5 text-center text-stone-500">{{ pt('posPanels.noRoundItems') }}</p>
 					<template v-if="printKind !== 'kitchen'">
 						<div class="my-3 border-t border-dashed border-neutral-300" />
-						<div class="flex justify-between gap-3 text-[13px] font-bold"><span>{{ t('posPanels.total') }}</span><span class="font-mono tabular-nums">{{ money(printTotal) }}</span></div>
+						<!-- The same four rows the paper prints, so the preview can actually
+						     be used to check the bill before it is handed over. -->
+						<div class="space-y-2">
+							<div class="flex justify-between gap-3"><span>{{ pt('posPanels.productAmount') }}</span><span class="font-mono tabular-nums">{{ money(printSubtotal) }}</span></div>
+							<div v-if="printDiscount" class="flex justify-between gap-3"><span>{{ pt('pos.discount') }}</span><span class="font-mono tabular-nums">-{{ money(printDiscount) }}</span></div>
+							<div v-if="printShowNetSubtotal" class="flex justify-between gap-3"><span>{{ pt('posPanels.productBeforeVat') }}</span><span class="font-mono tabular-nums">{{ money(printNetSubtotal) }}</span></div>
+							<div v-if="printVat" class="flex justify-between gap-3"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> ({{ pt('posPanels.vatIncluded') }})</template></span><span class="font-mono tabular-nums">{{ money(printVat) }}</span></div>
+							<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold"><span>{{ pt('posPanels.total') }}</span><span class="font-mono tabular-nums">{{ money(printTotal) }}</span></div>
+						</div>
 					</template>
 				</div>
 			</div>
@@ -2372,34 +2806,46 @@ onBeforeUnmount(() => {
 			<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="print-store-logo">
 			<h1 v-if="receiptShowStoreName">{{ storeName }}</h1>
 			<p v-for="line in receiptStoreLines" :key="line">{{ line }}</p>
-			<p class="print-kind">{{ t(printKind === 'kitchen' ? 'posPanels.billItems' : printKind === 'check' ? 'posPanels.checkBill' : printKind === 'estimate' ? 'posPanels.estimate' : 'posPanels.receipt') }}</p>
-			<p v-if="printKind === 'check' || printKind === 'estimate'" class="print-unpaid">{{ t('posPanels.unpaid') }}</p>
-			<p v-if="printKind !== 'receipt'">{{ printLabel }}</p>
-			<p>{{ printOrderNo }}<template v-if="printRound"> · {{ t('posPanels.round', { round: printRound }) }}</template></p>
+			<p v-if="printKind === 'kitchen' || printKind === 'receipt'" class="print-kind">{{ pt(printKind === 'kitchen' ? 'posPanels.billItems' : 'posPanels.receipt') }}</p>
+			<p v-if="printKind === 'check' || printKind === 'estimate'" class="print-unpaid">{{ pt('posPanels.unpaid') }}</p>
+			<p v-if="printKind !== 'receipt' && printLabel">{{ printLabel }}</p>
+			<p v-if="printOrderNo || printRound">{{ printOrderNo }}<template v-if="printRound"> · {{ pt('posPanels.round', { round: printRound }) }}</template></p>
 			<hr>
 			<div v-for="item in printItems" :key="item.id">
 				<div class="print-line">
-					<span>{{ item.name }} <b v-if="item.is_gift">({{ t('posPanels.free') }})</b></span>
-					<span>× {{ item.qty }}<template v-if="printKind !== 'kitchen'"> · {{ money(item.line_total) }}</template></span>
+					<span>{{ item.name }} <b v-if="item.is_gift">({{ pt('posPanels.free') }})</b></span>
+					<span>{{ printKind === 'kitchen' ? `× ${item.qty}` : money(item.line_total) }}</span>
 				</div>
-				<p v-if="item.note" class="print-note">{{ t('posPanels.note') }}: {{ item.note }}</p>
+				<p v-if="printKind !== 'kitchen'" class="print-qty">× {{ item.qty }}</p>
+				<p v-if="item.note" class="print-note">{{ pt('posPanels.note') }}: {{ item.note }}</p>
 			</div>
 			<template v-if="printKind !== 'kitchen'">
 				<hr>
-				<div class="print-line"><span>{{ t(vatEnabled && vatMode === 'INCLUSIVE' ? 'posPanels.productBeforeVat' : 'posPanels.productAmount') }}</span><span>{{ money(printNetSubtotal) }}</span></div>
-				<div v-if="printVat" class="print-line"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> ({{ t('posPanels.vatIncluded') }})</template></span><span>{{ money(printVat) }}</span></div>
-				<div class="print-total"><strong>{{ t('posPanels.total') }}</strong><strong>{{ money(printTotal) }}</strong></div>
+				<div class="print-line"><span>{{ pt('posPanels.productAmount') }}</span><span>{{ money(printSubtotal) }}</span></div>
+				<div v-if="printDiscount" class="print-line"><span>{{ pt('pos.discount') }}</span><span>-{{ money(printDiscount) }}</span></div>
+				<div v-if="printShowNetSubtotal" class="print-line"><span>{{ pt('posPanels.productBeforeVat') }}</span><span>{{ money(printNetSubtotal) }}</span></div>
+				<div v-if="printVat" class="print-line"><span>VAT {{ vatRateLabel }}%<template v-if="vatMode === 'INCLUSIVE'"> ({{ pt('posPanels.vatIncluded') }})</template></span><span>{{ money(printVat) }}</span></div>
+				<div class="print-total"><strong>{{ pt('posPanels.total') }}</strong><strong>{{ money(printTotal) }}</strong></div>
 				<template v-if="printKind === 'receipt'">
-					<div v-if="receiptShowPaymentMethod" class="print-line"><span>{{ t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodOptions.find((method) => method.id === printPaymentMethod)?.label || printPaymentMethod }}</span></div>
-					<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="print-line"><span>{{ t('posPanels.cashReceived') }}</span><span>{{ money(printTendered) }}</span></div>
-					<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="print-line"><span>{{ t('pos.change') }}</span><span>{{ money(printChange) }}</span></div>
-					<div v-if="receiptShowQueue && printQueueText" class="print-queue"><span>{{ t('posPanels.queue') }}</span><strong>{{ printQueueText }}</strong></div>
+					<div v-if="receiptShowPaymentMethod" class="print-line"><span>{{ pt('posPanels.paymentMethod') }}</span><span>{{ printPaymentMethodLabel }}</span></div>
+				<div v-if="printIsForeign" class="print-line"><span>{{ pt('posPanels.paidInCurrency', { currency: printPaymentCurrency }) }}</span><span>{{ printTenderedForeignText }}</span></div>
+				<div v-if="printIsForeign" class="print-line"><span>{{ pt('posPanels.exchangeRate') }}</span><span>{{ printExchangeRateText }}</span></div>
+					<div v-if="printPaymentMethod === 'cash' && receiptShowTendered" class="print-line"><span>{{ pt('posPanels.cashReceived') }}</span><span>{{ money(printTendered) }}</span></div>
+					<div v-if="printPaymentMethod === 'cash' && receiptShowChange" class="print-line"><span>{{ pt('pos.change') }}</span><span>{{ money(printChange) }}</span></div>
+					<div v-if="receiptShowQueue && printQueueText" class="print-queue"><span>{{ pt('posPanels.queue') }}</span><strong>{{ printQueueText }}</strong></div>
 				</template>
 			</template>
-			<p class="print-time">{{ new Date().toLocaleString(locale) }}</p>
-			<p class="print-powered">Powered by O KhaiDee+</p>
+			<p class="print-time">{{ new Date().toLocaleString(receiptLocale) }}</p>
+			<template v-if="printBarcodeBits">
+				<svg class="print-barcode" :viewBox="`0 0 ${printBarcodeBits.length} 30`" preserveAspectRatio="none" role="img" :aria-label="printOrderNo">
+					<rect v-for="(bit, index) in printBarcodeBits.split('')" v-show="bit === '1'" :key="index" :x="index" y="0" width="1" height="30" fill="#000" />
+				</svg>
+				<p class="print-barcode-text">{{ printOrderNo }}</p>
+			</template>
+			<p v-if="receiptShowPoweredBy" class="print-powered">Powered by O KhaiDee+</p>
 		</div>
 	</div>
+
 </template>
 
 <style scoped>
@@ -2408,6 +2854,37 @@ onBeforeUnmount(() => {
 .checkout-success-burst{position:relative;display:grid;place-items:center;width:112px;height:112px;border-radius:999px;background:radial-gradient(circle,rgba(16,185,129,.24),rgba(16,185,129,0) 68%);animation:checkout-burst .85s ease-out both}.checkout-success-burst::before{content:"";position:absolute;inset:10px;border-radius:999px;background:rgba(16,185,129,.12);animation:checkout-pulse .85s ease-out both}.checkout-success-ring{position:relative;display:grid;place-items:center;width:76px;height:76px;border-radius:999px;background:#10b981;color:white;box-shadow:0 18px 36px rgba(16,185,129,.32);animation:checkout-pop .38s cubic-bezier(.2,1.35,.35,1) both}.checkout-success-check{width:42px;height:42px;stroke-width:3;animation:checkout-check .48s .18s ease-out both}
 @keyframes checkout-burst{0%{opacity:0;transform:scale(.72)}55%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}@keyframes checkout-pulse{0%{opacity:0;transform:scale(.35)}65%{opacity:1;transform:scale(1.18)}100%{opacity:0;transform:scale(1.55)}}@keyframes checkout-pop{0%{opacity:0;transform:scale(.42) rotate(-8deg)}100%{opacity:1;transform:scale(1) rotate(0)}}@keyframes checkout-check{0%{opacity:0;transform:scale(.5)}100%{opacity:1;transform:scale(1)}}
 .receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.receipt-preview-sheet .font-sans{font-family:inherit}
-.restaurant-print-root{display:none}.print-line,.print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.print-line span:last-child,.print-total strong:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}.print-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet h1{text-align:center;font-size:18px}.print-sheet>p{text-align:center;margin:3px 0}.print-kind{font-weight:700;margin-top:10px!important}.print-time,.print-unpaid{text-align:center;margin-top:16px;font-size:11px}.print-unpaid{font-size:14px;font-weight:700}.print-note{margin:-4px 0 7px 12px;font-size:11px}.print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.print-queue span{display:block;font-size:11px}.print-queue strong{display:block;font-size:20px;line-height:1.1}.print-powered{text-align:center;margin-top:8px!important;font-size:10px;color:#555}
-@media print{body *{visibility:hidden!important}.restaurant-print-root,.restaurant-print-root *{visibility:visible!important}.restaurant-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet{width:72mm;margin:0 auto;font-size:12px}.print-store-logo{display:block;width:56px;height:56px;object-fit:contain;margin:0 auto 8px}.print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
+.restaurant-print-root{display:none}.print-line,.print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.print-line span:last-child,.print-total strong:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}.print-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet h1{text-align:center;font-size:18px}.print-sheet>p{text-align:center;margin:3px 0}.print-kind{font-weight:700;margin-top:10px!important}.print-time,.print-unpaid{text-align:center;margin-top:16px;font-size:11px}.print-unpaid{font-size:14px;font-weight:700}.print-qty{margin:-4px 0 7px 12px;font-size:11px}.print-note{margin:-4px 0 7px 12px;font-size:11px}.print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.print-queue span{display:block;font-size:11px}.print-queue strong{display:block;font-size:20px;line-height:1.1}.print-powered{text-align:center;margin-top:8px!important;font-size:10px;color:#555}
+
 </style>
+
+<style>
+/* Unscoped on purpose. Scoped styles get the component's data-v attribute added
+   to every selector, and <body> never carries it, so a scoped "body *" rule
+   silently matches nothing and the entire screen ends up on the paper. */
+@page { size: 80mm auto; margin: 0; }
+@media print {
+	html, body { width: 80mm; margin: 0; padding: 0; background: #fff; }
+	/* Hide everything, then reveal only the receipt. visibility rather than
+	   display so the reveal can reach back down into hidden ancestors. */
+	body * { visibility: hidden !important; }
+	.restaurant-print-root, .restaurant-print-root * { visibility: visible !important; }
+	.restaurant-print-root {
+		display: block !important;
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 80mm;
+		background: #fff;
+		color: #000;
+		padding: 4mm;
+		font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif;
+	}
+	.print-sheet { width: 72mm; margin: 0 auto; font-size: 12px; }
+	.print-store-logo { display: block; width: 56px; height: 56px; object-fit: contain; margin: 0 auto 8px; }
+	.print-barcode { display: block; width: 46mm; height: 12mm; margin: 6px auto 0; }
+	.print-barcode-text { text-align: center; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .1em; margin-top: 1px; }
+	.print-sheet hr { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
+}
+</style>
+

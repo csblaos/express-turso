@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 
 import { StoreComponent } from "@components/StoreComponent";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
+import { StoreSetupStatusInterface } from "@interfaces/StoreSetupStatusInterface";
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
 import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
@@ -65,6 +66,16 @@ export class StoreController {
 			systemRole: req.auth?.systemRole || "",
 		}));
 		SuccessHandler.send(res, req.requestId);
+	});
+
+	// Read on every page load by the top-bar button, so it stays a single batched
+	// query and returns no localized text — the client owns the wording.
+	static getSetupStatus = SyncFunction.handler(async (req: Request, res: Response) => {
+		if (!req.auth) throw ApiError.UnauthorizedError();
+		const storeId = String(req.params.id || "").trim();
+		if (req.auth.storeId && req.auth.storeId !== storeId) throw ApiError.ForbiddenError("store scope mismatch");
+		const data = await StoreSetupStatusInterface.get(storeId);
+		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getCurrencyRates = SyncFunction.handler(async (req: Request, res: Response) => {

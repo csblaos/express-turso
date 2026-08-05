@@ -25,6 +25,11 @@ export class ReportController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static stock = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await ReportInterface.stock(storeId(req), ReportController.period(req));
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static products=SyncFunction.handler(async(req:Request,res:Response)=>{await RestaurantInterface.ensureTables();const data=await ReportInterface.products(storeId(req),ReportController.period(req),{search:req.query.search?String(req.query.search):undefined,categoryId:req.query.category_id?String(req.query.category_id):undefined,sort:String(req.query.sort) as ProductReportSort,order:String(req.query.order) as "asc"|"desc",page:Number(req.query.page),limit:Number(req.query.limit)});SuccessHandler.send(res,req.requestId,{data});});
 	static productTrend=SyncFunction.handler(async(req:Request,res:Response)=>{await RestaurantInterface.ensureTables();const data=await ReportInterface.productTrend(storeId(req),String(req.params.productId),ReportController.period(req));SuccessHandler.send(res,req.requestId,{data});});
 }

@@ -1,6 +1,7 @@
 import { ApiError } from "@middlewares/ApiError";
 import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
+import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { InventoryComponent } from "@components/InventoryComponent";
@@ -19,11 +20,17 @@ type PosCatalogStore = {
 	receipt_show_change: number;
 	receipt_show_payment_method: number;
 	receipt_show_queue: number;
+	receipt_language: string;
+	receipt_show_powered_by: number;
 	pickup_queue_enabled: number;
 	customer_display_enabled: number;
 	customer_display_ads: string | null;
+	customer_display_ad_interval: number;
+	customer_display_banner_enabled: number;
 	customer_display_ad_url: string | null;
 	currency: string | null;
+	supported_currencies: string;
+	currency_rates: Array<{ currency: string; rate_to_base: number }>;
 	vat_enabled: number;
 	vat_rate: number;
 	vat_mode: string;
@@ -96,12 +103,15 @@ export class PosComponent {
 			throw ApiError.BadRequestError("store_id is required");
 		}
 
-		const [products, balances, categories, units, store] = await Promise.all([
+		const [products, balances, categories, units, store, currencyRates] = await Promise.all([
 			ProductInterface.findAll(normalizedStoreId),
 			InventoryComponent.getBalances(requestId, { storeId: normalizedStoreId }),
 			ProductCategoryInterface.findAll(normalizedStoreId),
 			UnitInterface.findAll({ storeId: normalizedStoreId }),
 			StoreInterface.findById(normalizedStoreId),
+			// The till quotes the rate to the customer before taking their money, so
+			// it needs the table itself, not just the list of currencies.
+			StoreCurrencyRateInterface.findByStoreId(normalizedStoreId),
 		]);
 
 		const balanceMap = new Map(balances.map((balance) => [balance.product_id, balance]));
@@ -205,13 +215,21 @@ export class PosComponent {
 				receipt_show_change: Number(store?.receipt_show_change ?? 1),
 				receipt_show_payment_method: Number(store?.receipt_show_payment_method ?? 1),
 				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
+				receipt_language: String(store?.receipt_language || ""),
+				receipt_show_powered_by: Number(store?.receipt_show_powered_by ?? 1),
 				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
 				// The POS drives the customer screen, so it needs these here too;
 				// this payload is a whitelist and silently drops anything missing.
 				customer_display_enabled: Number(store?.customer_display_enabled ?? 0),
 				customer_display_ads: store?.customer_display_ads || null,
+				customer_display_ad_interval: Number(store?.customer_display_ad_interval ?? 5),
+				customer_display_banner_enabled: Number(store?.customer_display_banner_enabled ?? 1),
 				customer_display_ad_url: store?.customer_display_ad_url || null,
 				currency: store?.currency || null,
+				// Multi-currency payment. This payload is a whitelist, so a currency
+				// the till never receives is a currency the customer cannot pay in.
+				supported_currencies: String(store?.supported_currencies || ""),
+				currency_rates: currencyRates.map((rate) => ({ currency: rate.currency, rate_to_base: rate.rate_to_base })),
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),
 				vat_mode: String(store?.vat_mode || "EXCLUSIVE"),

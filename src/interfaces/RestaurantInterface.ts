@@ -2,11 +2,15 @@ import { randomUUID } from "crypto";
 
 import { DbConn } from "@connections/DbConn";
 import { AuditEventInterface } from "@interfaces/AuditEventInterface";
+import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
 import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { OrderInterface } from "@interfaces/OrderInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
+import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
+import { StoreInterface } from "@interfaces/StoreInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { normalizeCurrency, resolvePaymentCurrency, tenderedInBase } from "@utils/PaymentCurrency";
 import { allocateRestaurantQueue, restaurantDate } from "@utils/RestaurantQueue";
 
 type Executor = {
@@ -41,6 +45,9 @@ export class RestaurantInterface {
 		RestaurantInterface.initializationPromise = (async () => {
 			await OrderInterface.ensureTables();
 			await AuditEventInterface.ensureTable();
+			await InventoryCostInterface.ensureTables();
+			// cost_method is an optional column and the dispatch read selects it.
+			await StoreInterface.ensureColumns();
 			await ProductInterface.ensureColumns();
 			await PromotionInterface.ensureTables();
 			const db = DbConn.getClient();
@@ -590,8 +597,9 @@ export class RestaurantInterface {
 				WHERE oi.order_id=? AND oi.line_status='draft'`,
 			args: [storeId, orderId]},
 			{sql: "SELECT COALESCE(MAX(round_no),0)+1 next_no FROM restaurant_order_rounds WHERE order_id=?", args: [orderId]},
+			{sql: "SELECT COALESCE(cost_method,'average') cost_method FROM stores WHERE id=?", args: [storeId]},
 		];
-		const [draft, roundResult] = executor.batch
+		const [draft, roundResult, storeCost] = executor.batch
 			? await executor.batch(reads)
 			: await Promise.all(reads.map((statement) => executor.execute(statement)));
 		if (!draft.rows.length) throw ApiError.BadRequestError("ไม่มีรายการใหม่สำหรับดำเนินการ");
@@ -603,6 +611,7 @@ export class RestaurantInterface {
 			args: [roundId, orderId, roundNo, actorId, stamp, idempotencyKey, dispatchMode],
 		}];
 		const consumed = new Map<string, number>();
+		const issued: Array<{ product_id: string; qty_base: number }> = [];
 		for (const row of draft.rows as any[]) {
 			if (!number(row.active) || number(row.manual_sold_out)) throw ApiError.BadRequestError(`${row.name} is unavailable`);
 			if (String(row.inventory_mode || "tracked") === "tracked") {
@@ -621,11 +630,30 @@ export class RestaurantInterface {
 					args: [randomUUID(), storeId, row.product_id, -number(row.qty_base), roundId, row.note || null, actorId, stamp],
 				});
 				consumed.set(String(row.product_id), used + number(row.qty_base));
+				issued.push({ product_id: String(row.product_id), qty_base: number(row.qty_base) });
 			}
 			writes.push({
 				sql: "UPDATE order_items SET round_id=?,line_status='sent',sent_at=?,inventory_applied_at=? WHERE id=?",
 				args: [roundId, stamp, String(row.inventory_mode || "tracked") === "tracked" ? stamp : null, row.id],
 			});
+		}
+		// Sending a round is what takes the stock, so the cost layers come down
+		// here too - the same rule the POS checkout follows.
+		if (issued.length > 0) {
+			const { statements, allocations } = await InventoryCostInterface.planIssues(storeId, issued, executor);
+			writes.push(...statements);
+			// A line's cost was snapshotted when it was added to the bill, which on a
+			// FIFO store is the wrong moment: the layers it actually consumes are the
+			// ones open now. Re-cost the dispatched lines against what they took.
+			if (String(storeCost.rows[0]?.cost_method || "average") === "fifo") {
+				for (const row of draft.rows as any[]) {
+					if (String(row.inventory_mode || "tracked") !== "tracked") continue;
+					writes.push({
+						sql: "UPDATE order_items SET cost_base_at_sale=? WHERE id=?",
+						args: [ InventoryCostInterface.issueUnitCost(allocations.get(String(row.product_id)), number(row.cost_base_at_sale)), row.id ],
+					});
+				}
+			}
 		}
 		if (options.recalculateVersionIncrement) writes.push(RestaurantInterface.recalculateStatement(orderId, options.recalculateVersionIncrement));
 		const readStatements=options.returnOrder?RestaurantInterface.orderReadStatements(storeId,orderId):[];
@@ -746,16 +774,41 @@ export class RestaurantInterface {
 		const product=await tx.execute({sql:"SELECT * FROM products WHERE id=? AND store_id=? AND active=1",args:[state.gift_product_id,storeId]});const p=product.rows[0];if(!p||number(p.manual_sold_out))throw ApiError.BadRequestError("gift product is unavailable");
 		await tx.execute({sql:`INSERT INTO order_items(id,order_id,product_id,unit_id,qty,qty_base,price_base_at_sale,cost_base_at_sale,line_total,is_gift,promotion_id,line_status,cost_source_at_sale) VALUES(?,?,?,?,?,?,0,?,0,1,?,'draft',?)`,args:[randomUUID(),orderId,p.id,p.base_unit_id,state.gift_qty,state.gift_qty,number(p.cost_base),promotionId,String(p.cost_source||"purchase")]});await RestaurantInterface.recalculate(tx,orderId);await tx.commit();return RestaurantInterface.getOrder(storeId,orderId);}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
 
-	static async checkout(storeId:string,orderId:string,input:any,actorId:string,idempotencyKey:string):Promise<any>{if(!idempotencyKey)throw ApiError.BadRequestError("Idempotency-Key is required");await RestaurantInterface.ensureTables();const db=DbConn.getClient();
+	static async checkout(storeId:string,orderId:string,input:any,actorId:string,idempotencyKey:string):Promise<any>{if(!idempotencyKey)throw ApiError.BadRequestError("Idempotency-Key is required");await RestaurantInterface.ensureTables();
+		const requestedCurrency=normalizeCurrency(input.payment_currency);
+		// The settings page creates the rate table lazily, so a shop that has never
+		// opened it would fail the query below instead of the check that follows it.
+		if(requestedCurrency)await StoreCurrencyRateInterface.warmup();
+		const db=DbConn.getClient();
 		const previous=await db.execute({sql:"SELECT id FROM orders WHERE store_id=? AND checkout_idempotency_key=? LIMIT 1",args:[storeId,idempotencyKey]});if(previous.rows[0])return RestaurantInterface.getOrder(storeId,String(previous.rows[0].id));
 		const tx=await db.transaction("write");try{const order=await RestaurantInterface.assertVersion(tx,storeId,orderId,number(input.expected_version));const draft=await tx.execute({sql:"SELECT 1 FROM order_items WHERE order_id=? AND line_status='draft' LIMIT 1",args:[orderId]});
 		let directRound:null|{roundId:string;roundNo:number}=null;
 		if(draft.rows.length&&input.dispatch_mode==="direct")directRound=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,`direct:${idempotencyKey}`,actorId,"direct");
 		else if(draft.rows.length)throw conflict("กรุณาส่งครัวก่อนชำระเงิน หรือเลือกชำระและจบเลย");
 		const invalid=(await RestaurantInterface.promotionState(tx,storeId,orderId)).find((promotion:any)=>promotion.over_granted_qty>0);if(invalid)throw conflict(`โปรโมชั่น ${invalid.name} มีของแถมเกินสิทธิ์ กรุณาให้ Manager ตรวจสอบ`);
-		const store=(await tx.execute({sql:"SELECT currency,vat_enabled,vat_rate,vat_mode FROM stores WHERE id=?",args:[storeId]})).rows[0];const subtotal=number(order.subtotal);const rawRate=number(store?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;const vat=number(store?.vat_enabled)?Math.round(String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;const total=String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;const method=text(input.payment_method);const tendered=method==="cash"?number(input.amount_tendered):total;if(tendered<total)throw ApiError.BadRequestError("amount_tendered is less than total");const stamp=now();
-		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,version=version+1 WHERE id=?`,args:[method,subtotal,vat,total,tendered,tendered-total,stamp,stamp,idempotencyKey,orderId]});
-		await tx.execute({sql:`INSERT INTO cash_flow_entries(id,store_id,account_id,direction,entry_type,source_type,source_id,amount,currency,reference,note,metadata,occurred_at,created_by,created_at) VALUES(?,?,NULL,'in','sale','order',?,?,?,?,?,?,?, ?,?)`,args:[randomUUID(),storeId,orderId,total,String(store?.currency||"LAK"),text(input.payment_reference)||null,text(input.note)||null,JSON.stringify({payment_method:method,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"}),stamp,actorId,stamp]});
+		const store=(await tx.execute({sql:"SELECT currency,supported_currencies,vat_enabled,vat_rate,vat_mode FROM stores WHERE id=?",args:[storeId]})).rows[0];const subtotal=number(order.subtotal);const rawRate=number(store?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;const vat=number(store?.vat_enabled)?Math.round(String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;const total=String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;const method=text(input.payment_method);
+		// Paying in another currency: the rate is read here, not taken from the
+		// client, and locked onto the order so the takings cannot move later.
+		const rateRows=requestedCurrency?(await tx.execute({sql:"SELECT currency,rate_to_base FROM store_currency_rates WHERE store_id=?",args:[storeId]})).rows:[];
+		const paymentCurrency=resolvePaymentCurrency({requested:input.payment_currency,baseCurrency:String(store?.currency||"LAK"),supportedCurrencies:store?.supported_currencies,rates:new Map(rateRows.map((row:any)=>[String(row.currency),Number(row.rate_to_base)])),expectedRate:input.expected_exchange_rate});
+		const isForeignCash=paymentCurrency.isForeign&&method==="cash";
+		// Only cash can exceed the bill; a transfer moves the exact amount, so it is
+		// booked at the total and the displayed foreign figure is rounded for show.
+		const tenderedForeign=!paymentCurrency.isForeign?null:isForeignCash?number(input.amount_tendered_foreign):Math.round(total/paymentCurrency.exchangeRate*100)/100;
+		// Converting the tender rather than the total leaves no fraction of a
+		// foreign note unaccounted for: the change comes out in base currency.
+		const tendered=isForeignCash?tenderedInBase(number(tenderedForeign),paymentCurrency.exchangeRate):paymentCurrency.isForeign?total:(method==="cash"?number(input.amount_tendered):total);
+		if(tendered<total)throw ApiError.BadRequestError("amount_tendered is less than total");const stamp=now();
+		// Only a transfer lands in a bank account, so the account is recorded for
+		// that method alone. Without this a table order paid by QR is indistinguishable
+		// from any other in the per-account report.
+		const paymentAccountId=method==="qr_transfer"?(text(input.payment_account_id)||null):null;
+		if(paymentAccountId){
+			const account=await tx.execute({sql:"SELECT id FROM store_payment_accounts WHERE id=? AND store_id=? AND is_active=1",args:[paymentAccountId,storeId]});
+			if(!account.rows.length)throw ApiError.BadRequestError("payment account is invalid or inactive");
+		}
+		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,payment_account_id=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,payment_currency=?,payment_exchange_rate=?,amount_tendered_foreign=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,version=version+1 WHERE id=?`,args:[method,paymentAccountId,subtotal,vat,total,tendered,tendered-total,paymentCurrency.currency,paymentCurrency.exchangeRate,tenderedForeign,stamp,stamp,idempotencyKey,orderId]});
+		await tx.execute({sql:`INSERT INTO cash_flow_entries(id,store_id,account_id,direction,entry_type,source_type,source_id,amount,currency,reference,note,metadata,occurred_at,created_by,created_at) VALUES(?,?,NULL,'in','sale','order',?,?,?,?,?,?,?, ?,?)`,args:[randomUUID(),storeId,orderId,total,String(store?.currency||"LAK"),text(input.payment_reference)||null,text(input.note)||null,JSON.stringify({payment_method:method,payment_account_id:paymentAccountId,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing",payment_currency:paymentCurrency.currency,exchange_rate:paymentCurrency.exchangeRate,amount_tendered_foreign:tenderedForeign}),stamp,actorId,stamp]});
 		await tx.commit();
 		if(directRound)NotificationInterface.queueStockRefresh(storeId);
 		if(directRound)RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.dispatch_direct","order",orderId,{round_id:directRound.roundId,round_no:directRound.roundNo});
