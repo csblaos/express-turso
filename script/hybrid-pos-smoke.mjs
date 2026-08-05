@@ -39,6 +39,13 @@ try {
 
 	const { RestaurantInterface } = await import("../src/interfaces/RestaurantInterface.ts");
 	await RestaurantInterface.ensureTables();
+	// Give the beer a cost layer so both checkout paths can be checked for drawing
+	// it down; without one the stock leaves but the cost never does.
+	const { InventoryCostInterface } = await import("../src/interfaces/InventoryCostInterface.ts");
+	await InventoryCostInterface.recordReceipt({
+		store_id: "smoke-store", product_id: "beer", qty_base: 5, unit_cost_base: 20,
+		source_type: "purchase_order", source_id: "po-smoke", cost_method: "fifo",
+	});
 	await db.execute("UPDATE stores SET pickup_queue_enabled=1 WHERE id='smoke-store'");
 	const first = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-1", initial_item: { product_id: "beer", qty: 1 } }, "cashier");
 	assert.equal(first.queue_no, "Q001");
@@ -52,6 +59,11 @@ try {
 	await RestaurantInterface.checkout("smoke-store", first.id, { expected_version: first.version, payment_method: "cash", amount_tendered: 100, dispatch_mode: "direct" }, "cashier", "checkout-1");
 	const movements = await db.execute("SELECT COUNT(*) AS total FROM inventory_movements WHERE product_id='beer'");
 	assert.equal(Number(movements.rows[0].total), 1);
+	// Sending the round took one beer, so one beer has to leave the cost layers.
+	const afterRound = await InventoryCostInterface.getCostSummary("smoke-store", "beer");
+	assert.equal(afterRound.fifo_open_qty_base, 4, "a dispatched round draws the cost layer down");
+	assert.equal(afterRound.qty_base_on_hand, 4);
+	assert.equal(afterRound.average_unit_cost_base, 20, "issuing stock never moves the average");
 
 	const second = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-2", initial_item: { product_id: "pizza", qty: 1 } }, "cashier");
 	assert.equal(second.queue_no, "Q002");
@@ -105,6 +117,11 @@ try {
 	});
 	assert.equal(nextQuick.queue_no, "Q004");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
+	// Quick sale takes stock too, and a retried checkout must not take it twice.
+	const afterQuick = await InventoryCostInterface.getCostSummary("smoke-store", "beer");
+	const beerOnHand = Number((await db.execute("SELECT on_hand_base FROM inventory_balances WHERE store_id='smoke-store' AND product_id='beer'")).rows[0].on_hand_base);
+	assert.equal(afterQuick.fifo_open_qty_base, beerOnHand, "open layers track the balance through every sale path");
+	assert.equal(afterQuick.qty_base_on_hand, beerOnHand);
 
 	const { NotificationInterface } = await import("../src/interfaces/NotificationInterface.ts");
 	await NotificationInterface.reconcile("smoke-store", [ "stock" ]);
@@ -122,7 +139,47 @@ try {
 	const weekReport = await ReportInterface.dashboard("smoke-store", { preset: "7d", timezoneOffset: 420 });
 	assert.equal(weekReport.summary.revenue, report.summary.revenue);
 
-	console.log("Hybrid POS smoke passed: orders, receipt, idempotency, stock-once, cleanup, and real report reconciliation");
+	// An average-cost store keeps snapshotting the product's own cost, whatever the
+	// layers happen to hold - but its layers still have to come down. This is the
+	// guard that the FIFO branch never leaks into the default method.
+	await db.execute({ sql: "INSERT INTO products(id,store_id,name,sku,base_unit_id,price_base,cost_base,active,inventory_mode,cost_source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", args: [ "juice", "smoke-store", "Juice", "JUICE", "unit", 300, 175, 1, "tracked", "purchase", stamp, stamp ] });
+	await db.execute({ sql: "INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)", args: [ "smoke-store", "juice", 4, 0, 4, stamp ] });
+	await InventoryCostInterface.recordReceipt({ store_id: "smoke-store", product_id: "juice", qty_base: 2, unit_cost_base: 150, source_type: "purchase_order", source_id: "po-juice-1", received_at: "2026-01-01T00:00:00.000Z" });
+	await InventoryCostInterface.recordReceipt({ store_id: "smoke-store", product_id: "juice", qty_base: 2, unit_cost_base: 200, source_type: "purchase_order", source_id: "po-juice-2", received_at: "2026-01-02T00:00:00.000Z" });
+	const averageSale = await OrderInterface.checkout({
+		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
+		items: [{ product_id: "juice", qty: 3 }], amount_tendered: 1000,
+		idempotency_key: "average-checkout-1", created_by: "cashier",
+	});
+	const averageLine = await db.execute({ sql: "SELECT cost_base_at_sale FROM order_items WHERE order_id=? AND product_id='juice'", args: [ averageSale.order_id ] });
+	assert.equal(Number(averageLine.rows[0].cost_base_at_sale), 175, "an average store records the product cost, not the FIFO blend");
+	assert.equal((await InventoryCostInterface.getCostSummary("smoke-store", "juice")).fifo_open_qty_base, 1, "its layers still come down");
+
+	// A FIFO store costs a sale against the oldest layer it actually consumes, not
+	// against products.cost_base, which holds whatever the last receipt cost.
+	await db.execute("UPDATE stores SET cost_method='fifo' WHERE id='smoke-store'");
+	await db.execute({ sql: "INSERT INTO products(id,store_id,name,sku,base_unit_id,price_base,cost_base,active,inventory_mode,cost_source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", args: [ "wine", "smoke-store", "Wine", "WINE", "unit", 500, 320, 1, "tracked", "purchase", stamp, stamp ] });
+	await db.execute({ sql: "INSERT INTO inventory_balances(store_id,product_id,on_hand_base,reserved_base,available_base,updated_at) VALUES(?,?,?,?,?,?)", args: [ "smoke-store", "wine", 4, 0, 4, stamp ] });
+	await InventoryCostInterface.recordReceipt({ store_id: "smoke-store", product_id: "wine", qty_base: 2, unit_cost_base: 200, source_type: "purchase_order", source_id: "po-wine-1", cost_method: "fifo", received_at: "2026-01-01T00:00:00.000Z" });
+	await InventoryCostInterface.recordReceipt({ store_id: "smoke-store", product_id: "wine", qty_base: 2, unit_cost_base: 320, source_type: "purchase_order", source_id: "po-wine-2", cost_method: "fifo", received_at: "2026-01-02T00:00:00.000Z" });
+	// The restaurant path snapshots a line's cost when it is added to the bill, so
+	// the round dispatch has to re-cost it against the layers it really took.
+	const wineOrder = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "fifo-open-1", initial_item: { product_id: "wine", qty: 1 } }, "cashier");
+	await RestaurantInterface.checkout("smoke-store", wineOrder.id, { expected_version: wineOrder.version, payment_method: "cash", amount_tendered: 500, dispatch_mode: "direct" }, "cashier", "fifo-round-1");
+	const roundLine = await db.execute({ sql: "SELECT cost_base_at_sale FROM order_items WHERE order_id=? AND product_id='wine'", args: [ wineOrder.id ] });
+	assert.equal(Number(roundLine.rows[0].cost_base_at_sale), 200, "the round takes the oldest layer, not the 320 the product cost says");
+
+	const fifoSale = await OrderInterface.checkout({
+		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
+		items: [{ product_id: "wine", qty: 3 }], amount_tendered: 2000,
+		idempotency_key: "fifo-checkout-1", created_by: "cashier",
+	});
+	const fifoLine = await db.execute({ sql: "SELECT cost_base_at_sale FROM order_items WHERE order_id=? AND product_id='wine'", args: [ fifoSale.order_id ] });
+	assert.equal(Number(fifoLine.rows[0].cost_base_at_sale), (1 * 200 + 2 * 320) / 3, "one left in the old layer, then two from the new one");
+	assert.notEqual(Number(fifoLine.rows[0].cost_base_at_sale), 320, "the latest receipt cost is what the old behaviour recorded");
+	assert.equal((await InventoryCostInterface.getCostSummary("smoke-store", "wine")).fifo_open_qty_base, 0);
+
+	console.log("Hybrid POS smoke passed: orders, receipt, idempotency, stock-once, average and FIFO costing, cleanup, and real report reconciliation");
 	db.close();
 } finally {
 	await rm(tempDirectory, { recursive: true, force: true });

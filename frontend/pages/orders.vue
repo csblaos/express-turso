@@ -32,6 +32,10 @@ type OrderRecord = {
 	orderNo: string;
 	queueNo?: string;
 	fulfillmentStatus?: string;
+	// When the customer actually took the goods, and who handed them over. The
+	// POS queue tab only covers today, so this is the durable record.
+	collectedAt?: string;
+	collectedBy?: string;
 	status: OrderStatus;
 	paymentStatus: PaymentStatus;
 	paymentMethod?: "cash" | "qr_transfer" | "credit_card" | string;
@@ -52,6 +56,15 @@ type OrderRecord = {
 };
 
 const searchQuery = ref("");
+// Scanning a printed bill puts its reference straight into the search box, which
+// the list already filters on — no separate lookup path to keep in step.
+const scannerOpen = ref(false);
+function applyScannedCode(code: string) {
+	const value = String(code || "").trim();
+	if (!value) return;
+	searchQuery.value = value;
+	currentPage.value = 1;
+}
 const activeStatus = ref<"all" | OrderStatus>("all");
 const activeOrderType = ref<"all" | OrderType>("all");
 const activePaymentStatus = ref<"all" | PaymentStatus>("all");
@@ -84,7 +97,23 @@ const receiptLogoUrl = computed(() => {
 	if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
 	return `${String(runtimeConfig.public.r2PublicBaseUrl || "").replace(/\/$/, "")}/${value.replace(/^\//, "")}`;
 });
-const { t } = useI18n();
+const { t, locale, loadLocaleMessages } = useI18n();
+// The printed bill follows the shop's receipt language, not the cashier's
+// interface language. Empty means follow the interface, as before.
+const receiptLanguage = ref("");
+const receiptShowPoweredBy = ref(true);
+const receiptLocale = computed(() => receiptLanguage.value || locale.value);
+const receiptMessagesReady = ref(0);
+watch(receiptLanguage, async (next) => {
+	if (!next) return;
+	await loadLocaleMessages(next);
+	// Bumped so anything built with pt() re-evaluates once the messages arrive.
+	receiptMessagesReady.value += 1;
+}, { immediate: true });
+function pt(key: string, params: Record<string, unknown> = {}) {
+	void receiptMessagesReady.value;
+	return receiptLanguage.value ? t(key, params, { locale: receiptLanguage.value }) : t(key, params);
+}
 const { locale: appLocale, intlLocale } = useAppLocale();
 const { currentStoreId, currentAccess } = useAuthSession();
 const effectiveStoreId = computed(() => currentStoreId.value?.trim() || currentAccess.value?.store_id?.trim() || "");
@@ -135,6 +164,8 @@ function mapApiOrder(order: ApiOrder): OrderRecord {
 		createdAt: String(order.created_at), updatedAt: String(order.updated_at || order.closed_at || order.paid_at || order.created_at), cashier: String(order.cashier_name || t("orders.user")),
 		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined, tableLabel,
 		fulfillmentStatus: order.fulfillment_status ? String(order.fulfillment_status) : undefined,
+		collectedAt: order.collected_at ? String(order.collected_at) : undefined,
+		collectedBy: order.collected_by_name ? String(order.collected_by_name) : undefined,
 		lines: (order.lines || []).map((line) => ({
 			id: String(line.id), name: String(line.name), sku: String(line.sku), qty: Number(line.qty), price: Number(line.price_base_at_sale),
 			note: line.note ? String(line.note) : undefined, lineStatus: line.line_status ? String(line.line_status) : undefined,
@@ -174,6 +205,8 @@ async function loadOrders() {
 			showChange: Number(store.receipt_show_change ?? 1) !== 0,
 			showPaymentMethod: Number(store.receipt_show_payment_method ?? 1) !== 0,
 	};
+		receiptLanguage.value = String(store.receipt_language || "");
+		receiptShowPoweredBy.value = Number(store.receipt_show_powered_by ?? 1) !== 0;
 		const currency = response.data[0]?.payment_currency;
 		if (currency) storeCurrency.value = String(currency);
 	} catch (error) {
@@ -327,6 +360,15 @@ function paymentMethodLabel(method: string) {
 	return method || "-";
 }
 
+// On the bill itself the method follows the receipt language, not the language
+// the staff happen to be browsing in.
+function receiptPaymentMethodLabel(method: string) {
+	if (method === "cash") return pt("pos.cash");
+	if (method === "qr_transfer") return pt("pos.qr");
+	if (method === "credit_card") return pt("pos.card");
+	return method || "-";
+}
+
 function statusColor(status: OrderStatus) {
 	if (status === "completed") return "success";
 	if (status === "open") return "info";
@@ -408,7 +450,7 @@ function confirmPrintReceipt() {
 					compact
 					@menu="openSidebar"
 				>
-					<div class="pt-0.5 sm:pt-1">
+					<div class="flex items-center gap-2 pt-0.5 sm:pt-1">
 						<div class="relative w-full min-w-0">
 							<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 							<input
@@ -426,6 +468,20 @@ function confirmPrintReceipt() {
 								<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
 							</button>
 						</div>
+						<!-- Bills print a CODE128 of the order number, so scanning one is the
+						     quickest way back to it instead of typing the reference. -->
+						<AppButton
+							color="primary"
+							variant="soft"
+							size="md"
+							class="shrink-0 justify-center rounded-md"
+							icon="i-heroicons-qr-code-20-solid"
+							:aria-label="$t('barcodeScanner.scanBill')"
+							:title="$t('barcodeScanner.scanBill')"
+							@click="scannerOpen = true"
+						>
+							<span class="hidden sm:inline">{{ $t('barcodeScanner.scanBill') }}</span>
+						</AppButton>
 					</div>
 				</AppPageHeader>
 
@@ -546,35 +602,6 @@ function confirmPrintReceipt() {
 						</div>
 
 						<div class="min-h-0 flex-1 overflow-x-auto">
-							<div v-if="ordersInitialLoading" class="min-w-[1080px] divide-y divide-[#f1ede6]" aria-live="polite">
-								<div v-for="index in 7" :key="index" class="grid grid-cols-[150px_220px_150px_130px_160px_160px_110px] gap-4 px-4 py-4">
-									<div v-for="cell in 7" :key="cell" class="h-4 animate-pulse rounded bg-neutral-100" />
-								</div>
-							</div>
-							<div v-else-if="!filteredOrders.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-								<div class="space-y-3">
-									<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
-										<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
-									</div>
-									<div>
-										<p class="text-sm font-medium text-stone-900">{{ $t('orders.empty') }}</p>
-										<p class="mt-1 text-sm text-stone-500">{{ $t('orders.emptyHint') }}</p>
-									</div>
-									<AppButton
-										v-if="activeFilterCount > 0"
-										class="rounded-md"
-										color="neutral"
-										variant="soft"
-										size="md"
-										icon="i-heroicons-x-mark-20-solid"
-										@click="clearFilters"
-									>
-										{{ $t('orders.clearFilters') }}
-									</AppButton>
-								</div>
-							</div>
-
-							<div v-else>
 								<div class="overflow-x-auto">
 									<table class="min-w-[1080px] w-full border-separate border-spacing-0">
 										<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
@@ -583,12 +610,54 @@ function confirmPrintReceipt() {
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.title') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('common.status') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.orderType') }}</th>
-												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.payment') }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.cashier') }}</th>
+									<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.payment') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.quantityTotal') }}</th>
 												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('orders.actions') }}</th>
 											</tr>
 										</thead>
 										<tbody>
+											<!-- Shaped per column and rendered inside the real table, so the
+											     skeleton can never drift out of step with the header again. -->
+											<template v-if="ordersInitialLoading">
+												<tr v-for="index in 7" :key="`skeleton-${index}`" class="animate-pulse bg-white dark:bg-transparent" aria-hidden="true">
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-4 w-24 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-4 w-28 rounded bg-neutral-100 dark:bg-white/10" /><div class="mt-2 h-3 w-20 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-5 w-16 rounded-full bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-4 w-20 rounded bg-neutral-100 dark:bg-white/10" /><div class="mt-2 h-3 w-24 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-4 w-24 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-5 w-16 rounded-full bg-neutral-100 dark:bg-white/10" /><div class="mt-2 h-3 w-20 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="h-4 w-16 rounded bg-neutral-100 dark:bg-white/10" /><div class="mt-2 h-4 w-24 rounded bg-neutral-100 dark:bg-white/10" /></td>
+													<td class="border-b border-[#f1ede6] px-4 py-3 align-top dark:border-[#342d26]"><div class="ms-auto h-8 w-24 rounded-md bg-neutral-100 dark:bg-white/10" /></td>
+												</tr>
+											</template>
+											<tr v-else-if="!filteredOrders.length">
+												<td colspan="8" class="border-b border-[#f1ede6] px-4 dark:border-[#342d26]">
+													<div class="flex min-h-[280px] items-center justify-center text-center">
+								<div class="space-y-3">
+												<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-white text-stone-400 ring-1 ring-neutral-200">
+													<UIcon name="i-heroicons-receipt-percent" class="h-6 w-6" />
+												</div>
+												<div>
+													<p class="text-sm font-medium text-stone-900">{{ $t('orders.empty') }}</p>
+													<p class="mt-1 text-sm text-stone-500">{{ $t('orders.emptyHint') }}</p>
+												</div>
+												<AppButton
+													v-if="activeFilterCount > 0"
+													class="rounded-md"
+													color="neutral"
+													variant="soft"
+													size="md"
+													icon="i-heroicons-x-mark-20-solid"
+													@click="clearFilters"
+												>
+													{{ $t('orders.clearFilters') }}
+												</AppButton>
+								</div>
+													</div>
+												</td>
+											</tr>
+											<template v-else>
 											<tr
 											v-for="order in paginatedOrders"
 												:key="order.id"
@@ -610,12 +679,15 @@ function confirmPrintReceipt() {
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
 												<p class="font-medium text-stone-800">{{ orderTypeLabel(order.orderType) }}</p>
-													<p class="mt-1 text-xs text-stone-400">
-														{{ order.cashier }}
-														<span v-if="order.phone">· {{ order.phone }}</span>
-														<span v-if="order.tableLabel">· {{ order.tableLabel }}</span>
+										<p v-if="order.phone || order.tableLabel" class="mt-1 text-xs text-stone-400">
+											<span v-if="order.phone">{{ order.phone }}</span>
+											<span v-if="order.tableLabel">{{ order.phone ? ' · ' : '' }}{{ order.tableLabel }}</span>
+
 													</p>
 												</td>
+										<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm">
+											<p class="font-medium text-stone-800">{{ order.cashier }}</p>
+										</td>
 											<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
 												<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
 												<p class="mt-1 text-xs text-stone-400">{{ paymentMethodLabel(order.paymentMethod || '') }}</p>
@@ -628,10 +700,10 @@ function confirmPrintReceipt() {
 												<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-eye-20-solid" :label="$t('orders.viewDetails')" @click.stop="openDetail(order.id)" />
 												</td>
 											</tr>
+											</template>
 										</tbody>
 									</table>
 								</div>
-							</div>
 						</div>
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.96)] px-4 py-3 backdrop-blur-sm">
@@ -708,6 +780,18 @@ function confirmPrintReceipt() {
 										<dt class="text-stone-500">{{ $t('orders.createdAt') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrder.createdAt) }}</dd>
 									</div>
+									<!-- Only orders that went through the queue have a collection step;
+									     a dine-in or counter sale would just show an empty row. Shown
+									     even when nothing has been collected, because "still waiting"
+									     is the answer staff are looking for. -->
+									<div v-if="queueEnabled && selectedOrder.queueNo" class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+										<dt class="text-stone-500">{{ $t('orders.collectedAt') }}</dt>
+										<dd v-if="selectedOrder.collectedAt" class="text-right">
+											<span class="block font-medium text-stone-900">{{ formatDate(selectedOrder.collectedAt) }}</span>
+											<span v-if="selectedOrder.collectedBy" class="block text-xs text-stone-500">{{ $t('orders.collectedBy', { name: selectedOrder.collectedBy }) }}</span>
+										</dd>
+										<dd v-else class="text-right font-medium text-amber-700">{{ $t('orders.notCollected') }}</dd>
+									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 										<dt class="text-stone-500">{{ $t('orders.quantity') }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ selectedOrder.itemCount }}</dd>
@@ -737,9 +821,9 @@ function confirmPrintReceipt() {
 												<p class="truncate text-sm font-semibold text-stone-900" :class="line.lineStatus === 'cancelled' ? 'line-through text-stone-500' : ''">{{ line.name }}</p>
 												<p class="mt-1 font-mono text-[11px] text-stone-400">{{ line.sku }}</p>
 												<p class="mt-1 text-xs text-stone-500">{{ formatMoney(line.price) }} × {{ line.qty }}</p>
-												<div v-if="line.isGift || line.roundNo || line.lineStatus === 'cancelled'" class="mt-2 flex flex-wrap gap-1"><UBadge v-if="line.isGift" color="success" variant="soft" label="สินค้าฟรี" /><UBadge v-if="line.roundNo" color="neutral" variant="soft" :label="line.dispatchMode === 'direct' ? `ขายตรงรอบ ${line.roundNo}` : `ครัวรอบ ${line.roundNo}`" /><UBadge v-if="line.lineStatus === 'cancelled'" color="error" variant="soft" label="ยกเลิกแล้ว" /></div>
+												<div v-if="line.isGift || line.roundNo || line.lineStatus === 'cancelled'" class="mt-2 flex flex-wrap gap-1"><UBadge v-if="line.isGift" color="success" variant="soft" :label="t('orders.giftItem')" /><UBadge v-if="line.roundNo" color="neutral" variant="soft" :label="line.dispatchMode === 'direct' ? t('orders.directRound', { round: line.roundNo }) : t('orders.kitchenRound', { round: line.roundNo })" /><UBadge v-if="line.lineStatus === 'cancelled'" color="error" variant="soft" :label="t('orders.lineCancelled')" /></div>
 												<p v-if="line.note" class="mt-2 text-xs text-stone-400">{{ line.note }}</p>
-												<p v-if="line.cancelReason" class="mt-1 text-xs text-red-500">เหตุผล: {{ line.cancelReason }}</p>
+												<p v-if="line.cancelReason" class="mt-1 text-xs text-red-500">{{ t('posPanels.reason') }}: {{ line.cancelReason }}</p>
 											</div>
 											<p class="shrink-0 font-mono text-sm font-semibold tabular-nums text-stone-900" :class="line.lineStatus === 'cancelled' ? 'line-through text-stone-400' : ''">{{ formatMoney(line.qty * line.price) }}</p>
 										</div>
@@ -811,17 +895,17 @@ function confirmPrintReceipt() {
 							</div>
 							<div class="my-3 border-t border-dashed border-neutral-300" />
 							<div class="space-y-2">
-								<div class="flex justify-between gap-3"><span>{{ $t('orders.subtotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.subtotal) }}</span></div>
-								<div v-if="selectedOrder.discount" class="flex justify-between gap-3"><span>{{ $t('orders.discount') }}</span><span class="font-mono tabular-nums">−{{ formatMoney(selectedOrder.discount) }}</span></div>
-								<div v-if="selectedOrder.vatAmount" class="flex justify-between gap-3"><span>{{ $t('orders.vat') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.vatAmount) }}</span></div>
-								<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold"><span>{{ $t('orders.netTotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.total) }}</span></div>
-								<div v-if="receiptStore.showPaymentMethod" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div>
-								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('posPanels.cashReceived') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.amountTendered) }}</span></div>
-								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="flex justify-between gap-3 text-stone-600"><span>{{ $t('pos.change') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
+								<div class="flex justify-between gap-3"><span>{{ pt('orders.subtotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.subtotal) }}</span></div>
+								<div v-if="selectedOrder.discount" class="flex justify-between gap-3"><span>{{ pt('orders.discount') }}</span><span class="font-mono tabular-nums">−{{ formatMoney(selectedOrder.discount) }}</span></div>
+								<div v-if="selectedOrder.vatAmount" class="flex justify-between gap-3"><span>{{ pt('orders.vat') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.vatAmount) }}</span></div>
+								<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold"><span>{{ pt('orders.netTotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.total) }}</span></div>
+								<div v-if="receiptStore.showPaymentMethod" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('posPanels.paymentMethod') }}</span><span>{{ receiptPaymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div>
+								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('posPanels.cashReceived') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.amountTendered) }}</span></div>
+								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('pos.change') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
 							</div>
 							<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
-								<div v-if="queueEnabled && selectedOrder.queueNo" class="mb-3"><p class="text-[11px] text-stone-500">{{ $t('posPanels.queue') }}</p><p class="text-lg font-bold text-stone-950">{{ formatQueueNumber(selectedOrder.queueNo) }}</p></div>
-								<p class="text-[11px] text-stone-500">{{ $t('posPanels.thankYou') }}</p><p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
+								<div v-if="queueEnabled && selectedOrder.queueNo" class="mb-3"><p class="text-[11px] text-stone-500">{{ pt('posPanels.queue') }}</p><p class="text-lg font-bold text-stone-950">{{ formatQueueNumber(selectedOrder.queueNo) }}</p></div>
+								<p class="text-[11px] text-stone-500">{{ pt('posPanels.thankYou') }}</p><p v-if="receiptShowPoweredBy" class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
 							</div>
 						</div>
 					</div>
@@ -833,16 +917,43 @@ function confirmPrintReceipt() {
 				<div class="orders-print-sheet">
 					<img v-if="receiptStore.showLogo && receiptLogoUrl" :src="receiptLogoUrl" :alt="receiptStore.name" class="orders-print-logo"><h1 v-if="receiptStore.showName">{{ receiptStore.name }}</h1><p v-if="receiptStore.showAddress && receiptStore.address">{{ receiptStore.address }}</p><p v-if="receiptStore.showPhone && receiptStore.phone">{{ receiptStore.phone }}</p><p>{{ selectedOrder.orderNo }}</p><hr>
 					<div v-for="line in selectedOrder.lines.filter((item) => item.lineStatus !== 'cancelled')" :key="line.id" class="orders-print-line"><span>{{ line.name }} × {{ line.qty }}</span><span>{{ formatMoney(line.qty * line.price) }}</span></div><hr>
-					<div class="orders-print-line"><span>{{ $t('orders.subtotal') }}</span><span>{{ formatMoney(selectedOrder.subtotal) }}</span></div><div v-if="selectedOrder.discount" class="orders-print-line"><span>{{ $t('orders.discount') }}</span><span>−{{ formatMoney(selectedOrder.discount) }}</span></div><div v-if="selectedOrder.vatAmount" class="orders-print-line"><span>{{ $t('orders.vat') }}</span><span>{{ formatMoney(selectedOrder.vatAmount) }}</span></div><div class="orders-print-total"><strong>{{ $t('orders.netTotal') }}</strong><strong>{{ formatMoney(selectedOrder.total) }}</strong></div>
-					<div v-if="receiptStore.showPaymentMethod" class="orders-print-line"><span>{{ $t('posPanels.paymentMethod') }}</span><span>{{ paymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="orders-print-line"><span>{{ $t('posPanels.cashReceived') }}</span><span>{{ formatMoney(selectedOrder.amountTendered) }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="orders-print-line"><span>{{ $t('pos.change') }}</span><span>{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
-					<div v-if="queueEnabled && selectedOrder.queueNo" class="orders-print-queue"><span>{{ $t('posPanels.queue') }}</span><strong>{{ formatQueueNumber(selectedOrder.queueNo) }}</strong></div><p>{{ $t('posPanels.thankYou') }}</p><p class="orders-print-powered">Powered by O KhaiDee+</p>
+					<div class="orders-print-line"><span>{{ pt('orders.subtotal') }}</span><span>{{ formatMoney(selectedOrder.subtotal) }}</span></div><div v-if="selectedOrder.discount" class="orders-print-line"><span>{{ pt('orders.discount') }}</span><span>−{{ formatMoney(selectedOrder.discount) }}</span></div><div v-if="selectedOrder.vatAmount" class="orders-print-line"><span>{{ pt('orders.vat') }}</span><span>{{ formatMoney(selectedOrder.vatAmount) }}</span></div><div class="orders-print-total"><strong>{{ pt('orders.netTotal') }}</strong><strong>{{ formatMoney(selectedOrder.total) }}</strong></div>
+					<div v-if="receiptStore.showPaymentMethod" class="orders-print-line"><span>{{ pt('posPanels.paymentMethod') }}</span><span>{{ receiptPaymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="orders-print-line"><span>{{ pt('posPanels.cashReceived') }}</span><span>{{ formatMoney(selectedOrder.amountTendered) }}</span></div><div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="orders-print-line"><span>{{ pt('pos.change') }}</span><span>{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
+					<div v-if="queueEnabled && selectedOrder.queueNo" class="orders-print-queue"><span>{{ pt('posPanels.queue') }}</span><strong>{{ formatQueueNumber(selectedOrder.queueNo) }}</strong></div><p>{{ pt('posPanels.thankYou') }}</p><p v-if="receiptShowPoweredBy" class="orders-print-powered">Powered by O KhaiDee+</p>
 				</div>
 			</div>
 		</template>
 	</AppSidebarShell>
+
+	<AppBarcodeScanner v-model="scannerOpen" :hint="$t('barcodeScanner.billHint')" @detected="applyScannedCode" />
 </template>
 
 <style scoped>
 .receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.orders-print-root{display:none}.orders-print-logo{display:block;width:48px;height:48px;object-fit:contain;margin:0 auto 8px}.orders-print-line,.orders-print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.orders-print-sheet h1,.orders-print-sheet>p{text-align:center}.orders-print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.orders-print-queue span,.orders-print-queue strong{display:block}.orders-print-queue strong{font-size:20px}.orders-print-powered{font-size:10px;color:#555}
-@media print{body *{visibility:hidden!important}.orders-print-root,.orders-print-root *{visibility:visible!important}.orders-print-root{display:block!important;position:fixed;inset:0;background:#fff;color:#000;padding:8mm}.orders-print-sheet{width:72mm;margin:0 auto;font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif;font-size:12px}.orders-print-sheet h1{font-size:18px}.orders-print-sheet hr{border:0;border-top:1px dashed #000;margin:10px 0}}
+
 </style>
+
+<style>
+/* Unscoped on purpose — see the note in RestaurantPos.vue: a scoped "body *"
+   rule cannot match, so the whole page printed instead of just the bill. */
+@page { size: 80mm auto; margin: 0; }
+@media print {
+	html, body { width: 80mm; margin: 0; padding: 0; background: #fff; }
+	body * { visibility: hidden !important; }
+	.orders-print-root, .orders-print-root * { visibility: visible !important; }
+	.orders-print-root {
+		display: block !important;
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 80mm;
+		background: #fff;
+		color: #000;
+		padding: 4mm;
+	}
+	.orders-print-sheet { width: 72mm; margin: 0 auto; font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif; font-size: 12px; }
+	.orders-print-sheet h1 { font-size: 18px; }
+	.orders-print-sheet hr { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
+}
+</style>
+

@@ -411,6 +411,40 @@ export class ProductInterface {
 		};
 	}
 
+	// Past sale lines carry the cost that was known at the time, so setting a cost
+	// now does not change them. This reports how much history is still uncosted so
+	// the UI can offer to fill it in rather than leaving the owner to wonder why
+	// the report did not move.
+	static async countUncostedSales(productId: string): Promise<{ line_count: number; bill_count: number; revenue: number }> {
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `SELECT COUNT(*) line_count, COUNT(DISTINCT o.id) bill_count, COALESCE(SUM(oi.line_total), 0) revenue
+				FROM order_items oi JOIN orders o ON o.id = oi.order_id
+				WHERE oi.product_id = ? AND oi.cost_source_at_sale = 'unknown'
+					AND COALESCE(oi.line_status, 'sent') != 'cancelled'`,
+			args: [ productId ],
+		});
+		const row = (result.rows[0] || {}) as Record<string, unknown>;
+		return {
+			line_count: Number(row.line_count || 0),
+			bill_count: Number(row.bill_count || 0),
+			revenue: Number(row.revenue || 0),
+		};
+	}
+
+	// Fills in only the lines that never had a cost. A line that already carries a
+	// real cost is history and must not be rewritten by a later price change.
+	static async applyCostToUncostedSales(productId: string, costBase: number): Promise<number> {
+		const db = DbConn.getClient();
+		const result = await db.execute({
+			sql: `UPDATE order_items SET cost_base_at_sale = ?, cost_source_at_sale = 'manual'
+				WHERE product_id = ? AND cost_source_at_sale = 'unknown'
+					AND COALESCE(line_status, 'sent') != 'cancelled'`,
+			args: [ costBase, productId ],
+		});
+		return Number(result.rowsAffected || 0);
+	}
+
 	static async findById(id: string): Promise<Product | null> {
 		await ProductInterface.ensureColumns();
 		return ProductInterface.findByIdInternal(id, false);

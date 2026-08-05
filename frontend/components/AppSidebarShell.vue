@@ -36,7 +36,6 @@ const { currentUser, currentAccess, currentStoreId, switchStore, logout, can } =
 const { apiFetch } = useApiClient();
 const notificationCenter = useNotificationCenter();
 const appToast = useAppToast();
-const colorMode = useColorMode();
 const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	sameSite: "lax",
 	path: "/",
@@ -292,12 +291,6 @@ const visibleNavItems = computed(() => {
 
 	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
 });
-const isDarkMode = computed(() => colorMode.value === "dark");
-const colorModeLabel = computed(() => t(isDarkMode.value ? "shell.lightMode" : "shell.darkMode"));
-const colorModeIcon = computed(() => (
-	isDarkMode.value ? "i-heroicons-sun-20-solid" : "i-heroicons-moon-20-solid"
-));
-
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
 
@@ -310,15 +303,6 @@ function isNavItemActive(item: AppNavItem) {
 	}
 
 	return route.path === item.to || route.path.startsWith(`${item.to}/`);
-}
-
-function toggleColorMode() {
-	const nextMode = isDarkMode.value ? "light" : "dark";
-	colorMode.preference = nextMode;
-	colorMode.value = nextMode;
-	if (import.meta.client) {
-		document.documentElement.style.colorScheme = nextMode;
-	}
 }
 
 async function navigateToProfile() {
@@ -424,6 +408,74 @@ watch(profileMenuOpen, (opened) => {
 watch(notificationMenuOpen, (opened) => {
 	if (opened) void refreshNotifications();
 });
+
+// Setup items the shop still has to deal with. Fetched once per store rather than
+// per navigation: it runs behind a top-bar button, not a page.
+type SetupSeverity = "blocking" | "warning" | "suggestion";
+type SetupStatusItem = { id: string; severity: SetupSeverity; permission: string; data?: Record<string, unknown> };
+const setupPanelOpen = ref(false);
+const setupItems = ref<SetupStatusItem[]>([]);
+const setupLoading = ref(false);
+
+// Where each item is fixed, and which route the button goes to. Kept beside the
+// list so a new check cannot ship without somewhere to send the user.
+const SETUP_TARGETS: Record<string, string> = {
+	no_products: "/products",
+	currency_rates_missing: "/settings/store-finance/rates",
+	vat_rate_missing: "/settings/store-finance",
+	no_payment_account: "/settings/store-payments",
+	payment_account_missing_qr: "/settings/store-payments",
+	products_without_cost: "/products",
+	customer_display_no_ads: "/settings/customer-display",
+	store_profile_incomplete: "/settings/store-profile",
+};
+
+// Staff are never shown an item they have no permission to fix: a badge somebody
+// cannot clear is worse than no badge at all.
+const visibleSetupItems = computed(() => setupItems.value.filter((item) => (
+	Boolean(SETUP_TARGETS[item.id]) && can(item.permission)
+)));
+const setupCount = computed(() => visibleSetupItems.value.length);
+// A button that is always there and always green teaches people to stop looking.
+const showSetupButton = computed(() => setupCount.value > 0);
+const setupHasBlocking = computed(() => visibleSetupItems.value.some((item) => item.severity === "blocking"));
+const SETUP_SEVERITY_ORDER: SetupSeverity[] = [ "blocking", "warning", "suggestion" ];
+const setupGroups = computed(() => SETUP_SEVERITY_ORDER
+	.map((severity) => ({ severity, items: visibleSetupItems.value.filter((item) => item.severity === severity) }))
+	.filter((group) => group.items.length));
+
+function setupItemDetail(item: SetupStatusItem) {
+	const data = item.data || {};
+	if (Array.isArray(data.currencies)) return (data.currencies as string[]).join(", ");
+	if (Array.isArray(data.missing)) return (data.missing as string[]).map((key) => t(`setupStatus.profile.${key}`)).join(", ");
+	if (typeof data.count === "number") return String(data.count);
+	return "";
+}
+
+async function refreshSetupStatus() {
+	if (!currentStoreId.value) { setupItems.value = []; return; }
+	setupLoading.value = true;
+	try {
+		const response = await apiFetch<{ data: { items: SetupStatusItem[] } }>(`/stores/${encodeURIComponent(currentStoreId.value)}/setup-status`);
+		setupItems.value = Array.isArray(response.data?.items) ? response.data.items : [];
+	} catch {
+		// Never block the workspace over a checklist.
+		setupItems.value = [];
+	} finally {
+		setupLoading.value = false;
+	}
+}
+
+function openSetupTarget(item: SetupStatusItem) {
+	const target = SETUP_TARGETS[item.id];
+	if (!target) return;
+	setupPanelOpen.value = false;
+	void navigateTo(target);
+}
+
+watch(currentStoreId, () => {
+	void refreshSetupStatus();
+}, { immediate: true });
 
 watch([currentStoreId, canViewNotifications], () => {
 	void refreshNotifications();
@@ -606,6 +658,23 @@ onErrorCaptured((error) => {
 										<template #right>
 											<slot name="navbar-right" />
 
+											<AppButton
+												v-if="showSetupButton"
+												color="neutral"
+												variant="soft"
+												size="sm"
+												:icon="setupHasBlocking ? 'i-heroicons-exclamation-circle' : 'i-heroicons-wrench-screwdriver'"
+												class="relative h-9 cursor-pointer rounded-md border px-2 transition"
+												:class="setupHasBlocking
+													? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100'
+													: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100'"
+												:title="t('setupStatus.title')"
+												:aria-label="t('setupStatus.openWithCount', { count: setupCount })"
+												@click="setupPanelOpen = true"
+											>
+												<span class="text-xs font-semibold tabular-nums">{{ setupCount }}</span>
+											</AppButton>
+											
 											<UPopover
 												v-if="canViewNotifications"
 												v-model:open="notificationMenuOpen"
@@ -692,19 +761,6 @@ onErrorCaptured((error) => {
 													</div>
 												</template>
 											</UPopover>
-
-											<AppButton
-												color="neutral"
-												variant="soft"
-												size="sm"
-												:icon="colorModeIcon"
-												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 sm:h-10"
-												:title="colorModeLabel"
-												:aria-label="colorModeLabel"
-												@click="toggleColorMode"
-											>
-												<span class="hidden text-xs font-medium md:inline">{{ colorModeLabel }}</span>
-											</AppButton>
 
 											<UPopover
 												v-model:open="profileMenuOpen"
@@ -896,6 +952,65 @@ onErrorCaptured((error) => {
 						</button>
 					</div>
 				</div>
+			</div>
+
+		</AppResponsivePanel>
+		<AppResponsivePanel
+			v-model="setupPanelOpen"
+			:title="t('setupStatus.title')"
+			:description="t('setupStatus.description')"
+			desktop-width="520px"
+			desktop-placement="center"
+			compact-header
+			close-button-size="sm"
+		>
+			<div class="space-y-4">
+				<div v-for="group in setupGroups" :key="group.severity" class="space-y-2">
+					<p
+						class="text-[11px] font-semibold uppercase tracking-[0.14em]"
+						:class="group.severity === 'blocking' ? 'text-red-600' : group.severity === 'warning' ? 'text-amber-700' : 'text-stone-400'"
+					>
+						{{ t(`setupStatus.severity.${group.severity}`) }}
+					</p>
+					<div
+						v-for="item in group.items"
+						:key="item.id"
+						class="rounded-md border p-3"
+						:class="group.severity === 'blocking'
+							? 'border-red-200 bg-red-50/60'
+							: group.severity === 'warning' ? 'border-amber-200 bg-amber-50/60' : 'border-neutral-200'"
+					>
+						<div class="flex items-start justify-between gap-3">
+							<div class="min-w-0">
+								<p class="text-sm font-semibold text-stone-900">{{ t(`setupStatus.items.${item.id}.label`) }}</p>
+								<!-- What breaks, not just what is missing: the owner needs to know a
+								     setting they switched on is quietly doing nothing. -->
+								<p class="mt-1 text-xs leading-5 text-stone-600">{{ t(`setupStatus.items.${item.id}.hint`) }}</p>
+								<p v-if="setupItemDetail(item)" class="mt-1 text-xs font-medium text-stone-500">{{ setupItemDetail(item) }}</p>
+							</div>
+							<AppButton
+								color="neutral"
+								variant="soft"
+								size="xs"
+								class="shrink-0"
+								icon="i-heroicons-arrow-right-20-solid"
+								:label="t(`setupStatus.items.${item.id}.action`)"
+								@click="openSetupTarget(item)"
+							/>
+						</div>
+					</div>
+				</div>
+				<AppButton
+					block
+					color="neutral"
+					variant="soft"
+					size="sm"
+					icon="i-heroicons-arrow-path"
+					:loading="setupLoading"
+					@click="refreshSetupStatus"
+				>
+					{{ t('setupStatus.recheck') }}
+				</AppButton>
 			</div>
 		</AppResponsivePanel>
 		<Teleport to="body">

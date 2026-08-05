@@ -33,19 +33,19 @@ const { locale } = useI18n();
 const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 const copy = computed(() => appLocale.value === "lo" ? {
 	sidebarTitle: "ປະຫວັດສະຕັອກ", sidebarDescription: "ເບິ່ງລາຍການເຄື່ອນໄຫວສະຕັອກແບບລະອຽດເພື່ອກວດສອບຍ້ອນຫຼັງ", description: "ຄົ້ນຫາ ແລະ ເບິ່ງລາຍການເຄື່ອນໄຫວສະຕັອກຍ້ອນຫຼັງ",
-	search: "ຄົ້ນຫາຊື່ສິນຄ້າ, SKU, barcode, ຜູ້ດຳເນີນການ ຫຼື ໝາຍເຫດ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ", apply: "ໃຊ້ຕົວກອງ",
+	search: "ຄົ້ນຫາຊື່ສິນຄ້າ, SKU, barcode, ຜູ້ດຳເນີນການ ຫຼື ໝາຍເຫດ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ",
 	type: "ປະເພດ", allTypes: "ທຸກປະເພດ", adjustmentAll: "ປັບສະຕັອກ (ທັງໝົດ)", stockIn: "ເພີ່ມເຂົ້າ", stockOut: "ຕັດອອກ", stockSet: "ຕັ້ງຄ່າໃໝ່", adjustment: "ປັບສະຕັອກ", fromDate: "ຈາກວັນທີ", toDate: "ເຖິງວັນທີ", selectDate: "ເລືອກວັນທີ", startDate: "ເລືອກວັນເລີ່ມ", endDate: "ເລືອກວັນສິ້ນສຸດ", pickDate: "ແຕະວັນທີທີ່ຕ້ອງການ", close: "ປິດ",
 	latest: "ດຶງລາຍການຫຼ້າສຸດ", movements: "ລາຍການເຄື່ອນໄຫວ", movementsHint: "ສະແດງລາຍການຫຼ້າສຸດກ່ອນ ແລະ ຄົ້ນຫາ/ກອງໄດ້ຈາກດ້ານເທິງ", items: "ລາຍການ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", range: (start: number, end: number, total: number) => `${start}-${end} ຈາກ ${total} ລາຍການ`, page: (page: number, total: number) => `ໜ້າ ${page} / ${total}`,
 	loadFailed: "ໂຫຼດປະຫວັດສະຕັອກບໍ່ສຳເລັດ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດສະຕັອກ", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", product: "ສິນຄ້າ", movementType: "ປະເພດການເຄື່ອນໄຫວ", quantity: "ຈຳນວນ", actor: "ຜູ້ດຳເນີນການ", note: "ໝາຍເຫດ", reference: "ເອກະສານອ້າງອີງ", unknownUser: "ບໍ່ພົບຊື່ຜູ້ໃຊ້", system: "ລະບົບ", purchaseOrder: "PO ສັ່ງຊື້", manualAdjustment: "ປັບສະຕັອກດ້ວຍມື", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ",
 } : appLocale.value === "en" ? {
 	sidebarTitle: "Stock history", sidebarDescription: "Review detailed stock movements for auditing", description: "Search and review historical stock movements",
-	search: "Search product name, SKU, barcode, operator, or note", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear", apply: "Apply filters",
+	search: "Search product name, SKU, barcode, operator, or note", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear",
 	type: "Type", allTypes: "All types", adjustmentAll: "Stock adjustment (all)", stockIn: "Stock in", stockOut: "Stock out", stockSet: "Set stock", adjustment: "Stock adjustment", fromDate: "From date", toDate: "To date", selectDate: "Select date", startDate: "Select start date", endDate: "Select end date", pickDate: "Tap a date to select it", close: "Close",
 	latest: "Latest records", movements: "Stock movements", movementsHint: "Newest records first. Search or filter above.", items: "items", noData: "No data yet", range: (start: number, end: number, total: number) => `${start}-${end} of ${total} items`, page: (page: number, total: number) => `Page ${page} / ${total}`,
 	loadFailed: "Unable to load stock history", retry: "Try again", empty: "No stock history yet", emptyHint: "Try changing the filters or date range.", time: "Time", product: "Product", movementType: "Movement type", quantity: "Quantity", actor: "Operator", note: "Note", reference: "Reference", unknownUser: "Unknown user", system: "System", purchaseOrder: "Purchase order", manualAdjustment: "Manual stock adjustment", perPage: "Per page", previous: "Previous", next: "Next",
 } : {
 	sidebarTitle: "ประวัติสต็อก", sidebarDescription: "ดูรายการเคลื่อนไหวสต็อกแบบละเอียดสำหรับตรวจสอบย้อนหลัง", description: "ค้นหาและดูรายการเคลื่อนไหวสต็อกย้อนหลัง",
-	search: "ค้นหาชื่อสินค้า, SKU, barcode, ผู้ทำ หรือหมายเหตุ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง", apply: "ใช้ตัวกรอง",
+	search: "ค้นหาชื่อสินค้า, SKU, barcode, ผู้ทำ หรือหมายเหตุ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง",
 	type: "ประเภท", allTypes: "ทุกประเภท", adjustmentAll: "ปรับสต็อก (ทั้งหมด)", stockIn: "เพิ่มเข้า", stockOut: "ตัดออก", stockSet: "ตั้งค่าใหม่", adjustment: "ปรับสต็อก", fromDate: "จากวันที่", toDate: "ถึงวันที่", selectDate: "เลือกวันที่", startDate: "เลือกเริ่มวันที่", endDate: "เลือกสิ้นวันที่", pickDate: "แตะวันที่ที่ต้องการเลือก", close: "ปิด",
 	latest: "ดึงรายการล่าสุด", movements: "รายการเคลื่อนไหว", movementsHint: "แสดงเรียงล่าสุดก่อน และรองรับค้นหา/กรองจากด้านบน", items: "รายการ", noData: "ยังไม่มีข้อมูล", range: (start: number, end: number, total: number) => `${start}-${end} จาก ${total} รายการ`, page: (page: number, total: number) => `หน้า ${page} / ${total}`,
 	loadFailed: "โหลดประวัติสต็อกไม่สำเร็จ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติสต็อก", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", product: "สินค้า", movementType: "ประเภทการเคลื่อนไหว", quantity: "จำนวน", actor: "ผู้ทำ", note: "หมายเหตุ", reference: "เอกสารอ้างอิง", unknownUser: "ไม่พบชื่อผู้ใช้", system: "ระบบ", purchaseOrder: "PO สั่งซื้อ", manualAdjustment: "ปรับสต็อกด้วยมือ", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป",
@@ -59,7 +59,6 @@ const productIdFilter = computed(() => (typeof route.query.product_id === "strin
 	const fromDate = ref("");
 	const toDate = ref("");
 	const limit = ref(100);
-	const filterApplying = ref(false);
 
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -325,6 +324,8 @@ const datePickerCalendarWeeks = computed(() => {
 		toDate.value = "";
 		limit.value = 100;
 		currentPage.value = 1;
+		// These are server-side filters, so the list has to be fetched again for the
+		// clear to show. The filter watcher does that refetch.
 	}
 
 	function formatQty(value: number) {
@@ -360,9 +361,14 @@ function updatePageSize(nextPageSize: number | string) {
 	});
 }
 
+// Every filter (search included) reloads on its own, so there is no Apply button.
+let filterReloadTimer: ReturnType<typeof setTimeout> | null = null;
 watch([searchQuery, movementType, fromDate, toDate, limit], () => {
 	currentPage.value = 1;
+	if (filterReloadTimer) clearTimeout(filterReloadTimer);
+	filterReloadTimer = setTimeout(() => { void loadHistory(); }, 250);
 });
+onBeforeUnmount(() => { if (filterReloadTimer) clearTimeout(filterReloadTimer); });
 
 watch(pageSize, () => {
 	currentPage.value = 1;
@@ -375,11 +381,14 @@ watch(filteredMovements, (value) => {
 	}
 }, { immediate: true });
 
+	// Filters reload themselves while typing, so requests can overlap. Track the
+	// latest one and ignore whatever comes back late instead of dropping the call.
+	let historyRequestId = 0;
+
 	async function loadHistory() {
 		if (!canViewInventory.value) return;
 
-		if (filterApplying.value) return;
-		filterApplying.value = true;
+		const requestId = ++historyRequestId;
 		movementsPending.value = true;
 		movementsError.value = null;
 		try {
@@ -396,13 +405,14 @@ watch(filteredMovements, (value) => {
 				},
 			});
 
+			if (requestId !== historyRequestId) return;
 			movements.value = response.data;
 	} catch (error) {
+		if (requestId !== historyRequestId) return;
 		movements.value = [];
 		movementsError.value = resolveApiErrorMessage(error, copy.value.loadFailed);
 		} finally {
-			movementsPending.value = false;
-			filterApplying.value = false;
+			if (requestId === historyRequestId) movementsPending.value = false;
 		}
 	}
 
@@ -504,18 +514,6 @@ onMounted(() => {
 											@click="clearFilters"
 										>
 											{{ copy.clear }}
-										</AppButton>
-										<AppButton
-											color="primary"
-											variant="solid"
-											size="xs"
-											class="rounded-md"
-											icon="i-heroicons-funnel"
-											:loading="movementsPending"
-											:spin-icon-on-loading="true"
-											@click="loadHistory"
-										>
-											{{ copy.apply }}
 										</AppButton>
 									</div>
 								</div>

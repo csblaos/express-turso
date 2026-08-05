@@ -19,6 +19,13 @@ export function getCurrencySymbol(currency: CurrencyCode | string): string {
 	}
 }
 
+// Kip is never quoted with decimals, baht and dollars always are. The money
+// formatter defaults to none, which is right for the base currency but would
+// swallow a customer's satang when they pay in baht.
+export function currencyDecimals(currency: CurrencyCode | string): number {
+	return String(currency).toUpperCase() === "LAK" ? 0 : 2;
+}
+
 export function formatDecimal(value: number, options?: { locale?: string; maximumFractionDigits?: number; minimumFractionDigits?: number }) {
 	const locale = options?.locale ?? "th-TH";
 	const maximumFractionDigits = options?.maximumFractionDigits ?? 0;

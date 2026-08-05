@@ -131,7 +131,89 @@ const route = useRoute();
 const { t, locale } = useI18n();
 
 const searchQuery = ref("");
-const activeStatus = ref("all");
+const activeStatus = ref("open");
+// Server-side filtering handles the real statuses. "open" is a view across two
+// columns, so it filters here instead; every count and total below reads the same
+// list, which is how the server-side filter already behaved.
+const fromDate = ref("");
+const toDate = ref("");
+
+type DatePresetId = "today" | "this_week" | "last_week" | "this_month" | "last_month";
+
+function pad2(value: number) {
+	return String(value).padStart(2, "0");
+}
+
+function toDateInputValue(date: Date) {
+	return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function applyDatePreset(presetId: DatePresetId) {
+	const now = new Date();
+	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+	if (presetId === "today") {
+		const value = toDateInputValue(today);
+		fromDate.value = value;
+		toDate.value = value;
+		return;
+	}
+
+	if (presetId === "this_week" || presetId === "last_week") {
+		const day = today.getDay();
+		const diffToMonday = (day + 6) % 7;
+		const thisMonday = new Date(today);
+		thisMonday.setDate(thisMonday.getDate() - diffToMonday);
+
+		if (presetId === "this_week") {
+			fromDate.value = toDateInputValue(thisMonday);
+			toDate.value = toDateInputValue(today);
+			return;
+		}
+
+		const lastMonday = new Date(thisMonday);
+		lastMonday.setDate(lastMonday.getDate() - 7);
+		const lastSunday = new Date(thisMonday);
+		lastSunday.setDate(lastSunday.getDate() - 1);
+		fromDate.value = toDateInputValue(lastMonday);
+		toDate.value = toDateInputValue(lastSunday);
+		return;
+	}
+
+	if (presetId === "this_month") {
+		const first = new Date(today.getFullYear(), today.getMonth(), 1);
+		fromDate.value = toDateInputValue(first);
+		toDate.value = toDateInputValue(today);
+		return;
+	}
+
+	const firstLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+	const lastLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+	fromDate.value = toDateInputValue(firstLastMonth);
+	toDate.value = toDateInputValue(lastLastMonth);
+}
+
+// Filters are live, so clearing them repaints the table immediately. The list
+// itself is refetched too, in case rows changed while the page sat open.
+
+// Filtering happens on the client for the same reason the status view does: the
+// server call is one unfiltered fetch, and doing it here keeps the date range in
+// step with everything else on the page.
+function isWithinDateRange(order: { created_at?: string }) {
+	if (!fromDate.value && !toDate.value) return true;
+	const createdAt = new Date(String(order.created_at || ""));
+	if (Number.isNaN(createdAt.getTime())) return true;
+	if (fromDate.value && createdAt < new Date(`${fromDate.value}T00:00:00`)) return false;
+	if (toDate.value && createdAt > new Date(`${toDate.value}T23:59:59.999`)) return false;
+	return true;
+}
+
+function isSettledOrder(order: { status?: string; payment_status?: string }) {
+	return String(order.status || "") === "received" && String(order.payment_status || "") === "paid";
+}
+const visibleOrders = computed(() => orders.value.filter((order) => (
+	isWithinDateRange(order) && (activeStatus.value !== "open" || !isSettledOrder(order))
+)));
 const activePaymentStatus = ref("all");
 
 const orders = ref<ApiPurchaseOrderListItem[]>([]);
@@ -213,9 +295,9 @@ const poFormText = computed(() => {
 });
 
 const poListText = computed(() => {
-	if (locale.value === "en") return { eyebrow: "Purchasing", search: "Search PO number, supplier, or contact", clear: "Clear search", history: "PO history", reload: "Reload", create: "Create PO", open: "Open", pending: "Unpaid", estimated: "Estimated value", filters: "Filters", items: "{count} items", poStatus: "PO status", paymentStatus: "Payment status", allPayments: "All payment statuses", orders: "Purchase orders", ordersHint: "Select a PO to see product lines, payments, and total cost.", retry: "Try again", noOrders: "No purchase orders yet", supplier: "Supplier", status: "Status", payment: "Payment", lines: "Items", orderedQty: "Ordered", expected: "Expected", value: "Value", action: "Action", createdAt: "Created", unspecifiedSupplier: "Unspecified supplier", convertedBase: "Converted to base currency", manage: "Manage", perPage: "Per page", previousPage: "Previous page", previous: "Previous", nextPage: "Next page", next: "Next", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
-	if (locale.value === "lo") return { eyebrow: "ຈັດຊື້", search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ ຫຼື ຂໍ້ມູນຕິດຕໍ່", clear: "ລ້າງຄຳຄົ້ນຫາ", history: "ປະຫວັດ PO", reload: "ໂຫຼດໃໝ່", create: "ສ້າງ PO", open: "ເປີດຢູ່", pending: "ຄ້າງຊຳລະ", estimated: "ມູນຄ່າໂດຍປະມານ", filters: "ຕົວກອງ", items: "{count} ລາຍການ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", allPayments: "ທຸກການຊຳລະ", orders: "ໃບສັ່ງຊື້", ordersHint: "ເລືອກ PO ເພື່ອເບິ່ງລາຍການສິນຄ້າ, ການຊຳລະ ແລະ ຕົ້ນທຶນລວມ.", retry: "ລອງໃໝ່", noOrders: "ຍັງບໍ່ມີໃບສັ່ງຊື້", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", payment: "ຊຳລະ", lines: "ລາຍການ", orderedQty: "ສັ່ງລວມ", expected: "ຄາດຮັບ", value: "ມູນຄ່າ", action: "ຈັດການ", createdAt: "ສ້າງເມື່ອ", unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", convertedBase: "ແປງເປັນສະກຸນຫຼັກ", manage: "ຈັດການ", perPage: "ຕໍ່ໜ້າ", previousPage: "ໜ້າກ່ອນ", previous: "ກ່ອນໜ້າ", nextPage: "ໜ້າຕໍ່ໄປ", next: "ຕໍ່ໄປ", unpaid: "ຍັງບໍ່ຊຳລະ", partialPayment: "ຊຳລະບາງສ່ວນ", paid: "ຊຳລະແລ້ວ" };
-	return { eyebrow: "Purchase", search: "ค้นหาเลข PO, supplier หรือ contact", clear: "ล้างคำค้น", history: "ประวัติ PO", reload: "รีโหลด", create: "สร้าง PO", open: "เปิดอยู่", pending: "ค้างชำระ", estimated: "มูลค่าประมาณ", filters: "ตัวกรอง", items: "{count} รายการ", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", allPayments: "ทุกการชำระ", orders: "Purchase orders", ordersHint: "เลือก PO เพื่อดูรายการสินค้า, payment และต้นทุนรวมแบบละเอียด", retry: "ลองใหม่", noOrders: "ยังไม่มี purchase order", supplier: "Supplier", status: "สถานะ", payment: "ชำระ", lines: "รายการ", orderedQty: "สั่งรวม", expected: "คาดรับ", value: "มูลค่า", action: "Action", createdAt: "สร้างเมื่อ", unspecifiedSupplier: "ไม่ระบุ supplier", convertedBase: "แปลงเป็น base", manage: "จัดการ", perPage: "ต่อหน้า", previousPage: "หน้าก่อนหน้า", previous: "ก่อนหน้า", nextPage: "หน้าถัดไป", next: "ถัดไป", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
+	if (locale.value === "en") return { eyebrow: "Purchasing", search: "Search PO number, supplier, or contact", clear: "Clear search", history: "PO history", reload: "Reload", create: "Create PO", open: "Open", pending: "Unpaid", estimated: "Estimated value", statusOpen: "In progress", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", fromDate: "From", startDate: "Start date", endDate: "End date", pickDate: "Pick a date", close: "Close", toDate: "To", partGoods: "Goods", partShipping: "Freight", partOther: "Other", filters: "Filters", items: "{count} items", poStatus: "PO status", paymentStatus: "Payment status", allPayments: "All payment statuses", orders: "Purchase orders", ordersHint: "Select a PO to see product lines, payments, and total cost.", retry: "Try again", noOrders: "No purchase orders yet", supplier: "Supplier", status: "Status", payment: "Payment", lines: "Items", orderedQty: "Ordered", expected: "Expected", value: "Value", action: "Action", createdAt: "Created", unspecifiedSupplier: "Unspecified supplier", convertedBase: "Converted to base currency", manage: "Manage", perPage: "Per page", previousPage: "Previous page", previous: "Previous", nextPage: "Next page", next: "Next", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
+	if (locale.value === "lo") return { eyebrow: "ຈັດຊື້", search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ ຫຼື ຂໍ້ມູນຕິດຕໍ່", clear: "ລ້າງຄຳຄົ້ນຫາ", history: "ປະຫວັດ PO", reload: "ໂຫຼດໃໝ່", create: "ສ້າງ PO", open: "ເປີດຢູ່", pending: "ຄ້າງຊຳລະ", estimated: "ມູນຄ່າໂດຍປະມານ", statusOpen: "ກຳລັງດຳເນີນ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", fromDate: "ຈາກວັນທີ", startDate: "ວັນທີເລີ່ມ", endDate: "ວັນທີສິ້ນສຸດ", pickDate: "ເລືອກວັນທີ", close: "ປິດ", toDate: "ເຖິງວັນທີ", partGoods: "ສິນຄ້າ", partShipping: "ຂົນສົ່ງ", partOther: "ອື່ນໆ", filters: "ຕົວກອງ", items: "{count} ລາຍການ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", allPayments: "ທຸກການຊຳລະ", orders: "ໃບສັ່ງຊື້", ordersHint: "ເລືອກ PO ເພື່ອເບິ່ງລາຍການສິນຄ້າ, ການຊຳລະ ແລະ ຕົ້ນທຶນລວມ.", retry: "ລອງໃໝ່", noOrders: "ຍັງບໍ່ມີໃບສັ່ງຊື້", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", payment: "ຊຳລະ", lines: "ລາຍການ", orderedQty: "ສັ່ງລວມ", expected: "ຄາດຮັບ", value: "ມູນຄ່າ", action: "ຈັດການ", createdAt: "ສ້າງເມື່ອ", unspecifiedSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", convertedBase: "ແປງເປັນສະກຸນຫຼັກ", manage: "ຈັດການ", perPage: "ຕໍ່ໜ້າ", previousPage: "ໜ້າກ່ອນ", previous: "ກ່ອນໜ້າ", nextPage: "ໜ້າຕໍ່ໄປ", next: "ຕໍ່ໄປ", unpaid: "ຍັງບໍ່ຊຳລະ", partialPayment: "ຊຳລະບາງສ່ວນ", paid: "ຊຳລະແລ້ວ" };
+	return { eyebrow: "Purchase", search: "ค้นหาเลข PO, supplier หรือ contact", clear: "ล้างคำค้น", history: "ประวัติ PO", reload: "รีโหลด", create: "สร้าง PO", open: "เปิดอยู่", pending: "ค้างชำระ", estimated: "มูลค่าประมาณ", statusOpen: "กำลังดำเนินการ", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ก่อน", thisMonth: "เดือนนี้", lastMonth: "เดือนก่อน", fromDate: "จากวันที่", startDate: "วันที่เริ่ม", endDate: "วันที่สิ้นสุด", pickDate: "เลือกวันที่", close: "ปิด", toDate: "ถึงวันที่", partGoods: "สินค้า", partShipping: "ขนส่ง", partOther: "อื่นๆ", filters: "ตัวกรอง", items: "{count} รายการ", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", allPayments: "ทุกการชำระ", orders: "Purchase orders", ordersHint: "เลือก PO เพื่อดูรายการสินค้า, payment และต้นทุนรวมแบบละเอียด", retry: "ลองใหม่", noOrders: "ยังไม่มี purchase order", supplier: "Supplier", status: "สถานะ", payment: "ชำระ", lines: "รายการ", orderedQty: "สั่งรวม", expected: "คาดรับ", value: "มูลค่า", action: "Action", createdAt: "สร้างเมื่อ", unspecifiedSupplier: "ไม่ระบุ supplier", convertedBase: "แปลงเป็น base", manage: "จัดการ", perPage: "ต่อหน้า", previousPage: "หน้าก่อนหน้า", previous: "ก่อนหน้า", nextPage: "หน้าถัดไป", next: "ถัดไป", unpaid: "Unpaid", partialPayment: "Partial", paid: "Paid" };
 });
 
 const poDetailText = computed(() => {
@@ -245,24 +327,35 @@ const totalOpenOrders = computed(() => orders.value.filter((order) => order.stat
 const totalDraftOrders = computed(() => orders.value.filter((order) => order.status === "draft").length);
 const totalPendingPayments = computed(() => orders.value.filter((order) => order.payment_status !== "paid").length);
 const totalEstimated = computed(() => orders.value.reduce((sum, order) => sum + Number(order.total_estimated_base || 0), 0));
-const totalPages = computed(() => Math.max(1, Math.ceil(orders.value.length / pageSize.value)));
+// The estimate is goods plus what it cost to get them here. Broken out because a
+// lone total reads as "what the stock is worth", which it is not: freight and other
+// charges sit inside it, and so does anything ordered but not yet received — the two
+// reasons it never ties back to stock value plus cost of sales.
+const totalEstimatedShipping = computed(() => orders.value.reduce((sum, order) => sum + Number(order.shipping_cost || 0), 0));
+const totalEstimatedOther = computed(() => orders.value.reduce((sum, order) => sum + Number(order.other_cost || 0), 0));
+const totalEstimatedGoods = computed(() => Math.max(0, totalEstimated.value - totalEstimatedShipping.value - totalEstimatedOther.value));
+const totalPages = computed(() => Math.max(1, Math.ceil(visibleOrders.value.length / pageSize.value)));
 const paginatedOrders = computed(() => {
 	const startIndex = (currentPage.value - 1) * pageSize.value;
-	return orders.value.slice(startIndex, startIndex + pageSize.value);
+	return visibleOrders.value.slice(startIndex, startIndex + pageSize.value);
 });
 // Filtering happens on the server, so an empty list means either "nothing
 // matched the filters" or "this store has no purchase orders at all".
 const hasActiveFilters = computed(() => (
 	Boolean(searchQuery.value.trim())
-	|| activeStatus.value !== "all"
+	|| activeStatus.value !== "open"
+	|| Boolean(fromDate.value)
+	|| Boolean(toDate.value)
 	|| activePaymentStatus.value !== "all"
 ));
-const hasEmptyOrderList = computed(() => !ordersPending.value && !ordersError.value && orders.value.length === 0);
+const hasEmptyOrderList = computed(() => !ordersPending.value && !ordersError.value && visibleOrders.value.length === 0);
 
 function clearOrderFilters() {
 	searchQuery.value = "";
-	activeStatus.value = "all";
+	activeStatus.value = "open";
 	activePaymentStatus.value = "all";
+	fromDate.value = "";
+	toDate.value = "";
 }
 
 const showReceiveLaterOption = computed(() => selectedOrderDetail.value?.order.status !== "arrived");
@@ -350,15 +443,15 @@ const createTotals = computed(() => {
 });
 const pageLabel = computed(() => t("purchaseOrdersPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
-	orders.value.length === 0
+	visibleOrders.value.length === 0
 		? 0
 		: ((currentPage.value - 1) * pageSize.value) + 1
 ));
-const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, orders.value.length));
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, visibleOrders.value.length));
 const pageSummaryText = computed(() => (
-	orders.value.length === 0
+	visibleOrders.value.length === 0
 		? t("purchaseOrdersPage.noData")
-		: t("purchaseOrdersPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: orders.value.length })
+		: t("purchaseOrdersPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: visibleOrders.value.length })
 ));
 const selectedOrderPaymentSummary = computed(() => {
 	if (!selectedOrderDetail.value?.payments.length) return null;
@@ -440,7 +533,7 @@ watch(paymentExchangeRateLocked, (locked) => {
 	if (locked) paymentForm.exchangeRate = "1";
 }, { immediate: true });
 
-watch([searchQuery, activeStatus, activePaymentStatus], () => {
+watch([searchQuery, activeStatus, activePaymentStatus, fromDate, toDate], () => {
 	currentPage.value = 1;
 	if (reloadTimer) clearTimeout(reloadTimer);
 	reloadTimer = setTimeout(() => {
@@ -1060,7 +1153,8 @@ async function loadOrders() {
 	try {
 		const params = new URLSearchParams();
 		if (searchQuery.value.trim()) params.set("query", searchQuery.value.trim());
-		if (activeStatus.value !== "all") params.set("status", activeStatus.value);
+		// "open" is resolved on the client, so the server still returns everything.
+		if (activeStatus.value !== "all" && activeStatus.value !== "open") params.set("status", activeStatus.value);
 		if (activePaymentStatus.value !== "all") params.set("payment_status", activePaymentStatus.value);
 
 		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderListItem[]>>(
@@ -1320,7 +1414,7 @@ async function submitEditPurchaseOrder() {
 									:aria-label="poListText.clear"
 									:title="poListText.clear"
 									@click="searchQuery = ''"
-								/>
+											/>
 							</div>
 
 							<AppButton
@@ -1372,7 +1466,7 @@ async function submitEditPurchaseOrder() {
 						class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md"
 						:ui="{ body: 'p-1.5 sm:p-2 lg:p-2.5' }"
 					>
-						<div class="grid grid-cols-3 gap-1.5 p-0 sm:grid-cols-4">
+						<div class="grid grid-cols-3 gap-1.5 p-0 sm:grid-cols-5">
 							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.open }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalOpenOrders) }}</p>
@@ -1385,9 +1479,15 @@ async function submitEditPurchaseOrder() {
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.pending }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ numberFormatter.format(totalPendingPayments) }}</p>
 							</div>
-							<div class="col-span-3 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
+							<div class="col-span-3 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-2">
 								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ poListText.estimated }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950 tabular-nums">{{ formatMoney(totalEstimated, storeCurrency) }}</p>
+								<!-- The parts, so the total is not read as the value of the goods alone. -->
+								<p class="mt-0.5 text-[10px] leading-4 text-stone-500">
+									<span class="whitespace-nowrap">{{ poListText.partGoods }} {{ formatMoney(totalEstimatedGoods, storeCurrency) }}</span>
+									<span v-if="totalEstimatedShipping" class="whitespace-nowrap"> · {{ poListText.partShipping }} {{ formatMoney(totalEstimatedShipping, storeCurrency) }}</span>
+									<span v-if="totalEstimatedOther" class="whitespace-nowrap"> · {{ poListText.partOther }} {{ formatMoney(totalEstimatedOther, storeCurrency) }}</span>
+								</p>
 							</div>
 						</div>
 					</UCard>
@@ -1404,7 +1504,31 @@ async function submitEditPurchaseOrder() {
 							</div>
 
 								<div class="grid gap-2 px-4 py-3">
-									<div class="grid grid-cols-2 gap-2 md:items-end">
+									<!-- Presets on their own line, then one row of filters: status, payment status
+									     and the date range — the same shape the history page uses. -->
+									<div class="flex flex-wrap items-center justify-between gap-2">
+										<div class="flex flex-wrap items-center gap-1.5">
+										<span class="text-[10px] font-medium text-stone-500 sm:text-[11px]">{{ poListText.period }}</span>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyDatePreset('today')">{{ poListText.today }}</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyDatePreset('this_week')">{{ poListText.thisWeek }}</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyDatePreset('last_week')">{{ poListText.lastWeek }}</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyDatePreset('this_month')">{{ poListText.thisMonth }}</AppButton>
+										<AppButton color="neutral" variant="soft" size="xs" class="rounded-md" @click="applyDatePreset('last_month')">{{ poListText.lastMonth }}</AppButton>
+																				</div>
+										<AppButton
+											v-if="hasActiveFilters"
+											color="neutral"
+											variant="ghost"
+											size="xs"
+											class="rounded-md"
+											icon="i-heroicons-x-mark-20-solid"
+											:disabled="ordersPending"
+											@click="clearOrderFilters"
+										>
+											{{ poListText.clear }}
+										</AppButton>
+									</div>
+									<div class="grid grid-cols-2 gap-2 md:grid-cols-3 md:items-end">
 										<div class="min-w-0">
 											<label class="mb-1 block whitespace-nowrap text-[10px] font-medium text-stone-500 sm:text-[11px]">{{ poListText.poStatus }}</label>
 											<div class="relative">
@@ -1412,7 +1536,8 @@ async function submitEditPurchaseOrder() {
 													v-model="activeStatus"
 													class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-3 py-2.5 pr-8 text-xs font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 sm:px-4 sm:text-sm"
 												>
-													<option value="all">{{ t('purchaseOrdersPage.allStatuses') }}</option>
+													<option value="open">{{ poListText.statusOpen }}</option>
+											<option value="all">{{ t('purchaseOrdersPage.allStatuses') }}</option>
 													<option value="draft">{{ t('purchaseOrdersPage.draft') }}</option>
 													<option value="ordered">{{ t('purchaseOrdersPage.ordered') }}</option>
 													<option value="shipped">{{ t('purchaseOrdersPage.shipped') }}</option>
@@ -1439,6 +1564,21 @@ async function submitEditPurchaseOrder() {
 												<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
 											</div>
 										</div>
+										<!-- The same presets and the same date maths the history page uses, lifted
+										     rather than reimplemented so "last week" cannot mean two things. -->
+										<AppDateRangePicker
+											class="col-span-2 md:col-span-1"
+											v-model:from="fromDate"
+											v-model:to="toDate"
+											:from-label="poListText.fromDate"
+											:to-label="poListText.toDate"
+											:start-title="poListText.startDate"
+											:end-title="poListText.endDate"
+											:pick-hint="poListText.pickDate"
+											:today-label="poListText.today"
+											:clear-label="poListText.clear"
+											:close-label="poListText.close"
+											/>
 									</div>
 								</div>
 

@@ -112,14 +112,14 @@ const appToast = useAppToast();
 const historyText = computed(() => {
 	const copy = locale.value === "lo"
 		? {
-			search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ, ຜູ້ຕິດຕໍ່ ຫຼື ໝາຍເຫດ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ", apply: "ໃຊ້ຕົວກອງ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", fromDate: "ຈາກວັນທີ", toDate: "ເຖິງວັນທີ", history: "ປະຫວັດ PO", historyDescription: "ລຽງຈາກລາຍການຫຼ້າສຸດ ແລະ ຄົ້ນຫາ/ກອງໄດ້ຈາກດ້ານເທິງ", items: "ລາຍການ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດ PO", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", paid: "ຊຳລະ", quantity: "ຈຳນວນ", received: "ຮັບແລ້ວ", value: "ມູນຄ່າ", updated: "ອັບເດດ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ", unknownSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", allPayments: "ທຸກການຊຳລະ", unpaid: "ຍັງບໍ່ຊຳລະ", partial: "ຊຳລະບາງສ່ວນ", paidStatus: "ຊຳລະແລ້ວ", details: "ລາຍລະອຽດ PO", detailsDescription: "ເບິ່ງສິນຄ້າ, ຕົ້ນທຶນ ແລະ ການຊຳລະ", mainSummary: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", expected: "ຄາດວ່າຈະຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", products: "ລາຍການສິນຄ້າ", payments: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", copy: "ຄັດລອກ", copyContact: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", baseUnit: "ໜ່ວຍຫຼັກ", ordered: "ສັ່ງ", remaining: "ຄົງເຫຼືອ", lines: "ແຖວ", paymentItems: "ລາຍການຊຳລະ", latestPayment: "ຊຳລະຫຼ້າສຸດ", reference: "ອ້າງອີງ", noPayment: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", startDate: "ເລືອກວັນເລີ່ມ", endDate: "ເລືອກວັນສິ້ນສຸດ", pickDate: "ແຕະວັນທີທີ່ຕ້ອງການເລືອກ",
+			search: "ຄົ້ນຫາເລກ PO, ຜູ້ສະໜອງ, ຜູ້ຕິດຕໍ່ ຫຼື ໝາຍເຫດ", loadFailed: "ໂຫຼດປະຫວັດ PO ບໍ່ສຳເລັດ", detailLoadFailed: "ໂຫຼດລາຍລະອຽດ PO ບໍ່ສຳເລັດ", detailItems: "ລາຍການສິນຄ້າ", detailSummary: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", copyContact: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", copy: "ຄັດລອກ", expectedAt: "ຄາດຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", paymentSummary: "ສະຫຼຸບຊຳລະເງິນ", estimatedShort: "ປະມານ", actualPaid: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", itemCount: "{count} ລາຍການ", paymentCount: "{count} ລາຍການຊຳລະ", lastPaid: "ຊຳລະລ່າສຸດ {date}", noPaymentEntry: "ຍັງບໍ່ມີລາຍການຊຳລະ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ", apply: "ໃຊ້ຕົວກອງ", poStatus: "ສະຖານະ PO", paymentStatus: "ສະຖານະການຊຳລະ", fromDate: "ຈາກວັນທີ", toDate: "ເຖິງວັນທີ", history: "ປະຫວັດ PO", historyDescription: "ລຽງຈາກລາຍການຫຼ້າສຸດ ແລະ ຄົ້ນຫາ/ກອງໄດ້ຈາກດ້ານເທິງ", items: "ລາຍການ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດ PO", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", supplier: "ຜູ້ສະໜອງ", status: "ສະຖານະ", paid: "ຊຳລະ", quantity: "ຈຳນວນ", received: "ຮັບແລ້ວ", value: "ມູນຄ່າ", updated: "ອັບເດດ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ", unknownSupplier: "ບໍ່ລະບຸຜູ້ສະໜອງ", allPayments: "ທຸກການຊຳລະ", unpaid: "ຍັງບໍ່ຊຳລະ", partial: "ຊຳລະບາງສ່ວນ", paidStatus: "ຊຳລະແລ້ວ", details: "ລາຍລະອຽດ PO", detailsDescription: "ເບິ່ງສິນຄ້າ, ຕົ້ນທຶນ ແລະ ການຊຳລະ", mainSummary: "ສະຫຼຸບຂໍ້ມູນຫຼັກ", expected: "ຄາດວ່າຈະຮັບ", totalCost: "ຕົ້ນທຶນລວມ", note: "ໝາຍເຫດ", products: "ລາຍການສິນຄ້າ", payments: "ສະຫຼຸບການຊຳລະ", loading: "ກຳລັງໂຫຼດ", estimated: "ປະມານ", actual: "ຊຳລະຈິງ", variance: "ສ່ວນຕ່າງ", copy: "ຄັດລອກ", copyContact: "ຄັດລອກຂໍ້ມູນຕິດຕໍ່ຜູ້ສະໜອງ", baseUnit: "ໜ່ວຍຫຼັກ", ordered: "ສັ່ງ", remaining: "ຄົງເຫຼືອ", lines: "ແຖວ", paymentItems: "ລາຍການຊຳລະ", latestPayment: "ຊຳລະຫຼ້າສຸດ", reference: "ອ້າງອີງ", noPayment: "ຍັງບໍ່ມີລາຍການຊຳລະ", close: "ປິດ", startDate: "ເລືອກວັນເລີ່ມ", endDate: "ເລືອກວັນສິ້ນສຸດ", pickDate: "ແຕະວັນທີທີ່ຕ້ອງການເລືອກ",
 		}
 		: locale.value === "en"
 			? {
-				search: "Search PO number, supplier, contact, or note", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear", apply: "Apply filters", poStatus: "PO status", paymentStatus: "Payment status", fromDate: "From date", toDate: "To date", history: "PO history", historyDescription: "Latest records first. Search or filter above.", items: "items", retry: "Try again", empty: "No PO history yet", emptyHint: "Try changing the filters or date range.", time: "Time", supplier: "Supplier", status: "Status", paid: "Payment", quantity: "Quantity", received: "Received", value: "Value", updated: "Updated", perPage: "Per page", previous: "Previous", next: "Next", unknownSupplier: "Supplier not specified", allPayments: "All payments", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "PO details", detailsDescription: "View products, costs, and payments.", mainSummary: "Main summary", expected: "Expected", totalCost: "Total cost", note: "Note", products: "Products", payments: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", copy: "Copy", copyContact: "Copy supplier contact", baseUnit: "base unit", ordered: "Ordered", remaining: "Remaining", lines: "lines", paymentItems: "payment entries", latestPayment: "Latest payment", reference: "Reference", noPayment: "No payment entry yet", close: "Close", startDate: "Select start date", endDate: "Select end date", pickDate: "Tap a date to select it",
+				search: "Search PO number, supplier, contact, or note", loadFailed: "Could not load the PO history", detailLoadFailed: "Could not load the PO details", detailItems: "Items", detailSummary: "Key details", copyContact: "Copy supplier contact", copy: "Copy", expectedAt: "Expected", totalCost: "Total cost", note: "Note", paymentSummary: "Payment summary", estimatedShort: "Estimated", actualPaid: "Actually paid", variance: "Variance", itemCount: "{count} items", paymentCount: "{count} payments", lastPaid: "Last paid {date}", noPaymentEntry: "No payment entries yet", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear", apply: "Apply filters", poStatus: "PO status", paymentStatus: "Payment status", fromDate: "From date", toDate: "To date", history: "PO history", historyDescription: "Latest records first. Search or filter above.", items: "items", retry: "Try again", empty: "No PO history yet", emptyHint: "Try changing the filters or date range.", time: "Time", supplier: "Supplier", status: "Status", paid: "Payment", quantity: "Quantity", received: "Received", value: "Value", updated: "Updated", perPage: "Per page", previous: "Previous", next: "Next", unknownSupplier: "Supplier not specified", allPayments: "All payments", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "PO details", detailsDescription: "View products, costs, and payments.", mainSummary: "Main summary", expected: "Expected", totalCost: "Total cost", note: "Note", products: "Products", payments: "Payment summary", loading: "Loading", estimated: "Estimated", actual: "Actual paid", variance: "Variance", copy: "Copy", copyContact: "Copy supplier contact", baseUnit: "base unit", ordered: "Ordered", remaining: "Remaining", lines: "lines", paymentItems: "payment entries", latestPayment: "Latest payment", reference: "Reference", noPayment: "No payment entry yet", close: "Close", startDate: "Select start date", endDate: "Select end date", pickDate: "Tap a date to select it",
 			}
 			: {
-				search: "ค้นหาเลข PO, supplier, contact หรือหมายเหตุ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง", apply: "ใช้ตัวกรอง", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", fromDate: "จากวันที่", toDate: "ถึงวันที่", history: "รายการประวัติ PO", historyDescription: "เรียงจากรายการล่าสุด และรองรับค้นหา/กรองจากด้านบน", items: "รายการ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติ PO", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", supplier: "Supplier", status: "สถานะ", paid: "ชำระ", quantity: "จำนวน", received: "รับแล้ว", value: "มูลค่า", updated: "อัปเดต", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", unknownSupplier: "ไม่ระบุ supplier", allPayments: "ทุกการชำระ", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "รายละเอียด PO", detailsDescription: "ดูสินค้า ต้นทุน และการชำระเงิน", mainSummary: "สรุปข้อมูลหลัก", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", products: "รายการสินค้า", payments: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", copy: "คัดลอก", copyContact: "คัดลอก contact supplier", baseUnit: "base unit", ordered: "สั่ง", remaining: "คงเหลือ", lines: "lines", paymentItems: "รายการชำระ", latestPayment: "ชำระล่าสุด", reference: "Reference", noPayment: "ยังไม่มี payment entry", close: "ปิด", startDate: "เลือกเริ่มวันที่", endDate: "เลือกสิ้นวันที่", pickDate: "แตะวันที่ที่ต้องการเลือก",
+				search: "ค้นหาเลข PO, supplier, contact หรือหมายเหตุ", loadFailed: "โหลดประวัติ PO ไม่สำเร็จ", detailLoadFailed: "โหลดรายละเอียด PO ไม่สำเร็จ", detailItems: "รายการสินค้า", detailSummary: "สรุปข้อมูลหลัก", copyContact: "คัดลอกข้อมูลติดต่อ supplier", copy: "คัดลอก", expectedAt: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", paymentSummary: "สรุปชำระเงิน", estimatedShort: "ประมาณ", actualPaid: "ชำระจริง", variance: "ส่วนต่าง", itemCount: "{count} รายการ", paymentCount: "{count} รายการชำระ", lastPaid: "ชำระล่าสุด {date}", noPaymentEntry: "ยังไม่มีรายการชำระ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง", apply: "ใช้ตัวกรอง", poStatus: "สถานะ PO", paymentStatus: "สถานะชำระเงิน", fromDate: "จากวันที่", toDate: "ถึงวันที่", history: "รายการประวัติ PO", historyDescription: "เรียงจากรายการล่าสุด และรองรับค้นหา/กรองจากด้านบน", items: "รายการ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติ PO", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", supplier: "Supplier", status: "สถานะ", paid: "ชำระ", quantity: "จำนวน", received: "รับแล้ว", value: "มูลค่า", updated: "อัปเดต", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", unknownSupplier: "ไม่ระบุ supplier", allPayments: "ทุกการชำระ", unpaid: "Unpaid", partial: "Partial", paidStatus: "Paid", details: "รายละเอียด PO", detailsDescription: "ดูสินค้า ต้นทุน และการชำระเงิน", mainSummary: "สรุปข้อมูลหลัก", expected: "คาดรับ", totalCost: "ต้นทุนรวม", note: "หมายเหตุ", products: "รายการสินค้า", payments: "สรุปชำระเงิน", loading: "กำลังโหลด", estimated: "ประมาณ", actual: "ชำระจริง", variance: "ส่วนต่าง", copy: "คัดลอก", copyContact: "คัดลอก contact supplier", baseUnit: "base unit", ordered: "สั่ง", remaining: "คงเหลือ", lines: "lines", paymentItems: "รายการชำระ", latestPayment: "ชำระล่าสุด", reference: "Reference", noPayment: "{{ historyText.noPaymentEntry }}", close: "ปิด", startDate: "เลือกเริ่มวันที่", endDate: "เลือกสิ้นวันที่", pickDate: "แตะวันที่ที่ต้องการเลือก",
 			};
 	return copy;
 });
@@ -254,6 +254,8 @@ function applyPreset(presetId: DatePresetId) {
 	toDate.value = toDateInputValue(lastLastMonth);
 }
 
+// Filters are live, so clearing them repaints the table immediately. The list
+// itself is refetched too, in case rows changed while the page sat open.
 function clearFilters() {
 	searchQuery.value = "";
 	statusFilter.value = "all";
@@ -261,6 +263,7 @@ function clearFilters() {
 	fromDate.value = "";
 	toDate.value = "";
 	currentPage.value = 1;
+	void loadHistory();
 }
 
 function formatDate(value: string | null) {
@@ -301,15 +304,27 @@ function statusColor(status: string) {
 	return "neutral";
 }
 
+// The same seven keys the filter dropdown on this page already uses, and the same
+// body the main PO page has. This copy was left in Thai, so the status badges only
+// read correctly for Thai users.
 function statusLabel(status: string) {
-	if (status === "draft") return "ร่าง";
-	if (status === "ordered") return "สั่งซื้อแล้ว";
-	if (status === "shipped") return "ส่งแล้ว";
-	if (status === "arrived") return "รอรับสต็อก";
-	if (status === "partial") return "รับบางส่วน";
-	if (status === "received") return "รับครบแล้ว";
-	if (status === "cancelled") return "ยกเลิก";
+	if (status === "draft") return t("purchaseOrdersPage.draft");
+	if (status === "ordered") return t("purchaseOrdersPage.ordered");
+	if (status === "shipped") return t("purchaseOrdersPage.shipped");
+	if (status === "arrived") return t("purchaseOrdersPage.arrived");
+	if (status === "partial") return t("purchaseOrdersPage.partial");
+	if (status === "received") return t("purchaseOrdersPage.received");
+	if (status === "cancelled") return t("purchaseOrdersPage.cancelled");
 	return status;
+}
+
+// The badges were rendering the raw database value ("unpaid"/"paid"), which is
+// neither Lao nor Thai. The filter dropdown already carries the translations, so
+// reuse them rather than adding a second set that could drift.
+function paymentStatusLabel(status: string) {
+	if (status === "paid") return historyText.value.paidStatus;
+	if (status === "partial") return historyText.value.partial;
+	return historyText.value.unpaid;
 }
 
 function paymentStatusColor(status: string) {
@@ -347,7 +362,7 @@ async function loadOrderDetail(id: string) {
 		const response = await apiFetch<ApiEnvelope<ApiPurchaseOrderDetail>>(`/purchase-orders/${id}`);
 		selectedOrderDetail.value = response.data;
 	} catch (error) {
-		detailError.value = resolveApiErrorMessage(error, "โหลดรายละเอียด PO ไม่สำเร็จ");
+		detailError.value = resolveApiErrorMessage(error, historyText.value.detailLoadFailed);
 	} finally {
 		detailPending.value = false;
 		detailRequests.delete(id);
@@ -377,7 +392,7 @@ async function loadHistory() {
 		orders.value = response.data;
 	} catch (error) {
 		orders.value = [];
-		ordersError.value = resolveApiErrorMessage(error, "โหลดประวัติ PO ไม่สำเร็จ");
+		ordersError.value = resolveApiErrorMessage(error, historyText.value.loadFailed);
 	} finally {
 		ordersPending.value = false;
 	}
@@ -499,18 +514,7 @@ onMounted(() => {
 									>
 										{{ historyText.clear }}
 									</AppButton>
-									<AppButton
-										color="primary"
-										variant="solid"
-										size="xs"
-										class="rounded-md"
-										icon="i-heroicons-funnel"
-										:loading="ordersPending"
-										:spin-icon-on-loading="true"
-										@click="loadHistory"
-									>
-										{{ historyText.apply }}
-									</AppButton>
+									
 								</div>
 							</div>
 
@@ -628,7 +632,7 @@ onMounted(() => {
 											<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="order.payment_status" />
+											<UBadge :color="paymentStatusColor(order.payment_status)" variant="soft" :label="paymentStatusLabel(order.payment_status)" />
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-right font-semibold text-stone-950 tabular-nums">
 											{{ numberFormatter.format(order.total_qty_ordered) }}
@@ -743,9 +747,9 @@ onMounted(() => {
 												</div>
 											</div>
 											<div class="mt-3 flex flex-wrap gap-2">
-												<UBadge :color="paymentStatusColor(selectedOrder?.payment_status || 'unpaid')" variant="soft" :label="selectedOrder?.payment_status || 'unpaid'" />
+												<UBadge :color="paymentStatusColor(selectedOrder?.payment_status || 'unpaid')" variant="soft" :label="paymentStatusLabel(selectedOrder?.payment_status || 'unpaid')" />
 												<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrder?.purchase_currency || storeCurrency) || (selectedOrder?.purchase_currency || storeCurrency)" />
-												<UBadge color="neutral" variant="soft" :label="`${selectedOrder?.item_count || 0} รายการ`" />
+												<UBadge color="neutral" variant="soft" :label="historyText.itemCount.replace('{count}', String(selectedOrder?.item_count || 0))" />
 											</div>
 											<div class="pointer-events-none absolute inset-x-0 bottom-0">
 												<AppInlineLoadingBar minimal container-class="bg-transparent" />
@@ -778,7 +782,7 @@ onMounted(() => {
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-center justify-between gap-2">
-										<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ historyText.detailItems }}</h3>
 									</div>
 									<div class="mt-4 space-y-3">
 										<div v-for="index in 2" :key="index" class="min-h-[72px] rounded-md bg-white px-4 py-3 ring-1 ring-neutral-200" />
@@ -819,7 +823,7 @@ onMounted(() => {
 												</div>
 											</div>
 											<div class="mt-3 flex flex-wrap gap-2">
-												<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+												<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrderDetail.order.payment_status)" />
 												<UBadge color="neutral" variant="soft" :label="getCurrencySymbol(selectedOrderDetail.order.purchase_currency) || selectedOrderDetail.order.purchase_currency" />
 												<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} ${historyText.items}`" />
 											</div>
@@ -888,7 +892,7 @@ onMounted(() => {
 								</template>
 								<template v-else>
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-										<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ historyText.detailSummary }}</h3>
 										<dl class="mt-4 space-y-3 text-sm">
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
 												<dt class="text-stone-500">Supplier</dt>
@@ -903,24 +907,24 @@ onMounted(() => {
 															icon="i-heroicons-clipboard-document-20-solid"
 															class="rounded-md"
 															type="button"
-															title="คัดลอก contact supplier"
+															:title="historyText.copyContact"
 															@click="copySupplierContact"
 														>
-															คัดลอก
+															{{ historyText.copy }}
 														</AppButton>
 													</div>
 												</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">คาดรับ</dt>
+												<dt class="text-stone-500">{{ historyText.expectedAt }}</dt>
 												<dd class="text-right font-medium text-stone-900">{{ formatDate(selectedOrderDetail.order.expected_at) }}</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-												<dt class="text-stone-500">ต้นทุนรวม</dt>
+												<dt class="text-stone-500">{{ historyText.totalCost }}</dt>
 												<dd class="text-right font-medium text-stone-900">{{ formatMoney(selectedOrderDetail.order.total_estimated_base) }}</dd>
 											</div>
 											<div class="flex items-start justify-between gap-4">
-												<dt class="text-stone-500">หมายเหตุ</dt>
+												<dt class="text-stone-500">{{ historyText.note }}</dt>
 												<dd class="max-w-[220px] text-right font-medium text-stone-900">{{ selectedOrderDetail.order.note || "-" }}</dd>
 											</div>
 										</dl>
@@ -928,7 +932,7 @@ onMounted(() => {
 
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">รายการสินค้า</h3>
+											<h3 class="text-sm font-semibold text-stone-950">{{ historyText.detailItems }}</h3>
 											<UBadge color="neutral" variant="soft" :label="`${selectedOrderDetail.items.length} lines`" />
 										</div>
 										<div class="mt-4 space-y-3">
@@ -951,20 +955,20 @@ onMounted(() => {
 
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 										<div class="flex items-center justify-between gap-2">
-											<h3 class="text-sm font-semibold text-stone-950">สรุปชำระเงิน</h3>
-											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="selectedOrderDetail.order.payment_status" />
+											<h3 class="text-sm font-semibold text-stone-950">{{ historyText.paymentSummary }}</h3>
+											<UBadge :color="paymentStatusColor(selectedOrderDetail.order.payment_status)" variant="soft" :label="paymentStatusLabel(selectedOrderDetail.order.payment_status)" />
 										</div>
 										<div class="mt-4 grid gap-3 sm:grid-cols-3">
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ประมาณ</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.estimatedShort }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderPaymentSummary?.estimatedAmountBase ?? selectedOrderDetail.order.total_estimated_base) }}</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ชำระจริง</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.actualPaid }}</p>
 												<p class="mt-2 text-base font-semibold text-stone-950">{{ formatMoney(selectedOrderPaymentSummary?.actualAmountBase ?? 0) }}</p>
 											</div>
 											<div class="rounded-md border border-neutral-200 bg-white px-4 py-3">
-												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+												<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ historyText.variance }}</p>
 												<p
 													class="mt-2 text-base font-semibold"
 													:class="(selectedOrderPaymentSummary?.varianceBase || 0) === 0
@@ -979,8 +983,8 @@ onMounted(() => {
 										</div>
 										<div v-if="selectedOrderPaymentSummary" class="mt-4 rounded-md border border-neutral-200 bg-white px-4 py-4">
 											<div class="flex flex-wrap items-center gap-2">
-												<UBadge color="neutral" variant="soft" :label="`${selectedOrderPaymentSummary.count} รายการชำระ`" />
-												<UBadge color="neutral" variant="soft" :label="`ชำระล่าสุด ${formatDate(selectedOrderPaymentSummary.paidAt)}`" />
+												<UBadge color="neutral" variant="soft" :label="historyText.paymentCount.replace('{count}', String(selectedOrderPaymentSummary.count))" />
+												<UBadge color="neutral" variant="soft" :label="historyText.lastPaid.replace('{date}', formatDate(selectedOrderPaymentSummary.paidAt))" />
 												<UBadge v-if="selectedOrderPaymentSummary.reference" color="neutral" variant="soft" :label="selectedOrderPaymentSummary.reference" />
 											</div>
 											<p v-if="selectedOrderPaymentSummary.note" class="mt-3 text-sm leading-6 text-stone-600">
@@ -994,12 +998,12 @@ onMounted(() => {
 														<p class="text-sm font-semibold text-stone-900">{{ payment.entry_type }}</p>
 														<p class="mt-1 text-xs text-stone-500">{{ formatDate(payment.paid_at) }}</p>
 														<div class="mt-2 flex flex-wrap gap-2">
-															<UBadge color="neutral" variant="soft" :label="`ประมาณ ${formatMoney(payment.estimated_amount_base)}`" />
-															<UBadge color="neutral" variant="soft" :label="`จริง ${formatMoney(payment.amount_base)}`" />
+															<UBadge color="neutral" variant="soft" :label="`${historyText.estimatedShort} ${formatMoney(payment.estimated_amount_base)}`" />
+															<UBadge color="neutral" variant="soft" :label="`${historyText.actualPaid} ${formatMoney(payment.amount_base)}`" />
 															<UBadge
 																:color="payment.variance_base === 0 ? 'neutral' : payment.variance_base > 0 ? 'warning' : 'success'"
 																variant="soft"
-																:label="`ส่วนต่าง ${formatMoney(Math.abs(payment.variance_base))}`"
+																:label="`${historyText.variance} ${formatMoney(Math.abs(payment.variance_base))}`"
 															/>
 														</div>
 														<div v-if="payment.reference || payment.note" class="mt-3 space-y-1 text-xs text-stone-500">
@@ -1012,7 +1016,7 @@ onMounted(() => {
 											</div>
 										</div>
 										<div v-else class="mt-4 rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-											ยังไม่มี payment entry
+											{{ historyText.noPaymentEntry }}
 										</div>
 									</div>
 								</template>

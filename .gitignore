@@ -32,3 +32,23 @@ dev-accounts.local.md
 coverage
 .eslintcache
 .credentials/
+
+# Beszel runtime data and secrets
+monitoring/.env
+monitoring/data/
+monitoring/socket/
+monitoring/agent-data/
+monitoring/secrets/
+
+# Landing site build output. The site carries its own .gitignore as well; these
+# are here so the artefacts stay out even if it is merged into this repo.
+landing/node_modules/
+landing/.next/
+landing/.vinext/
+landing/dist/
+landing/out/
+landing/.wrangler/
+landing/outputs/
+landing/work/
+landing/.vercel/
+landing/.env*

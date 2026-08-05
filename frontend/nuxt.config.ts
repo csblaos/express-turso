@@ -3,6 +3,11 @@ const productionApiBase = "https://api.okhaidee.codesabai.com/api";
 export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
 	ssr: true,
+	routeRules: {
+		// Client-only: nothing on the server knows which shop this screen belongs
+		// to, so SSR would always emit the system logo and flash on hydration.
+		"/customer-display": { ssr: false },
+	},
 	telemetry: false,
 	modules: [ "@nuxt/ui", "@vite-pwa/nuxt", "@nuxtjs/i18n" ],
 	css: [ "~/assets/css/main.css" ],
@@ -64,7 +69,15 @@ export default defineNuxtConfig({
 	app: {
 		head: {
 			title: "O KhaiDee+",
+			// Page translators rewrite text nodes underneath Vue, which invalidates
+			// its fragment anchors and throws NotFoundError from insertBefore. The
+			// UI already ships Lao/Thai/English, so translation is never wanted.
+			htmlAttrs: { translate: "no" },
 			meta: [
+				{
+					name: "google",
+					content: "notranslate",
+				},
 				{
 					name: "description",
 					content: "O KhaiDee+ web application.",

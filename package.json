@@ -13,6 +13,8 @@
     "roles:coverage": "node script/permission-role-coverage.mjs",
     "test:hybrid-pos": "node --import tsx script/hybrid-pos-smoke.mjs",
     "test:reports": "node --import tsx script/report-dashboard-smoke.mjs",
+    "test:currency": "node --import tsx script/pos-multi-currency-smoke.mjs",
+    "test:cost-layers": "node --import tsx script/inventory-cost-layer-smoke.mjs",
     "build": "npm run build:api",
     "build:api": "tsc",
     "build:web": "npm --prefix frontend run build",

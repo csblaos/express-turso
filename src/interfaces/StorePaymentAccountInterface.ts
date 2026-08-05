@@ -150,7 +150,10 @@ export class StorePaymentAccountInterface {
 		}
 	}
 
-	private static async ensureTable(): Promise<void> {
+	// Public so read-only callers can guarantee the table exists first: this table
+	// is created lazily, so a store that never opened payment settings has no
+	// table for a report to join against.
+	public static async ensureTable(): Promise<void> {
 		if (StorePaymentAccountInterface.initialized) return;
 		const db = DbConn.getClient();
 

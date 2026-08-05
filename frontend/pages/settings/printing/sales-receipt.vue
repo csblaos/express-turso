@@ -21,17 +21,37 @@ type StoreRecord = {
 	receipt_show_change: number;
 	receipt_show_payment_method: number;
 	receipt_show_queue: number;
+	receipt_language: string | null;
+	receipt_show_powered_by: number;
 	pickup_queue_enabled: number;
 };
 
 const { apiFetch } = useApiClient();
 const runtimeConfig = useRuntimeConfig();
-const { t, locale } = useI18n();
+const { t, locale, loadLocaleMessages } = useI18n();
+// Empty means follow the interface, which is what every store did before this
+// setting existed, so no one is forced to choose on upgrade.
+const receiptLanguage = ref("");
+const showPoweredBy = ref(true);
+const RECEIPT_LANGUAGES = [ "", "lo", "th", "en" ] as const;
+const receiptLocale = computed(() => receiptLanguage.value || locale.value);
+// Never switch locale.value for this - that would repaint the whole page.
+const receiptMessagesReady = ref(0);
+watch(receiptLanguage, async (next) => {
+	if (!next) return;
+	await loadLocaleMessages(next);
+	// Bumped so anything built with pt() re-evaluates once the messages arrive.
+	receiptMessagesReady.value += 1;
+}, { immediate: true });
+function pt(key: string, params: Record<string, unknown> = {}) {
+	void receiptMessagesReady.value;
+	return receiptLanguage.value ? t(key, params, { locale: receiptLanguage.value }) : t(key, params);
+}
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
 
-const copy = computed(() => {
-	if (locale.value === "en") {
+function copyFor(activeLocale: string) {
+	if (activeLocale === "en") {
 		return {
 			title: "Sales receipt",
 			description: "Configure the store details and payment lines shown on printed POS receipts.",
@@ -55,6 +75,12 @@ const copy = computed(() => {
 			showChange: "Show change",
 			showPaymentMethod: "Show payment method",
 			showQueue: "Show queue number",
+			showPoweredBy: "Show \"Powered by O KhaiDee+\"",
+			showPoweredByHint: "The small line at the bottom of the receipt",
+			receiptLanguage: "Receipt language",
+			receiptLanguageHint: "The receipt is read by the customer, not the cashier, so it need not follow the interface language",
+			receiptLanguageSystem: "Follow the interface",
+			receiptLanguageNames: { lo: "Lao", th: "Thai", en: "English" },
 			queueFollowsSetting: "Follows the storefront queue setting",
 			queueEnabled: "Queue enabled",
 			queueDisabled: "Queue disabled",
@@ -78,7 +104,7 @@ const copy = computed(() => {
 			noPermission: "You do not have permission to update this store.",
 		};
 	}
-	if (locale.value === "th") {
+	if (activeLocale === "th") {
 		return {
 			title: "บิลขาย",
 			description: "ตั้งค่าข้อมูลร้านและบรรทัดการชำระเงินที่แสดงบนบิล POS",
@@ -102,6 +128,12 @@ const copy = computed(() => {
 			showChange: "แสดงเงินทอน",
 			showPaymentMethod: "แสดงวิธีชำระเงิน",
 			showQueue: "แสดงเลขคิว",
+			showPoweredBy: "แสดง \"Powered by O KhaiDee+\"",
+			showPoweredByHint: "บรรทัดเล็กท้ายบิล",
+			receiptLanguage: "ภาษาในบิล",
+			receiptLanguageHint: "บิลคือสิ่งที่ลูกค้าอ่าน ไม่ใช่พนักงาน จึงไม่จำเป็นต้องตามภาษาหน้าจอ",
+			receiptLanguageSystem: "ตามภาษาระบบ",
+			receiptLanguageNames: { lo: "ลาว", th: "ไทย", en: "English" },
 			queueFollowsSetting: "แสดงตามการตั้งค่าคิวหน้าร้านโดยอัตโนมัติ",
 			queueEnabled: "เปิดระบบคิว",
 			queueDisabled: "ปิดระบบคิว",
@@ -148,6 +180,12 @@ const copy = computed(() => {
 		showChange: "ສະແດງເງິນທອນ",
 		showPaymentMethod: "ສະແດງວິທີຊຳລະ",
 		showQueue: "ສະແດງເລກຄິວ",
+		showPoweredBy: "ສະແດງ \"Powered by O KhaiDee+\"",
+		showPoweredByHint: "ແຖວນ້ອຍທ້າຍບິນ",
+		receiptLanguage: "ພາສາໃນບິນ",
+		receiptLanguageHint: "ບິນແມ່ນລູກຄ້າອ່ານ ບໍ່ແມ່ນພະນັກງານ ຈຶ່ງບໍ່ຈຳເປັນຕ້ອງຕາມພາສາໜ້າຈໍ",
+		receiptLanguageSystem: "ຕາມພາສາລະບົບ",
+		receiptLanguageNames: { lo: "ລາວ", th: "ໄທ", en: "English" },
 		queueFollowsSetting: "ສະແດງຕາມການຕັ້ງຄ່າຄິວໜ້າຮ້ານອັດຕະໂນມັດ",
 		queueEnabled: "ເປີດລະບົບຄິວ",
 		queueDisabled: "ປິດລະບົບຄິວ",
@@ -170,7 +208,10 @@ const copy = computed(() => {
 		networkError: "ບໍ່ສາມາດເຊື່ອມຕໍ່ເຊີບເວີໄດ້ ກະລຸນາກວດສອບອິນເຕີເນັດ ແລ້ວລອງໃໝ່ອີກຄັ້ງ",
 		noPermission: "ທ່ານບໍ່ມີສິດແກ້ໄຂຮ້ານນີ້",
 	};
-});
+}
+const copy = computed(() => copyFor(locale.value));
+// The preview must read as the printed receipt will, not as the interface does.
+const previewCopy = computed(() => copyFor(receiptLocale.value));
 
 const selectedStore = ref<StoreRecord | null>(null);
 const loading = ref(true);
@@ -206,7 +247,7 @@ const previewLogo = computed(() => {
 });
 const previewLines = computed(() => [
 	showStoreAddress.value ? previewAddress.value : "",
-	showStorePhone.value && previewPhone.value ? `ໂທ: ${previewPhone.value}` : "",
+	showStorePhone.value && previewPhone.value ? `${pt("posPanels.receiptPhone")}: ${previewPhone.value}` : "",
 ].filter(Boolean));
 
 const currentSnapshot = computed(() => JSON.stringify({
@@ -218,6 +259,8 @@ const currentSnapshot = computed(() => JSON.stringify({
 	showTendered: showTendered.value,
 	showChange: showChange.value,
 	showPaymentMethod: showPaymentMethod.value,
+	showPoweredBy: showPoweredBy.value,
+	receiptLanguage: receiptLanguage.value,
 }));
 const hasChanges = computed(() => initialSnapshot.value !== currentSnapshot.value);
 const canSave = computed(() => Boolean(selectedStore.value && canUpdateReceiptSettings.value && hasChanges.value && !saving.value));
@@ -254,6 +297,8 @@ function hydrateForm(store: StoreRecord) {
 	showStoreAddress.value = Number(store.receipt_show_store_address ?? 1) !== 0;
 	showStorePhone.value = Number(store.receipt_show_store_phone ?? 1) !== 0;
 	showTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
+	receiptLanguage.value = String(store.receipt_language || "");
+	showPoweredBy.value = Number(store.receipt_show_powered_by ?? 1) !== 0;
 	showChange.value = Number(store.receipt_show_change ?? 1) !== 0;
 	showPaymentMethod.value = Number(store.receipt_show_payment_method ?? 1) !== 0;
 	initialSnapshot.value = currentSnapshot.value;
@@ -305,6 +350,8 @@ async function saveSettings() {
 				receipt_show_tendered: showTendered.value ? 1 : 0,
 				receipt_show_change: showChange.value ? 1 : 0,
 				receipt_show_payment_method: showPaymentMethod.value ? 1 : 0,
+				receipt_language: receiptLanguage.value,
+				receipt_show_powered_by: showPoweredBy.value ? 1 : 0,
 			},
 		});
 		appToast.success({ title: copy.value.done, description: selectedStore.value.name });
@@ -446,6 +493,37 @@ onMounted(loadSettings);
 										</div>
 										<UBadge :color="showQueue ? 'success' : 'neutral'" variant="soft" :label="showQueue ? copy.queueEnabled : copy.queueDisabled" />
 									</div>
+
+									<label class="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-3 sm:col-span-2">
+										<div>
+											<p class="text-sm font-medium text-stone-800">{{ copy.showPoweredBy }}</p>
+											<p class="mt-1 text-xs text-stone-500">{{ copy.showPoweredByHint }}</p>
+										</div>
+										<input
+											v-model="showPoweredBy"
+											type="checkbox"
+											:disabled="!canUpdateReceiptSettings || saving"
+											class="h-5 w-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+										>
+									</label>
+
+									<div class="rounded-md border border-neutral-200 bg-neutral-50 p-3 sm:col-span-2">
+										<p class="text-sm font-medium text-stone-800">{{ copy.receiptLanguage }}</p>
+										<p class="mt-1 text-xs leading-5 text-stone-500">{{ copy.receiptLanguageHint }}</p>
+										<div class="mt-3 flex flex-wrap gap-2">
+											<button
+												v-for="option in RECEIPT_LANGUAGES"
+												:key="option || 'system'"
+												type="button"
+												class="rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50"
+												:class="receiptLanguage === option ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-neutral-200 bg-white text-stone-700 hover:border-emerald-200'"
+												:disabled="!canUpdateReceiptSettings || saving"
+												@click="receiptLanguage = option"
+											>
+												{{ option ? copy.receiptLanguageNames[option] : copy.receiptLanguageSystem }}
+											</button>
+										</div>
+									</div>
 								</div>
 							</div>
 						</UCard>
@@ -476,33 +554,33 @@ onMounted(loadSettings);
 									<div class="my-3 border-t border-dashed border-neutral-300" />
 									<div class="space-y-2">
 										<div class="flex justify-between gap-3">
-											<span>{{ copy.subtotal }}</span>
+											<span>{{ previewCopy.subtotal }}</span>
 											<span class="font-mono tabular-nums">80,000₭</span>
 										</div>
 										<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold">
-											<span>{{ copy.total }}</span>
+											<span>{{ previewCopy.total }}</span>
 											<span class="font-mono tabular-nums">80,000₭</span>
 										</div>
 										<div v-if="showPaymentMethod" class="flex justify-between gap-3 text-stone-600">
-											<span>{{ copy.method }}</span>
-											<span>{{ copy.cash }}</span>
+											<span>{{ previewCopy.method }}</span>
+											<span>{{ previewCopy.cash }}</span>
 										</div>
 										<div v-if="showTendered" class="flex justify-between gap-3 text-stone-600">
-											<span>{{ copy.tendered }}</span>
+											<span>{{ previewCopy.tendered }}</span>
 											<span class="font-mono tabular-nums">200,000₭</span>
 										</div>
 										<div v-if="showChange" class="flex justify-between gap-3 text-stone-600">
-											<span>{{ copy.change }}</span>
+											<span>{{ previewCopy.change }}</span>
 											<span class="font-mono tabular-nums">120,000₭</span>
 										</div>
 									</div>
 									<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
 										<div v-if="showQueue" class="mb-3">
-											<p class="font-sans text-[11px] text-stone-500">{{ copy.queue }}</p>
+											<p class="font-sans text-[11px] text-stone-500">{{ previewCopy.queue }}</p>
 											<p class="text-lg font-bold leading-tight text-stone-950">004</p>
 										</div>
-										<p class="font-sans text-[11px] text-stone-500">ຂອບໃຈທີ່ອຸດໜູນ</p>
-										<p class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
+										<p class="font-sans text-[11px] text-stone-500">{{ pt('posPanels.thankYou') }}</p>
+										<p v-if="showPoweredBy" class="mt-1 text-[10px] text-stone-400">Powered by O KhaiDee+</p>
 									</div>
 								</div>
 							</div>

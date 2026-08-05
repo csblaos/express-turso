@@ -100,6 +100,11 @@ export class ProductController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static uncostedSales = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await ProductComponent.getUncostedSales(req.requestId, req.params.id as string);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static adjustCost = SyncFunction.handler(async (req: Request, res: Response) => {
 		const auth = req.auth;
 		const data = await ProductComponent.adjustCost(req.requestId, {
@@ -109,6 +114,7 @@ export class ProductController {
 				? String((req.body as Record<string, unknown>).reason)
 				: null,
 			lockCost: (req.body as Record<string, unknown>)?.lock_cost !== false,
+			applyToPastSales: (req.body as Record<string, unknown>)?.apply_to_past_sales === true,
 			actor: auth ? { userId: auth.userId, role: auth.systemRole, storeId: auth.storeId } : null,
 			ipAddress: req.ip || null,
 			userAgent: req.header("user-agent") || null,
