@@ -14,6 +14,7 @@ type ApiEnvelope<T> = {
 
 type ClientRecord = {
 	id: string;
+	username: string;
 	email: string;
 	name: string;
 	system_role: string;
@@ -87,6 +88,7 @@ const showCreatePassword = ref(false);
 const showMemberResetPassword = ref(false);
 const createSuccess = ref<{
 	name: string;
+	username: string;
 	email: string;
 	password: string;
 } | null>(null);
@@ -99,6 +101,7 @@ const summaryData = ref({
 
 const createForm = reactive({
 	name: "",
+	username: "",
 	email: "",
 	password: "",
 	store_id: "",
@@ -109,6 +112,7 @@ const createForm = reactive({
 
 const detailForm = reactive({
 	name: "",
+	username: "",
 	email: "",
 	system_role: "",
 	ui_locale: "th",
@@ -148,9 +152,13 @@ const canManageMemberDetail = computed(() => (
 ));
 
 const selectedUser = computed(() => users.value.find((user) => user.id === selectedUserId.value) || null);
+const isSystemAdminReadOnly = computed(() => (
+	selectedUser.value?.system_role === "superadmin" && !canEditClientAccounts.value
+));
 
 const canCreateUser = computed(() => (
 	createForm.name.trim().length > 0
+	&& /^[a-zA-Z0-9][a-zA-Z0-9._]{2,31}$/.test(createForm.username.trim())
 	&& createForm.email.trim().length > 0
 	&& createForm.password.trim().length >= 6
 	&& createForm.store_id.trim().length > 0
@@ -201,8 +209,7 @@ function roleLabel(role: string) {
 }
 
 function canOpenDetail(user: ClientRecord) {
-	if (user.system_role !== "superadmin") return false;
-	return canEditClientAccounts.value;
+	return user.system_role === "superadmin";
 }
 
 function canOpenMemberDetail(user: ClientRecord) {
@@ -263,6 +270,7 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = t("superadminUse
 
 function resetCreateForm() {
 	createForm.name = "";
+	createForm.username = "";
 	createForm.email = "";
 	createForm.password = "";
 	createForm.store_id = "";
@@ -287,7 +295,7 @@ async function copyCreatedCredential() {
 	if (!createSuccess.value || !import.meta.client) return;
 
 	const text = [
-		`Username: ${createSuccess.value.email}`,
+		`Username: ${createSuccess.value.username}`,
 		`Password: ${createSuccess.value.password}`,
 	].join("\n");
 
@@ -309,7 +317,7 @@ async function shareCreatedCredential() {
 	if (!createSuccess.value || !import.meta.client) return;
 
 	const text = [
-		`Username: ${createSuccess.value.email}`,
+		`Username: ${createSuccess.value.username}`,
 		`Password: ${createSuccess.value.password}`,
 	].join("\n");
 
@@ -459,15 +467,9 @@ function openDetailModal(userId: string) {
 			});
 		return;
 	}
-	if (!canEditClientAccounts.value) {
-		appToast.info({
-			title: t("superadminUsersPage.systemAdminOnly"),
-			description: t("superadminUsersPage.systemAdminOnlyDescription"),
-		});
-		return;
-	}
 	selectedUserId.value = user.id;
 	detailForm.name = user.name;
+	detailForm.username = user.username;
 	detailForm.email = user.email;
 	detailForm.system_role = user.system_role;
 	detailForm.ui_locale = user.ui_locale || "th";
@@ -529,6 +531,7 @@ async function createUser() {
 			method: "POST",
 			body: {
 				name: createForm.name.trim(),
+				username: createForm.username.trim(),
 				email: createForm.email.trim(),
 				password: createForm.password,
 				store_id: createForm.store_id,
@@ -547,6 +550,7 @@ async function createUser() {
 		});
 		createSuccess.value = {
 			name: createForm.name.trim(),
+			username: createForm.username.trim(),
 			email: createForm.email.trim(),
 			password: plainPassword,
 		};
@@ -804,7 +808,7 @@ onMounted(loadUsers);
 													<td class="border-b border-[#f1ede6] px-4 py-4">
 														<div class="min-w-0">
 															<p class="truncate font-semibold text-stone-950">{{ user.name }}</p>
-															<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ user.username }} · {{ user.email }}</p>
 														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4">
@@ -930,11 +934,16 @@ onMounted(loadUsers);
 						<div v-if="!createSuccess" class="space-y-4 pb-6">
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</label>
-								<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="createForm.name" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ສົມໄຊ ໄຊຍະວົງ' : locale === 'th' ? 'ตัวอย่าง: สมชาย ใจดี' : 'Example: Somchai Jaidee'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+							</div>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input v-model="createForm.username" autocomplete="username" placeholder="somchai" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<p class="mt-2 text-xs leading-5 text-stone-500">a-z, 0-9, . ແລະ _ · 3–32 ຕົວອັກສອນ</p>
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</label>
-								<input v-model="createForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="createForm.email" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: somchai@example.com' : locale === 'th' ? 'ตัวอย่าง: somchai@example.com' : 'Example: somchai@example.com'" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.password') }}</label>
@@ -1019,9 +1028,9 @@ onMounted(loadUsers);
 								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('superadminUsersPage.credential') }}</p>
 								<div class="mt-4 space-y-3">
 									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.username') }}</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
-											{{ createSuccess.email }}
+											{{ createSuccess.username }}
 										</div>
 									</div>
 									<div>
@@ -1067,13 +1076,58 @@ onMounted(loadUsers);
 				<div v-if="selectedUser" class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div class="space-y-4 pb-6">
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-sm font-semibold text-stone-950">{{ selectedUser.id }}</p>
-								<p class="mt-1 text-xs text-stone-500">{{ roleLabel(selectedUser.system_role) }} · {{ t('superadminUsersPage.createdAt') }} {{ formatDateTime(selectedUser.created_at) }}</p>
+							<div v-if="isSystemAdminReadOnly" class="rounded-md border border-primary-200 bg-primary-50 px-4 py-3">
+								<div class="flex items-start gap-2.5">
+									<UIcon name="i-heroicons-information-circle-20-solid" class="mt-0.5 h-5 w-5 shrink-0 text-primary-600" />
+									<div>
+										<p class="text-sm font-semibold text-primary-900">{{ t('superadminUsersPage.systemAdminOnly') }}</p>
+										<p class="mt-1 text-xs leading-5 text-primary-800">{{ t('superadminUsersPage.systemAdminOnlyDescription') }}</p>
+									</div>
+								</div>
 							</div>
+							<p class="text-xs text-stone-500">{{ roleLabel(selectedUser.system_role) }} · {{ t('superadminUsersPage.createdAt') }} {{ formatDateTime(selectedUser.created_at) }}</p>
+							<div v-if="isSystemAdminReadOnly" class="grid gap-3 sm:grid-cols-2">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.name }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">Username</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.username || '—' }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4 sm:col-span-2">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</p>
+									<p class="mt-1 break-all text-sm font-semibold text-stone-900">{{ detailForm.email }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxStores') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.max_stores }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxBranches') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.max_branches_per_store }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.allowCreateStores') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.can_create_stores ? 'ອະນຸຍາດ' : 'ບໍ່ອະນຸຍາດ' }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.allowCreateBranches') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.can_create_branches ? 'ອະນຸຍາດ' : 'ບໍ່ອະນຸຍາດ' }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ statusLabel(detailForm.status) }}</p>
+								</div>
+							</div>
+							<template v-else>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</label>
-								<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="detailForm.name" :disabled="isSystemAdminReadOnly" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ສົມໄຊ ໄຊຍະວົງ' : locale === 'th' ? 'ตัวอย่าง: สมชาย ใจดี' : 'Example: Somchai Jaidee'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50 disabled:text-stone-700">
+							</div>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input v-model="detailForm.username" disabled type="text" class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700 shadow-sm outline-none">
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</label>
@@ -1082,46 +1136,47 @@ onMounted(loadUsers);
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxStores') }}</label>
-									<input v-model="detailForm.max_stores" :disabled="!detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
+									<input v-model="detailForm.max_stores" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxBranches') }}</label>
-									<input v-model="detailForm.max_branches_per_store" :disabled="!detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
+									<input v-model="detailForm.max_branches_per_store" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
 							</div>
 							<div class="grid gap-3">
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+									<input v-model="detailForm.can_create_stores" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.allowCreateStores') }}</p></div>
 								</label>
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_branches" :disabled="!detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+									<input v-model="detailForm.can_create_branches" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.allowCreateBranches') }}</p></div>
 								</label>
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+									<input v-model="detailForm.must_change_password" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.requirePasswordChange') }}</p></div>
 								</label>
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</label>
-									<select v-model="detailForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<select v-model="detailForm.status" :disabled="isSystemAdminReadOnly" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 										<option value="active">{{ t('superadminUsersPage.active') }}</option>
 										<option value="suspended">{{ t('superadminUsersPage.suspended') }}</option>
 									</select>
 								</div>
 								<div v-if="detailForm.status === 'suspended'">
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.suspensionReason') }}</label>
-									<input v-model="detailForm.suspend_reason" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="detailForm.suspend_reason" :disabled="isSystemAdminReadOnly" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
 							</div>
+							</template>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
+						<div class="grid w-full gap-2" :class="isSystemAdminReadOnly ? 'grid-cols-1' : 'grid-cols-2'">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">{{ t('superadminUsersPage.close') }}</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="!canSaveDetail" :spin-icon-on-loading="true" :block="true" @click="saveDetail">{{ t('superadminUsersPage.save') }}</AppButton>
+							<AppButton v-if="!isSystemAdminReadOnly" color="primary" variant="solid" size="md" :loading="saving" :disabled="!canSaveDetail" :spin-icon-on-loading="true" :block="true" @click="saveDetail">{{ t('superadminUsersPage.save') }}</AppButton>
 						</div>
 					</div>
 				</div>
@@ -1145,6 +1200,11 @@ onMounted(loadUsers);
 								<p class="text-sm font-semibold text-stone-950">{{ selectedUser.name }}</p>
 								<p class="mt-1 text-xs text-stone-500">{{ selectedUser.email }}</p>
 								<p class="mt-1 text-xs text-stone-500">{{ memberForm.store_name || selectedUser.primary_store_name || "-" }}</p>
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input :value="selectedUser.username" disabled type="text" class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700 shadow-sm outline-none">
 							</div>
 
 							<div>

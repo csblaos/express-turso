@@ -13,6 +13,10 @@ const props = defineProps<{
 }>();
 
 const mobileSidebarOpen = ref(false);
+// The shell is recreated when a page changes. Keep the desktop menu scroll
+// offset in Nuxt state so the item a user just chose does not jump off-screen.
+const sidebarScrollTop = useState<number>("app-sidebar-scroll-top", () => 0);
+const sidebarScrollRef = ref<HTMLElement | null>(null);
 const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 	sameSite: "lax",
 	path: "/",
@@ -97,6 +101,10 @@ function toggleSidebar() {
 
 function closeMobileSidebar() {
 	mobileSidebarOpen.value = false;
+}
+
+function rememberSidebarScroll() {
+	if (sidebarScrollRef.value) sidebarScrollTop.value = sidebarScrollRef.value.scrollTop;
 }
 
 function isModifiedClick(event: MouseEvent) {
@@ -275,8 +283,8 @@ const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.n
 // Store-level screens are available to an active store member, including a
 // superadmin acting as that store's owner. Keep this list in sync with
 // `app-nav.ts`; otherwise a newly added store screen is silently hidden.
-const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "promotions", "reports", "activity", "settings" ]);
-const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-thirdparty-usage" ]);
+const STORE_NAV_IDS = new Set([ "pos", "dashboard", "products", "orders", "stock", "purchase", "promotions", "reports", "activity", "settings" ]);
+const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-reports", "system-thirdparty-usage" ]);
 
 const visibleNavItems = computed(() => {
 	const systemRole = resolvedSystemRole.value;
@@ -286,10 +294,10 @@ const visibleNavItems = computed(() => {
 	}
 
 	if (systemRole === "superadmin") {
-		return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) || item.id === "superadmin");
+		return props.navItems.filter((item) => (STORE_NAV_IDS.has(item.id) || item.id === "superadmin") && (!item.permission || can(item.permission)));
 	}
 
-	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
+	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) && (!item.permission || can(item.permission)));
 });
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
@@ -428,6 +436,7 @@ const SETUP_TARGETS: Record<string, string> = {
 	products_without_cost: "/products",
 	customer_display_no_ads: "/settings/customer-display",
 	store_profile_incomplete: "/settings/store-profile",
+	business_day_start_unconfirmed: "/settings/restaurant",
 };
 
 // Staff are never shown an item they have no permission to fix: a badge somebody
@@ -461,6 +470,17 @@ async function refreshSetupStatus() {
 	} catch {
 		// Never block the workspace over a checklist.
 		setupItems.value = [];
+	} finally {
+		setupLoading.value = false;
+	}
+}
+
+async function confirmBusinessDayDefault() {
+	if (!currentStoreId.value) return;
+	setupLoading.value = true;
+	try {
+		await apiFetch(`/stores/${encodeURIComponent(currentStoreId.value)}/setup-status/business-day-default`, { method: "POST" });
+		await refreshSetupStatus();
 	} finally {
 		setupLoading.value = false;
 	}
@@ -501,6 +521,9 @@ onMounted(() => {
 
 	syncViewportListener();
 	syncReducedMotionListener();
+	void nextTick(() => {
+		if (sidebarScrollRef.value) sidebarScrollRef.value.scrollTop = sidebarScrollTop.value;
+	});
 	mediaQueryList.addEventListener("change", syncViewportListener);
 	reducedMotionQueryList.addEventListener("change", syncReducedMotionListener);
 	void refreshNotifications();
@@ -508,6 +531,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+	rememberSidebarScroll();
 	if (mediaQueryList && syncViewportListener) {
 		mediaQueryList.removeEventListener("change", syncViewportListener);
 	}
@@ -549,7 +573,7 @@ onErrorCaptured((error) => {
 						mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 					]"
 				>
-				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
+				<div ref="sidebarScrollRef" class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3" @scroll.passive="rememberSidebarScroll">
 					<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
 							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd] dark:bg-emerald-500/10 dark:ring-emerald-500/20">
@@ -831,7 +855,7 @@ onErrorCaptured((error) => {
 																		v-else
 																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd] dark:bg-[#1f241d] dark:text-stone-400 dark:ring-[#314132]"
 																	>
-																		Current
+																								{{ $t('common.current') }}
 																	</div>
 																</div>
 															</div>
@@ -989,8 +1013,19 @@ onErrorCaptured((error) => {
 								<p v-if="setupItemDetail(item)" class="mt-1 text-xs font-medium text-stone-500">{{ setupItemDetail(item) }}</p>
 							</div>
 							<AppButton
-								color="neutral"
-								variant="soft"
+								v-if="item.id === 'business_day_start_unconfirmed'"
+								color="primary"
+								variant="outline"
+								size="xs"
+								class="shrink-0"
+								icon="i-heroicons-check-20-solid"
+								:loading="setupLoading"
+								:label="t('setupStatus.items.business_day_start_unconfirmed.confirm')"
+								@click="confirmBusinessDayDefault"
+							/>
+							<AppButton
+								:color="item.id === 'business_day_start_unconfirmed' ? 'primary' : 'neutral'"
+								:variant="item.id === 'business_day_start_unconfirmed' ? 'solid' : 'soft'"
 								size="xs"
 								class="shrink-0"
 								icon="i-heroicons-arrow-right-20-solid"

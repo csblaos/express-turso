@@ -166,7 +166,7 @@ async function loginToPos() {
 											color="neutral"
 											icon="i-heroicons-lock-closed-20-solid"
 											placeholder="••••••••"
-											class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3.5 [&_input]:ps-13 [&_input]:pe-14 [&_input]:shadow-sm [&_span]:left-4 [&_span]:text-stone-400 [&_span_svg]:h-[18px] [&_span_svg]:w-[18px]"
+											class="login-password-input w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3.5 [&_input]:ps-13 [&_input]:pe-14 [&_input]:shadow-sm [&_span]:left-4 [&_span]:text-stone-400 [&_span_svg]:h-[18px] [&_span_svg]:w-[18px]"
 										/>
 										<AppButton
 											color="neutral"
@@ -216,3 +216,18 @@ async function loginToPos() {
 		</div>
 	</main>
 </template>
+
+<style scoped>
+/* The login card remains light even when the device prefers dark mode. Force
+   password glyphs (including the browser-rendered dots) to stay readable on
+   mobile WebKit, whose text-fill colour can otherwise inherit a transparent or
+   light value from the browser/theme. */
+.login-password-input :deep(input) {
+	/* Keep entered password dots visible on mobile Safari without making them
+	   look as heavy as normal body text. */
+	color: #6b7280 !important;
+	-webkit-text-fill-color: #6b7280 !important;
+	caret-color: #6b7280;
+	opacity: 1 !important;
+}
+</style>

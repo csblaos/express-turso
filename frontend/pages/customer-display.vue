@@ -25,6 +25,7 @@ const adIndex = ref(0);
 let adTimer: ReturnType<typeof setInterval> | null = null;
 const currentAd = computed(() => state.value.adImages[adIndex.value] || state.value.adImages[0] || "");
 const idleArtwork = computed(() => currentAd.value || logo.value);
+const adBackgroundStyle = computed(() => currentAd.value ? { backgroundImage: `url(${JSON.stringify(currentAd.value)})` } : {});
 // Restarts on either change: a new interval must take effect without reopening
 // the screen, and an interval of 0 means the shop chose to hold on one image.
 watch([ () => state.value.adImages.length, () => state.value.adIntervalSeconds ], ([ count, seconds ]) => {
@@ -128,7 +129,7 @@ const hideSidePanel = computed(() => (
 
 <template>
 	<div class="flex h-screen w-screen flex-col overflow-hidden bg-[#faf9f7] text-stone-900">
-		<header class="flex shrink-0 items-center justify-between gap-4 border-b border-stone-200 bg-white px-8 py-4 [@media(max-height:700px)]:py-2">
+		<header v-if="!hasAd || showBill || displayStatus !== 'idle'" class="flex shrink-0 items-center justify-between gap-4 border-b border-stone-200 bg-white px-8 py-4 [@media(max-height:700px)]:py-2">
 			<div class="flex min-w-0 items-center gap-3">
 				<img :src="logo" alt="" class="size-[clamp(2rem,4.5vh,2.75rem)] shrink-0 rounded-xl object-contain">
 				<div class="min-w-0">
@@ -144,15 +145,21 @@ const hideSidePanel = computed(() => (
 		<!-- Paid: the change due is the number the customer most wants to verify.
 		     A transfer or card payment has no change, so the amount paid takes that
 		     spot instead of a permanent "Change 0". -->
-		<section v-if="displayStatus === 'paid'" class="flex flex-1 flex-col items-center justify-center gap-6 px-8 text-center">
-			<p class="text-[clamp(1.75rem,6vh,3rem)] font-semibold leading-tight text-emerald-600">{{ t('customerDisplay.thankYou') }}</p>
-			<div class="rounded-2xl bg-white px-12 py-8 shadow-sm ring-1 ring-stone-200">
-				<p class="text-[clamp(0.875rem,2.5vh,1.25rem)] text-stone-500">{{ state.change !== null ? t('customerDisplay.change') : t('customerDisplay.total') }}</p>
-				<p class="mt-2 text-[clamp(2rem,7.5vh,3.75rem)] font-semibold leading-tight tabular-nums text-stone-950">{{ money(state.change !== null ? state.change : state.total) }}</p>
+		<section v-if="displayStatus === 'paid'" class="thank-you-screen relative flex flex-1 items-center justify-center overflow-hidden px-6 py-8 text-center sm:px-10">
+			<div class="thank-you-card relative w-full max-w-2xl rounded-[2rem] border border-stone-200 bg-white px-7 py-8 shadow-[0_28px_80px_rgba(28,25,23,0.12)] sm:px-12 sm:py-11">
+				<div class="thank-you-check mx-auto grid size-[clamp(5rem,12vh,7.5rem)] place-items-center rounded-full bg-emerald-500 text-white shadow-[0_14px_32px_rgba(5,150,105,0.35)]">
+					<svg class="size-[58%]" viewBox="0 0 52 52" fill="none" aria-hidden="true"><path class="thank-you-check-path" d="M14 27.5 22.5 36 39 18" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+				</div>
+				<p class="thank-you-title mt-5 text-[clamp(2rem,6vh,3.75rem)] font-semibold leading-none tracking-[-0.045em] text-stone-950">{{ t('customerDisplay.thankYou') }}</p>
+				<div class="thank-you-rule mx-auto mt-5 h-px w-16 bg-stone-200" aria-hidden="true" />
+				<div class="thank-you-amount mt-6 rounded-2xl border border-stone-200 bg-white px-5 py-5 sm:px-8 sm:py-6">
+					<p class="text-[clamp(0.875rem,2.3vh,1.125rem)] font-medium text-stone-500">{{ state.change !== null ? t('customerDisplay.change') : t('customerDisplay.total') }}</p>
+					<p class="mt-1 text-[clamp(2.25rem,8vh,5rem)] font-semibold leading-tight tabular-nums tracking-[-0.055em] text-stone-950">{{ money(state.change !== null ? state.change : state.total) }}</p>
+				</div>
+				<p v-if="state.tendered !== null" class="thank-you-detail mt-5 text-[clamp(0.8125rem,2vh,1rem)] text-stone-500">
+					{{ t('customerDisplay.tendered') }} <span class="font-medium tabular-nums text-stone-700">{{ money(state.tendered) }}</span><span class="mx-2 text-stone-300">•</span>{{ t('customerDisplay.total') }} <span class="font-medium tabular-nums text-stone-700">{{ money(state.total) }}</span>
+				</p>
 			</div>
-			<p v-if="state.tendered !== null" class="text-[clamp(0.875rem,2.5vh,1.25rem)] text-stone-500">
-				{{ t('customerDisplay.tendered') }} {{ money(state.tendered) }} · {{ t('customerDisplay.total') }} {{ money(state.total) }}
-			</p>
 		</section>
 
 		<section v-else-if="displayStatus === 'disabled'" class="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
@@ -161,8 +168,12 @@ const hideSidePanel = computed(() => (
 			<p class="text-base text-stone-400">{{ t('customerDisplay.turnedOffHint') }}</p>
 		</section>
 
-		<section v-else-if="!showBill" class="relative flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
-			<img :src="idleArtwork" alt="" :class="hasAd ? 'max-h-[62vh] w-auto max-w-full rounded-2xl object-contain shadow-sm' : 'size-[clamp(4.5rem,15vh,8rem)] rounded-3xl object-contain'">
+		<section v-else-if="!showBill" class="relative flex flex-1 flex-col items-center justify-center gap-5 text-center" :class="hasAd ? 'overflow-hidden p-0' : 'px-8'">
+			<div v-if="hasAd" class="customer-ad-frame customer-ad-frame-full">
+				<div class="customer-ad-backdrop" :style="adBackgroundStyle" aria-hidden="true" />
+				<img :key="currentAd" :src="currentAd" alt="" class="customer-ad-image">
+			</div>
+			<img v-else :src="idleArtwork" alt="" class="size-[clamp(4.5rem,15vh,8rem)] rounded-3xl object-contain">
 			<div v-if="!hasAd">
 				<p class="text-[clamp(1.5rem,5vh,2.25rem)] font-semibold leading-tight">{{ t('customerDisplay.welcome') }}</p>
 				<p class="mt-2 text-[clamp(0.875rem,2.5vh,1.25rem)] text-stone-500">{{ state.storeName || t('customerDisplay.welcomeHint') }}</p>
@@ -177,7 +188,7 @@ const hideSidePanel = computed(() => (
 			class="grid min-h-0 flex-1 overflow-hidden"
 			:class="hideSidePanel ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_clamp(300px,36%,420px)]'"
 		>
-			<section v-if="!hideSidePanel" class="flex min-h-0 flex-col items-center justify-center gap-5 border-e border-stone-200 p-8">
+			<section v-if="!hideSidePanel" class="flex min-h-0 flex-col items-center justify-center gap-5 border-e border-stone-200" :class="hasAd && displayStatus !== 'awaiting_payment' ? 'p-0' : 'p-8'">
 				<template v-if="displayStatus === 'awaiting_payment'">
 					<p class="text-[clamp(1.125rem,3vh,1.5rem)] font-semibold text-stone-700">{{ t('customerDisplay.scanToPay') }}</p>
 					<img v-if="state.qrImageUrl" :src="state.qrImageUrl" alt="" class="max-h-[52vh] w-auto max-w-full rounded-2xl bg-white p-3 shadow-sm ring-1 ring-stone-200">
@@ -185,7 +196,10 @@ const hideSidePanel = computed(() => (
 					<p class="text-[clamp(2rem,6vh,3rem)] font-semibold leading-tight tabular-nums">{{ money(state.total) }}</p>
 				</template>
 				<template v-else>
-					<img v-if="hasAd" :key="currentAd" :src="currentAd" alt="" class="max-h-[62vh] w-auto max-w-full rounded-2xl object-contain shadow-sm">
+					<div v-if="hasAd" class="customer-ad-frame customer-ad-frame-panel">
+						<div class="customer-ad-backdrop" :style="adBackgroundStyle" aria-hidden="true" />
+						<img :key="currentAd" :src="currentAd" alt="" class="customer-ad-image">
+					</div>
 					<template v-else>
 						<img :src="logo" alt="" class="size-[clamp(5rem,18vh,10rem)] rounded-3xl object-contain">
 						<p class="text-[clamp(1.25rem,4vh,1.875rem)] font-semibold">{{ t('customerDisplay.welcome') }}</p>
@@ -241,3 +255,66 @@ const hideSidePanel = computed(() => (
 		</div>
 	</div>
 </template>
+
+<style scoped>
+.thank-you-screen {
+	background: #fff;
+}
+
+/* Preserve the advert's whole composition, whatever its aspect ratio. The same
+   image fills the spare space behind it, enlarged and blurred, so a portrait
+   banner on a landscape display (and vice versa) never leaves blank bands. */
+.customer-ad-frame {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+	background: #f5f5f4;
+}
+.customer-ad-frame-full { width: 100%; height: 100%; }
+.customer-ad-frame-panel { width: 100%; height: 100%; }
+.customer-ad-backdrop {
+	position: absolute;
+	inset: -2rem;
+	z-index: 0;
+	background-position: center;
+	background-size: cover;
+	filter: blur(26px);
+	transform: scale(1.08);
+	opacity: .78;
+}
+.customer-ad-backdrop::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: rgba(255, 255, 255, .1);
+}
+.customer-ad-image {
+	position: relative;
+	z-index: 1;
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	object-position: center;
+	animation: customer-ad-in 360ms ease-out both;
+}
+
+.thank-you-card { animation: thank-you-card-in 620ms cubic-bezier(.16, 1, .3, 1) both; }
+.thank-you-check { animation: thank-you-check-in 560ms 80ms cubic-bezier(.16, 1, .3, 1) both; }
+.thank-you-check-path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: thank-you-draw-check 360ms 420ms ease-out forwards; }
+.thank-you-title { animation: thank-you-fade-up 520ms 210ms cubic-bezier(.16, 1, .3, 1) both; }
+.thank-you-rule { animation: thank-you-rule-in 400ms 320ms ease-out both; }
+.thank-you-amount { animation: thank-you-fade-up 540ms 330ms cubic-bezier(.16, 1, .3, 1) both; }
+.thank-you-detail { animation: thank-you-fade-up 480ms 440ms cubic-bezier(.16, 1, .3, 1) both; }
+
+@keyframes thank-you-card-in { from { opacity: 0; transform: translateY(22px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes customer-ad-in { from { opacity: 0; transform: scale(1.015); } to { opacity: 1; transform: scale(1); } }
+@keyframes thank-you-check-in { 0% { transform: scale(0); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes thank-you-draw-check { to { stroke-dashoffset: 0; } }
+@keyframes thank-you-fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes thank-you-rule-in { from { opacity: 0; transform: scaleX(0); } to { opacity: 1; transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+	.thank-you-card, .thank-you-check, .thank-you-check-path, .thank-you-title, .thank-you-rule, .thank-you-amount, .thank-you-detail, .customer-ad-image { animation: none; }
+	.thank-you-check-path { stroke-dashoffset: 0; }
+}
+</style>

@@ -69,6 +69,10 @@ type ApiInventoryList = {
 		ref_type: string;
 		ref_id: string | null;
 		note: string | null;
+		adjustment_reason: string | null;
+		unit_cost_base: number | null;
+		total_cost_base: number | null;
+		cost_method: string | null;
 		created_by: string | null;
 		created_by_name: string | null;
 		created_at: string;
@@ -155,6 +159,7 @@ const cameraScannerError = ref<string | null>(null);
 	const adjustmentMode = ref<AdjustmentMode>("increment");
 	const adjustmentQty = ref("");
 	const adjustmentNote = ref("");
+	const adjustmentReason = ref("");
 	const adjustmentQtyInputRef = ref<HTMLInputElement | null>(null);
 const adjustmentSubmitting = ref(false);
 const adjustmentBadgeIso = useState("inventory-adjustment-badge-iso", () => new Date().toISOString());
@@ -183,7 +188,14 @@ const pageSizeOptions = [10, 20, 50, 100];
 	let lastScannerKeyAt = 0;
 	let pendingScan: { code: string; source: "scanner" | "camera" } | null = null;
 
-	const canAdjustInventory = computed(() => can("inventory.adjust"));
+const canAdjustInventory = computed(() => can("inventory.adjust"));
+const adjustmentReasonOptions = computed(() => locale.value === "th" ? [
+	{ id: "damaged", label: "สินค้าเสียหาย" }, { id: "expired", label: "สินค้าหมดอายุ" }, { id: "lost", label: "สูญหาย" }, { id: "count_variance", label: "ผลตรวจนับต่าง" }, { id: "internal_use", label: "ใช้ภายในร้าน" }, { id: "other", label: "อื่น ๆ" },
+] : locale.value === "lo" ? [
+	{ id: "damaged", label: "ສິນຄ້າເສຍ" }, { id: "expired", label: "ໝົດອາຍຸ" }, { id: "lost", label: "ສູນຫາຍ" }, { id: "count_variance", label: "ກວດນັບບໍ່ກົງ" }, { id: "internal_use", label: "ໃຊ້ພາຍໃນຮ້ານ" }, { id: "other", label: "ອື່ນໆ" },
+] : [
+	{ id: "damaged", label: "Damaged" }, { id: "expired", label: "Expired" }, { id: "lost", label: "Lost" }, { id: "count_variance", label: "Count variance" }, { id: "internal_use", label: "Internal use" }, { id: "other", label: "Other" },
+]);
 // Balances are derived from products and filtered on the server, so an empty
 // list without filters means the store has no products to track yet.
 const hasActiveInventoryFilters = computed(() => (
@@ -725,6 +737,11 @@ async function openCameraScanner() {
 			toastError(t("inventoryPage.invalidQuantity"));
 			return;
 		}
+		const reducesStock = adjustmentMode.value === "decrement" || (adjustmentMode.value === "set" && qty < selectedBalance.value.onHand);
+		if (reducesStock && !adjustmentReason.value) {
+			toastError(locale.value === "th" ? "กรุณาเลือกเหตุผลที่ปรับลดสต็อก" : locale.value === "lo" ? "ກະລຸນາເລືອກເຫດຜົນການຕັດສະຕັອກ" : "Choose a reason for the stock reduction");
+			return;
+		}
 
 		adjustmentSubmitting.value = true;
 		try {
@@ -736,6 +753,7 @@ async function openCameraScanner() {
 					mode: adjustmentMode.value,
 					qty_base: qty,
 					note: adjustmentNote.value.trim() || null,
+					adjustment_reason: reducesStock ? adjustmentReason.value : null,
 				},
 			});
 
@@ -749,6 +767,7 @@ async function openCameraScanner() {
 			toastSuccess(t("inventoryPage.adjustmentSaved"));
 			adjustmentQty.value = "";
 			adjustmentNote.value = "";
+			adjustmentReason.value = "";
 			// Still refresh from API for correctness (sorting/filtering may change).
 			void loadBalances();
 			if (selectedBalance.value) {
@@ -1268,7 +1287,14 @@ onMounted(() => {
 													:placeholder="t('inventoryPage.quantityPlaceholder')"
 													@input="handleAdjustmentQtyInput"
 												>
-											</div>
+										</div>
+										<div v-if="adjustmentMode !== 'increment'">
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ locale === 'th' ? 'เหตุผลการปรับลด' : locale === 'lo' ? 'ເຫດຜົນການຕັດສະຕັອກ' : 'Reason for reduction' }}</label>
+											<select v-model="adjustmentReason" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												<option value="">{{ locale === 'th' ? 'เลือกเหตุผล' : locale === 'lo' ? 'ເລືອກເຫດຜົນ' : 'Select a reason' }}</option>
+												<option v-for="reason in adjustmentReasonOptions" :key="reason.id" :value="reason.id">{{ reason.label }}</option>
+											</select>
+										</div>
 										<div>
 											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('inventoryPage.note') }}</label>
 											<textarea

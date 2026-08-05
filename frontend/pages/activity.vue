@@ -48,6 +48,48 @@ const searchQuery = ref("");
 const activeScope = ref("all");
 const activeResult = ref("all");
 const activeEntityType = ref("all");
+const datePreset = ref("today");
+
+function dateValue(date: Date) {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+function addDays(date: Date, days: number) {
+	const next = new Date(date);
+	next.setDate(next.getDate() + days);
+	return next;
+}
+function startOfWeek(date: Date) {
+	const next = new Date(date);
+	const offset = (next.getDay() + 6) % 7;
+	next.setDate(next.getDate() - offset);
+	return next;
+}
+function rangeForPreset(preset: string) {
+	const today = new Date();
+	if (preset === "yesterday") {
+		const day = addDays(today, -1);
+		return { from: dateValue(day), to: dateValue(day) };
+	}
+	if (preset === "this_week") return { from: dateValue(startOfWeek(today)), to: dateValue(today) };
+	if (preset === "last_week") {
+		const end = addDays(startOfWeek(today), -1);
+		return { from: dateValue(addDays(end, -6)), to: dateValue(end) };
+	}
+	if (preset === "this_month") return { from: dateValue(new Date(today.getFullYear(), today.getMonth(), 1)), to: dateValue(today) };
+	if (preset === "last_month") {
+		return {
+			from: dateValue(new Date(today.getFullYear(), today.getMonth() - 1, 1)),
+			to: dateValue(new Date(today.getFullYear(), today.getMonth(), 0)),
+		};
+	}
+	return { from: dateValue(today), to: dateValue(today) };
+}
+const initialRange = rangeForPreset("today");
+const dateFrom = ref(initialRange.from);
+const dateTo = ref(initialRange.to);
 const events = ref<ApiAuditEvent[]>([]);
 const pending = ref(true);
 const error = ref<string | null>(null);
@@ -82,6 +124,15 @@ const resultOptions = computed(() => [
 	{ id: "success", label: t("activityPage.success") },
 	{ id: "failed", label: t("activityPage.failed") },
 ]);
+const datePresetOptions = computed(() => [
+	{ id: "today", label: t("activityPage.today") },
+	{ id: "yesterday", label: t("activityPage.yesterday") },
+	{ id: "this_week", label: t("activityPage.thisWeek") },
+	{ id: "last_week", label: t("activityPage.lastWeek") },
+	{ id: "this_month", label: t("activityPage.thisMonth") },
+	{ id: "last_month", label: t("activityPage.lastMonth") },
+	{ id: "custom", label: t("activityPage.customRange") },
+]);
 
 const selectedEvent = computed(() =>
 	events.value.find((event) => event.id === selectedEventId.value)
@@ -112,6 +163,9 @@ const actionLabels = computed<Record<string, string>>(() => ({
 	"product.create": t("activityPage.actions.createProduct"), "product.update": t("activityPage.actions.updateProduct"),
 	"inventory.adjust": t("activityPage.actions.adjustStock"), "promotion.create": t("activityPage.actions.createPromotion"),
 	"promotion.update": t("activityPage.actions.updatePromotion"),
+	"store.settings_updated": t("activityPage.actions.updateStoreSettings"),
+	"store.currency_rates_updated": t("activityPage.actions.updateCurrencyRates"),
+	"store.business_day_default_confirmed": t("activityPage.actions.confirmBusinessDayDefault"),
 }));
 
 const entityLabels = computed<Record<string, string>>(() => ({
@@ -169,7 +223,7 @@ watch(events, (value) => {
 	}
 }, { immediate: true });
 
-watch([searchQuery, activeScope, activeResult, activeEntityType], () => {
+watch([searchQuery, activeScope, activeResult, activeEntityType, dateFrom, dateTo], () => {
 	if (loadTimer) clearTimeout(loadTimer);
 	loadTimer = setTimeout(() => {
 		currentPage.value = 1;
@@ -198,6 +252,8 @@ async function loadEvents() {
 		if (activeScope.value !== "all") params.set("scope", activeScope.value);
 		if (activeResult.value !== "all") params.set("result", activeResult.value);
 		if (activeEntityType.value !== "all") params.set("entity_type", activeEntityType.value);
+		if (dateFrom.value) params.set("from", dateFrom.value);
+		if (dateTo.value) params.set("to", dateTo.value);
 		params.set("page", String(currentPage.value));
 		params.set("limit", String(pageSize.value));
 
@@ -221,6 +277,24 @@ async function loadEvents() {
 	} finally {
 		pending.value = false;
 	}
+}
+
+function selectDatePreset(preset: string) {
+	datePreset.value = preset;
+	if (preset === "custom") return;
+	const range = rangeForPreset(preset);
+	dateFrom.value = range.from;
+	dateTo.value = range.to;
+}
+
+function updateCustomFrom(value: string) {
+	datePreset.value = "custom";
+	dateFrom.value = value;
+}
+
+function updateCustomTo(value: string) {
+	datePreset.value = "custom";
+	dateTo.value = value;
 }
 
 function goToPage(page: number) {
@@ -397,6 +471,34 @@ function scrollEventsListToTop() {
 							>
 								{{ option.label }}
 							</AppButton>
+						</div>
+
+						<div class="border-t border-[#ece6dc] pt-3">
+							<label class="mb-2 block text-[11px] font-medium text-stone-500">{{ t('activityPage.dateRange') }}</label>
+							<div class="scrollbar-hidden md:scrollbar-soft flex flex-nowrap gap-2 overflow-x-auto pb-1">
+								<AppButton
+									v-for="option in datePresetOptions"
+									:key="option.id"
+									:color="datePreset === option.id ? 'primary' : 'neutral'"
+									:variant="datePreset === option.id ? 'solid' : 'soft'"
+									size="md"
+									class="shrink-0 whitespace-nowrap rounded-md"
+									@click="selectDatePreset(option.id)"
+								>
+									{{ option.label }}
+								</AppButton>
+							</div>
+							<div v-if="datePreset === 'custom'" class="mt-3 max-w-2xl">
+								<AppDateRangePicker
+									:from="dateFrom"
+									:to="dateTo"
+									:from-label="t('activityPage.fromDate')"
+									:to-label="t('activityPage.toDate')"
+									:select-label="t('activityPage.selectDate')"
+									@update:from="updateCustomFrom"
+									@update:to="updateCustomTo"
+								/>
+							</div>
 						</div>
 					</div>
 				</div>

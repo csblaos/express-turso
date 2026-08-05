@@ -23,6 +23,7 @@ const props = withDefaults(defineProps<{
 	todayLabel?: string;
 	clearLabel?: string;
 	closeLabel?: string;
+	showLabels?: boolean;
 }>(), {
 	fromLabel: "",
 	toLabel: "",
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<{
 	todayLabel: "",
 	clearLabel: "",
 	closeLabel: "",
+	showLabels: true,
 });
 
 const emit = defineEmits<{
@@ -144,14 +146,14 @@ const weeks = computed(() => {
 <template>
 	<div class="grid grid-cols-2 gap-2">
 		<div class="min-w-0">
-			<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ labels.from }}</label>
+			<label v-if="showLabels" class="mb-1 block text-[11px] font-medium text-stone-500">{{ labels.from }}</label>
 			<button type="button" class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200 dark:border-[#3a332a] dark:bg-[#1b1713] dark:text-stone-100" @click="show('from')">
 				<span class="truncate">{{ from ? formatted(from) : labels.select }}</span>
 				<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
 			</button>
 		</div>
 		<div class="min-w-0">
-			<label class="mb-1 block text-[11px] font-medium text-stone-500">{{ labels.to }}</label>
+			<label v-if="showLabels" class="mb-1 block text-[11px] font-medium text-stone-500">{{ labels.to }}</label>
 			<button type="button" class="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-4 text-left text-sm font-medium text-stone-800 shadow-sm outline-none transition hover:border-primary-300 hover:bg-primary-50/40 focus:border-primary-300 focus:ring-2 focus:ring-primary-200 dark:border-[#3a332a] dark:bg-[#1b1713] dark:text-stone-100" @click="show('to')">
 				<span class="truncate">{{ to ? formatted(to) : labels.select }}</span>
 				<UIcon name="i-heroicons-calendar-days-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />

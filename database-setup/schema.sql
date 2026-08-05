@@ -1,6 +1,5 @@
--- Generated schema-only baseline. Contains no application data.
-
--- Regenerate deliberately with: npm run db:schema:export
+-- Schema-only baseline for a new installation. Contains no application data
+-- or credentials. Keep this file in sync whenever the application schema changes.
 
 PRAGMA foreign_keys=OFF;
 
@@ -145,6 +144,10 @@ CREATE TABLE IF NOT EXISTS `inventory_movements` (
 	`ref_type` text NOT NULL,
 	`ref_id` text,
 	`note` text,
+	`adjustment_reason` text,
+	`unit_cost_base` real,
+	`total_cost_base` real,
+	`cost_method` text,
 	`created_by` text,
 	`created_at` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL,
 	FOREIGN KEY (`store_id`) REFERENCES `stores`(`id`) ON UPDATE no action ON DELETE cascade,
@@ -583,6 +586,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`email` text NOT NULL,
 	`name` text NOT NULL,
+	`username` text,
 	`password_hash` text NOT NULL,
 	`created_at` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL
 , `session_limit` integer, `system_role` text not null default 'USER', `can_create_stores` integer, `max_stores` integer, `can_create_branches` integer, `max_branches_per_store` integer, `created_by` text, `must_change_password` integer not null default 0, `password_updated_at` text, `ui_locale` text not null default 'th', `client_suspended` integer not null default 0, `client_suspended_at` text, `client_suspended_reason` text, `client_suspended_by` text);
@@ -931,6 +935,8 @@ CREATE INDEX IF NOT EXISTS `users_created_at_idx` ON `users` (`created_at`);
 CREATE INDEX IF NOT EXISTS `users_created_by_idx` on `users` (`created_by`);
 
 CREATE UNIQUE INDEX IF NOT EXISTS `users_email_unique` ON `users` (`email`);
+
+CREATE UNIQUE INDEX IF NOT EXISTS `users_username_unique` ON `users` (`username` COLLATE NOCASE);
 
 CREATE INDEX IF NOT EXISTS `users_must_change_password_idx` on `users` (`must_change_password`);
 

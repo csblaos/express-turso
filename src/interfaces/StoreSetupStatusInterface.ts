@@ -69,7 +69,7 @@ export class StoreSetupStatusInterface {
 		// spends most of its time waiting on the network.
 		const [ storeResult, productResult, rateResult, accountResult, uncostedResult ] = await db.batch([
 			{ sql: `SELECT currency, supported_currencies, vat_enabled, vat_rate, name, logo_url, address, phone_number,
-				customer_display_enabled, customer_display_ads FROM stores WHERE id = ? LIMIT 1`, args },
+				customer_display_enabled, customer_display_ads, business_day_start_minutes, business_day_start_confirmed_at FROM stores WHERE id = ? LIMIT 1`, args },
 			{ sql: "SELECT COUNT(*) AS total FROM products WHERE store_id = ? AND deleted_at IS NULL", args },
 			{ sql: "SELECT currency, rate_to_base FROM store_currency_rates WHERE store_id = ?", args },
 			{ sql: `SELECT COUNT(*) AS total,
@@ -86,6 +86,11 @@ export class StoreSetupStatusInterface {
 		if (!store) throw ApiError.NotFoundError("store not found");
 
 		const items: SetupStatusItem[] = [];
+		// A new store starts at midnight, but that is a meaningful reporting choice.
+		// Keep asking until the owner either changes it or explicitly accepts 00:00.
+		if (!text(store.business_day_start_confirmed_at)) {
+			items.push({ id: "business_day_start_unconfirmed", severity: "suggestion", permission: "settings.store.update", data: { minutes: number(store.business_day_start_minutes) } });
+		}
 
 		// --- blocking -----------------------------------------------------------
 		if (number((productResult.rows[0] as Record<string, unknown>)?.total) === 0) {
@@ -154,5 +159,10 @@ export class StoreSetupStatusInterface {
 		for (const item of items) counts[item.severity] += 1;
 
 		return { store_id: id, generated_at: new Date().toISOString(), items, counts };
+	}
+
+	static async confirmBusinessDayDefault(storeId: string): Promise<void> {
+		await StoreInterface.ensureColumns();
+		await DbConn.getClient().execute({ sql: "UPDATE stores SET business_day_start_confirmed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?", args: [ storeId ] });
 	}
 }

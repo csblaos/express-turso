@@ -124,6 +124,9 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	"/system-admin/security": [
 		{ label: "Security" },
 	],
+"/system-admin/reports": [
+		{ label: "ລາຍງານ" },
+	],
 	"/system-admin/thirdparty-usage": [
 		{ label: "Third-party Usage" },
 	],

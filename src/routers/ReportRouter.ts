@@ -11,6 +11,7 @@ export class ReportRouter {
 	private readonly router = Router();
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
+		this.router.get("/daily-dashboard", PermissionMiddleware.require("dashboard.view"), ReportValidator.dashboard, ReportController.dailyDashboard);
 		this.router.get("/dashboard", PermissionMiddleware.require("reports.view"), ReportValidator.dashboard, ReportController.dashboard);
 		this.router.get("/products", PermissionMiddleware.require("reports.view"), ReportValidator.products, ReportController.products);
 		this.router.get("/purchasing", PermissionMiddleware.require("reports.view"), ReportValidator.dashboard, ReportController.purchasing);

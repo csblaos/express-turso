@@ -1,4 +1,7 @@
 node_modules
+# Database setup is a standalone local tool; keep its own installed packages out
+# of the repository even when it is used independently from the POS app.
+database-setup/node_modules/
 dist
 frontend/node_modules
 frontend/.nuxt

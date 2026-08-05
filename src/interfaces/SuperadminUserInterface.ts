@@ -7,6 +7,7 @@ import { StoreInterface } from "@interfaces/StoreInterface";
 
 export type SuperadminScopedUserRecord = {
 	id: string;
+	username: string;
 	email: string;
 	name: string;
 	system_role: string;
@@ -51,6 +52,7 @@ function mapRow(row: Record<string, unknown>): SuperadminScopedUserRecord {
 	const suspended = Number(row.client_suspended || 0) === 1;
 	return {
 		id: String(row.id),
+		username: String(row.username || ""),
 		email: String(row.email || ""),
 		name: String(row.name || ""),
 		system_role: String(row.system_role || "staff"),
@@ -111,8 +113,8 @@ export class SuperadminUserInterface {
 
 		if (params.search?.trim()) {
 			const keyword = `%${params.search.trim().toLowerCase()}%`;
-			where.push("(LOWER(COALESCE(u.name, '')) LIKE ? OR LOWER(COALESCE(u.email, '')) LIKE ?)");
-			args.push(keyword, keyword);
+			where.push("(LOWER(COALESCE(u.name, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(u.email, '')) LIKE ?)");
+			args.push(keyword, keyword, keyword);
 		}
 
 		const whereClause = where.join(" AND ");
@@ -136,6 +138,7 @@ export class SuperadminUserInterface {
 			sql: `
 				SELECT
 					u.id,
+					u.username,
 					u.email,
 					u.name,
 					u.system_role,

@@ -13,6 +13,7 @@ type ProfileUpdateResponse = {
 		id: string;
 		email: string;
 		name: string;
+		username: string;
 		systemRole: string;
 		mustChangePassword: boolean;
 		uiLocale: string;
@@ -37,6 +38,7 @@ const accessibleStores = useState<AccessibleStoreRecord[]>("auth-accessible-stor
 
 const profileForm = reactive({
 	name: "",
+	username: "",
 });
 
 const passwordForm = reactive({
@@ -103,6 +105,7 @@ function formatDateTime(value?: string | null) {
 
 watch(currentUser, (value) => {
 	profileForm.name = value?.name || "";
+	profileForm.username = value?.username || "";
 }, { immediate: true });
 
 watch(profileModalOpen, async (opened) => {
@@ -172,6 +175,7 @@ async function submitProfile() {
 			method: "PATCH",
 			body: {
 				name: profileForm.name,
+				username: profileForm.username,
 			},
 		});
 
@@ -261,6 +265,7 @@ onMounted(async () => {
 									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ t('profilePage.accountSummary') }}</p>
 									<h2 class="mt-2 truncate text-xl font-semibold text-stone-950">{{ currentUser?.name || "-" }}</h2>
 									<p class="mt-1 truncate text-sm text-stone-500">{{ currentUser?.email || "-" }}</p>
+									<p class="mt-1 truncate text-sm text-stone-500">Username: {{ currentUser?.username || "-" }}</p>
 								</div>
 							</div>
 
@@ -362,6 +367,10 @@ onMounted(async () => {
 										<dd class="font-medium text-stone-900">{{ currentUser?.name || "-" }}</dd>
 									</div>
 									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3 dark:bg-[#191613]">
+										<dt class="text-stone-500">Username</dt>
+										<dd class="font-medium text-stone-900">{{ currentUser?.username || "-" }}</dd>
+									</div>
+									<div class="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-3 dark:bg-[#191613]">
 										<dt class="text-stone-500">{{ t('profilePage.email') }}</dt>
 										<dd class="max-w-[220px] truncate font-medium text-stone-900">{{ currentUser?.email || "-" }}</dd>
 									</div>
@@ -422,7 +431,9 @@ onMounted(async () => {
 										<UInput :model-value="currentUser?.email || ''" disabled size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-200" />
 									</div>
 									<div ref="profileNameFieldRef">
-										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.username') }}</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+										<UInput v-model="profileForm.username" autocomplete="username" placeholder="somchai" size="lg" color="neutral" class="mb-4 w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100" />
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('profilePage.currentName') }}</label>
 										<UInput v-model="profileForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-white [&_input]:py-3 dark:[&_input]:border-[#3a332a] dark:[&_input]:bg-[#191613] dark:[&_input]:text-stone-100" />
 									</div>
 								</div>

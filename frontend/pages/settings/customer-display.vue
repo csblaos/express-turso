@@ -38,7 +38,7 @@ const copy = computed(() => {
 		linkCopy: "ສຳເນົາລິ້ງ", linkCopied: "ສຳເນົາລິ້ງແລ້ວ", linkOpen: "ເປີດເລີຍ", linkCopyFailed: "ສຳເນົາບໍ່ສຳເລັດ",
 		ads: "ຮູບໂຄສະນາ", adsHint: `ໃສ່ໄດ້ສູງສຸດ ${MAX_ADS} ຮູບ`,
 		adsOptional: "ບໍ່ໃສ່ກໍ່ໄດ້ ຖ້າບໍ່ມີຈະສະແດງໂລໂກ້ຮ້ານແທນ",
-		adsSize: "ແນະນຳຮູບແນວນອນ 16:9 ຂະໜາດ 1280 × 720 px ວາງເນື້ອຫາສຳຄັນໄວ້ກາງຮູບ",
+		adsSize: "ແນະນຳໃຫ້ອອກແບບຮູບຕາມຂະໜາດ ແລະ ອັດຕາສ່ວນຂອງໜ້າຈໍລູກຄ້າທີ່ຈະໃຊ້ງານ ໂດຍວາງເນື້ອຫາສຳຄັນໄວ້ກາງຮູບ",
 		addImage: "ເພີ່ມຮູບ", full: `ຄົບ ${MAX_ADS} ຮູບແລ້ວ`,
 		imageFailed: "ກຽມຮູບບໍ່ສຳເລັດ", saved: "ບັນທຶກແລ້ວ", saveFailed: "ບັນທຶກບໍ່ສຳເລັດ",
 		removeTitle: "ລົບຮູບນີ້ບໍ?", removeBody: "ຮູບຈະຖືກລົບອອກຈາກບ່ອນເກັບຖາວອນ ກູ້ຄືນບໍ່ໄດ້",
@@ -57,7 +57,7 @@ const copy = computed(() => {
 		linkCopy: "คัดลอกลิงก์", linkCopied: "คัดลอกลิงก์แล้ว", linkOpen: "เปิดเลย", linkCopyFailed: "คัดลอกไม่สำเร็จ",
 		ads: "รูปโฆษณา", adsHint: `ใส่ได้สูงสุด ${MAX_ADS} รูป`,
 		adsOptional: "ไม่ใส่ก็ได้ ถ้าไม่มีจะแสดงโลโก้ร้านแทน",
-		adsSize: "แนะนำรูปแนวนอน 16:9 ขนาด 1280 × 720 px วางเนื้อหาสำคัญไว้กลางรูป",
+		adsSize: "แนะนำให้ออกแบบรูปตามขนาดและอัตราส่วนของหน้าจอลูกค้าที่จะใช้งาน โดยวางเนื้อหาสำคัญไว้กลางรูป",
 		addImage: "เพิ่มรูป", full: `ครบ ${MAX_ADS} รูปแล้ว`,
 		imageFailed: "เตรียมรูปไม่สำเร็จ", saved: "บันทึกแล้ว", saveFailed: "บันทึกไม่สำเร็จ",
 		removeTitle: "ลบรูปนี้ใช่ไหม?", removeBody: "รูปจะถูกลบออกจากที่เก็บถาวร กู้คืนไม่ได้",
@@ -76,7 +76,7 @@ const copy = computed(() => {
 		linkCopy: "Copy link", linkCopied: "Link copied", linkOpen: "Open", linkCopyFailed: "Could not copy",
 		ads: "Advert images", adsHint: `Up to ${MAX_ADS} images`,
 		adsOptional: "Optional. Without any, the store logo is shown instead",
-		adsSize: "Best as landscape 16:9 at 1280 × 720 px, with the important part centred",
+		adsSize: "Design the image for the size and aspect ratio of the customer screen in use, keeping important content centred",
 		addImage: "Add image", full: `${MAX_ADS} images already added`,
 		imageFailed: "Could not prepare image", saved: "Saved", saveFailed: "Could not save",
 		removeTitle: "Remove this image?", removeBody: "It is deleted from storage permanently and cannot be restored",
@@ -415,7 +415,6 @@ watch(storeId, (value) => { if (value) void load(); }, { immediate: true });
 						>
 							<UIcon :name="preparingImage ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'" class="size-7" :class="preparingImage ? 'animate-spin' : ''" />
 							<span class="text-sm font-medium">{{ copy.addImage }}</span>
-							<span class="px-3 text-center text-[11px] leading-4 text-stone-400">16:9 · 1280 × 720 px</span>
 						</button>
 					</div>
 

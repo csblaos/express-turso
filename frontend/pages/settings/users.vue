@@ -37,6 +37,7 @@ type StoreMemberRecord = {
 	store_id: string;
 	user_id: string;
 	name: string;
+	username: string;
 	email: string;
 	system_role: string;
 	ui_locale: string;
@@ -75,6 +76,7 @@ const pageSizeOptions = [10, 20, 50];
 
 const createForm = reactive({
 	name: "",
+	username: "",
 	email: "",
 	password: "",
 	role_id: "",
@@ -117,6 +119,7 @@ const canManageRoles = computed(() => isElevatedStoreManager.value || can("setti
 const canSubmitCreate = computed(() => (
 	canCreateUsers.value
 	&& createForm.name.trim().length > 0
+	&& createForm.username.trim().length >= 3
 	&& createForm.email.trim().length > 0
 	&& createForm.password.trim().length >= 6
 ));
@@ -296,7 +299,7 @@ async function fetchMembers() {
 }
 
 async function saveMemberRole(member: StoreMemberRecord, roleId: string) {
-	if (!selectedStoreId.value) return;
+	if (!selectedStoreId.value || member.system_role.toLowerCase() === "superadmin") return;
 	await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedStoreId.value)}/${encodeURIComponent(member.user_id)}/role`, {
 		method: "PUT",
 		body: {
@@ -329,6 +332,7 @@ async function createMember() {
 			body: {
 				store_id: selectedStoreId.value,
 				name: createForm.name,
+				username: createForm.username,
 				email: createForm.email,
 				password: createForm.password,
 				role_id: createForm.role_id || undefined,
@@ -338,6 +342,7 @@ async function createMember() {
 		});
 
 		createForm.name = "";
+		createForm.username = "";
 		createForm.email = "";
 		createForm.password = "";
 		createForm.status = "active";
@@ -573,10 +578,9 @@ onMounted(async () => {
 												<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 													<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
 														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.user") }}</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.role") }}</th>
-														<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.status") }}</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.systemRole") }}</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.permissions") }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.storeRoles") }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.status") }}</th>
+												<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.permissions") }}</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.addedAt") }}</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t("usersPage.action") }}</th>
 												</tr>
@@ -601,10 +605,7 @@ onMounted(async () => {
 														<td class="border-b border-[#f1ede6] px-4 py-4">
 															<UBadge :color="member.status === 'active' ? 'success' : 'neutral'" variant="soft" :label="member.status === 'active' ? $t('usersPage.active') : $t('usersPage.inactive')" />
 														</td>
-														<td class="border-b border-[#f1ede6] px-4 py-4">
-															<UBadge color="neutral" variant="soft" :label="member.system_role" />
-														</td>
-													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
+											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
 														{{ member.permissions_count }}
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 whitespace-nowrap text-stone-600">
@@ -703,13 +704,28 @@ onMounted(async () => {
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("usersPage.userInformation") }}</p>
-								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedMember.email }}</p>
-								<p class="mt-1 text-xs text-stone-500">{{ $t("usersPage.systemRole") }}: {{ selectedMember.system_role }}</p>
+								<div class="mt-3 grid gap-3 sm:grid-cols-2">
+									<div>
+										<p class="text-xs font-medium text-stone-500">Username</p>
+										<p class="mt-1 text-sm font-semibold text-stone-900">{{ selectedMember.username || "—" }}</p>
+									</div>
+									<div>
+										<p class="text-xs font-medium text-stone-500">{{ $t("usersPage.email") }}</p>
+										<p class="mt-1 break-all text-sm font-semibold text-stone-900">{{ selectedMember.email }}</p>
+									</div>
+								</div>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("usersPage.role") }}</p>
+								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("usersPage.storeRoles") }}</p>
+								<div
+									v-if="selectedMember.system_role.toLowerCase() === 'superadmin'"
+									class="mt-3 rounded-md border border-neutral-200 bg-stone-100 px-4 py-2.5 text-sm font-medium text-stone-600"
+								>
+									{{ selectedMember.role_name }}
+								</div>
 								<select
+									v-else
 									:value="selectedMember.role_id"
 									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									:disabled="!canManageRoles"
@@ -770,16 +786,20 @@ onMounted(async () => {
 					<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-5 py-4">
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.name") }}</label>
-							<UInput v-model="createForm.name" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<UInput v-model="createForm.name" :placeholder="$t('usersPage.namePlaceholder')" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+						</div>
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.username") }}</label>
+							<UInput v-model="createForm.username" autocomplete="username" placeholder="somchai" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.email") }}</label>
-							<UInput v-model="createForm.email" type="email" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<UInput v-model="createForm.email" type="email" :placeholder="$t('usersPage.emailPlaceholder')" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.initialPassword") }}</label>
 							<div class="flex items-center gap-2">
-								<UInput v-model="createForm.password" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:font-mono" />
+								<UInput v-model="createForm.password" type="password" :placeholder="$t('usersPage.initialPasswordPlaceholder')" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:font-mono" />
 								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-bolt-20-solid" class="shrink-0" @click="createForm.password = QUICK_FILL_PASSWORD">
 									{{ $t("usersPage.usePassword") }}
 								</AppButton>

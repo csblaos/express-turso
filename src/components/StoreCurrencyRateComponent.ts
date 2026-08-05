@@ -1,4 +1,7 @@
+import { randomUUID } from "crypto";
+
 import { DbConn } from "@connections/DbConn";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreCurrencyRateHistoryInterface } from "@interfaces/StoreCurrencyRateHistoryInterface";
 import { ApiError } from "@middlewares/ApiError";
@@ -84,6 +87,8 @@ export class StoreCurrencyRateComponent {
 
 		const previousRows = await StoreCurrencyRateInterface.findByStoreId(storeId);
 		const previousMap = new Map(previousRows.map((row) => [ row.currency, row.rate_to_base ]));
+		const changedRates = nextRates.filter((row) => previousMap.get(row.currency) !== row.rate_to_base);
+		if (changedRates.length) await AuditEventInterface.ensureTable();
 
 		const db = DbConn.getClient();
 		const transaction = await db.transaction("write");
@@ -101,6 +106,20 @@ export class StoreCurrencyRateComponent {
 					actor_user_id: actor.userId || null,
 				}));
 			await StoreCurrencyRateHistoryInterface.insertMany(historyItems, transaction);
+			if (changedRates.length) {
+				await transaction.execute(AuditEventInterface.buildInsertStatement(randomUUID(), {
+					scope: "settings",
+					store_id: storeId,
+					actor_user_id: actor.userId || null,
+					actor_role: actor.systemRole || null,
+					action: "store.currency_rates_updated",
+					entity_type: "store",
+					entity_id: storeId,
+					metadata: { base_currency: baseCurrency, currencies: changedRates.map((row) => row.currency) },
+					before: Object.fromEntries(changedRates.map((row) => [ row.currency, previousMap.get(row.currency) ?? null ])),
+					after: Object.fromEntries(changedRates.map((row) => [ row.currency, row.rate_to_base ])),
+				}, new Date().toISOString()));
+			}
 			await transaction.commit();
 		} catch (error) {
 			if (!transaction.closed) {

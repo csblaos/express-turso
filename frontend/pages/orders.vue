@@ -39,6 +39,9 @@ type OrderRecord = {
 	status: OrderStatus;
 	paymentStatus: PaymentStatus;
 	paymentMethod?: "cash" | "qr_transfer" | "credit_card" | string;
+	paymentCurrency: string;
+	paymentExchangeRate: number;
+	amountTenderedForeign: number | null;
 	total: number;
 	subtotal: number;
 	discount: number;
@@ -161,6 +164,8 @@ function mapApiOrder(order: ApiOrder): OrderRecord {
 		paymentMethod: String(order.payment_method || "cash"), total: Number(order.total || 0), subtotal: Number(order.subtotal || 0),
 		discount: Number(order.discount || 0), vatAmount: Number(order.vat_amount || 0),
 		amountTendered: Number(order.amount_tendered || 0), changeAmount: Number(order.change_amount || 0), itemCount: Number(order.item_count || 0),
+		paymentCurrency: String(order.payment_currency || ""), paymentExchangeRate: Number(order.payment_exchange_rate || 1),
+		amountTenderedForeign: order.amount_tendered_foreign === null || order.amount_tendered_foreign === undefined ? null : Number(order.amount_tendered_foreign),
 		createdAt: String(order.created_at), updatedAt: String(order.updated_at || order.closed_at || order.paid_at || order.created_at), cashier: String(order.cashier_name || t("orders.user")),
 		phone: order.customer_phone ? String(order.customer_phone) : undefined, note: order.note ? String(order.note) : undefined, tableLabel,
 		fulfillmentStatus: order.fulfillment_status ? String(order.fulfillment_status) : undefined,
@@ -192,6 +197,7 @@ async function loadOrders() {
 		orders.value = response.data.map(mapApiOrder);
 		queueEnabled.value = Number(storeResponse.data.pickup_queue_enabled || 0) !== 0;
 		const store = storeResponse.data;
+		storeCurrency.value = String(store.currency || "LAK");
 		receiptStore.value = {
 			name: String(store.name || "O KhaiDee+"),
 			logo: String(store.logo_url || ""),
@@ -207,8 +213,6 @@ async function loadOrders() {
 	};
 		receiptLanguage.value = String(store.receipt_language || "");
 		receiptShowPoweredBy.value = Number(store.receipt_show_powered_by ?? 1) !== 0;
-		const currency = response.data[0]?.payment_currency;
-		if (currency) storeCurrency.value = String(currency);
 	} catch (error) {
 		if (requestSequence === ordersRequestSequence) {
 			if (!ordersLoadedOnce.value) orders.value = [];
@@ -351,6 +355,18 @@ function applyDatePreset(preset: DatePreset) {
 
 function formatMoney(value: number) {
 	return formatMoneyWithSymbol(value || 0, storeCurrency.value, { locale: intlLocale.value, maximumFractionDigits: 0 });
+}
+
+function foreignPaymentText(order: OrderRecord) {
+	if (!order.paymentCurrency || order.paymentCurrency === storeCurrency.value || order.amountTenderedForeign === null) return "";
+	const foreign = formatMoneyWithSymbol(order.amountTenderedForeign, order.paymentCurrency, { locale: intlLocale.value, maximumFractionDigits: 2 });
+	return `${foreign} → ${formatMoney(order.amountTendered)}`;
+}
+
+function changeText(order: OrderRecord) {
+	if (!order.paymentCurrency || order.paymentCurrency === storeCurrency.value || order.changeAmount <= 0) return "";
+	const label = appLocale.value === "lo" ? "ເງິນທອນ" : appLocale.value === "en" ? "Change" : "เงินทอน";
+	return `${label} ${formatMoney(order.changeAmount)}`;
 }
 
 function paymentMethodLabel(method: string) {
@@ -691,6 +707,8 @@ function confirmPrintReceipt() {
 											<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
 												<UBadge :color="paymentColor(order.paymentStatus)" variant="soft" :label="paymentLabel(order.paymentStatus)" />
 												<p class="mt-1 text-xs text-stone-400">{{ paymentMethodLabel(order.paymentMethod || '') }}</p>
+												<p v-if="foreignPaymentText(order)" class="mt-1 text-xs font-medium text-primary-700">{{ foreignPaymentText(order) }}</p>
+												<p v-if="changeText(order)" class="mt-1 text-xs font-medium text-amber-700">{{ changeText(order) }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
 													<p class="text-sm font-semibold text-stone-900">{{ order.itemCount }} {{ $t('common.items') }}</p>
@@ -755,6 +773,7 @@ function confirmPrintReceipt() {
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge :color="paymentColor(selectedOrder.paymentStatus)" variant="soft" :label="paymentLabel(selectedOrder.paymentStatus)" />
 											<UBadge color="neutral" variant="soft" :label="paymentMethodLabel(selectedOrder.paymentMethod || '')" />
+											<UBadge v-if="foreignPaymentText(selectedOrder)" color="primary" variant="soft" :label="foreignPaymentText(selectedOrder)" />
 											<UBadge color="neutral" variant="soft" :label="orderTypeLabel(selectedOrder.orderType)" />
 											<UBadge color="neutral" variant="soft" :label="selectedOrder.cashier" />
 										</div>
@@ -901,6 +920,7 @@ function confirmPrintReceipt() {
 								<div class="flex justify-between gap-3 border-t border-neutral-200 pt-2 text-[13px] font-bold"><span>{{ pt('orders.netTotal') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.total) }}</span></div>
 								<div v-if="receiptStore.showPaymentMethod" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('posPanels.paymentMethod') }}</span><span>{{ receiptPaymentMethodLabel(selectedOrder.paymentMethod || '') }}</span></div>
 								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showTendered" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('posPanels.cashReceived') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.amountTendered) }}</span></div>
+								<div v-if="foreignPaymentText(selectedOrder)" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('posPanels.cashReceived') }}</span><span class="font-mono tabular-nums">{{ foreignPaymentText(selectedOrder) }}</span></div>
 								<div v-if="selectedOrder.paymentMethod === 'cash' && receiptStore.showChange" class="flex justify-between gap-3 text-stone-600"><span>{{ pt('pos.change') }}</span><span class="font-mono tabular-nums">{{ formatMoney(selectedOrder.changeAmount) }}</span></div>
 							</div>
 							<div class="mt-4 border-t border-dashed border-neutral-300 pt-3 text-center">
@@ -956,4 +976,3 @@ function confirmPrintReceipt() {
 	.orders-print-sheet hr { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
 }
 </style>
-

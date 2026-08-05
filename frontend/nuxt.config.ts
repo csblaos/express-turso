@@ -29,11 +29,10 @@ export default defineNuxtConfig({
 			{ code: "lo", language: "lo-LA", name: "ລາວ", file: "lo.ts" },
 			{ code: "en", language: "en-US", name: "English", file: "en.ts" },
 		],
-		detectBrowserLanguage: {
-			useCookie: true,
-			cookieKey: "pos.ui.language",
-			fallbackLocale: "lo",
-		},
+		// Lao is the product default. Do not let a browser set to English replace
+		// it on a customer's first visit; a language picked in Settings is still
+		// persisted by Nuxt i18n's locale cookie.
+		detectBrowserLanguage: false,
 		vueI18n: "i18n.config.ts",
 	},
 	runtimeConfig: {
@@ -54,6 +53,7 @@ export default defineNuxtConfig({
 			scan: true,
 			icons: [
 				"heroicons:building-storefront-20-solid",
+				"heroicons:rectangle-group-20-solid",
 				"heroicons:squares-2x2-20-solid",
 				"heroicons:shopping-cart-20-solid",
 				"heroicons:cube-20-solid",
