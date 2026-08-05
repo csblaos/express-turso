@@ -4,7 +4,9 @@ import { appNavItems } from "~/utils/app-nav";
 
 type Comparison = { value: number | null; available: boolean };
 type Dashboard = {
-	period: { date_from: string; date_to: string };
+	period: { from: string; to: string; date_from: string; date_to: string };
+	period_basis: "store_business_day" | "shared_business_day" | "calendar_day" | "per_store_business_day";
+	periods_by_store: Array<{ id: string; name: string; from: string; to: string; date_from: string; date_to: string }>;
 	generated_at: string;
 	summary: {
 		revenue: number; bill_count: number; average_bill: number; discount: number;
@@ -19,8 +21,10 @@ type Dashboard = {
 	sales_heatmap: Array<{ weekday: number; hour: number; revenue: number; bill_count: number }>;
 	profitability: Array<{ id: string; name: string; revenue: number; known_cost: number; gross_profit: number; gross_margin_percent: number; cost_coverage_percent: number; unknown_cost_revenue: number; unknown_cost_bills: number }>;
 	inventory: Array<{ id: string; name: string; inventory_value: number; out_of_stock_count: number; negative_stock_count: number; low_stock_count: number }>;
+	stock_adjustments: { movement_count: number; quantity: number; cost: number };
 	low_stock: Array<{ id: string; name: string; sku: string; store_name: string; available_base: number; threshold: number }>;
-	store_options: Array<{ id: string; name: string; currency: string }>;
+	store_options: Array<{ id: string; name: string; currency: string; business_day_start_minutes: number }>;
+	purchasing: { po_count: number; goods_cost: number; shipping_cost: number; other_cost: number; total_spend: number; qty_received: number };
 };
 
 const { apiFetch } = useApiClient();
@@ -33,7 +37,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	storeComparison: "ປຽບທຽບຮ້ານ", store: "ຮ້ານ", noData: "ຍັງບໍ່ມີຂໍ້ມູນໃນຊ່ວງນີ້", previous: "ທຽບຊ່ວງກ່ອນ", view: "ເບິ່ງຮ້ານ",
 	overviewTab: "ພາບລວມ", productsTab: "ສິນຄ້າ", promotionsTab: "ໂປຣໂມຊັນ", topProducts: "ສິນຄ້າຂາຍດີ", quantity: "ຈຳນວນ", promotionUsage: "ຜົນການໃຊ້ໂປຣໂມຊັນ", bills: "ບິນ", applications: "ຄັ້ງທີ່ໃຊ້", giftCost: "ຕົ້ນທຶນຂອງແຖມ",
 	salesTimeTab: "ຊ່ວງເວລາຂາຍ", salesByTime: "ຍອດຂາຍຕາມວັນ ແລະ ເວລາ", busiest: "ຊ່ວງຂາຍດີທີ່ສຸດ", quietest: "ຊ່ວງຍອດຂາຍເບົາ", activeOnly: "ສະຫຼຸບເປັນຊ່ວງລະ 3 ຊົ່ວໂມງ ແລະ ຄຳນວນສະເພາະຊ່ວງທີ່ມີອໍເດີ", hourlyTrend: "ຮູບແບບຍອດຂາຍຕະຫຼອດມື້",
-	profitTab: "ກຳໄລ", stockTab: "ສະຕັອກ", estimatedProfit: "ກຳໄລຂັ້ນຕົ້ນໂດຍປະມານ", knownCost: "ຕົ້ນທຶນທີ່ຮູ້", margin: "ອັດຕາກຳໄລ", costCoverage: "ຂໍ້ມູນຕົ້ນທຶນຄົບ", missingCost: "ຍອດຂາຍທີ່ບໍ່ມີຕົ້ນທຶນ", inventoryValue: "ມູນຄ່າສະຕັອກໂດຍປະມານ", outOfStock: "ສິນຄ້າໝົດ", lowStock: "ສະຕັອກຕ່ຳ", negativeStock: "ສະຕັອກຕິດລົບ", stockProducts: "ສິນຄ້າທີ່ຄວນເພີ່ມສະຕັອກ",
+	profitTab: "ກຳໄລ", stockTab: "ສະຕັອກ", purchasingTab: "ການຈັດຊື້", totalSpend: "ຍອດຮັບສິນຄ້າ", goodsCost: "ຄ່າສິນຄ້າ", extraCost: "ຄ່າຂົນສົ່ງ ແລະ ຄ່າອື່ນໆ", receivedQty: "ຈຳນວນທີ່ຮັບ", purchaseOrders: "ໃບສັ່ງຊື້ທີ່ຮັບແລ້ວ", period: "ຊ່ວງຂໍ້ມູນ", perStoreBusinessDay: "ແຕ່ລະຮ້ານໃຊ້ຮອບວັນເຮັດວຽກຂອງຕົນ", sharedBusinessDay: "ທຸກຮ້ານໃຊ້ຈຸດເລີ່ມວັນດຽວກັນ", calendarDay: "ຮວມທຸກຮ້ານຕາມວັນປະຕິທິນ", storeBusinessDay: "ອີງຕາມວັນເຮັດວຽກຂອງຮ້ານ", estimatedProfit: "ກຳໄລຂັ້ນຕົ້ນໂດຍປະມານ", knownCost: "ຕົ້ນທຶນທີ່ຮູ້", margin: "ອັດຕາກຳໄລ", costCoverage: "ຂໍ້ມູນຕົ້ນທຶນຄົບ", missingCost: "ຍອດຂາຍທີ່ບໍ່ມີຕົ້ນທຶນ", inventoryValue: "ມູນຄ່າສະຕັອກໂດຍປະມານ", outOfStock: "ສິນຄ້າໝົດ", lowStock: "ສະຕັອກຕ່ຳ", negativeStock: "ສະຕັອກຕິດລົບ", stockProducts: "ສິນຄ້າທີ່ຄວນເພີ່ມສະຕັອກ",
 } : locale.value === "en" ? {
 	title: "Business overview", hint: "Combined sales and orders across all stores", allStores: "All stores",
 	today: "Today", sevenDays: "7 days", thirtyDays: "30 days", thisMonth: "This month", custom: "Custom", apply: "Apply", reload: "Reload",
@@ -41,7 +45,7 @@ const copy = computed(() => locale.value === "lo" ? {
 	salesTrend: "Sales trend", paymentMix: "Payment mix", storeComparison: "Store comparison", store: "Store", noData: "No data for this period", previous: "vs previous period", view: "View store",
 	overviewTab: "Overview", productsTab: "Products", promotionsTab: "Promotions", topProducts: "Top products", quantity: "Quantity", promotionUsage: "Promotion performance", bills: "Bills", applications: "Applications", giftCost: "Gift cost",
 	salesTimeTab: "Sales times", salesByTime: "Sales by day and hour", busiest: "Busiest period", quietest: "Quietest active period", activeOnly: "Summarized into 3-hour blocks and calculated only from periods with orders", hourlyTrend: "Sales pattern throughout the day",
-	profitTab: "Profit", stockTab: "Stock", estimatedProfit: "Estimated gross profit", knownCost: "Known cost", margin: "Margin", costCoverage: "Cost coverage", missingCost: "Sales without cost data", inventoryValue: "Estimated inventory value", outOfStock: "Out of stock", lowStock: "Low stock", negativeStock: "Negative stock", stockProducts: "Products to restock",
+	profitTab: "Profit", stockTab: "Stock", purchasingTab: "Purchasing", totalSpend: "Received stock spend", goodsCost: "Goods cost", extraCost: "Shipping and other costs", receivedQty: "Quantity received", purchaseOrders: "Received purchase orders", period: "Data period", perStoreBusinessDay: "Each store uses its own business day", sharedBusinessDay: "All stores use the same business-day start", calendarDay: "All stores combined by calendar day", storeBusinessDay: "Uses this store’s business day", estimatedProfit: "Estimated gross profit", knownCost: "Known cost", margin: "Margin", costCoverage: "Cost coverage", missingCost: "Sales without cost data", inventoryValue: "Estimated inventory value", outOfStock: "Out of stock", lowStock: "Low stock", negativeStock: "Negative stock", stockProducts: "Products to restock",
 } : {
 	title: "ภาพรวมธุรกิจ", hint: "รวมยอดขายและออเดอร์ของทุกร้าน", allStores: "ทุกร้าน",
 	today: "วันนี้", sevenDays: "7 วัน", thirtyDays: "30 วัน", thisMonth: "เดือนนี้", custom: "กำหนดเอง", apply: "ใช้ตัวกรอง", reload: "โหลดใหม่",
@@ -49,11 +53,11 @@ const copy = computed(() => locale.value === "lo" ? {
 	salesTrend: "แนวโน้มยอดขาย", paymentMix: "สัดส่วนการชำระ", storeComparison: "เปรียบเทียบร้าน", store: "ร้าน", noData: "ยังไม่มีข้อมูลในช่วงนี้", previous: "เทียบช่วงก่อน", view: "ดูร้าน",
 	overviewTab: "ภาพรวม", productsTab: "สินค้า", promotionsTab: "โปรโมชัน", topProducts: "สินค้าขายดี", quantity: "จำนวน", promotionUsage: "ผลการใช้โปรโมชัน", bills: "บิล", applications: "ครั้งที่ใช้", giftCost: "ต้นทุนของแถม",
 	salesTimeTab: "ช่วงเวลาขาย", salesByTime: "ยอดขายตามวันและเวลา", busiest: "ช่วงขายดีที่สุด", quietest: "ช่วงยอดขายเบา", activeOnly: "สรุปเป็นช่วงละ 3 ชั่วโมง และคำนวณเฉพาะช่วงที่มีออเดอร์", hourlyTrend: "รูปแบบยอดขายตลอดทั้งวัน",
-	profitTab: "กำไร", stockTab: "สต๊อก", estimatedProfit: "กำไรขั้นต้นโดยประมาณ", knownCost: "ต้นทุนที่ทราบ", margin: "อัตรากำไร", costCoverage: "ข้อมูลต้นทุนครบ", missingCost: "ยอดขายที่ไม่มีข้อมูลต้นทุน", inventoryValue: "มูลค่าสต๊อกโดยประมาณ", outOfStock: "สินค้าหมด", lowStock: "สต๊อกต่ำ", negativeStock: "สต๊อกติดลบ", stockProducts: "สินค้าที่ควรเติมสต๊อก",
+	profitTab: "กำไร", stockTab: "สต๊อก", purchasingTab: "การจัดซื้อ", totalSpend: "ยอดรับสินค้า", goodsCost: "ค่าสินค้า", extraCost: "ค่าขนส่งและค่าใช้จ่ายอื่น", receivedQty: "จำนวนที่รับ", purchaseOrders: "ใบสั่งซื้อที่รับแล้ว", period: "ช่วงข้อมูล", perStoreBusinessDay: "แต่ละร้านใช้รอบวันทำการของร้านเอง", sharedBusinessDay: "ทุกร้านใช้เวลาเริ่มวันทำการเดียวกัน", calendarDay: "รวมทุกร้านตามวันปฏิทิน", storeBusinessDay: "อิงตามวันทำการของร้านที่เลือก", estimatedProfit: "กำไรขั้นต้นโดยประมาณ", knownCost: "ต้นทุนที่ทราบ", margin: "อัตรากำไร", costCoverage: "ข้อมูลต้นทุนครบ", missingCost: "ยอดขายที่ไม่มีข้อมูลต้นทุน", inventoryValue: "มูลค่าสต๊อกโดยประมาณ", outOfStock: "สินค้าหมด", lowStock: "สต๊อกต่ำ", negativeStock: "สต๊อกติดลบ", stockProducts: "สินค้าที่ควรเติมสต๊อก",
 });
 
 const preset = ref("7d");
-const activeTab = ref<"overview" | "products" | "promotions" | "sales-time" | "profit" | "stock">("overview");
+const activeTab = ref<"overview" | "products" | "promotions" | "sales-time" | "profit" | "stock" | "purchasing">("overview");
 const selectedStoreId = ref("");
 const dateFrom = ref("");
 const dateTo = ref("");
@@ -91,6 +95,24 @@ function money(value: number) {
 	}).format(value);
 }
 function number(value: number) { return new Intl.NumberFormat().format(value); }
+const periodRangeText = computed(() => {
+	const data = dashboard.value;
+	if (!data) return "";
+	if (data.period_basis === "per_store_business_day") return `${copy.value.period}: ${copy.value.perStoreBusinessDay}`;
+	if (!data.period.from || !data.period.to) return "";
+	const language = locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-US";
+	const format = (value: string) => new Date(value).toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
+	const end = new Date(new Date(data.period.to).getTime() - 1).toISOString();
+	const basis = data.period_basis === "store_business_day" ? copy.value.storeBusinessDay
+		: data.period_basis === "shared_business_day" ? copy.value.sharedBusinessDay
+		: copy.value.calendarDay;
+	return `${copy.value.period}: ${format(data.period.from)} – ${format(end)} · ${basis}`;
+});
+const perStorePeriods = computed(() => (dashboard.value?.periods_by_store || []).map((period) => {
+	const language = locale.value === "lo" ? "lo-LA" : locale.value === "th" ? "th-TH" : "en-US";
+	const format = (value: string) => new Date(value).toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
+	return { name: period.name, range: `${format(period.from)} – ${format(new Date(new Date(period.to).getTime() - 1).toISOString())}` };
+}));
 function comparisonText(item?: Comparison) {
 	if (!item?.available || item.value === null) return "—";
 	return `${item.value >= 0 ? "+" : ""}${item.value.toFixed(1)}%`;
@@ -260,19 +282,31 @@ onMounted(loadDashboard);
 				<section class="rounded-md border border-neutral-200 bg-white p-4 shadow-sm">
 					<div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
 						<div><h1 class="text-lg font-semibold text-stone-950">{{ copy.title }}</h1><p class="mt-1 text-sm text-stone-500">{{ copy.hint }}</p></div>
-						<div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_150px_auto_auto_auto]">
-							<select v-model="selectedStoreId" class="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm" @change="loadDashboard">
+						<div class="grid min-w-0 gap-2 sm:grid-cols-2 xl:ml-auto" :class="preset === 'custom' ? 'xl:grid-cols-[180px_160px_360px_auto]' : 'xl:grid-cols-[180px_160px]'">
+							<div class="relative min-w-0">
+								<select v-model="selectedStoreId" :aria-label="copy.allStores" class="h-11 w-full appearance-none rounded-md border border-neutral-200 bg-white py-2 ps-4 pe-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @change="loadDashboard">
 								<option value="">{{ copy.allStores }}</option>
 								<option v-for="store in dashboard?.store_options || []" :key="store.id" :value="store.id">{{ store.name }}</option>
-							</select>
-							<select v-model="preset" class="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm" @change="preset !== 'custom' && loadDashboard()">
+								</select>
+								<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
+							</div>
+							<div class="relative min-w-0">
+								<select v-model="preset" :aria-label="copy.custom" class="h-11 w-full appearance-none rounded-md border border-neutral-200 bg-white py-2 ps-4 pe-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" @change="preset !== 'custom' && loadDashboard()">
 								<option value="today">{{ copy.today }}</option><option value="7d">{{ copy.sevenDays }}</option><option value="30d">{{ copy.thirtyDays }}</option><option value="this_month">{{ copy.thisMonth }}</option><option value="custom">{{ copy.custom }}</option>
-							</select>
-							<input v-if="preset === 'custom'" v-model="dateFrom" type="date" class="rounded-md border border-neutral-200 px-3 py-2 text-sm">
-							<input v-if="preset === 'custom'" v-model="dateTo" type="date" class="rounded-md border border-neutral-200 px-3 py-2 text-sm">
-							<AppButton v-if="preset === 'custom'" size="md" @click="loadDashboard">{{ copy.apply }}</AppButton>
+								</select>
+								<UIcon name="i-heroicons-chevron-up-down" class="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
+							</div>
+							<AppDateRangePicker
+								v-if="preset === 'custom'"
+								v-model:from="dateFrom"
+								v-model:to="dateTo"
+								:show-labels="false"
+								class="self-end sm:col-span-2 xl:col-span-1"
+							/>
+							<AppButton v-if="preset === 'custom'" color="primary" size="md" class="h-11 justify-center px-5" @click="loadDashboard">{{ copy.apply }}</AppButton>
 						</div>
 					</div>
+					<div v-if="dashboard" class="mt-3 text-xs text-stone-500"><p>{{ periodRangeText }}</p><div v-if="dashboard.period_basis === 'per_store_business_day'" class="mt-1 flex flex-wrap gap-x-4 gap-y-1"><span v-for="item in perStorePeriods" :key="item.name"><b class="font-medium text-stone-700">{{ item.name }}</b> · {{ item.range }}</span></div></div>
 				</section>
 
 				<div v-if="loading" class="min-h-[420px] rounded-md border border-neutral-200 bg-white"><AppInlineLoadingBar container-class="bg-neutral-100" /></div>
@@ -285,6 +319,7 @@ onMounted(loadDashboard);
 						<AppButton size="sm" :variant="activeTab === 'sales-time' ? 'solid' : 'ghost'" @click="activeTab = 'sales-time'">{{ copy.salesTimeTab }}</AppButton>
 						<AppButton size="sm" :variant="activeTab === 'profit' ? 'solid' : 'ghost'" @click="activeTab = 'profit'">{{ copy.profitTab }}</AppButton>
 						<AppButton size="sm" :variant="activeTab === 'stock' ? 'solid' : 'ghost'" @click="activeTab = 'stock'">{{ copy.stockTab }}</AppButton>
+						<AppButton size="sm" :variant="activeTab === 'purchasing' ? 'solid' : 'ghost'" @click="activeTab = 'purchasing'">{{ copy.purchasingTab }}</AppButton>
 					</div>
 
 					<template v-if="activeTab === 'overview'">
@@ -360,18 +395,29 @@ onMounted(loadDashboard);
 						<UCard><div class="overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.store }}</th><th class="p-3 text-right">{{ copy.revenue }}</th><th class="p-3 text-right">{{ copy.knownCost }}</th><th class="p-3 text-right">{{ copy.estimatedProfit }}</th><th class="p-3 text-right">{{ copy.margin }}</th><th class="p-3 text-right">{{ copy.costCoverage }}</th></tr></thead><tbody><tr v-for="item in dashboard.profitability" :key="item.id" class="border-t border-stone-100"><td class="p-3 font-semibold">{{ item.name }}</td><td class="p-3 text-right">{{ money(item.revenue) }}</td><td class="p-3 text-right">{{ money(item.known_cost) }}</td><td class="p-3 text-right font-semibold">{{ money(item.gross_profit) }}</td><td class="p-3 text-right">{{ item.gross_margin_percent.toFixed(1) }}%</td><td class="p-3 text-right">{{ item.cost_coverage_percent.toFixed(1) }}%</td></tr></tbody></table></div></UCard>
 					</template>
 
-					<template v-else>
+					<template v-else-if="activeTab === 'stock'">
 						<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
 							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">{{ copy.inventoryValue }}</p><strong class="mt-2 block text-xl">{{ money(inventorySummary.value) }}</strong></div>
 							<div class="rounded-md border border-rose-200 bg-rose-50 p-4"><p class="text-xs text-rose-700">{{ copy.outOfStock }}</p><strong class="mt-2 block text-xl">{{ number(inventorySummary.out) }}</strong></div>
 							<div class="rounded-md border border-amber-200 bg-amber-50 p-4"><p class="text-xs text-amber-700">{{ copy.lowStock }}</p><strong class="mt-2 block text-xl">{{ number(inventorySummary.low) }}</strong></div>
 							<div class="rounded-md border border-red-200 bg-red-50 p-4"><p class="text-xs text-red-700">{{ copy.negativeStock }}</p><strong class="mt-2 block text-xl">{{ number(inventorySummary.negative) }}</strong></div>
+							<div class="rounded-md border border-amber-200 bg-amber-50 p-4"><p class="text-xs text-amber-700">{{ locale === 'th' ? 'ปรับลดสต็อกด้วยมือ' : locale === 'lo' ? 'ຕັດສະຕັອກດ້ວຍມື' : 'Manual stock write-offs' }}</p><strong class="mt-2 block text-xl">{{ money(dashboard.stock_adjustments.cost) }}</strong><p class="mt-1 text-xs text-amber-700">{{ number(dashboard.stock_adjustments.quantity) }} · {{ number(dashboard.stock_adjustments.movement_count) }}</p></div>
 						</div>
 						<UCard>
 							<h2 class="font-semibold">{{ copy.stockProducts }}</h2>
 							<div v-if="dashboard.low_stock.length" class="mt-4 overflow-x-auto"><table class="w-full min-w-[680px] text-sm"><thead class="bg-stone-50 text-left text-xs text-stone-500"><tr><th class="p-3">{{ copy.productsTab }}</th><th class="p-3">{{ copy.store }}</th><th class="p-3 text-right">{{ copy.quantity }}</th><th class="p-3 text-right">{{ copy.lowStock }}</th></tr></thead><tbody><tr v-for="item in dashboard.low_stock" :key="item.id" class="border-t border-stone-100"><td class="p-3"><p class="font-semibold">{{ item.name }}</p><p class="text-xs text-stone-500">{{ item.sku }}</p></td><td class="p-3">{{ item.store_name }}</td><td class="p-3 text-right" :class="item.available_base < 0 ? 'text-red-600' : 'text-amber-700'">{{ number(item.available_base) }}</td><td class="p-3 text-right">{{ number(item.threshold) }}</td></tr></tbody></table></div>
 							<p v-else class="py-12 text-center text-sm text-stone-500">{{ copy.noData }}</p>
 						</UCard>
+					</template>
+
+					<template v-else-if="activeTab === 'purchasing'">
+						<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">{{ copy.totalSpend }}</p><strong class="mt-2 block text-xl">{{ money(dashboard.purchasing.total_spend) }}</strong></div>
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">{{ copy.goodsCost }}</p><strong class="mt-2 block text-xl">{{ money(dashboard.purchasing.goods_cost) }}</strong></div>
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">{{ copy.extraCost }}</p><strong class="mt-2 block text-xl">{{ money(dashboard.purchasing.shipping_cost + dashboard.purchasing.other_cost) }}</strong></div>
+							<div class="rounded-md border border-neutral-200 bg-white p-4"><p class="text-xs text-stone-500">{{ copy.purchaseOrders }}</p><strong class="mt-2 block text-xl">{{ number(dashboard.purchasing.po_count) }}</strong><p class="mt-1 text-xs text-stone-500">{{ copy.receivedQty }} {{ number(dashboard.purchasing.qty_received) }}</p></div>
+						</div>
+						<UCard><p class="text-sm text-stone-600">{{ copy.totalSpend }} {{ dashboard.period.date_from }} – {{ dashboard.period.date_to }}</p></UCard>
 					</template>
 				</template>
 			</div>

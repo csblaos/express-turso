@@ -46,6 +46,7 @@ export const LEGACY_TO_ACTION_PERMISSION_MAP: Record<string, string[]> = {
 		"system_admin.dashboard.view",
 		"system_admin.monitoring.view",
 		"system_admin.security.view",
+		"system_admin.reports.view",
 		"system_admin.clients.view",
 		"system_admin.clients.create",
 		"system_admin.clients.update",

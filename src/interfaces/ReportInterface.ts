@@ -240,6 +240,10 @@ export class ReportInterface{
 			is_base:item.currency===baseCurrency,
 			bill_count:item.bill_count,
 			amount_base:item.amount_base,
+			// Keep all three figures separate. A foreign cash tender can exceed the
+			// sale total, with the difference returned as change in the base currency.
+			tendered_base:item.tendered_base,
+			change_base:Math.max(0,item.tendered_base-item.amount_base),
 			// Only meaningful for a currency that was actually converted.
 			amount_foreign:item.currency===baseCurrency?null:item.tendered_foreign,
 			// Weighted by what was taken, not the rate set today: a rate edited
@@ -381,7 +385,8 @@ export class ReportInterface{
 			{sql:`SELECT
 				COALESCE(SUM(CASE WHEN m.qty_base>0 THEN m.qty_base ELSE 0 END),0) in_qty,
 				COALESCE(SUM(CASE WHEN m.type='SALE_OUT' THEN -m.qty_base ELSE 0 END),0) sold_qty,
-				COALESCE(SUM(CASE WHEN m.type!='SALE_OUT' AND m.qty_base<0 THEN -m.qty_base ELSE 0 END),0) out_qty
+				COALESCE(SUM(CASE WHEN m.type!='SALE_OUT' AND m.qty_base<0 THEN -m.qty_base ELSE 0 END),0) out_qty,
+				COALESCE(SUM(CASE WHEN m.type LIKE 'ADJUSTMENT%' AND m.qty_base<0 THEN COALESCE(m.total_cost_base,0) ELSE 0 END),0) manual_out_cost
 				FROM inventory_movements m WHERE m.store_id=? AND m.created_at>=? AND m.created_at<?`,args:[storeId,periods.current.from,periods.current.to]},
 			{sql:"SELECT COALESCE(currency,'LAK') currency FROM stores WHERE id=?",args:[storeId]},
 		],"read");
@@ -399,7 +404,7 @@ export class ReportInterface{
 				inventory_value:number(value.inventory_value),product_count:number(value.product_count),
 				tracked_count:number(counts.tracked_count),ready_count:number(counts.ready_count),
 				low_count:number(counts.low_count),out_count:number(counts.out_count),negative_count:number(counts.negative_count),
-				received_qty:number(movement.in_qty),sold_qty:number(movement.sold_qty),removed_qty:number(movement.out_qty),
+				received_qty:number(movement.in_qty),sold_qty:number(movement.sold_qty),removed_qty:number(movement.out_qty),manual_removed_cost:number(movement.manual_out_cost),
 			},
 			categories:(results[2].rows as any[]).map(item=>({ id:String(item.id),name:String(item.name),product_count:number(item.product_count),quantity:number(item.quantity),value:number(item.value) })),
 			top_products:(results[3].rows as any[]).map(item=>({ id:String(item.id),name:String(item.name),sku:String(item.sku||""),on_hand_base:number(item.on_hand_base),unit_cost:number(item.unit_cost),value:number(item.value) })),

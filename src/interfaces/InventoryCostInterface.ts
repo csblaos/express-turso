@@ -120,6 +120,20 @@ export class InventoryCostInterface {
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_cost_layers_store_product_remaining ON inventory_cost_layers (store_id, product_id, qty_base_remaining)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_cost_summaries_store_product ON inventory_cost_summaries (store_id, product_id)");
 
+		// A movement is the audit record for a stock correction. Keep the cost that
+		// was removed at that moment; recalculating it from today's price would make
+		// an old loss change whenever a new PO arrives.
+		const movementColumns = await db.execute("PRAGMA table_info(inventory_movements)");
+		const knownMovementColumns = new Set(movementColumns.rows.map((column) => String(column.name)));
+		for (const [ column, definition ] of [
+			[ "adjustment_reason", "TEXT" ],
+			[ "unit_cost_base", "REAL" ],
+			[ "total_cost_base", "REAL" ],
+			[ "cost_method", "TEXT" ],
+		] as const) {
+			if (!knownMovementColumns.has(column)) await db.execute(`ALTER TABLE inventory_movements ADD COLUMN ${column} ${definition}`);
+		}
+
 		InventoryCostInterface.initialized = true;
 	}
 
@@ -392,6 +406,8 @@ export class InventoryCostInterface {
 			`,
 			args: [ storeId, ...productIds ] as InValue[],
 		});
+		const storeResult = await db.execute({ sql: "SELECT COALESCE(cost_method, 'average') cost_method FROM stores WHERE id = ? LIMIT 1", args: [ storeId ] });
+		const costMethod = String((storeResult.rows[0] as Record<string, unknown> | undefined)?.cost_method || "average").toLowerCase();
 
 		const layersByProduct = new Map<string, Array<{ id: string; remaining: number; unitCost: number }>>();
 		for (const row of layerResult.rows) {
@@ -417,18 +433,18 @@ export class InventoryCostInterface {
 				});
 			}
 
-			// The average has to survive an issue untouched - it only moves when
-			// goods come in - so the cost removed is always quantity x average,
-			// whatever the layers happened to cost.
+			// Average cost is intentionally unchanged on an issue. FIFO, however,
+			// must remove the cost of the layers actually consumed; subtracting the
+			// average there made the remaining stock value disagree with its layers.
 			statements.push({
 				sql: `
 					UPDATE inventory_cost_summaries SET
-						total_cost_base = CASE WHEN (qty_base_on_hand - ?) <= 0 THEN 0 ELSE MAX(total_cost_base - (average_unit_cost_base * ?), 0) END,
+						total_cost_base = CASE WHEN (qty_base_on_hand - ?) <= 0 THEN 0 ELSE MAX(total_cost_base - CASE WHEN ? = 1 THEN ? ELSE average_unit_cost_base * ? END, 0) END,
 						qty_base_on_hand = MAX(qty_base_on_hand - ?, 0),
 						updated_at = ?
 					WHERE store_id = ? AND product_id = ?
 				`,
-				args: [ qtyBase, qtyBase, qtyBase, now, storeId, productId ],
+				args: [ qtyBase, costMethod === "fifo" ? 1 : 0, costBase, qtyBase, qtyBase, now, storeId, productId ],
 			});
 
 			const fromLayers = qtyBase - outstanding;

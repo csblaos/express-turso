@@ -1,5 +1,7 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { randomUUID } from "crypto";
 import { DbConn } from "@connections/DbConn";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
@@ -65,6 +67,17 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 
 type UpdatableStoreKey = (typeof UPDATABLE_FIELDS)[number];
 const ALLOWED_COST_METHODS = new Set([ "average", "fifo" ]);
+
+const ACTIVITY_STORE_FIELDS = new Set<UpdatableStoreKey>([
+	"name", "address", "phone_number", "store_type", "currency", "supported_currencies",
+	"vat_enabled", "vat_rate", "vat_mode", "cost_method", "out_stock_threshold",
+	"low_stock_threshold", "allow_negative_stock", "receipt_language", "pickup_queue_enabled",
+	"business_day_start_minutes", "customer_display_enabled", "customer_display_banner_enabled",
+]);
+
+function activitySnapshot(source: Partial<Store>, keys: UpdatableStoreKey[]): Record<string, unknown> {
+	return Object.fromEntries(keys.map((key) => [ key, source[key] ?? null ]));
+}
 
 function pickUpdateFields(input: Record<string, unknown>): Partial<Store> {
 	const result: Partial<Record<UpdatableStoreKey, Store[UpdatableStoreKey]>> = {};
@@ -196,16 +209,38 @@ export class StoreComponent {
 		}
 
 		const costMethodChanged = typeof updateData.cost_method === "string" && updateData.cost_method !== existing.cost_method;
+		const changedActivityFields = (Object.keys(updateData) as UpdatableStoreKey[])
+			.filter((key) => ACTIVITY_STORE_FIELDS.has(key))
+			.filter((key) => existing[key] !== updateData[key]);
+		// DDL is intentionally completed before opening the write transaction.
+		if (changedActivityFields.length) await AuditEventInterface.ensureTable();
 		const db = DbConn.getClient();
 		const transaction = await db.transaction("write");
 		try {
 			const updated = await StoreInterface.update(id, updateData, transaction);
+			if (updateData.business_day_start_minutes !== undefined) {
+				await transaction.execute({ sql: "UPDATE stores SET business_day_start_confirmed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?", args: [ id ] });
+			}
 			if (costMethodChanged) {
 				await StoreCostMethodHistoryInterface.insert({
 					store_id: id,
 					cost_method: updated.cost_method,
 					actor_user_id: actor.userId,
 				}, transaction);
+			}
+			if (changedActivityFields.length) {
+				await transaction.execute(AuditEventInterface.buildInsertStatement(randomUUID(), {
+					scope: "settings",
+					store_id: id,
+					actor_user_id: actor.userId,
+					actor_role: actor.systemRole || null,
+					action: "store.settings_updated",
+					entity_type: "store",
+					entity_id: id,
+					metadata: { changed_fields: changedActivityFields },
+					before: activitySnapshot(existing, changedActivityFields),
+					after: activitySnapshot(updated, changedActivityFields),
+				}, new Date().toISOString()));
 			}
 			await transaction.commit();
 			return updated;

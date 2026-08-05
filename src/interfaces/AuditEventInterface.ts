@@ -11,6 +11,8 @@ export type AuditEventFilters = {
 	result?: string;
 	entityType?: string;
 	actorRole?: string;
+	from?: string;
+	to?: string;
 	excludePrivilegedActors?: boolean;
 	page?: number;
 	limit?: number;
@@ -203,6 +205,19 @@ export class AuditEventInterface {
 		if (filters.actorRole) {
 			where.push("actor_role = ?");
 			args.push(filters.actorRole);
+		}
+
+		// Activity dates are business-facing calendar dates in Laos time. Use an
+		// exclusive end so the full final day is included without relying on 23:59.
+		if (filters.from) {
+			where.push("occurred_at >= ?");
+			args.push(new Date(`${filters.from}T00:00:00+07:00`).toISOString());
+		}
+		if (filters.to) {
+			const end = new Date(`${filters.to}T00:00:00+07:00`);
+			end.setUTCDate(end.getUTCDate() + 1);
+			where.push("occurred_at < ?");
+			args.push(end.toISOString());
 		}
 
 		if (filters.excludePrivilegedActors) {

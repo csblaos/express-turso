@@ -5,10 +5,12 @@ import { SystemConfigController } from "@controllers/SystemConfigController";
 import { SystemAdminDashboardController } from "@controllers/SystemAdminDashboardController";
 import { SystemAdminMonitoringController } from "@controllers/SystemAdminMonitoringController";
 import { SystemAdminSecurityController } from "@controllers/SystemAdminSecurityController";
+import { SystemAdminReportController } from "@controllers/SystemAdminReportController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
 import { RoleScopeMiddleware } from "@middlewares/RoleScopeMiddleware";
 import SystemAdminClientValidator from "@validators/SystemAdminClientValidator";
+import SystemAdminReportValidator from "@validators/SystemAdminReportValidator";
 import SystemConfigValidator from "@validators/SystemConfigValidator";
 
 export class SystemAdminClientRouter {
@@ -20,6 +22,8 @@ export class SystemAdminClientRouter {
 		this.router.get("/dashboard", PermissionMiddleware.require("system_admin.dashboard.view"), SystemAdminDashboardController.snapshot);
 		this.router.get("/monitoring", PermissionMiddleware.require("system_admin.monitoring.view"), SystemAdminMonitoringController.snapshot);
 		this.router.get("/security", PermissionMiddleware.require("system_admin.security.view"), SystemAdminSecurityController.snapshot);
+		this.router.get("/reports", PermissionMiddleware.require("system_admin.reports.view"), SystemAdminReportValidator.list, SystemAdminReportController.list);
+		this.router.get("/reports/:storeId", PermissionMiddleware.require("system_admin.reports.view"), SystemAdminReportValidator.detail, SystemAdminReportController.detail);
 		this.router.get("/config", PermissionMiddleware.require("system_admin.config.update"), SystemConfigController.get);
 		this.router.put("/config", PermissionMiddleware.require("system_admin.config.update"), SystemConfigValidator.update, SystemConfigController.update);
 		this.router.get("/clients", PermissionMiddleware.require("system_admin.clients.view"), SystemAdminClientValidator.list, SystemAdminClientController.list);

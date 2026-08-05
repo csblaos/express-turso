@@ -5,7 +5,8 @@
   "scripts": {
     "init": "node setup.mjs init",
     "reset": "node setup.mjs reset",
-    "check": "node setup.mjs check"
+    "check": "node setup.mjs check",
+    "ui": "node setup-ui.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.15.15",

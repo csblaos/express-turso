@@ -20,6 +20,7 @@ type ApiEnvelope<T> = {
 		ref_type: string;
 		ref_id: string | null;
 		note: string | null;
+		adjustment_reason: string | null;
 		created_by: string | null;
 		created_by_name: string | null;
 		created_at: string;
@@ -36,19 +37,19 @@ const copy = computed(() => appLocale.value === "lo" ? {
 	search: "ຄົ້ນຫາຊື່ສິນຄ້າ, SKU, barcode, ຜູ້ດຳເນີນການ ຫຼື ໝາຍເຫດ", clearSearch: "ລ້າງຄຳຄົ້ນ", reload: "ໂຫຼດໃໝ່", filters: "ຕົວກອງ", period: "ຊ່ວງເວລາ", today: "ມື້ນີ້", thisWeek: "ອາທິດນີ້", lastWeek: "ອາທິດກ່ອນ", thisMonth: "ເດືອນນີ້", lastMonth: "ເດືອນກ່ອນ", clear: "ລ້າງ",
 	type: "ປະເພດ", allTypes: "ທຸກປະເພດ", adjustmentAll: "ປັບສະຕັອກ (ທັງໝົດ)", stockIn: "ເພີ່ມເຂົ້າ", stockOut: "ຕັດອອກ", stockSet: "ຕັ້ງຄ່າໃໝ່", adjustment: "ປັບສະຕັອກ", fromDate: "ຈາກວັນທີ", toDate: "ເຖິງວັນທີ", selectDate: "ເລືອກວັນທີ", startDate: "ເລືອກວັນເລີ່ມ", endDate: "ເລືອກວັນສິ້ນສຸດ", pickDate: "ແຕະວັນທີທີ່ຕ້ອງການ", close: "ປິດ",
 	latest: "ດຶງລາຍການຫຼ້າສຸດ", movements: "ລາຍການເຄື່ອນໄຫວ", movementsHint: "ສະແດງລາຍການຫຼ້າສຸດກ່ອນ ແລະ ຄົ້ນຫາ/ກອງໄດ້ຈາກດ້ານເທິງ", items: "ລາຍການ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", range: (start: number, end: number, total: number) => `${start}-${end} ຈາກ ${total} ລາຍການ`, page: (page: number, total: number) => `ໜ້າ ${page} / ${total}`,
-	loadFailed: "ໂຫຼດປະຫວັດສະຕັອກບໍ່ສຳເລັດ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດສະຕັອກ", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", product: "ສິນຄ້າ", movementType: "ປະເພດການເຄື່ອນໄຫວ", quantity: "ຈຳນວນ", actor: "ຜູ້ດຳເນີນການ", note: "ໝາຍເຫດ", reference: "ເອກະສານອ້າງອີງ", unknownUser: "ບໍ່ພົບຊື່ຜູ້ໃຊ້", system: "ລະບົບ", purchaseOrder: "PO ສັ່ງຊື້", manualAdjustment: "ປັບສະຕັອກດ້ວຍມື", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ",
+	loadFailed: "ໂຫຼດປະຫວັດສະຕັອກບໍ່ສຳເລັດ", retry: "ລອງໃໝ່", empty: "ຍັງບໍ່ມີປະຫວັດສະຕັອກ", emptyHint: "ລອງປ່ຽນຕົວກອງ ຫຼື ຊ່ວງເວລາ", time: "ເວລາ", product: "ສິນຄ້າ", movementType: "ປະເພດການເຄື່ອນໄຫວ", quantity: "ຈຳນວນ", actor: "ຜູ້ດຳເນີນການ", note: "ລາຍລະອຽດ", reference: "ແຫຼ່ງທີ່ມາ", unknownUser: "ບໍ່ພົບຊື່ຜູ້ໃຊ້", system: "ລະບົບ", purchaseOrder: "ຮັບສິນຄ້າ (PO)", manualAdjustment: "ປັບສະຕັອກດ້ວຍມື", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ຖັດໄປ",
 } : appLocale.value === "en" ? {
 	sidebarTitle: "Stock history", sidebarDescription: "Review detailed stock movements for auditing", description: "Search and review historical stock movements",
 	search: "Search product name, SKU, barcode, operator, or note", clearSearch: "Clear search", reload: "Reload", filters: "Filters", period: "Period", today: "Today", thisWeek: "This week", lastWeek: "Last week", thisMonth: "This month", lastMonth: "Last month", clear: "Clear",
 	type: "Type", allTypes: "All types", adjustmentAll: "Stock adjustment (all)", stockIn: "Stock in", stockOut: "Stock out", stockSet: "Set stock", adjustment: "Stock adjustment", fromDate: "From date", toDate: "To date", selectDate: "Select date", startDate: "Select start date", endDate: "Select end date", pickDate: "Tap a date to select it", close: "Close",
 	latest: "Latest records", movements: "Stock movements", movementsHint: "Newest records first. Search or filter above.", items: "items", noData: "No data yet", range: (start: number, end: number, total: number) => `${start}-${end} of ${total} items`, page: (page: number, total: number) => `Page ${page} / ${total}`,
-	loadFailed: "Unable to load stock history", retry: "Try again", empty: "No stock history yet", emptyHint: "Try changing the filters or date range.", time: "Time", product: "Product", movementType: "Movement type", quantity: "Quantity", actor: "Operator", note: "Note", reference: "Reference", unknownUser: "Unknown user", system: "System", purchaseOrder: "Purchase order", manualAdjustment: "Manual stock adjustment", perPage: "Per page", previous: "Previous", next: "Next",
+	loadFailed: "Unable to load stock history", retry: "Try again", empty: "No stock history yet", emptyHint: "Try changing the filters or date range.", time: "Time", product: "Product", movementType: "Movement type", quantity: "Quantity", actor: "Operator", note: "Details", reference: "Source", unknownUser: "Unknown user", system: "System", purchaseOrder: "Purchase receipt (PO)", manualAdjustment: "Manual stock adjustment", perPage: "Per page", previous: "Previous", next: "Next",
 } : {
 	sidebarTitle: "ประวัติสต็อก", sidebarDescription: "ดูรายการเคลื่อนไหวสต็อกแบบละเอียดสำหรับตรวจสอบย้อนหลัง", description: "ค้นหาและดูรายการเคลื่อนไหวสต็อกย้อนหลัง",
 	search: "ค้นหาชื่อสินค้า, SKU, barcode, ผู้ทำ หรือหมายเหตุ", clearSearch: "ล้างคำค้น", reload: "รีโหลด", filters: "ตัวกรอง", period: "ช่วงเวลา", today: "วันนี้", thisWeek: "สัปดาห์นี้", lastWeek: "สัปดาห์ที่แล้ว", thisMonth: "เดือนนี้", lastMonth: "เดือนที่แล้ว", clear: "ล้าง",
 	type: "ประเภท", allTypes: "ทุกประเภท", adjustmentAll: "ปรับสต็อก (ทั้งหมด)", stockIn: "เพิ่มเข้า", stockOut: "ตัดออก", stockSet: "ตั้งค่าใหม่", adjustment: "ปรับสต็อก", fromDate: "จากวันที่", toDate: "ถึงวันที่", selectDate: "เลือกวันที่", startDate: "เลือกเริ่มวันที่", endDate: "เลือกสิ้นวันที่", pickDate: "แตะวันที่ที่ต้องการเลือก", close: "ปิด",
 	latest: "ดึงรายการล่าสุด", movements: "รายการเคลื่อนไหว", movementsHint: "แสดงเรียงล่าสุดก่อน และรองรับค้นหา/กรองจากด้านบน", items: "รายการ", noData: "ยังไม่มีข้อมูล", range: (start: number, end: number, total: number) => `${start}-${end} จาก ${total} รายการ`, page: (page: number, total: number) => `หน้า ${page} / ${total}`,
-	loadFailed: "โหลดประวัติสต็อกไม่สำเร็จ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติสต็อก", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", product: "สินค้า", movementType: "ประเภทการเคลื่อนไหว", quantity: "จำนวน", actor: "ผู้ทำ", note: "หมายเหตุ", reference: "เอกสารอ้างอิง", unknownUser: "ไม่พบชื่อผู้ใช้", system: "ระบบ", purchaseOrder: "PO สั่งซื้อ", manualAdjustment: "ปรับสต็อกด้วยมือ", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป",
+	loadFailed: "โหลดประวัติสต็อกไม่สำเร็จ", retry: "ลองใหม่", empty: "ยังไม่มีประวัติสต็อก", emptyHint: "ลองเปลี่ยนตัวกรองหรือช่วงเวลา", time: "เวลา", product: "สินค้า", movementType: "ประเภทการเคลื่อนไหว", quantity: "จำนวน", actor: "ผู้ทำ", note: "รายละเอียด", reference: "แหล่งที่มา", unknownUser: "ไม่พบชื่อผู้ใช้", system: "ระบบ", purchaseOrder: "รับสินค้า (PO)", manualAdjustment: "ปรับสต็อกด้วยมือ", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป",
 });
 
 const canViewInventory = computed(() => can("inventory.view"));
@@ -124,6 +125,7 @@ function getMovementTone(type: string) {
 }
 
 function getMovementLabel(type: string) {
+	if (type === "SALE_OUT") return appLocale.value === "lo" ? "ຂາຍອອກ" : appLocale.value === "en" ? "Sale out" : "ขายออก";
 	if (type === "ADJUSTMENT_IN") return copy.value.stockIn;
 	if (type === "ADJUSTMENT_OUT") return copy.value.stockOut;
 	if (type === "ADJUSTMENT_SET") return copy.value.stockSet;
@@ -134,11 +136,28 @@ function getMovementLabel(type: string) {
 function formatReferenceType(refType: string) {
 	if (refType === "purchase_order") return copy.value.purchaseOrder;
 	if (refType === "manual_adjustment") return copy.value.manualAdjustment;
+	if (refType === "order") return appLocale.value === "lo" ? "ຂາຍໜ້າຮ້ານ" : appLocale.value === "en" ? "POS sale" : "ขายหน้าร้าน";
+	if (refType === "restaurant_round") return appLocale.value === "lo" ? "ອໍເດີຮ້ານອາຫານ" : appLocale.value === "en" ? "Restaurant order" : "ออเดอร์ร้านอาหาร";
 	if (!refType) return "-";
 	return refType
 		.replace(/_/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
+}
+
+function getReferenceTone(refType: string) {
+	if (refType === "purchase_order") return "success";
+	if (refType === "manual_adjustment") return "warning";
+	if (refType === "order" || refType === "restaurant_round") return "primary";
+	return "neutral";
+}
+
+function movementDetails(movement: ApiInventoryMovement) {
+	if (movement.adjustment_reason) {
+		const label = appLocale.value === "lo" ? "ເຫດຜົນ" : appLocale.value === "en" ? "Reason" : "เหตุผล";
+		return `${label}: ${movement.adjustment_reason}`;
+	}
+	return movement.note || "-";
 }
 
 function parseDateInputValue(value: string) {
@@ -769,17 +788,10 @@ onMounted(() => {
 												{{ movement.created_by_name || (movement.created_by ? copy.unknownUser : copy.system) }}
 											</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
-											{{ movement.note || "-" }}
+											{{ movementDetails(movement) }}
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
-											<div class="inline-flex flex-col gap-1">
-												<span class="inline-flex w-fit items-center rounded-md bg-white px-2.5 py-1 text-xs font-medium text-stone-700 ring-1 ring-neutral-200">
-													{{ formatReferenceType(movement.ref_type) }}
-												</span>
-												<span v-if="movement.ref_id" class="text-[11px] text-stone-400">
-													ID: {{ movement.ref_id }}
-												</span>
-											</div>
+											<UBadge :color="getReferenceTone(movement.ref_type)" variant="soft" :label="formatReferenceType(movement.ref_type)" />
 										</td>
 									</tr>
 								</tbody>

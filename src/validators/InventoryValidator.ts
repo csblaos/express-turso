@@ -66,6 +66,7 @@ export default class InventoryValidator extends ValidatorMiddleware {
 		mode: z.enum(["increment", "decrement", "set"]),
 		qty_base: finiteNumber,
 		note: z.string().trim().nullish(),
+		adjustment_reason: z.enum(["damaged", "expired", "lost", "count_variance", "internal_use", "other"]).nullish(),
 		created_by: z.string().trim().nullish(),
 	}).superRefine((value, ctx) => {
 		const qty = value.qty_base;

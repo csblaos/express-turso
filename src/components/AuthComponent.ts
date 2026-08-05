@@ -32,6 +32,7 @@ type LogoutInput = {
 
 type UpdateProfileInput = {
 	name: string;
+	username: string;
 };
 
 type ChangePasswordInput = {
@@ -67,6 +68,7 @@ type LoginResponse = {
 		id: string;
 		email: string;
 		name: string;
+		username: string;
 		systemRole: string;
 		mustChangePassword: boolean;
 		uiLocale: string;
@@ -132,6 +134,7 @@ function buildUserSummary(user: User) {
 		id: getUserId(user),
 		email: user.email,
 		name: user.name,
+		username: user.username,
 		systemRole: user.system_role,
 		mustChangePassword: Boolean(user.must_change_password),
 		uiLocale: user.ui_locale || "th",
@@ -582,7 +585,16 @@ export class AuthComponent {
 			throw ApiError.BadRequestError("name is required");
 		}
 
-		const updatedUser = await AuthInterface.updateUserName(getUserId(user), nextName);
+		await AuthInterface.updateUserName(getUserId(user), nextName);
+		let updatedUser: User | null;
+		try {
+			updatedUser = await AuthInterface.updateUsername(getUserId(user), input.username);
+		} catch (error) {
+			if (error instanceof Error && (error.message === "USERNAME_INVALID" || error.message === "USERNAME_TAKEN")) {
+				throw ApiError.BadRequestError(error.message === "USERNAME_TAKEN" ? "username is already in use" : "username must be 3-32 characters: a-z, 0-9, . or _");
+			}
+			throw error;
+		}
 		if (!updatedUser) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.AUTH_INVALID_CREDENTIALS);
 		}

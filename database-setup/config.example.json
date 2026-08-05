@@ -5,12 +5,14 @@
   },
   "systemAdmin": {
     "name": "Platform Operator",
+    "username": "ops",
     "email": "ops@example.com",
     "password": "replace-with-a-strong-password",
     "locale": "lo"
   },
   "superadmin": {
     "name": "Store Owner",
+    "username": "owner",
     "email": "owner@example.com",
     "password": "replace-with-a-different-strong-password",
     "locale": "lo"

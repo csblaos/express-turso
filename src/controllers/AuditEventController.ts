@@ -17,12 +17,16 @@ export class AuditEventController {
 		}
 		const filters: AuditEventFilters = {
 			storeId,
-			excludePrivilegedActors: true,
+			// This is already restricted to the active store workspace. An owner may
+			// also have a system-admin role, but their store activity must be visible.
+			excludePrivilegedActors: false,
 			query: typeof query.query === "string" ? query.query : undefined,
 			scope: typeof query.scope === "string" ? query.scope : undefined,
 			result: typeof query.result === "string" ? query.result : undefined,
 			entityType: typeof query.entity_type === "string" ? query.entity_type : undefined,
 			actorRole: typeof query.actor_role === "string" ? query.actor_role : undefined,
+			from: typeof query.from === "string" ? query.from : undefined,
+			to: typeof query.to === "string" ? query.to : undefined,
 			page: typeof query.page === "number" ? query.page : typeof query.page === "string" ? Number(query.page) : undefined,
 			limit: typeof query.limit === "number" ? query.limit : typeof query.limit === "string" ? Number(query.limit) : undefined,
 		};

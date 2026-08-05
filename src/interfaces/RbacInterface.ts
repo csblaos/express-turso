@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 import bcrypt from "bcryptjs";
 
-import { AuthInterface } from "@interfaces/AuthInterface";
+import { assertUsername, AuthInterface } from "@interfaces/AuthInterface";
 import { DbConn } from "@connections/DbConn";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { Permission } from "@models/Permission";
@@ -57,6 +57,7 @@ type StoreMemberListItem = {
 	store_id: string;
 	user_id: string;
 	name: string;
+	username: string;
 	email: string;
 	system_role: string;
 	ui_locale: string;
@@ -72,6 +73,7 @@ type StoreMemberListItem = {
 type StoreMemberCreateInput = {
 	store_id: string;
 	name: string;
+	username: string;
 	email: string;
 	password: string;
 	role_id?: string;
@@ -107,6 +109,7 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "pos.restaurant.cancel_sent", resource: "pos.restaurant", action: "cancel_sent" },
 	{ key: "pos.restaurant.apply_promotion", resource: "pos.restaurant", action: "apply_promotion" },
 	{ key: "pos.restaurant.print", resource: "pos.restaurant", action: "print" },
+	{ key: "dashboard.view", resource: "dashboard", action: "view" },
 	{ key: "products.read", resource: "products", action: "read" },
 	{ key: "products.view", resource: "products", action: "view" },
 	{ key: "products.create", resource: "products", action: "create" },
@@ -177,6 +180,7 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "system_admin.dashboard.view", resource: "system_admin.dashboard", action: "view" },
 	{ key: "system_admin.monitoring.view", resource: "system_admin.monitoring", action: "view" },
 	{ key: "system_admin.security.view", resource: "system_admin.security", action: "view" },
+	{ key: "system_admin.reports.view", resource: "system_admin.reports", action: "view" },
 	{ key: "system_admin.clients.view", resource: "system_admin.clients", action: "view" },
 	{ key: "system_admin.clients.create", resource: "system_admin.clients", action: "create" },
 	{ key: "system_admin.clients.update", resource: "system_admin.clients", action: "update" },
@@ -197,6 +201,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Owner",
 		permissionKeys: [
 			"pos.create_order",
+			"dashboard.view",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
@@ -242,6 +247,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Manager",
 		permissionKeys: [
 			"pos.create_order",
+			"dashboard.view",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
@@ -280,6 +286,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Cashier",
 		permissionKeys: [
 			"pos.create_order",
+			"dashboard.view",
 			"pos.restaurant.open",
 			"pos.restaurant.send_kitchen",
 			"pos.restaurant.transfer",
@@ -290,6 +297,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 	{
 		name: "Inventory Staff",
 		permissionKeys: [
+			"dashboard.view",
 			"products.view",
 			"inventory.view",
 			"inventory.adjust",
@@ -1159,9 +1167,9 @@ export class RbacInterface {
 		}
 
 		if (params.search?.trim()) {
-			where.push("(LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ?)");
+			where.push("(LOWER(u.name) LIKE ? OR LOWER(u.username) LIKE ? OR LOWER(u.email) LIKE ?)");
 			const keyword = `%${params.search.trim().toLowerCase()}%`;
-			args.push(keyword, keyword);
+			args.push(keyword, keyword, keyword);
 		}
 
 		const result = await db.execute({
@@ -1174,6 +1182,7 @@ export class RbacInterface {
 					sm.created_at,
 					sm.added_by,
 					u.name,
+					u.username,
 					u.email,
 					u.system_role,
 					u.ui_locale,
@@ -1201,6 +1210,7 @@ export class RbacInterface {
 					store_id: String(row.store_id),
 					user_id: String(row.user_id),
 					name: String(row.name),
+					username: String(row.username || ""),
 					email: String(row.email),
 					system_role: String(row.system_role || "staff"),
 					ui_locale: String(row.ui_locale || "th"),
@@ -1252,15 +1262,16 @@ export class RbacInterface {
 			const insertResult = await db.execute({
 				sql: `
 					INSERT INTO users (
-						id, email, name, password_hash, created_at, session_limit, system_role,
+					id, email, name, username, password_hash, created_at, session_limit, system_role,
 						created_by, must_change_password, password_updated_at, ui_locale, client_suspended
 					)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 				args: [
 					userId,
 					normalizedEmail,
 					payload.name.trim(),
+					assertUsername(payload.username),
 					passwordHash,
 					now,
 					null,

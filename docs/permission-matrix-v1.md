@@ -18,6 +18,7 @@
 | inventory | `inventory.view` | - | `inventory.adjust` | - | - |
 | activity | `activity.view` | - | - | - | - |
 | purchase_orders | `purchase_orders.view` | `purchase_orders.create` | `purchase_orders.update` | `purchase_orders.cancel` | `purchase_orders.receive` |
+| dashboard | `dashboard.view` | - | - | - | - |
 | reports | `reports.view` | - | - | - | `reports.export` |
 | stores | `stores.view` | `stores.create` | `stores.update` | `stores.archive` | - |
 | settings | `settings.view` | - | - | - | - |
@@ -38,6 +39,7 @@
 ## Suggested Preset Roles
 
 ### Cashier
+- `dashboard.view`
 - `products.view`
 - `inventory.view`
 - `purchase_orders.view`

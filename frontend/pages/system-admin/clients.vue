@@ -730,10 +730,13 @@ onMounted(async () => {
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-				<AppPageHeader
-					title="ບັນຊີ Client"
-					description=""
-					:tablet-layout="true"
+					<AppPageHeader
+						title="ບັນຊີ Client"
+						description=""
+						:title-badge="false"
+						compact
+						body-class="px-3 py-2.5 sm:px-4 sm:py-3"
+						:tablet-layout="true"
 					@menu="openSidebar"
 				>
 					<template #actions>
@@ -933,11 +936,11 @@ onMounted(async () => {
 							<div class="grid gap-4">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ຊື່</label>
-									<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="createForm.name" type="text" placeholder="ຕົວຢ່າງ: ສົມໄຊ ວົງສະຫວັນ" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ອີເມວ</label>
-									<input v-model="createForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="createForm.email" type="email" placeholder="example@business.com" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ລະຫັດຜ່ານ</label>
@@ -945,8 +948,8 @@ onMounted(async () => {
 										<input
 											v-model="createForm.password"
 											:type="showCreatePassword ? 'text' : 'password'"
-											placeholder="ຕັ້ງລະຫັດຜ່ານຢ່າງໜ້ອຍ 6 ຕົວອັກສອນ"
-											class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+											placeholder="ຢ່າງໜ້ອຍ 6 ຕົວອັກສອນ"
+											class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										>
 										<button
 											type="button"
@@ -980,7 +983,7 @@ onMounted(async () => {
 
 							<div v-if="createForm.can_create_stores">
 								<label class="mb-2 block text-xs font-medium text-stone-500">ຮ້ານທີ່ສ້າງໄດ້</label>
-								<input v-model="createForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="createForm.max_stores" type="number" min="1" placeholder="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								<p class="mt-2 text-xs leading-5 text-stone-500">ກຳນົດຈຳນວນຮ້ານລວມທີ່ບັນຊີນີ້ສ້າງໄດ້ ຖ້າໃຫ້ມີໄດ້ແຕ່ຮ້ານທຳອິດຂອງຕົນເອງ ໃຫ້ຄົງຄ່າ 1</p>
 							</div>
 
@@ -1080,11 +1083,11 @@ onMounted(async () => {
 							<div class="grid gap-4">
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ຊື່</label>
-									<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="detailForm.name" type="text" placeholder="ຊື່ຂອງ Super Admin" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 								<div>
 									<label class="mb-2 block text-xs font-medium text-stone-500">ອີເມວ</label>
-									<input v-model="detailForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="detailForm.email" type="email" placeholder="example@business.com" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 								</div>
 							</div>
 
@@ -1099,7 +1102,7 @@ onMounted(async () => {
 
 								<div v-if="detailForm.can_create_stores">
 									<label class="mb-2 block text-xs font-medium text-stone-500">ຮ້ານທີ່ສ້າງໄດ້</label>
-									<input v-model="detailForm.max_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<input v-model="detailForm.max_stores" type="number" min="1" placeholder="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 									<p class="mt-2 text-xs leading-5 text-stone-500">ປັບຈຳນວນຮ້ານລວມທີ່ບັນຊີນີ້ສ້າງໄດ້ ລວມຮ້ານທຳອິດທີ່ client ຈະເລີ່ມສ້າງຕອນ onboarding</p>
 								</div>
 

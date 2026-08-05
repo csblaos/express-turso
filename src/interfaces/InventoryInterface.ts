@@ -53,6 +53,10 @@ export type InventoryMovementListItem = {
 	ref_type: string;
 	ref_id: string | null;
 	note: string | null;
+	adjustment_reason: string | null;
+	unit_cost_base: number | null;
+	total_cost_base: number | null;
+	cost_method: string | null;
 	created_by: string | null;
 	created_by_name: string | null;
 	created_at: string;
@@ -65,6 +69,7 @@ export type InventoryAdjustmentInput = {
 	mode: "increment" | "decrement" | "set";
 	qty_base: number;
 	note?: string | null;
+	adjustment_reason?: string | null;
 	created_by?: string | null;
 };
 
@@ -264,6 +269,13 @@ export class InventoryInterface {
 			: input.mode === "increment"
 				? "ADJUSTMENT_IN"
 				: "ADJUSTMENT_OUT";
+		if (delta < 0 && !String(input.adjustment_reason || "").trim()) {
+			throw new Error("adjustment_reason is required when stock is reduced");
+		}
+		const costPlan = delta < 0
+			? await InventoryCostInterface.planIssues(input.store_id, [ { product_id: input.product_id, qty_base: -delta } ], db)
+			: null;
+		const issue = costPlan?.allocations.get(input.product_id);
 
 		await db.execute({
 			sql: `
@@ -302,9 +314,12 @@ export class InventoryInterface {
 					ref_type,
 					ref_id,
 					note,
+					adjustment_reason,
+					unit_cost_base,
+					total_cost_base,
 					created_by,
 					created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 			args: [
 				movementId,
@@ -315,6 +330,9 @@ export class InventoryInterface {
 				refType,
 				options.refId ?? null,
 				input.note ?? null,
+				delta < 0 ? String(input.adjustment_reason || "").trim() : null,
+				issue?.unit_cost_base ?? null,
+				issue?.cost_base ?? null,
 				input.created_by ?? null,
 				now,
 			],
@@ -323,14 +341,7 @@ export class InventoryInterface {
 		// A write-off or a downward recount takes real goods off the shelf, so it
 		// draws the cost layers down the same way a sale does. Stock added by hand
 		// deliberately creates no layer: nobody has said what it cost.
-		if (delta < 0) {
-			const { statements } = await InventoryCostInterface.planIssues(
-				input.store_id,
-				[ { product_id: input.product_id, qty_base: -delta } ],
-				db,
-			);
-			for (const statement of statements) await db.execute(statement);
-		}
+		if (costPlan) for (const statement of costPlan.statements) await db.execute(statement);
 
 		const balance: InventoryBalanceListItem = {
 			store_id: String(productRow.store_id),
@@ -363,6 +374,10 @@ export class InventoryInterface {
 			ref_type: refType,
 			ref_id: options.refId ?? null,
 			note: input.note ?? null,
+			adjustment_reason: delta < 0 ? String(input.adjustment_reason || "").trim() : null,
+			unit_cost_base: issue?.unit_cost_base ?? null,
+			total_cost_base: issue?.cost_base ?? null,
+			cost_method: null,
 			created_by: input.created_by ?? null,
 			created_by_name: null,
 			created_at: now,
@@ -676,6 +691,10 @@ export class InventoryInterface {
 						m.ref_type,
 						m.ref_id,
 						m.note,
+						m.adjustment_reason,
+						m.unit_cost_base,
+						m.total_cost_base,
+						m.cost_method,
 						m.created_by,
 						COALESCE(NULLIF(TRIM(actor.name), ''), NULLIF(TRIM(actor.email), '')) AS created_by_name,
 						m.created_at,

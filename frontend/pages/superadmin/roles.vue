@@ -47,6 +47,7 @@ const VISIBLE_STORE_ROLE_PERMISSION_KEYS = new Set([
 	"pos.restaurant.cancel_sent",
 	"pos.restaurant.apply_promotion",
 	"pos.restaurant.print",
+	"dashboard.view",
 	"products.view",
 	"products.create",
 	"products.update",
@@ -1097,6 +1098,7 @@ onMounted(async () => {
 								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ copy.roleName }}</label>
 								<UInput
 									v-model="editorForm.name"
+									:placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ພະນັກງານຂາຍ' : locale === 'th' ? 'ตัวอย่าง: พนักงานขาย' : 'Example: Cashier'"
 									size="lg"
 									color="neutral"
 									:disabled="roleDetailPending || !selectedRoleDetail || saving || !canManageRoles"
@@ -1250,6 +1252,7 @@ onMounted(async () => {
 								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ copy.roleName }}</label>
 								<UInput
 									v-model="createForm.name"
+									:placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ພະນັກງານຂາຍ' : locale === 'th' ? 'ตัวอย่าง: พนักงานขาย' : 'Example: Cashier'"
 									size="lg"
 									color="neutral"
 									class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
@@ -1342,6 +1345,7 @@ onMounted(async () => {
 							<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ copy.newRoleName }}</label>
 							<UInput
 								v-model="duplicateForm.name"
+								:placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ພະນັກງານຂາຍ' : locale === 'th' ? 'ตัวอย่าง: พนักงานขาย' : 'Example: Cashier'"
 								size="lg"
 								color="neutral"
 								class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
@@ -1418,6 +1422,7 @@ onMounted(async () => {
 								<label class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ copy.newRoleName }}</label>
 								<UInput
 									v-model="applyForm.name"
+									:placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ພະນັກງານຂາຍ' : locale === 'th' ? 'ตัวอย่าง: พนักงานขาย' : 'Example: Cashier'"
 									size="lg"
 									color="neutral"
 									class="mt-3 w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"

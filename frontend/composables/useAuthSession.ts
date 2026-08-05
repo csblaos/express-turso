@@ -26,6 +26,7 @@ type AuthUser = {
 	id: string;
 	email: string;
 	name: string;
+	username: string;
 	systemRole: string;
 	mustChangePassword: boolean;
 	uiLocale: string;

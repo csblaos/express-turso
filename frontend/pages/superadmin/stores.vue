@@ -651,7 +651,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 						<div class="space-y-4 pb-6">
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.name }}</label>
-								<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="createForm.name" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: Wow Pizza' : locale === 'th' ? 'ตัวอย่าง: Wow Pizza' : 'Example: Wow Pizza'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
@@ -671,11 +671,11 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.phone }}</label>
-								<input v-model="createForm.phone_number" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="createForm.phone_number" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: 020 5555 1234' : locale === 'th' ? 'ตัวอย่าง: 020 5555 1234' : 'Example: 020 5555 1234'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.address }}</label>
-								<textarea v-model="createForm.address" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
+								<textarea v-model="createForm.address" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ວຽງຈັນ, ສີຫອມ' : locale === 'th' ? 'ตัวอย่าง: เวียงจันทน์, สีหอม' : 'Example: Vientiane, Sihom'" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
 							</div>
 						</div>
 					</div>
@@ -708,7 +708,7 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.name }}</label>
-								<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="detailForm.name" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: Wow Pizza' : locale === 'th' ? 'ตัวอย่าง: Wow Pizza' : 'Example: Wow Pizza'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
@@ -728,11 +728,11 @@ watch([ searchQuery, activeType, activeCurrency ], () => {
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.phone }}</label>
-								<input v-model="detailForm.phone_number" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<input v-model="detailForm.phone_number" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: 020 5555 1234' : locale === 'th' ? 'ตัวอย่าง: 020 5555 1234' : 'Example: 020 5555 1234'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div>
 								<label class="mb-2 block text-xs font-medium text-stone-500">{{ copy.address }}</label>
-								<textarea v-model="detailForm.address" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
+								<textarea v-model="detailForm.address" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ວຽງຈັນ, ສີຫອມ' : locale === 'th' ? 'ตัวอย่าง: เวียงจันทน์, สีหอม' : 'Example: Vientiane, Sihom'" rows="3" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
 							</div>
 							<div class="rounded-md border border-error-200 bg-error-50 p-4">
 								<p class="text-sm font-semibold text-error-700">{{ copy.deleteTitle }}</p>

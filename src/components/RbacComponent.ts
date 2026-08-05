@@ -392,6 +392,9 @@ export class RbacComponent {
 		}
 
 		const before = await RbacInterface.getStoreMemberById(storeId, userId);
+		if (String(before?.system_role || "").toLowerCase() === "superadmin") {
+			throw ApiError.ForbiddenError("Super Admin store role cannot be changed");
+		}
 		const access = await RbacInterface.assignStoreMemberRole({
 			store_id: storeId,
 			user_id: userId,

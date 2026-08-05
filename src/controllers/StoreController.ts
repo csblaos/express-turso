@@ -4,6 +4,7 @@ import { StoreComponent } from "@components/StoreComponent";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
 import { StoreSetupStatusInterface } from "@interfaces/StoreSetupStatusInterface";
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateStoreInput } from "@models/Store";
@@ -76,6 +77,24 @@ export class StoreController {
 		if (req.auth.storeId && req.auth.storeId !== storeId) throw ApiError.ForbiddenError("store scope mismatch");
 		const data = await StoreSetupStatusInterface.get(storeId);
 		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static confirmBusinessDayDefault = SyncFunction.handler(async (req: Request, res: Response) => {
+		if (!req.auth) throw ApiError.UnauthorizedError();
+		const storeId = String(req.params.id || "").trim();
+		if (req.auth.storeId && req.auth.storeId !== storeId) throw ApiError.ForbiddenError("store scope mismatch");
+		await StoreSetupStatusInterface.confirmBusinessDayDefault(storeId);
+		await AuditEventInterface.create({
+			scope: "settings",
+			store_id: storeId,
+			actor_user_id: req.auth.userId || null,
+			actor_role: req.auth.systemRole || null,
+			action: "store.business_day_default_confirmed",
+			entity_type: "store",
+			entity_id: storeId,
+			metadata: { business_day_start_minutes: 0 },
+		});
+		SuccessHandler.send(res, req.requestId);
 	});
 
 	static getCurrencyRates = SyncFunction.handler(async (req: Request, res: Response) => {

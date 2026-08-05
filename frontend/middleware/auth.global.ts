@@ -66,13 +66,19 @@ export default defineNuxtRouteMiddleware(async (to) => {
 	let hasAccessToken = Boolean(accessTokenCookie.value);
 
 	if (import.meta.client) {
-		const { hydrateAuthState, accessToken, currentUser, fetchMe } = useAuthSession();
+		const { hydrateAuthState, accessToken, currentUser, currentAccess, fetchMe } = useAuthSession();
+		const accessRevalidated = useState<boolean>("auth.access-revalidated", () => false);
 		hydrateAuthState();
 		hasAccessToken = Boolean(accessToken.value || accessTokenCookie.value);
 
-		if (hasAccessToken && !currentUser.value) {
+		// Permissions are persisted for a fast first paint, but roles can be changed
+		// by an owner while a staff member is still signed in. Revalidate once per
+		// app session so newly granted navigation items appear without requiring a
+		// logout, while avoiding an API request on every route change.
+		if (hasAccessToken && (!currentUser.value || !currentAccess.value || !accessRevalidated.value)) {
 			try {
 				await fetchMe();
+				accessRevalidated.value = true;
 			} catch {
 				// let the auth branch below decide the redirect
 			}
