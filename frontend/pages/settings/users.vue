@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { getApiErrorStatus, resolveApiErrorMessage } from "~/utils/api-errors";
 import { formatAppDateTime } from "~/utils/date-format";
 
 // Starter credential handed to a new staff member; they change it themselves.
@@ -53,6 +54,7 @@ type StoreMemberRecord = {
 const { apiFetch } = useApiClient();
 const { t, locale } = useI18n();
 const { currentUser, currentAccess, can, fetchMe } = useAuthSession();
+const appToast = useAppToast();
 
 const searchQuery = ref("");
 const activeStatus = ref("all");
@@ -62,10 +64,12 @@ const selectedMemberId = ref("");
 const detailOpen = ref(false);
 const createOpen = ref(false);
 const resetPasswordOpen = ref(false);
+const deleteOpen = ref(false);
 const saving = ref(false);
 const storesPending = ref(true);
 const membersPending = ref(false);
 const membersError = ref<string | null>(null);
+const createUsernameError = ref("");
 
 const stores = ref<StoreRecord[]>([]);
 const roles = ref<RoleRecord[]>([]);
@@ -107,13 +111,29 @@ const canCreateUsers = computed(() => isElevatedStoreManager.value || can("setti
 const canUpdateUsers = computed(() => isElevatedStoreManager.value || can("settings.users.update"));
 const canSuspendUsers = computed(() => isElevatedStoreManager.value || can("settings.users.suspend"));
 const canResetPasswords = computed(() => isElevatedStoreManager.value || can("settings.users.reset_password"));
+const canDeleteUsers = computed(() => isElevatedStoreManager.value || can("settings.users.remove_member"));
 const canManageUsers = computed(() => (
 	canCreateUsers.value
 	|| canUpdateUsers.value
 	|| canSuspendUsers.value
 	|| canResetPasswords.value
+	|| canDeleteUsers.value
 ));
 const canManageRoles = computed(() => isElevatedStoreManager.value || can("settings.users.assign_role"));
+const canDeleteSelectedMember = computed(() => Boolean(
+	canDeleteUsers.value
+	&& selectedMember.value
+	&& selectedMember.value.user_id !== currentUser.value?.id
+	&& ![ "superadmin", "system_admin" ].includes(selectedMember.value.system_role.toLowerCase()),
+));
+const selectedMemberIsElevated = computed(() => [ "superadmin", "system_admin" ].includes(selectedMember.value?.system_role.toLowerCase() || ""));
+const deleteCopy = computed(() => locale.value === "lo" ? {
+	title: "ນຳອອກຈາກຮ້ານ", description: "ນຳຜູ້ໃຊ້ນີ້ອອກຈາກຮ້ານ", warning: "ຜູ້ໃຊ້ຈະບໍ່ສາມາດເຂົ້າໃຊ້ຮ້ານນີ້ໄດ້ອີກ ແຕ່ບັນຊີ ແລະ ປະຫວັດເກົ່າຈະຍັງຢູ່", confirm: "ຢືນຢັນນຳອອກ", success: "ນຳຜູ້ໃຊ້ອອກຈາກຮ້ານແລ້ວ", failed: "ນຳຜູ້ໃຊ້ອອກບໍ່ສຳເລັດ",
+} : locale.value === "th" ? {
+	title: "นำออกจากร้าน", description: "นำผู้ใช้นี้ออกจากร้าน", warning: "ผู้ใช้จะไม่สามารถเข้าถึงร้านนี้ได้อีก แต่บัญชีและประวัติเดิมจะยังอยู่", confirm: "ยืนยันนำออก", success: "นำผู้ใช้ออกจากร้านแล้ว", failed: "นำผู้ใช้ออกไม่สำเร็จ",
+} : {
+	title: "Remove from store", description: "Remove this user from the store", warning: "This user will lose access to this store, but their account and history will remain.", confirm: "Confirm removal", success: "User removed from store", failed: "Unable to remove user",
+});
 // The password fields start empty, so block saving until they meet the
 // six-character minimum the API enforces.
 const canSubmitCreate = computed(() => (
@@ -227,7 +247,12 @@ watch(createOpen, (isOpen) => {
 	if (isOpen) {
 		createForm.role_id = resolveDefaultRoleId(roles.value);
 		createForm.password = "";
+		createUsernameError.value = "";
 	}
+});
+
+watch(() => createForm.username, () => {
+	createUsernameError.value = "";
 });
 
 watch(resetPasswordOpen, (isOpen) => {
@@ -299,7 +324,7 @@ async function fetchMembers() {
 }
 
 async function saveMemberRole(member: StoreMemberRecord, roleId: string) {
-	if (!selectedStoreId.value || member.system_role.toLowerCase() === "superadmin") return;
+	if (!selectedStoreId.value || [ "superadmin", "system_admin" ].includes(member.system_role.toLowerCase())) return;
 	await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedStoreId.value)}/${encodeURIComponent(member.user_id)}/role`, {
 		method: "PUT",
 		body: {
@@ -312,7 +337,7 @@ async function saveMemberRole(member: StoreMemberRecord, roleId: string) {
 }
 
 async function saveMemberStatus(member: StoreMemberRecord, status: string) {
-	if (!selectedStoreId.value) return;
+	if (!selectedStoreId.value || [ "superadmin", "system_admin" ].includes(member.system_role.toLowerCase())) return;
 	await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedStoreId.value)}/${encodeURIComponent(member.user_id)}/status`, {
 		method: "PATCH",
 		body: {
@@ -326,6 +351,7 @@ async function saveMemberStatus(member: StoreMemberRecord, status: string) {
 async function createMember() {
 	if (!selectedStoreId.value) return;
 	saving.value = true;
+	createUsernameError.value = "";
 	try {
 		await apiFetch("/rbac/store-members", {
 			method: "POST",
@@ -348,13 +374,26 @@ async function createMember() {
 		createForm.status = "active";
 		createOpen.value = false;
 		await fetchMembers();
+	} catch (error) {
+		const usernameTaken = getApiErrorStatus(error) === 409;
+		if (usernameTaken) {
+			createUsernameError.value = locale.value === "lo"
+				? `Username “${createForm.username.trim()}” ຖືກໃຊ້ແລ້ວ ກະລຸນາປ່ຽນ Username ໃໝ່`
+				: locale.value === "th"
+					? `Username “${createForm.username.trim()}” ถูกใช้งานแล้ว กรุณาเปลี่ยน Username ใหม่`
+					: `Username “${createForm.username.trim()}” is already in use. Please choose another username.`;
+		}
+		appToast.error({
+			title: locale.value === "lo" ? "ເພີ່ມຜູ້ໃຊ້ບໍ່ສຳເລັດ" : locale.value === "th" ? "เพิ่มผู้ใช้ไม่สำเร็จ" : "Unable to add user",
+			description: usernameTaken ? createUsernameError.value : resolveApiErrorMessage(error),
+		});
 	} finally {
 		saving.value = false;
 	}
 }
 
 async function resetMemberPassword() {
-	if (!selectedStoreId.value || !selectedMember.value) return;
+	if (!selectedStoreId.value || !selectedMember.value || selectedMemberIsElevated.value) return;
 	saving.value = true;
 	try {
 		await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedStoreId.value)}/${encodeURIComponent(selectedMember.value.user_id)}/reset-password`, {
@@ -366,6 +405,22 @@ async function resetMemberPassword() {
 			},
 		});
 		resetPasswordOpen.value = false;
+	} finally {
+		saving.value = false;
+	}
+}
+
+async function deleteMember() {
+	if (!selectedStoreId.value || !selectedMember.value || !canDeleteSelectedMember.value) return;
+	saving.value = true;
+	try {
+		await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedStoreId.value)}/${encodeURIComponent(selectedMember.value.user_id)}`, { method: "DELETE" });
+		deleteOpen.value = false;
+		detailOpen.value = false;
+		appToast.success({ title: deleteCopy.value.success });
+		await fetchMembers();
+	} catch (error) {
+		appToast.error({ title: deleteCopy.value.failed, description: error instanceof Error ? error.message : undefined });
 	} finally {
 		saving.value = false;
 	}
@@ -405,6 +460,10 @@ onMounted(async () => {
 	try {
 		await fetchStores();
 		if (selectedStoreId.value) {
+			// A hard refresh can restore the selected store before its scoped
+			// permissions have been hydrated. Load them explicitly so action buttons
+			// do not remain disabled until the user navigates away and back.
+			await fetchMe(selectedStoreId.value);
 			await Promise.all([fetchRoles(), fetchMembers()]);
 		}
 	} catch (error) {
@@ -719,7 +778,7 @@ onMounted(async () => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("usersPage.storeRoles") }}</p>
 								<div
-									v-if="selectedMember.system_role.toLowerCase() === 'superadmin'"
+								v-if="selectedMemberIsElevated"
 									class="mt-3 rounded-md border border-neutral-200 bg-stone-100 px-4 py-2.5 text-sm font-medium text-stone-600"
 								>
 									{{ selectedMember.role_name }}
@@ -728,7 +787,7 @@ onMounted(async () => {
 									v-else
 									:value="selectedMember.role_id"
 									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									:disabled="!canManageRoles"
+									:disabled="!canManageRoles || selectedMemberIsElevated"
 									@change="saveMemberRole(selectedMember, ($event.target as HTMLSelectElement).value)"
 								>
 									<option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
@@ -740,7 +799,7 @@ onMounted(async () => {
 								<select
 									:value="selectedMember.status"
 									class="mt-3 w-full rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-700 outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									:disabled="!canSuspendUsers"
+									:disabled="!canSuspendUsers || selectedMemberIsElevated"
 									@change="saveMemberStatus(selectedMember, ($event.target as HTMLSelectElement).value)"
 								>
 									<option v-for="status in memberStatusOptions" :key="status.id" :value="status.id">{{ status.label }}</option>
@@ -762,15 +821,42 @@ onMounted(async () => {
 						</div>
 
 						<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
-							<div class="grid w-full grid-cols-2 gap-2">
+							<div class="grid w-full grid-cols-3 gap-2">
 								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">{{ $t("common.close") }}</AppButton>
-								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-key-20-solid" :block="true" :disabled="!canResetPasswords" @click="resetPasswordOpen = true">
+								<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteSelectedMember" @click="deleteOpen = true">{{ deleteCopy.title }}</AppButton>
+								<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-key-20-solid" :block="true" :disabled="!canResetPasswords || selectedMemberIsElevated" @click="resetPasswordOpen = true">
 									{{ $t("usersPage.resetPassword") }}
 								</AppButton>
 							</div>
 						</div>
 					</div>
 				</template>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel
+				v-model="deleteOpen"
+				:title="deleteCopy.title"
+				:description="deleteCopy.description"
+				desktop-width="680px"
+				close-button-size="md"
+				compact-header
+				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
+			>
+				<div v-if="selectedMember" class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 overflow-y-auto px-5 py-4">
+						<div class="rounded-md border border-red-200 bg-red-50 p-4">
+							<p class="font-semibold text-red-900">{{ selectedMember.name }}</p>
+							<p class="mt-1 text-sm font-medium text-red-800">{{ selectedStoreLabel }}</p>
+							<p class="mt-1 text-sm text-red-700">{{ deleteCopy.warning }}</p>
+						</div>
+					</div>
+					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="deleteOpen = false">{{ $t('common.cancel') }}</AppButton>
+							<AppButton color="error" variant="solid" size="md" icon="i-heroicons-trash-20-solid" :block="true" :loading="saving" @click="deleteMember">{{ deleteCopy.confirm }}</AppButton>
+						</div>
+					</div>
+				</div>
 			</AppResponsivePanel>
 
 				<AppResponsivePanel
@@ -790,7 +876,21 @@ onMounted(async () => {
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.username") }}</label>
-							<UInput v-model="createForm.username" autocomplete="username" placeholder="somchai" size="lg" color="neutral" class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5" />
+							<UInput
+								v-model="createForm.username"
+								autocomplete="username"
+								placeholder="somchai"
+								size="lg"
+								:color="createUsernameError ? 'error' : 'neutral'"
+								:trailing-icon="createUsernameError ? 'i-heroicons-exclamation-circle-20-solid' : undefined"
+								:aria-invalid="Boolean(createUsernameError)"
+								class="w-full [&_input]:rounded-md [&_input]:bg-white [&_input]:py-2.5"
+								:class="createUsernameError ? '[&_input]:border-red-400 [&_input]:ring-2 [&_input]:ring-red-100' : '[&_input]:border-neutral-200'"
+							/>
+							<p v-if="createUsernameError" class="flex items-start gap-1.5 text-xs font-medium leading-5 text-red-600" role="alert">
+								<UIcon name="i-heroicons-exclamation-circle-20-solid" class="mt-0.5 h-4 w-4 shrink-0" />
+								<span>{{ createUsernameError }}</span>
+							</p>
 						</div>
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-stone-700">{{ $t("usersPage.email") }}</label>

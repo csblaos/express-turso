@@ -3,6 +3,7 @@ import { InValue } from "@libsql/client";
 import { DbConn } from "@connections/DbConn";
 import { AuthInterface } from "@interfaces/AuthInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
+import { SystemConfigInterface } from "@interfaces/SystemConfigInterface";
 
 export type SuperadminQuotaListParams = {
 	search?: string;
@@ -42,6 +43,7 @@ export type SuperadminQuotaListResult = {
 		unlimited_branch_accounts: number;
 		attention_accounts: number;
 		stores_total: number;
+		store_user_limit: number | null;
 	};
 	warnings: string[];
 };
@@ -89,7 +91,7 @@ export class SuperadminQuotaInterface {
 		await AuthInterface.ensureUserAuthColumns();
 		await StoreInterface.ensureOwnerColumn();
 
-		const db = DbConn.getClient();
+		const [ db, systemConfig ] = [ DbConn.getClient(), await SystemConfigInterface.getConfig() ];
 		const page = Math.max(1, Number(params.page) || 1);
 		const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
 		const offset = (page - 1) * limit;
@@ -220,6 +222,9 @@ export class SuperadminQuotaInterface {
 				unlimited_branch_accounts: Number(summaryRow.unlimited_branch_accounts || 0),
 				attention_accounts: Number(summaryRow.attention_accounts || 0),
 				stores_total: Number(summaryRow.stores_total || 0),
+				store_user_limit: systemConfig.default_max_users_per_store === null || systemConfig.default_max_users_per_store === undefined
+					? null
+					: Number(systemConfig.default_max_users_per_store),
 			},
 			warnings: [],
 		};

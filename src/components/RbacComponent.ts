@@ -12,6 +12,7 @@ import {
 	UserAccessSummary,
 } from "@interfaces/RbacInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
+import { SystemConfigInterface } from "@interfaces/SystemConfigInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreateRoleInput, UpdateRoleInput } from "@models/Role";
 import { hasPermissionByKey } from "@utils/PermissionCompat";
@@ -86,6 +87,28 @@ export class RbacComponent {
 
 	private static async assertStoreManageScope(actor: { userId: string; systemRole: string }, storeId: string): Promise<void> {
 		await RbacComponent.assertStorePermissionScope(actor, storeId, "settings.users.update");
+	}
+
+	private static async assertStoreMemberCapacity(storeId: string, userId?: string): Promise<void> {
+		const config = await SystemConfigInterface.getConfig();
+		const limit = config.default_max_users_per_store;
+		if (limit === null || limit === undefined || Number(limit) <= 0) return;
+
+		const activeMembers = await RbacInterface.listStoreMembers({ store_id: storeId, status: "active" });
+		if (userId && activeMembers.some((member) => member.user_id === userId)) return;
+		if (activeMembers.length >= Number(limit)) {
+			throw ApiError.BadRequestError(`This store has reached its ${Number(limit)} active-user limit`);
+		}
+	}
+
+	private static assertCanManageTargetAccount(
+		actor: { systemRole: string },
+		target: StoreMemberListItem | null,
+	): void {
+		const targetRole = String(target?.system_role || "").toLowerCase();
+		if ([ "superadmin", "system_admin" ].includes(targetRole) && actor.systemRole !== "system_admin") {
+			throw ApiError.ForbiddenError("Store users cannot manage a Super Admin or System Admin account");
+		}
 	}
 
 	private static async logAudit(
@@ -392,9 +415,7 @@ export class RbacComponent {
 		}
 
 		const before = await RbacInterface.getStoreMemberById(storeId, userId);
-		if (String(before?.system_role || "").toLowerCase() === "superadmin") {
-			throw ApiError.ForbiddenError("Super Admin store role cannot be changed");
-		}
+		RbacComponent.assertCanManageTargetAccount(actor, before);
 		const access = await RbacInterface.assignStoreMemberRole({
 			store_id: storeId,
 			user_id: userId,
@@ -431,6 +452,11 @@ export class RbacComponent {
 		actor: { userId: string; systemRole: string },
 	): Promise<StoreMemberListItem> {
 		await RbacComponent.assertStoreManageScope(actor, payload.store_id);
+		if ((payload.status || "active") === "active") {
+			const matchingMember = (await RbacInterface.listStoreMembers({ store_id: payload.store_id, search: payload.email }))
+				.find((member) => member.email.toLowerCase() === payload.email.trim().toLowerCase());
+			await RbacComponent.assertStoreMemberCapacity(payload.store_id, matchingMember?.user_id);
+		}
 		if (payload.role_id?.trim()) {
 			const role = await RbacInterface.getRoleById(payload.role_id);
 			if (!role) {
@@ -450,6 +476,9 @@ export class RbacComponent {
 		} catch (error) {
 			if (error instanceof Error && error.message === "ROLE_NOT_FOUND") {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.ROLE_NOT_FOUND);
+			}
+			if (error instanceof Error && (error.message === "USERNAME_TAKEN" || String(error).includes("users.username"))) {
+				throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_MEMBER_USERNAME_TAKEN);
 			}
 			throw error;
 		}
@@ -471,6 +500,8 @@ export class RbacComponent {
 	): Promise<StoreMemberListItem> {
 		await RbacComponent.assertStoreManageScope(actor, payload.store_id);
 		const before = await RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+		if (payload.status === "active") await RbacComponent.assertStoreMemberCapacity(payload.store_id, payload.user_id);
+		RbacComponent.assertCanManageTargetAccount(actor, before);
 		const member = await RbacInterface.updateStoreMemberStatus({
 			...payload,
 			added_by: actor.userId,
@@ -497,6 +528,7 @@ export class RbacComponent {
 	): Promise<StoreMemberListItem> {
 		await RbacComponent.assertStoreManageScope(actor, payload.store_id);
 		const before = await RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+		RbacComponent.assertCanManageTargetAccount(actor, before);
 		const member = await RbacInterface.resetStoreMemberPassword({
 			...payload,
 			actor_user_id: actor.userId,
@@ -521,5 +553,38 @@ export class RbacComponent {
 			},
 		});
 		return member;
+	}
+
+	static async deleteStoreMember(
+		requestId: string,
+		payload: { store_id: string; user_id: string },
+		actor: { userId: string; systemRole: string },
+	): Promise<{ deleted: true }> {
+		await RbacComponent.assertStoreManageScope(actor, payload.store_id);
+		if (payload.user_id === actor.userId) {
+			throw ApiError.BadRequestError("You cannot remove your own store access");
+		}
+		const before = await RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+		if (!before) throw ApiError.CustomError(ErrorConfig.DOMAIN.STORE_MEMBER_NOT_FOUND);
+		const store = await StoreInterface.findById(payload.store_id);
+		RbacComponent.assertCanManageTargetAccount(actor, before);
+		try {
+			await RbacInterface.deleteStoreMember(payload.store_id, payload.user_id);
+		} catch (error) {
+			if (error instanceof Error && error.message === "STORE_OWNER_DELETE_FORBIDDEN") {
+				throw ApiError.BadRequestError("The store owner cannot be removed");
+			}
+			throw error;
+		}
+		await RbacComponent.logAudit(requestId, {
+			store_id: payload.store_id,
+			actor_user_id: actor.userId,
+			action: "delete_store_member",
+			entity_type: "store_member",
+			entity_id: payload.user_id,
+			before,
+			metadata: { store_name: store?.name || null },
+		});
+		return { deleted: true };
 	}
 }

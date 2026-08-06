@@ -3,7 +3,11 @@ import { SystemConfig, SystemConfigUpdateInput } from "@models/SystemConfig";
 
 const DEFAULT_SYSTEM_CONFIG_ID = "default";
 const SYSTEM_CONFIG_CACHE_TTL_MS = 30_000;
-const AUTH_POLICY_COLUMNS = [
+const POLICY_COLUMNS = [
+	{
+		name: "default_max_users_per_store",
+		sql: "ALTER TABLE system_config ADD COLUMN default_max_users_per_store INTEGER DEFAULT 20",
+	},
 	{
 		name: "auth_access_token_ttl_minutes",
 		sql: "ALTER TABLE system_config ADD COLUMN auth_access_token_ttl_minutes INTEGER NOT NULL DEFAULT 15",
@@ -35,6 +39,7 @@ function getDefaultPayload(now: string): SystemConfig {
 		id: DEFAULT_SYSTEM_CONFIG_ID,
 		default_can_create_branches: 1,
 		default_max_branches_per_store: 5,
+		default_max_users_per_store: 20,
 		created_at: now,
 		updated_at: now,
 		default_session_limit: 3,
@@ -75,7 +80,7 @@ export class SystemConfigInterface {
 				pragmaResult.rows.map((row) => String(row.name || "")),
 			);
 
-			for (const column of AUTH_POLICY_COLUMNS) {
+			for (const column of POLICY_COLUMNS) {
 				if (existingColumns.has(column.name)) continue;
 				await db.execute(column.sql);
 			}
@@ -120,6 +125,7 @@ export class SystemConfigInterface {
 					id,
 					default_can_create_branches,
 					default_max_branches_per_store,
+					default_max_users_per_store,
 					created_at,
 					updated_at,
 					default_session_limit,
@@ -137,12 +143,13 @@ export class SystemConfigInterface {
 					auth_max_failed_attempts,
 					auth_lockout_minutes,
 					auth_allow_multi_session
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 				args: [
 				fallback.id,
 				fallback.default_can_create_branches,
 				fallback.default_max_branches_per_store,
+				fallback.default_max_users_per_store,
 				fallback.created_at,
 				fallback.updated_at,
 				fallback.default_session_limit,

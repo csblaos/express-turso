@@ -87,7 +87,7 @@ const copy = computed(() => {
 
 const storeId = computed(() => currentStoreId.value || currentAccess.value?.store_id || currentAccess.value?.memberships?.[0]?.store_id || "");
 const elevated = computed(() => currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin");
-const canUpdate = computed(() => elevated.value || can("settings.store.update"));
+const canUpdate = computed(() => elevated.value || can("settings.customer_display.update"));
 // Only once the session is actually known - otherwise every refresh flashes a
 // permission warning at people who do have the permission.
 const canShowPermissionWarning = computed(() => (

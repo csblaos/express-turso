@@ -28,6 +28,23 @@ function isCustomerDisplayRoute(path: string) {
 	return path.replace(/\/+$/, "") === "/customer-display";
 }
 
+function requiredSettingsPermission(path: string): string | null {
+	const normalizedPath = path.replace(/\/+$/, "") || "/";
+	const routes: Array<[string, string]> = [
+		[ "/settings/printing/sales-receipt", "settings.printing.view" ],
+		[ "/settings/store-finance", "settings.finance.view" ],
+		[ "/settings/stock", "settings.stock_policy.view" ],
+		[ "/settings/store-payments", "settings.payments.view" ],
+		[ "/settings/customer-display", "settings.customer_display.view" ],
+		[ "/settings/store-profile", "settings.store.view" ],
+		[ "/settings/restaurant", "settings.restaurant.view" ],
+		[ "/settings/users", "settings.users.view" ],
+		[ "/settings/categories", "products.view" ],
+		[ "/settings/units", "products.view" ],
+	];
+	return routes.find(([ route ]) => normalizedPath === route || normalizedPath.startsWith(`${route}/`))?.[1] || null;
+}
+
 function getDefaultAuthedPath(systemRole?: string | null) {
 	return systemRole === "system_admin" ? "/system-admin/dashboard" : "/";
 }
@@ -66,7 +83,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 	let hasAccessToken = Boolean(accessTokenCookie.value);
 
 	if (import.meta.client) {
-		const { hydrateAuthState, accessToken, currentUser, currentAccess, fetchMe } = useAuthSession();
+		const { hydrateAuthState, accessToken, currentUser, currentAccess, fetchMe, can } = useAuthSession();
 		const accessRevalidated = useState<boolean>("auth.access-revalidated", () => false);
 		hydrateAuthState();
 		hasAccessToken = Boolean(accessToken.value || accessTokenCookie.value);
@@ -111,6 +128,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			&& !canAccessRoleScopedRoute(to.path, nextUser?.systemRole)
 		) {
 			return navigateTo(defaultAuthedPath, { replace: true });
+		}
+
+		const settingsPermission = requiredSettingsPermission(to.path);
+		if (
+			hasAccessToken
+			&& settingsPermission
+			&& ![ "system_admin", "superadmin" ].includes(nextUser?.systemRole || "")
+			&& !can(settingsPermission)
+		) {
+			return navigateTo("/settings", { replace: true });
 		}
 
 		return;

@@ -165,7 +165,7 @@ async function loginToPos() {
 											size="lg"
 											color="neutral"
 											icon="i-heroicons-lock-closed-20-solid"
-											placeholder="••••••••"
+											:placeholder="t('loginPage.password')"
 											class="login-password-input w-full [&_input]:rounded-md [&_input]:border-[#e7e4dd] [&_input]:bg-[#fbfbf8] [&_input]:py-3.5 [&_input]:ps-13 [&_input]:pe-14 [&_input]:shadow-sm [&_span]:left-4 [&_span]:text-stone-400 [&_span_svg]:h-[18px] [&_span_svg]:w-[18px]"
 										/>
 										<AppButton
@@ -229,6 +229,14 @@ async function loginToPos() {
 	-webkit-text-fill-color: #6b7280 !important;
 	caret-color: #6b7280;
 	opacity: 1 !important;
+}
+
+/* Match the password dots placeholder with the Username/Email placeholder. */
+.login-password-input :deep(input::placeholder) {
+	color: #a8a29e !important;
+	-webkit-text-fill-color: #a8a29e !important;
+	font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif !important;
+	opacity: 1;
 }
 
 /* Mobile Safari can fail to paint password bullets when the input inherits the

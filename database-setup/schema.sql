@@ -572,6 +572,7 @@ CREATE TABLE IF NOT EXISTS `system_config` (
 	`id` text PRIMARY KEY DEFAULT 'global' NOT NULL,
 	`default_can_create_branches` integer DEFAULT true NOT NULL,
 	"default_max_branches_per_store" integer DEFAULT 1,
+	"default_max_users_per_store" integer DEFAULT 20,
 	`created_at` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL,
 	`updated_at` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL
 , `default_session_limit` integer DEFAULT 1 NOT NULL, `store_logo_max_size_mb` integer not null default 5, "store_logo_auto_resize" integer NOT NULL DEFAULT true, `store_logo_resize_max_width` integer not null default 1280, `payment_max_accounts_per_store` integer not null default 5, `payment_require_slip_for_lao_qr` integer not null default 1, `app_latest_build` integer not null default 0, `app_min_required_build` integer not null default 0, `app_update_message` text, auth_access_token_ttl_minutes INTEGER NOT NULL DEFAULT 15, auth_refresh_token_ttl_days INTEGER NOT NULL DEFAULT 7, auth_remember_me_refresh_ttl_days INTEGER NOT NULL DEFAULT 30, auth_max_failed_attempts INTEGER NOT NULL DEFAULT 5, auth_lockout_minutes INTEGER NOT NULL DEFAULT 15, auth_allow_multi_session INTEGER NOT NULL DEFAULT 1);

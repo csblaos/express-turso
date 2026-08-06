@@ -14,6 +14,7 @@ export class RbacRouter {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
 		this.router.get("/store-members", PermissionMiddleware.require("settings.users.view"), RbacValidator.listStoreMembers, RbacController.listStoreMembers);
 		this.router.post("/store-members", PermissionMiddleware.require("settings.users.create"), RbacValidator.createStoreMember, RbacController.createStoreMember);
+		this.router.delete("/store-members/:storeId/:userId", PermissionMiddleware.require("settings.users.remove_member"), RbacController.deleteStoreMember);
 		this.router.patch("/store-members/:storeId/:userId/status", PermissionMiddleware.require("settings.users.suspend"), RbacValidator.updateStoreMemberStatus, RbacController.updateStoreMemberStatus);
 		this.router.get("/permissions", PermissionMiddleware.require("settings.roles.view"), RbacController.listPermissions);
 		this.router.get("/roles-summary", PermissionMiddleware.require("settings.roles.view"), RbacValidator.listRoles, RbacController.listRoleSummaries);

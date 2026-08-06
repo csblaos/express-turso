@@ -48,7 +48,7 @@ const isElevatedStoreManager = computed(() => (
 	|| currentUser.value?.systemRole === "system_admin"
 ));
 
-const canUpdateStorePolicy = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
+const canUpdateStorePolicy = computed(() => isElevatedStoreManager.value || can("settings.stock_policy.update"));
 
 const reloading = computed(() => storesPending.value || storePending.value);
 

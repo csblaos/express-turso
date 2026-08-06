@@ -100,6 +100,10 @@ export class SuperadminUserInterface {
 						AND s.owner_user_id = ?
 				)
 			)`,
+			`(
+				u.system_role IN ('superadmin', 'system_admin')
+				OR EXISTS (SELECT 1 FROM store_members visible_membership WHERE visible_membership.user_id = u.id)
+			)`,
 		];
 		const args: InValue[] = [ ownerUserId, ownerUserId, ownerUserId ];
 
