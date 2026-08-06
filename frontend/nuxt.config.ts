@@ -75,6 +75,18 @@ export default defineNuxtConfig({
 			htmlAttrs: { translate: "no" },
 			meta: [
 				{
+					name: "apple-mobile-web-app-capable",
+					content: "yes",
+				},
+				{
+					name: "apple-mobile-web-app-status-bar-style",
+					content: "default",
+				},
+				{
+					name: "apple-mobile-web-app-title",
+					content: "O KhaiDee+",
+				},
+				{
 					name: "google",
 					content: "notranslate",
 				},
@@ -116,14 +128,16 @@ export default defineNuxtConfig({
 			enabled: false,
 		},
 		manifest: {
-			name: "CodeSabai POS",
-			short_name: "CodeSabai",
-			description: "CodeSabai POS web application.",
+			name: "O KhaiDee+",
+			short_name: "O KhaiDee+",
+			description: "O KhaiDee+ POS web application.",
 			theme_color: "#22c55e",
 			background_color: "#ffffff",
+			display_override: [ "standalone" ],
 			display: "standalone",
-			lang: "th",
+			lang: "lo",
 			start_url: "/",
+			scope: "/",
 			icons: [
 				{
 					src: "/icons/icon-192.png",

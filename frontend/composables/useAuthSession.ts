@@ -88,6 +88,7 @@ const STORAGE_KEYS = {
 	session: "pos.auth.session",
 	access: "pos.auth.access",
 	currentStoreId: "pos.auth.currentStoreId",
+	permissions: "pos.auth.permissions",
 } as const;
 
 const COOKIE_KEYS = {
@@ -95,6 +96,7 @@ const COOKIE_KEYS = {
 	refreshToken: "pos.auth.refreshToken",
 	systemRole: "pos.auth.systemRole",
 	currentStoreId: "pos.auth.currentStoreId",
+	permissions: "pos.auth.permissions",
 } as const;
 
 const SYSTEM_ROLE_PERMISSION_MAP: Record<string, string[]> = {
@@ -177,6 +179,13 @@ export function useAuthSession() {
 		path: "/",
 		default: () => null,
 	});
+	// This is only a navigation cache for the SSR/first-paint experience. The
+	// API remains the authority for every protected request.
+	const permissionKeysCookie = useCookie<string[]>(COOKIE_KEYS.permissions, {
+		sameSite: "lax",
+		path: "/",
+		default: () => [],
+	});
 
 	function resolveAccessStoreId(access: AuthAccess | null, requestedStoreId?: string): string | null {
 		const memberships = access?.memberships || [];
@@ -258,6 +267,13 @@ export function useAuthSession() {
 
 		systemRoleCookie.value = currentUser.value?.systemRole || null;
 		currentStoreIdCookie.value = currentStoreId.value;
+		const scopedMembership = currentAccess.value?.memberships.find((membership) => (
+			membership.store_id === (currentStoreId.value || currentAccess.value?.store_id)
+		));
+		permissionKeysCookie.value = Array.from(new Set([
+			...(currentAccess.value?.permissions || []).map((permission) => permission.key),
+			...(scopedMembership?.permissions || []).map((permission) => permission.key),
+		]));
 
 		if (!import.meta.client) return;
 
@@ -481,6 +497,9 @@ export function useAuthSession() {
 		if (currentUser.value?.systemRole === "system_admin") {
 			return true;
 		}
+		if (currentUser.value?.systemRole === "superadmin") {
+			return true;
+		}
 
 		if (currentUser.value?.systemRole) {
 			const grantedPermissions = SYSTEM_ROLE_PERMISSION_MAP[currentUser.value.systemRole] || [];
@@ -492,6 +511,9 @@ export function useAuthSession() {
 
 		const acceptedKeys = new Set(resolveAcceptedPermissionKeys(permissionKey));
 		if (currentAccess.value?.permissions.some((permission) => acceptedKeys.has(permission.key))) {
+			return true;
+		}
+		if (!currentAccess.value && permissionKeysCookie.value.some((key) => acceptedKeys.has(key))) {
 			return true;
 		}
 

@@ -286,18 +286,26 @@ const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.n
 const STORE_NAV_IDS = new Set([ "pos", "dashboard", "products", "orders", "stock", "purchase", "promotions", "reports", "activity", "settings" ]);
 const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-reports", "system-thirdparty-usage" ]);
 
+function canViewNavItem(item: AppNavItem, systemRole: string) {
+	// Match the API's elevated-role access rule. `resolvedSystemRole` also reads
+	// the role cookie, so these items do not disappear during a hard refresh
+	// while the client restores the full auth session.
+	if (systemRole === "system_admin" || systemRole === "superadmin") return true;
+	return !item.permission || can(item.permission);
+}
+
 const visibleNavItems = computed(() => {
 	const systemRole = resolvedSystemRole.value;
 
 	if (systemRole === "system_admin") {
-		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id) && (!item.permission || can(item.permission)));
+		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id) && canViewNavItem(item, systemRole));
 	}
 
 	if (systemRole === "superadmin") {
-		return props.navItems.filter((item) => (STORE_NAV_IDS.has(item.id) || item.id === "superadmin") && (!item.permission || can(item.permission)));
+		return props.navItems.filter((item) => (STORE_NAV_IDS.has(item.id) || item.id === "superadmin") && canViewNavItem(item, systemRole));
 	}
 
-	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) && (!item.permission || can(item.permission)));
+	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) && canViewNavItem(item, systemRole));
 });
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
