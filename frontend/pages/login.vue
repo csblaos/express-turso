@@ -230,4 +230,11 @@ async function loginToPos() {
 	caret-color: #6b7280;
 	opacity: 1 !important;
 }
+
+/* Mobile Safari can fail to paint password bullets when the input inherits the
+   Lao variable font. Use a system glyph and explicitly request disc masking. */
+.login-password-input :deep(input[type="password"]) {
+	font-family: Arial, sans-serif !important;
+	-webkit-text-security: disc;
+}
 </style>
