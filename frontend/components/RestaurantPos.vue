@@ -2494,7 +2494,13 @@ onBeforeUnmount(() => {
 						<!-- The caption sits above both cards because it names the whole row: the
 						     currency taken and the amount handed over. Inside the left card it read
 						     as labelling only the picker, and left the amount card unlabelled. -->
-						<p class="text-[11px] font-semibold uppercase leading-none text-stone-400">{{ t('posPanels.cashReceived') }}</p>
+						<div class="flex min-w-0 items-center justify-between gap-2 text-[11px] font-semibold leading-none">
+							<span class="shrink-0 uppercase text-stone-400">{{ t('posPanels.cashReceived') }}</span>
+							<span v-if="cashTenderedBase < displayTotal" class="flex min-w-0 items-center gap-1 text-[10px] font-medium normal-case text-amber-700">
+								<UIcon name="i-heroicons-information-circle-20-solid" class="size-3 shrink-0" />
+								<span class="truncate">{{ t('posPanels.cashAmountRequired', { amount: isForeignPayment ? payMoney(Math.max(0, totalInPaymentCurrency - cashTendered)) : money(Math.max(0, displayTotal - cashTenderedBase)) }) }}</span>
+							</span>
+						</div>
 						<div class="flex items-stretch gap-2">
 							<!-- Dropped entirely for a single-currency shop, so it never leaves an empty
 							     box and the amount card simply takes the full width. -->
