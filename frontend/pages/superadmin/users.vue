@@ -79,6 +79,7 @@ const selectedUserId = ref("");
 const createOpen = ref(false);
 const detailOpen = ref(false);
 const memberDetailOpen = ref(false);
+const deleteOpen = ref(false);
 const createStores = ref<StoreRecord[]>([]);
 const createRoles = ref<RoleRecord[]>([]);
 const createMetaPending = ref(false);
@@ -141,9 +142,28 @@ const canManageSystem = computed(() => (
 	|| can("settings.users.update")
 	|| can("settings.users.suspend")
 	|| can("settings.users.assign_role")
+	|| can("settings.users.remove_member")
 	|| can("system_admin.clients.update")
 ));
 const canEditClientAccounts = computed(() => can("system_admin.clients.update"));
+const canDeleteSelectedUser = computed(() => Boolean(
+	selectedUser.value
+	&& selectedUser.value.id !== currentUser.value?.id
+	&& selectedUser.value.system_role !== "superadmin"
+	&& selectedUser.value.membership_count === 1
+	&& selectedUser.value.primary_store_id
+	&& (can("settings.users.remove_member") || can("superadmin.users.archive")),
+));
+const deleteCopy = computed(() => locale.value === "lo" ? {
+	title: "ນຳອອກຈາກຮ້ານ", description: "ນຳຜູ້ໃຊ້ນີ້ອອກຈາກຮ້ານ", warning: "ຜູ້ໃຊ້ຈະບໍ່ສາມາດເຂົ້າໃຊ້ຮ້ານນີ້ໄດ້ອີກ ແຕ່ບັນຊີ ແລະ ປະຫວັດເກົ່າຈະຍັງຢູ່", confirm: "ຢືນຢັນການນຳອອກ", success: "ນຳຜູ້ໃຊ້ອອກຈາກຮ້ານແລ້ວ", failed: "ນຳຜູ້ໃຊ້ອອກບໍ່ສຳເລັດ",
+} : locale.value === "th" ? {
+	title: "นำออกจากร้าน", description: "นำผู้ใช้นี้ออกจากร้าน", warning: "ผู้ใช้จะไม่สามารถเข้าถึงร้านนี้ได้อีก แต่บัญชีและประวัติเดิมจะยังอยู่", confirm: "ยืนยันการนำออก", success: "นำผู้ใช้ออกจากร้านแล้ว", failed: "นำผู้ใช้ออกจากร้านไม่สำเร็จ",
+} : {
+	title: "Remove from store", description: "Remove this user from the store", warning: "This user will no longer be able to access this store.", confirm: "Confirm removal", success: "User removed from store", failed: "Unable to remove user from store",
+});
+const removedUsersLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ໃຊ້ທີ່ນຳອອກແລ້ວ"
+	: locale.value === "th" ? "ผู้ใช้ที่นำออกแล้ว" : "Removed users");
 const canManageMemberDetail = computed(() => (
 	Boolean(selectedUser.value)
 	&& selectedUser.value?.system_role !== "superadmin"
@@ -662,6 +682,22 @@ async function saveMemberDetail() {
 	}
 }
 
+async function deleteSelectedUser() {
+	if (!selectedUser.value || !selectedUser.value.primary_store_id || !canDeleteSelectedUser.value) return;
+	saving.value = true;
+	try {
+		await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedUser.value.primary_store_id)}/${encodeURIComponent(selectedUser.value.id)}`, { method: "DELETE" });
+		deleteOpen.value = false;
+		memberDetailOpen.value = false;
+		appToast.success({ title: deleteCopy.value.success });
+		await loadUsers();
+	} catch (err) {
+		appToast.error({ title: deleteCopy.value.failed, description: resolveApiErrorMessage(err) });
+	} finally {
+		saving.value = false;
+	}
+}
+
 watch(() => createForm.store_id, async (storeId) => {
 	if (!createOpen.value || createMetaPending.value) return;
 	await loadCreateRoles(storeId);
@@ -720,6 +756,9 @@ onMounted(loadUsers);
 									@click="reloadUsers"
 								>
 									<span class="hidden sm:inline">{{ t('superadminUsersPage.reload') }}</span>
+								</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clock-20-solid" to="/superadmin/removed-users" class="h-9 shrink-0 rounded-md px-2 sm:h-auto sm:px-3" :title="removedUsersLabel" :aria-label="removedUsersLabel">
+									<span class="hidden sm:inline">{{ removedUsersLabel }}</span>
 								</AppButton>
 								<AppButton
 									color="primary"
@@ -1266,9 +1305,28 @@ onMounted(loadUsers);
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
+						<div class="grid w-full grid-cols-3 gap-2">
 							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="memberDetailOpen = false">{{ t('superadminUsersPage.close') }}</AppButton>
+							<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteSelectedUser" @click="deleteOpen = true">{{ deleteCopy.title }}</AppButton>
 							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="memberMetaPending || !memberForm.role_id" :spin-icon-on-loading="true" :block="true" @click="saveMemberDetail">{{ t('superadminUsersPage.save') }}</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel v-model="deleteOpen" :title="deleteCopy.title" :description="deleteCopy.description" desktop-width="680px" compact-header>
+				<div v-if="selectedUser" class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 overflow-y-auto px-5 py-4">
+						<div class="rounded-md border border-red-200 bg-red-50 p-4">
+							<p class="font-semibold text-red-900">{{ selectedUser.name }}</p>
+							<p class="mt-1 text-sm font-medium text-red-800">{{ selectedUser.primary_store_name || memberForm.store_name || '-' }}</p>
+							<p class="mt-1 text-sm text-red-700">{{ deleteCopy.warning }}</p>
+						</div>
+					</div>
+					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-2 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="deleteOpen = false">{{ t('superadminUsersPage.cancel') }}</AppButton>
+							<AppButton color="error" variant="solid" size="md" icon="i-heroicons-trash-20-solid" :block="true" :loading="saving" @click="deleteSelectedUser">{{ deleteCopy.confirm }}</AppButton>
 						</div>
 					</div>
 				</div>

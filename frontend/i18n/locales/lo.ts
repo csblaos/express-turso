@@ -38,7 +38,7 @@ export default defineI18nLocale(() => ({
 		pos: "ຂາຍໜ້າຮ້ານ", products: "ສິນຄ້າ", orders: "ອໍເດີ", inventory: "ສະຕັອກ", inventoryHistory: "ປະຫວັດສະຕັອກ",
 		purchaseOrders: "ສັ່ງຊື້", reports: "ລາຍງານ", activity: "ກິດຈະກຳ", profile: "ໂປຣໄຟລ໌", settings: "ຕັ້ງຄ່າ",
 		users: "ຜູ້ໃຊ້", categories: "ໝວດໝູ່", units: "ຫົວໜ່ວຍ", language: "ພາສາ", roles: "ບົດບາດ", stockPolicy: "ນະໂຍບາຍສະຕັອກ",
-		storeFinance: "ການເງິນຮ້ານ", rates: "ອັດຕາແລກປ່ຽນ", storePayments: "ການຮັບຊຳລະ", printing: "ການພິມ", salesReceipt: "ບິນຂາຍ", superadmin: "Super Admin",
+		storeFinance: "ການເງິນຮ້ານ", rates: "ອັດຕາແລກປ່ຽນ", storePayments: "ການຮັບຊຳລະ", printing: "ການພິມ", salesReceipt: "ບິນຂາຍ", superadmin: "ຜູ້ດູແລລະບົບ",
 		overview: "ພາບລວມ", globalConfig: "ຕັ້ງຄ່າສ່ວນກາງ", stores: "ຮ້ານ", roleSettings: "ຕັ້ງຄ່າບົດບາດ", security: "ຄວາມປອດໄພ", accountOverview: "ພາບລວມບັນຊີ",
 		quotas: "ໂຄຕ້າ", branchConfig: "ຕັ້ງຄ່າສາຂາ", integrations: "ການເຊື່ອມຕໍ່", systemAdmin: "ຜູ້ດູແລລະບົບ", dashboard: "ແດຊບອດ",
 		clients: "ລູກຄ້າ", systemPolicy: "ນະໂຍບາຍລະບົບ", monitoring: "ການຕິດຕາມ", thirdPartyUsage: "ການໃຊ້ງານພາກສ່ວນທີສາມ",
@@ -54,7 +54,7 @@ export default defineI18nLocale(() => ({
 		reports: "ລາຍງານ",
 		activity: "ກິດຈະກຳ",
 		settings: "ຕັ້ງຄ່າ",
-		superadmin: "ຜູ້ດູເເລລະບົບ",
+		superadmin: "ຜູ້ດູແລລະບົບ",
 		dashboard: "ໜ້າຫຼັກ",
 		clients: "ລູກຄ້າ",
 		policy: "ນະໂຍບາຍລະບົບ",
@@ -333,14 +333,14 @@ export default defineI18nLocale(() => ({
 	},
 	superadmin: {
 		shortTitle: "ເຄື່ອງມືຫຼັກ",
-		title: "ເຄື່ອງມືຫຼັກຂອງ Super Admin",
+		title: "ເຄື່ອງມືຫຼັກຂອງຜູ້ດູແລລະບົບ",
 		description: "ຈັດການພາບລວມລະບົບ ແລະ ການຕັ້ງຄ່າຫຼັກລະດັບສູງ",
 		sidebarDescription: "ພື້ນທີ່ບໍລິຫານທຸລະກິດ ແຍກຈາກ System Admin ສູນກາງ",
 		entries: {
 			overview: { title: "ພາບລວມ", description: "ໜ້າສະຫຼຸບພາບລວມລະບົບ" },
 			globalConfig: {
 				title: "ການຕັ້ງຄ່າກາງ",
-				description: "ຕັ້ງຄ່າກາງຂອງ Super Admin",
+				description: "ຕັ້ງຄ່າກາງຂອງຜູ້ດູແລລະບົບ",
 			},
 			users: {
 				title: "ຜູ້ໃຊ້",
@@ -352,7 +352,7 @@ export default defineI18nLocale(() => ({
 			},
 			stores: {
 				title: "ຮ້ານ",
-				description: "ເບິ່ງ ແລະ ຈັດການຮ້ານໃນລະດັບ Super Admin",
+				description: "ເບິ່ງ ແລະ ຈັດການຮ້ານໃນລະດັບຜູ້ດູແລລະບົບ",
 			},
 			security: {
 				title: "ພາບລວມບັນຊີ",

@@ -2015,7 +2015,7 @@ onBeforeUnmount(() => {
 						<article v-for="queued in pickupQueue" :key="queued.id" class="flex min-h-[190px] w-full flex-col overflow-hidden rounded-md border border-amber-200 bg-white shadow-sm sm:w-[340px]">
 							<header class="flex items-start justify-between gap-3 border-b border-amber-100 bg-amber-50/60 px-3 py-2"><div><p class="text-[11px] font-medium text-amber-700">{{ t('restaurantPos.queueNumber') }}</p><p class="text-lg font-bold leading-tight tabular-nums text-stone-950">{{ displayQueueNo(queued.queue_no) }}</p></div><div class="text-right"><p class="text-[11px] text-stone-500">{{ t('restaurantPos.waitingFor', { time: elapsed(queued.paid_at || queued.created_at) }) }}</p><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ money(queued.total) }}</p></div></header>
 							<div class="space-y-1 px-3 py-2"><div v-for="item in queued.items.slice(0, 3)" :key="item.product_id" class="flex items-start justify-between gap-3 text-sm"><span class="min-w-0 truncate">{{ item.name }}<span v-if="item.is_gift" class="ml-1 text-xs text-emerald-600">{{ t('restaurantPos.free') }}</span></span><strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong></div><button v-if="queued.items.length > 3" type="button" class="inline-flex min-h-7 items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800" @click="openPickupQueueDetail(queued)"><UIcon name="i-heroicons-eye" class="size-4" />{{ t('restaurantPos.viewBill') }} · {{ queued.items.length }}</button></div>
-							<footer class="mt-auto border-t border-neutral-100 p-2.5"><AppButton block size="sm" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === queued.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(queued.id)">{{ t('restaurantPos.customerCollected') }}</AppButton></footer>
+						<footer class="mt-auto border-t border-neutral-100 p-3 sm:p-3.5"><AppButton block size="lg" class="min-h-12 touch-manipulation text-sm font-semibold sm:text-base" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === queued.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(queued.id)">{{ t('restaurantPos.customerCollected') }}</AppButton></footer>
 						</article>
 					</div>
 				</div>
@@ -2174,7 +2174,7 @@ onBeforeUnmount(() => {
 					<strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong>
 				</div>
 			</div>
-			<AppButton v-if="!pickupQueueDetail.collected_at" block color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === pickupQueueDetail.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(pickupQueueDetail.id); pickupQueueDetailOpen = false">{{ t('restaurantPos.customerCollected') }}</AppButton>
+			<AppButton v-if="!pickupQueueDetail.collected_at" block size="lg" class="min-h-12 touch-manipulation text-base font-semibold" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === pickupQueueDetail.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(pickupQueueDetail.id); pickupQueueDetailOpen = false">{{ t('restaurantPos.customerCollected') }}</AppButton>
 		</div>
 	</AppResponsivePanel>
 
@@ -2858,6 +2858,7 @@ onBeforeUnmount(() => {
 
 </style>
 
+
 <style>
 /* Unscoped on purpose. Scoped styles get the component's data-v attribute added
    to every selector, and <body> never carries it, so a scoped "body *" rule
@@ -2887,4 +2888,3 @@ onBeforeUnmount(() => {
 	.print-sheet hr { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
 }
 </style>
-

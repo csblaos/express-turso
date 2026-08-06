@@ -61,7 +61,7 @@ const isElevatedStoreManager = computed(() => (
 	|| currentUser.value?.systemRole === "system_admin"
 ));
 
-const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
+const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can("settings.finance.update"));
 
 const baseCurrency = ref<CurrencyCode>("LAK");
 const supportedCurrencies = reactive<Record<CurrencyCode, boolean>>({

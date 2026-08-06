@@ -39,6 +39,7 @@ type QuotaListResponse = {
 		unlimited_branch_accounts: number;
 		attention_accounts: number;
 		stores_total: number;
+		store_user_limit: number | null;
 	};
 	warnings: string[];
 };
@@ -76,6 +77,7 @@ const summary = ref<QuotaListResponse["summary"]>({
 	unlimited_branch_accounts: 0,
 	attention_accounts: 0,
 	stores_total: 0,
+	store_user_limit: 0,
 });
 const listScrollRef = ref<HTMLElement | null>(null);
 
@@ -92,6 +94,18 @@ const pageSummaryText = computed(() => (
 		? copy.value.noData
 		: `${pageStart.value}-${pageEnd.value} ${copy.value.of} ${totalItems.value} ${copy.value.accounts}`
 ));
+const superAdminLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ດູແລລະບົບ"
+	: locale.value === "th" ? "ผู้ดูแลระบบ" : "Super Admin");
+const pageTitle = computed(() => copy.value.title.replace("Super Admin", superAdminLabel.value));
+const pageDescription = computed(() => copy.value.description.replace("Super Admin", superAdminLabel.value));
+const pageHint = computed(() => copy.value.hint.replace("Super Admin", superAdminLabel.value));
+const userQuotaTitle = computed(() => locale.value === "lo"
+	? "ໂຄຕາຜູ້ໃຊ້/ຮ້ານ"
+	: locale.value === "th" ? "โควต้าผู้ใช้/ร้าน" : "User quota/store");
+const usersPerStoreLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ໃຊ້/ຮ້ານ"
+	: locale.value === "th" ? "ผู้ใช้/ร้าน" : "users/store");
 
 const overviewStats = computed(() => {
 	if (locale.value === "lo") {
@@ -143,9 +157,7 @@ function formatDateTime(value: string) {
 function roleLabel(role: string) {
 	const normalizedRole = role?.trim().toLowerCase();
 	if (normalizedRole === "superadmin") {
-		if (locale.value === "lo") return "ຜູ້ດູແລລະບົບສູງສຸດ";
-		if (locale.value === "th") return "ผู้ดูแลระบบสูงสุด";
-		return "Super Admin";
+		return superAdminLabel.value;
 	}
 	if (normalizedRole === "staff") return copy.value.staff;
 	return role || copy.value.staff;
@@ -175,6 +187,12 @@ function storeUsageLabel(item: QuotaRecord) {
 	if (!item.can_create_stores) return `${copy.value.used} ${item.owned_stores_count} ${copy.value.stores}`;
 	if (item.max_stores === null) return `${copy.value.used} ${item.owned_stores_count} ${copy.value.stores}`;
 	return `${copy.value.used} ${item.owned_stores_count} / ${item.max_stores} ${copy.value.stores}`;
+}
+
+function storeUserQuotaLabel() {
+	return summary.value.store_user_limit === null
+		? copy.value.unlimited
+		: `${summary.value.store_user_limit} ${usersPerStoreLabel.value}`;
 }
 
 function scrollListToTop() {
@@ -240,10 +258,10 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Super Admin"
-		sidebar-title="Super Admin"
+		:sidebar-eyebrow="superAdminLabel"
+		:sidebar-title="superAdminLabel"
 		sidebar-compact-title="SUP"
-		:sidebar-description="copy.description"
+		:sidebar-description="pageDescription"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
@@ -277,8 +295,8 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">{{ copy.title }}</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ copy.hint }}</p>
+									<p class="text-sm font-semibold text-stone-950">{{ pageTitle }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ pageHint }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ pageSummaryText }}
@@ -359,7 +377,7 @@ onMounted(async () => {
 												</div>
 											</div>
 
-											<div class="mt-3 grid grid-cols-2 divide-x divide-[#ece6dc] overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 dark:divide-[#3a332a] dark:border-[#3a332a] dark:bg-[#221d18]">
+											<div class="mt-3 grid grid-cols-3 divide-x divide-[#ece6dc] overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 dark:divide-[#3a332a] dark:border-[#3a332a] dark:bg-[#221d18]">
 												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
 													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.storeQuota }}</p>
 													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ storeQuotaLabel(item) }}</p>
@@ -367,6 +385,10 @@ onMounted(async () => {
 												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
 													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.remaining }}</p>
 													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ remainingCapacityLabel(item) }}</p>
+												</div>
+												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
+													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ userQuotaTitle }}</p>
+													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ storeUserQuotaLabel() }}</p>
 												</div>
 											</div>
 										</button>

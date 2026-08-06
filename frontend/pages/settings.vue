@@ -7,6 +7,7 @@ type SettingsEntry = {
 	descriptionKey: string;
 	icon: string;
 	to?: string;
+	permission?: string;
 	availability: "ready" | "soon";
 };
 
@@ -39,11 +40,17 @@ const plannedTone = {
 const hiddenSettingEntryIds = new Set([ "security", "stores", "shipping", "branchSwitch", "branchConfig" ]);
 
 function linkedEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => Boolean(entry.to) && (entry.id !== "notifications" || canViewNotifications.value));
+	return section.entries.filter((entry) => Boolean(entry.to) && canViewEntry(entry));
 }
 
 function staticEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => !entry.to && (entry.id !== "notifications" || canViewNotifications.value));
+	return section.entries.filter((entry) => !entry.to && canViewEntry(entry));
+}
+
+function canViewEntry(entry: SettingsEntry) {
+	if (entry.id === "notifications") return canViewNotifications.value;
+	if (!entry.permission) return true;
+	return currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin" || can(entry.permission);
 }
 
 function entryTone(entry: SettingsEntry) {
@@ -61,6 +68,7 @@ const settingsSections: SettingsSection[] = [
 				id: key, titleKey: `settings.entries.${key}.title`, descriptionKey: `settings.entries.${key}.description`,
 				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-computer-desktop", "i-heroicons-truck", "i-heroicons-arrows-right-left", "i-heroicons-adjustments-horizontal" ][index]!,
 				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", "/notifications", "/settings/printing/sales-receipt", undefined, "/settings/store-profile", "/settings/store-finance", "/settings/stock", "/settings/store-payments", "/settings/customer-display", undefined, undefined, undefined ][index],
+				permission: [ undefined, undefined, undefined, "settings.users.view", "products.view", "products.view", "settings.restaurant.view", undefined, "settings.printing.view", undefined, "settings.store.view", "settings.finance.view", "settings.stock_policy.view", "settings.payments.view", "settings.customer_display.view", undefined, undefined, undefined ][index],
 				availability: ([ 2, 9, 15, 16, 17 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
 			})).filter((entry) => !hiddenSettingEntryIds.has(entry.id)),
 		],

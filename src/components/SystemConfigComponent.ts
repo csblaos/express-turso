@@ -4,6 +4,7 @@ import { SystemConfig, SystemConfigUpdateInput } from "@models/SystemConfig";
 const UPDATABLE_FIELDS: Array<keyof SystemConfigUpdateInput> = [
 	"default_can_create_branches",
 	"default_max_branches_per_store",
+	"default_max_users_per_store",
 	"default_session_limit",
 	"store_logo_max_size_mb",
 	"store_logo_auto_resize",

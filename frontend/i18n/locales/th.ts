@@ -38,7 +38,7 @@ export default defineI18nLocale(() => ({
 		pos: "ขายหน้าร้าน", products: "สินค้า", orders: "ออเดอร์", inventory: "สต็อก", inventoryHistory: "ประวัติสต็อก",
 		purchaseOrders: "สั่งซื้อ", reports: "รายงาน", activity: "กิจกรรม", profile: "โปรไฟล์", settings: "ตั้งค่า",
 		users: "ผู้ใช้", categories: "หมวดหมู่", units: "หน่วย", language: "ภาษา", roles: "บทบาท", stockPolicy: "นโยบายสต็อก",
-		storeFinance: "การเงินร้าน", rates: "อัตราแลกเปลี่ยน", storePayments: "การรับชำระ", printing: "การพิมพ์", salesReceipt: "บิลขาย", superadmin: "ผู้ดูแลสูงสุด",
+		storeFinance: "การเงินร้าน", rates: "อัตราแลกเปลี่ยน", storePayments: "การรับชำระ", printing: "การพิมพ์", salesReceipt: "บิลขาย", superadmin: "ผู้ดูแลระบบ",
 		overview: "ภาพรวม", globalConfig: "ตั้งค่าส่วนกลาง", stores: "ร้าน", roleSettings: "ตั้งค่าบทบาท", security: "ความปลอดภัย", accountOverview: "ภาพรวมบัญชี",
 		quotas: "โควตา", branchConfig: "ตั้งค่าสาขา", integrations: "การเชื่อมต่อ", systemAdmin: "ผู้ดูแลระบบ", dashboard: "แดชบอร์ด",
 		clients: "ลูกค้า", systemPolicy: "นโยบายระบบ", monitoring: "การติดตาม", thirdPartyUsage: "การใช้งานบุคคลที่สาม",
@@ -345,7 +345,7 @@ export default defineI18nLocale(() => ({
 	},
 	superadmin: {
 		shortTitle: "เครื่องมือหลัก",
-		title: "เครื่องมือหลักของ Super Admin",
+		title: "เครื่องมือหลักของผู้ดูแลระบบ",
 		description: "จัดการภาพรวมระบบและการตั้งค่าหลักของผู้ดูแลระดับสูง",
 		sidebarDescription:
 			"พื้นที่ผู้ดูแลระดับธุรกิจและองค์กร แยกจาก System Admin กลาง",
@@ -357,7 +357,7 @@ export default defineI18nLocale(() => ({
 			globalConfig: {
 				title: "การตั้งค่ากลาง",
 				description:
-					"ตั้งค่ากลางของ Super Admin เช่น จำนวนบัญชีสูงสุดต่อร้าน",
+					"ตั้งค่ากลางของผู้ดูแลระบบ เช่น จำนวนบัญชีสูงสุดต่อร้าน",
 			},
 			users: {
 				title: "ผู้ใช้",
@@ -369,7 +369,7 @@ export default defineI18nLocale(() => ({
 			},
 			stores: {
 				title: "ร้านค้า",
-				description: "ดูและจัดการร้านในระดับ Super Admin",
+				description: "ดูและจัดการร้านในระดับผู้ดูแลระบบ",
 			},
 			security: {
 				title: "ภาพรวมบัญชี",

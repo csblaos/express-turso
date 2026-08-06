@@ -158,7 +158,7 @@ const currentStoreName = computed(() => selectedStore.value?.name || "-");
 const canUpdateStorePayments = computed(() => (
 	currentUser.value?.systemRole === "superadmin"
 	|| currentUser.value?.systemRole === "system_admin"
-	|| can("settings.store.update")
+	|| can("settings.payments.update")
 ));
 const reloading = computed(() => storesPending.value || accountsPending.value);
 

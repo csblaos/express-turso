@@ -5,10 +5,9 @@ import { resolveApiErrorMessage } from "~/utils/api-errors";
 type ApiEnvelope<T> = { success: true; requestId: string; data: T };
 type ApiSystemConfig = {
 	id: string;
-	default_can_create_branches: number;
-	default_max_branches_per_store: number | null;
 	created_at: string;
 	updated_at: string;
+	default_max_users_per_store: number | null;
 	default_session_limit: number;
 	store_logo_max_size_mb: number;
 	store_logo_auto_resize: number;
@@ -28,14 +27,13 @@ const toast = ref("");
 const canManageSystem = computed(() => can("system_admin.config.update"));
 const initialState = ref("");
 const form = reactive({
-	defaultCanCreateBranches: true,
-	defaultMaxBranchesPerStore: "5",
+	defaultMaxUsersPerStore: "20",
 	defaultSessionLimit: 3,
 	storeLogoMaxSizeMb: 5,
 	storeLogoAutoResize: true,
 	storeLogoResizeMaxWidth: 1200,
 });
-const sectionCount = 2;
+const sectionCount = 1;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function setToast(message: string) {
 	toast.value = message;
@@ -43,8 +41,7 @@ function setToast(message: string) {
 	toastTimer = setTimeout(() => { toast.value = ""; }, 2200);
 }
 function apply(data: ApiSystemConfig) {
-	form.defaultCanCreateBranches = Boolean(data.default_can_create_branches);
-	form.defaultMaxBranchesPerStore = data.default_max_branches_per_store === null ? "" : String(data.default_max_branches_per_store);
+	form.defaultMaxUsersPerStore = data.default_max_users_per_store === null ? "" : String(data.default_max_users_per_store);
 	form.defaultSessionLimit = data.default_session_limit;
 	form.storeLogoMaxSizeMb = data.store_logo_max_size_mb;
 	form.storeLogoAutoResize = Boolean(data.store_logo_auto_resize);
@@ -52,8 +49,7 @@ function apply(data: ApiSystemConfig) {
 	initialState.value = currentState.value;
 }
 const currentState = computed(() => JSON.stringify({
-	defaultCanCreateBranches: form.defaultCanCreateBranches,
-	defaultMaxBranchesPerStore: form.defaultMaxBranchesPerStore,
+	defaultMaxUsersPerStore: form.defaultMaxUsersPerStore,
 	defaultSessionLimit: form.defaultSessionLimit,
 	storeLogoMaxSizeMb: form.storeLogoMaxSizeMb,
 	storeLogoAutoResize: form.storeLogoAutoResize,
@@ -77,12 +73,12 @@ async function loadConfig() {
 async function saveConfig() {
 	saving.value = true;
 	try {
+		const maxUsersPerStore = String(form.defaultMaxUsersPerStore ?? "").trim();
 		await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config", {
-			method: "PUT",
-			body: {
-				default_can_create_branches: form.defaultCanCreateBranches ? 1 : 0,
-				default_max_branches_per_store: form.defaultMaxBranchesPerStore.trim() === "" ? null : Number(form.defaultMaxBranchesPerStore),
-				default_session_limit: Number(form.defaultSessionLimit),
+		method: "PUT",
+		body: {
+			default_max_users_per_store: maxUsersPerStore === "" ? null : Number(maxUsersPerStore),
+			default_session_limit: Number(form.defaultSessionLimit),
 				store_logo_max_size_mb: Number(form.storeLogoMaxSizeMb),
 				store_logo_auto_resize: form.storeLogoAutoResize ? 1 : 0,
 				store_logo_resize_max_width: Number(form.storeLogoResizeMaxWidth),
@@ -109,7 +105,7 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 			sidebar-eyebrow="ລະບົບ"
 			sidebar-title="ຜູ້ດູແລລະບົບ"
 		sidebar-compact-title="SYS"
-		sidebar-description="ນະໂຍບາຍສາຂາ, session ແລະ ໂລໂກ້ຮ້ານຂອງແພລດຟອມ"
+		sidebar-description="ນະໂຍບາຍ session ແລະ ໂລໂກ້ຮ້ານຂອງແພລດຟອມ"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
@@ -136,7 +132,7 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
 									<p class="text-sm font-semibold text-stone-950">ນະໂຍບາຍສຳລັບຮ້ານໃໝ່</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ຄວບຄຸມສິດສ້າງສາຂາ, session ແລະ ມາດຕະຖານໂລໂກ້ຈາກບ່ອນດຽວ</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ຄວບຄຸມ session ແລະ ມາດຕະຖານໂລໂກ້ຈາກບ່ອນດຽວ</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ sectionCount }} ສ່ວນຕັ້ງຄ່າ
@@ -152,32 +148,7 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 								<div v-else-if="error" class="flex h-full min-h-[320px] items-center justify-center px-4 text-center text-stone-500">
 									{{ error }}
 								</div>
-								<div v-else class="grid gap-4 p-4 xl:grid-cols-2">
-									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
-										<div class="space-y-4">
-											<div class="flex items-start gap-3">
-												<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-100">
-													<UIcon name="i-heroicons-building-storefront-20-solid" class="h-5 w-5" />
-												</div>
-												<div>
-													<h2 class="text-lg font-semibold text-stone-950">ນະໂຍບາຍສາຂາ</h2>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ກຳນົດສິດ ແລະ ຈຳນວນສາຂາເລີ່ມຕົ້ນໃຫ້ຮ້ານໃໝ່</p>
-												</div>
-											</div>
-											<label class="flex items-start gap-3 rounded-md border border-primary-100 bg-primary-50/40 p-4">
-												<input v-model="form.defaultCanCreateBranches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-												<div>
-													<p class="text-sm font-medium text-stone-900">ອະນຸຍາດໃຫ້ຮ້ານໃໝ່ສ້າງສາຂາໄດ້</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ນຳໃຊ້ເປັນຄ່າກາງຂອງແພລດຟອມ</p>
-												</div>
-											</label>
-											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">ຈຳນວນສາຂາສູງສຸດຕໍ່ຮ້ານ</label>
-												<input v-model="form.defaultMaxBranchesPerStore" type="number" min="1" placeholder="5" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-											</div>
-										</div>
-									</UCard>
-
+								<div v-else class="grid gap-4 p-4">
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
 											<div class="flex items-start gap-3">
@@ -188,6 +159,11 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 													<h2 class="text-lg font-semibold text-stone-950">Session ແລະ ໂລໂກ້ຮ້ານ</h2>
 													<p class="mt-1 text-xs leading-5 text-stone-500">ກຳນົດ session ເລີ່ມຕົ້ນ ແລະ ມາດຕະຖານໂລໂກ້ໃຫ້ຮ້ານໃໝ່</p>
 												</div>
+											</div>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">ຈຳນວນຜູ້ໃຊ້ສູງສຸດຕໍ່ຮ້ານ</label>
+												<input v-model="form.defaultMaxUsersPerStore" type="number" min="1" placeholder="20" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												<p class="mt-1.5 text-xs text-stone-500">ປ່ອຍວ່າງເພື່ອບໍ່ຈຳກັດ</p>
 											</div>
 											<div>
 												<label class="mb-2 block text-xs font-medium text-stone-500">ຈຳນວນ session ເລີ່ມຕົ້ນ</label>

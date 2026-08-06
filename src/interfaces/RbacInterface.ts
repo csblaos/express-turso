@@ -150,6 +150,16 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "settings.store.create", resource: "settings.store", action: "create" },
 	{ key: "settings.store.update", resource: "settings.store", action: "update" },
 	{ key: "settings.store.archive", resource: "settings.store", action: "archive" },
+	{ key: "settings.printing.view", resource: "settings.printing", action: "view" },
+	{ key: "settings.printing.update", resource: "settings.printing", action: "update" },
+	{ key: "settings.finance.view", resource: "settings.finance", action: "view" },
+	{ key: "settings.finance.update", resource: "settings.finance", action: "update" },
+	{ key: "settings.stock_policy.view", resource: "settings.stock_policy", action: "view" },
+	{ key: "settings.stock_policy.update", resource: "settings.stock_policy", action: "update" },
+	{ key: "settings.payments.view", resource: "settings.payments", action: "view" },
+	{ key: "settings.payments.update", resource: "settings.payments", action: "update" },
+	{ key: "settings.customer_display.view", resource: "settings.customer_display", action: "view" },
+	{ key: "settings.customer_display.update", resource: "settings.customer_display", action: "update" },
 	{ key: "settings.restaurant.view", resource: "settings.restaurant", action: "view" },
 	{ key: "settings.restaurant.update", resource: "settings.restaurant", action: "update" },
 	{ key: "settings.users.view", resource: "settings.users", action: "view" },
@@ -158,6 +168,7 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "settings.users.suspend", resource: "settings.users", action: "suspend" },
 	{ key: "settings.users.assign_role", resource: "settings.users", action: "assign_role" },
 	{ key: "settings.users.reset_password", resource: "settings.users", action: "reset_password" },
+	{ key: "settings.users.remove_member", resource: "settings.users", action: "remove_member" },
 	{ key: "settings.roles.view", resource: "settings.roles", action: "view" },
 	{ key: "settings.roles.create", resource: "settings.roles", action: "create" },
 	{ key: "settings.roles.update", resource: "settings.roles", action: "update" },
@@ -190,7 +201,7 @@ const DEFAULT_PERMISSION_SEED = [
 
 const DEFAULT_STORE_MEMBER_ROLE_NAME = "Cashier";
 const DEFAULT_STORE_OWNER_ROLE_NAME = "Owner";
-const STORE_ROLE_PRESET_SCHEMA_VERSION = 2;
+const STORE_ROLE_PRESET_SCHEMA_VERSION = 5;
 const RETIRED_STORE_ROLE_NAMES = [ "Viewer" ] as const;
 
 const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
@@ -229,6 +240,16 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"settings.view",
 			"settings.store.view",
 			"settings.store.update",
+			"settings.printing.view",
+			"settings.printing.update",
+			"settings.finance.view",
+			"settings.finance.update",
+			"settings.stock_policy.view",
+			"settings.stock_policy.update",
+			"settings.payments.view",
+			"settings.payments.update",
+			"settings.customer_display.view",
+			"settings.customer_display.update",
 			"settings.restaurant.view",
 			"settings.restaurant.update",
 			"settings.users.view",
@@ -237,6 +258,7 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"settings.users.suspend",
 			"settings.users.assign_role",
 			"settings.users.reset_password",
+			"settings.users.remove_member",
 			"settings.roles.view",
 			"settings.roles.create",
 			"settings.roles.update",
@@ -274,12 +296,50 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 			"stores.view",
 			"settings.view",
 			"settings.store.view",
+			"settings.printing.view",
+			"settings.printing.update",
+			"settings.stock_policy.view",
+			"settings.stock_policy.update",
+			"settings.customer_display.view",
+			"settings.customer_display.update",
 			"settings.users.view",
 			"settings.users.update",
 			"settings.users.suspend",
 			"settings.users.reset_password",
 			"settings.restaurant.view",
 			"settings.restaurant.update",
+		],
+	},
+	{
+		name: "Store Admin",
+		permissionKeys: [
+			"pos.create_order",
+			"dashboard.view",
+			"pos.restaurant.open",
+			"pos.restaurant.send_kitchen",
+			"pos.restaurant.transfer",
+			"pos.restaurant.cancel_sent",
+			"pos.restaurant.apply_promotion",
+			"pos.restaurant.print",
+			"products.view",
+			"promotions.view",
+			"inventory.view",
+			"purchase_orders.view",
+			"reports.view",
+			"activity.view",
+			"stores.view",
+			"settings.view",
+			"settings.store.view",
+			"settings.printing.view",
+			"settings.customer_display.view",
+			"settings.restaurant.view",
+			"settings.restaurant.update",
+			"settings.users.view",
+			"settings.users.create",
+			"settings.users.update",
+			"settings.users.suspend",
+			"settings.users.assign_role",
+			"settings.users.reset_password",
 		],
 	},
 	{
@@ -1256,6 +1316,12 @@ export class RbacInterface {
 		if (existingUser.rows.length > 0) {
 			userId = String(existingUser.rows[0].id);
 		} else {
+			const normalizedUsername = assertUsername(payload.username);
+			const existingUsername = await db.execute({
+				sql: "SELECT 1 FROM users WHERE LOWER(username) = ? LIMIT 1",
+				args: [ normalizedUsername.toLowerCase() ],
+			});
+			if (existingUsername.rows.length > 0) throw new Error("USERNAME_TAKEN");
 			const passwordHash = await bcrypt.hash(payload.password, 10);
 			const now = new Date().toISOString();
 			userId = randomUUID();
@@ -1271,7 +1337,7 @@ export class RbacInterface {
 					userId,
 					normalizedEmail,
 					payload.name.trim(),
-					assertUsername(payload.username),
+					normalizedUsername,
 					passwordHash,
 					now,
 					null,
@@ -1352,6 +1418,15 @@ export class RbacInterface {
 		});
 
 		return RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+	}
+
+	static async deleteStoreMember(storeId: string, userId: string): Promise<void> {
+		const db = DbConn.getClient();
+		const owner = await db.execute({ sql: "SELECT owner_user_id FROM stores WHERE id = ? LIMIT 1", args: [ storeId ] });
+		if (owner.rows[0]?.owner_user_id && String(owner.rows[0].owner_user_id) === userId) {
+			throw new Error("STORE_OWNER_DELETE_FORBIDDEN");
+		}
+		await db.execute({ sql: "DELETE FROM store_members WHERE store_id = ? AND user_id = ?", args: [ storeId, userId ] });
 	}
 
 	static async softDeleteRole(id: string): Promise<RoleWithPermissions | null> {

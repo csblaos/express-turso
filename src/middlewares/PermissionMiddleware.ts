@@ -43,6 +43,32 @@ export class PermissionMiddleware {
 		};
 	}
 
+	/** Store updates share one endpoint, so choose the narrowly-scoped setting
+	 * permission from the fields being changed instead of granting broad store
+	 * administration for a receipt, payment, or customer-display change. */
+	static requireStoreSettingsUpdate(): RequestHandler {
+		return (req, res, next) => {
+			const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+			const keys = Object.keys(body);
+			const requiredPermissions = new Set<string>();
+			if (keys.some((key) => key.startsWith("receipt_"))) requiredPermissions.add("settings.printing.update");
+			if (keys.some((key) => [ "currency", "supported_currencies", "vat_enabled", "vat_rate", "cost_method" ].includes(key))) requiredPermissions.add("settings.finance.update");
+			if (keys.includes("allow_negative_stock")) requiredPermissions.add("settings.stock_policy.update");
+			if (keys.some((key) => key.startsWith("customer_display_"))) requiredPermissions.add("settings.customer_display.update");
+			if (keys.some((key) => [ "pickup_queue_enabled", "business_day_start_minutes" ].includes(key))) requiredPermissions.add("settings.restaurant.update");
+			if (requiredPermissions.size === 0) requiredPermissions.add("settings.store.update");
+
+			const checks = Array.from(requiredPermissions).map((permission) => PermissionMiddleware.require(permission));
+			let checkIndex = 0;
+			const checkNext = (error?: unknown) => {
+				if (error) return next(error);
+				const check = checks[checkIndex++];
+				return check ? check(req, res, checkNext) : next();
+			};
+			return checkNext();
+		};
+	}
+
 	private static async logPermissionDenied(
 		req: Request,
 		requiredPermission: string,

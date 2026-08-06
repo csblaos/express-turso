@@ -62,6 +62,7 @@ export default class SystemConfigValidator extends ValidatorMiddleware {
 	private static readonly updateBodySchema = z.object({
 		default_can_create_branches: optionalInteger,
 		default_max_branches_per_store: optionalPositiveInteger,
+		default_max_users_per_store: optionalPositiveInteger,
 		default_session_limit: positiveInteger.optional(),
 		store_logo_max_size_mb: positiveInteger.optional(),
 		store_logo_auto_resize: optionalInteger,

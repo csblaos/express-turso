@@ -290,7 +290,7 @@ const visibleNavItems = computed(() => {
 	const systemRole = resolvedSystemRole.value;
 
 	if (systemRole === "system_admin") {
-		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id));
+		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id) && (!item.permission || can(item.permission)));
 	}
 
 	if (systemRole === "superadmin") {

@@ -232,7 +232,7 @@ const initialSnapshot = ref("");
 const lockedStoreId = computed(() => currentStoreId.value || currentAccess.value?.store_id || currentAccess.value?.memberships?.[0]?.store_id || "");
 const effectiveStoreId = computed(() => lockedStoreId.value);
 const isElevatedStoreManager = computed(() => currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin");
-const canUpdateReceiptSettings = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
+const canUpdateReceiptSettings = computed(() => isElevatedStoreManager.value || can("settings.printing.update"));
 const canShowPermissionWarning = computed(() => !loading.value && Boolean(selectedStore.value) && Boolean(currentUser.value || currentAccess.value) && !canUpdateReceiptSettings.value);
 
 const previewName = computed(() => selectedStore.value?.name || "DShop");

@@ -30,6 +30,11 @@ cp config.example.json config.json
 ถ้าไม่สร้าง `systemAdmin` ไว้เลย จะไม่มีใครเข้าหน้า `/system-admin` ได้
 เพราะไม่มีช่องทางอื่นสร้างบัญชีระดับนี้ — `npm run check` จะเตือนให้เมื่อยังไม่มี
 
+บทบาทระดับร้านเริ่มต้นจะถูกสร้างอัตโนมัติเมื่อมีการสร้างร้าน ได้แก่ `Owner`,
+`Store Admin`, `Manager`, `Cashier` และ `Inventory Staff` โดย `Store Admin`
+ใช้สำหรับผู้ช่วยที่ต้องจัดการผู้ใช้ภายในร้าน แต่ไม่ควรได้รับสิทธิ์ระดับ `superadmin`
+ของระบบ
+
 Turso ใช้ URL แบบ `libsql://...` พร้อม Token ส่วน SQLite ใช้:
 
 ```json

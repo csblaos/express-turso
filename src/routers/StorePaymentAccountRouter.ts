@@ -12,25 +12,25 @@ export class StorePaymentAccountRouter {
 	private constructor() {
 		this.router.get(
 			"/",
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.view"),
 			StorePaymentAccountController.getAll,
 		);
 		this.router.post(
 			"/",
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			StorePaymentAccountValidator.create,
 			StorePaymentAccountController.create,
 		);
 		this.router.put(
 			"/:id",
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			CommonValidator.resourceId,
 			StorePaymentAccountValidator.update,
 			StorePaymentAccountController.update,
 		);
 		this.router.delete(
 			"/:id",
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			CommonValidator.resourceId,
 			StorePaymentAccountController.delete,
 		);
