@@ -15,6 +15,13 @@ export class RestaurantRouter {
 		this.router.post("/zones",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.zone,RestaurantController.createZone);
 		this.router.put("/zones/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.zone,RestaurantController.updateZone);
 		this.router.delete("/zones/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantController.deleteZone);
+		this.router.get("/stations",PermissionMiddleware.require("settings.restaurant.view"),RestaurantValidator.query,RestaurantController.stations);
+		this.router.post("/stations",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.station,RestaurantController.createStation);
+		this.router.put("/stations/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.station,RestaurantController.updateStation);
+		this.router.delete("/stations/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantController.deleteStation);
+		this.router.get("/kitchen-routing",PermissionMiddleware.require("settings.restaurant.view"),RestaurantValidator.routingQuery,RestaurantController.kitchenRouting);
+		this.router.put("/kitchen-routing/categories/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.kitchenFlag,RestaurantController.categoryKitchen);
+		this.router.put("/kitchen-routing/products/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.kitchenFlag,RestaurantController.productKitchen);
 		this.router.get("/tables",PermissionMiddleware.require("settings.restaurant.view"),RestaurantValidator.query,RestaurantController.tables);
 		this.router.post("/tables",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.table,RestaurantController.createTable);
 		this.router.put("/tables/:id",PermissionMiddleware.require("settings.restaurant.update"),RestaurantValidator.table,RestaurantController.updateTable);

@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-import { SuperadminBranchController } from "@controllers/SuperadminBranchController";
 import { SuperadminConfigController } from "@controllers/SuperadminConfigController";
 import { SuperadminQuotaController } from "@controllers/SuperadminQuotaController";
 import { SuperadminOverviewController } from "@controllers/SuperadminOverviewController";
@@ -21,7 +20,6 @@ export class SuperadminUserRouter {
 		this.router.put("/config", PermissionMiddleware.require("superadmin.manage"), SuperadminConfigValidator.update, SuperadminConfigController.update);
 		this.router.get("/users", PermissionMiddleware.require("superadmin.users.view"), SuperadminUserController.list);
 		this.router.get("/stores", PermissionMiddleware.require("superadmin.stores.view"), SuperadminUserController.listStores);
-		this.router.get("/branches", PermissionMiddleware.require("superadmin.stores.view"), SuperadminBranchController.list);
 		this.router.get("/security", PermissionMiddleware.require("superadmin.users.view"), SuperadminSecurityController.snapshot);
 		this.router.get("/quotas", PermissionMiddleware.require("superadmin.users.view"), SuperadminQuotaController.list);
 		this.router.get("/overview", PermissionMiddleware.require("superadmin.view"), SuperadminOverviewController.dashboard);

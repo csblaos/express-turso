@@ -18,8 +18,6 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 		ui_locale: optionalString,
 		max_stores: z.number().int().positive().nullable().optional(),
 		can_create_stores: z.number().int().min(0).max(1).optional(),
-		max_branches_per_store: z.number().int().positive().nullable().optional(),
-		can_create_branches: z.number().int().min(0).max(1).optional(),
 		must_change_password: z.boolean().optional(),
 		created_by: optionalString,
 	});
@@ -30,8 +28,6 @@ export default class SystemAdminClientValidator extends ValidatorMiddleware {
 		ui_locale: optionalString,
 		max_stores: z.number().int().positive().nullable().optional(),
 		can_create_stores: z.number().int().min(0).max(1).optional(),
-		max_branches_per_store: z.number().int().positive().nullable().optional(),
-		can_create_branches: z.number().int().min(0).max(1).optional(),
 		must_change_password: z.boolean().optional(),
 		actor_user_id: optionalString,
 	});

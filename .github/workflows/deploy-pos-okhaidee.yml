@@ -126,6 +126,7 @@ jobs:
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
+          FRONTEND_ORIGINS: ${{ vars.FRONTEND_ORIGINS }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -147,6 +148,7 @@ jobs:
             printf 'UPSTASH_REDIS_REST_URL=%s\n' "$UPSTASH_REDIS_REST_URL"
             printf 'UPSTASH_REDIS_REST_TOKEN=%s\n' "$UPSTASH_REDIS_REST_TOKEN"
             printf 'AUTH_JWT_SECRET=%s\n' "$AUTH_JWT_SECRET"
+            printf 'FRONTEND_ORIGINS=%s\n' "$FRONTEND_ORIGINS"
             printf 'R2_ACCOUNT_ID=%s\n' "$R2_ACCOUNT_ID"
             printf 'R2_ACCESS_KEY_ID=%s\n' "$R2_ACCESS_KEY_ID"
             printf 'R2_SECRET_ACCESS_KEY=%s\n' "$R2_SECRET_ACCESS_KEY"

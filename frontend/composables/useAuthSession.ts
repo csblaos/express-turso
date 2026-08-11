@@ -32,8 +32,6 @@ type AuthUser = {
 	uiLocale: string;
 	canCreateStores: boolean;
 	maxStores: number | null;
-	canCreateBranches: boolean;
-	maxBranchesPerStore: number | null;
 	ownedStoresCount: number;
 };
 

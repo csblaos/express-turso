@@ -60,6 +60,7 @@ TURSO_AUTH_TOKEN=your_turso_token
 REDIS_DRIVER=upstash
 UPSTASH_REDIS_REST_URL=https://your-upstash-instance.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+FRONTEND_ORIGINS=https://okhaidee.pages.dev,https://your-custom-frontend-domain.example
 ```
 
 หมายเหตุ:
@@ -70,6 +71,7 @@ UPSTASH_REDIS_REST_TOKEN=your_upstash_token
 ### Health check ที่ควรใช้
 
 - `GET /healthz`
+- `GET /healthz/realtime` สำหรับสถานะ Socket.IO และจำนวน client ที่เชื่อมอยู่
 - `GET /api/health`
 
 ถ้า platform ต้องการ health check path ให้ใช้ `/healthz`
@@ -98,6 +100,7 @@ node frontend/.output/server/index.mjs
 
 ```dotenv
 NUXT_PUBLIC_API_BASE=https://api.example.com/api
+NUXT_PUBLIC_REALTIME_BASE=https://api.example.com
 PORT=3001
 ```
 
@@ -113,6 +116,19 @@ PORT=3001
 
 - route `www.example.com` ไป Nuxt frontend
 - route `api.example.com` ไป Express backend
+
+Socket.IO ใช้ path `/socket.io` บน API domain และ reverse proxy ต้องส่ง WebSocket
+upgrade headers ตัวอย่าง Nginx:
+
+```nginx
+location /socket.io/ {
+    proxy_pass http://127.0.0.1:3005;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
 
 นี่เป็นแบบที่สะอาดที่สุดสำหรับโปรเจกต์นี้
 

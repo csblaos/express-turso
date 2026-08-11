@@ -14,8 +14,6 @@ export type SuperadminScopedUserRecord = {
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
@@ -59,8 +57,6 @@ function mapRow(row: Record<string, unknown>): SuperadminScopedUserRecord {
 		ui_locale: String(row.ui_locale || "th"),
 		can_create_stores: Number(row.can_create_stores || 0),
 		max_stores: row.max_stores === null || row.max_stores === undefined ? null : Number(row.max_stores),
-		can_create_branches: Number(row.can_create_branches || 0),
-		max_branches_per_store: row.max_branches_per_store === null || row.max_branches_per_store === undefined ? null : Number(row.max_branches_per_store),
 		must_change_password: Number(row.must_change_password || 0),
 		status: suspended ? "suspended" : "active",
 		client_suspended_reason: row.client_suspended_reason ? String(row.client_suspended_reason) : null,
@@ -149,8 +145,6 @@ export class SuperadminUserInterface {
 					u.ui_locale,
 					u.can_create_stores,
 					u.max_stores,
-					u.can_create_branches,
-					u.max_branches_per_store,
 					u.must_change_password,
 					u.client_suspended,
 					u.client_suspended_reason,

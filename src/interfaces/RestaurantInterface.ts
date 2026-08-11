@@ -5,12 +5,15 @@ import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
 import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { OrderInterface } from "@interfaces/OrderInterface";
+import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
+import { PrintQueueInterface } from "@interfaces/PrintQueueInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { normalizeCurrency, resolvePaymentCurrency, tenderedInBase } from "@utils/PaymentCurrency";
+import { bumpKitchenRevision } from "@utils/KitchenDelivery";
 import { allocateRestaurantQueue, restaurantDate } from "@utils/RestaurantQueue";
 
 type Executor = {
@@ -21,6 +24,12 @@ type Executor = {
 function now(): string { return new Date().toISOString(); }
 function text(value: unknown): string { return String(value ?? "").trim(); }
 function number(value: unknown): number { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
+// A round nobody ticked off by the end of a service was not forgotten food; it
+// was a shop that never looks at the queue. Six hours covers the longest sitting.
+const STALE_ROUND_MS = 6 * 60 * 60 * 1000;
+// How long a finished round stays visible so the counter can carry it out.
+const READY_WINDOW_MS = 6 * 60 * 60 * 1000;
+
 function conflict(message: string): ApiError {
 	return ApiError.CustomError({ code: 409_101, message, httpStatusCode: 409 });
 }
@@ -65,6 +74,30 @@ export class RestaurantInterface {
 			id TEXT PRIMARY KEY, order_id TEXT NOT NULL, round_no INTEGER NOT NULL, sent_by TEXT NOT NULL,
 			sent_at TEXT NOT NULL, idempotency_key TEXT NOT NULL, UNIQUE(order_id, round_no), UNIQUE(order_id, idempotency_key)
 		)`);
+		// Where a dish is cooked. One slip per station is what lets a single order
+		// be worked on by the grill and the bar at the same time, and it is the
+		// mapping a per-station printer will later be hung off.
+		await db.execute(`CREATE TABLE IF NOT EXISTS kitchen_stations (
+			id TEXT PRIMARY KEY, store_id TEXT NOT NULL, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+			UNIQUE(store_id, name)
+		)`);
+		// A round can be shared by several stations. Each station finishes only its
+		// own part; the round itself becomes done after every part is done.
+		await db.execute(`CREATE TABLE IF NOT EXISTS kitchen_round_station_status (
+			round_id TEXT NOT NULL, station_key TEXT NOT NULL, station_id TEXT,
+			kitchen_status TEXT NOT NULL DEFAULT 'pending', kitchen_done_at TEXT, kitchen_done_by TEXT,
+			PRIMARY KEY(round_id, station_key)
+		)`);
+		const stationStatusInfo = await db.execute("PRAGMA table_info(kitchen_round_station_status)");
+		const stationStatusColumns = new Set(stationStatusInfo.rows.map((row: any) => String(row.name)));
+		for (const [ name, definition ] of [ [ "served_at", "TEXT" ], [ "served_by", "TEXT" ] ] as const) {
+			if (!stationStatusColumns.has(name)) await db.execute(`ALTER TABLE kitchen_round_station_status ADD COLUMN ${name} ${definition}`);
+		}
+		await ProductCategoryInterface.ensureColumns();
+		// Dispatching a round writes print jobs in the same transaction, so the
+		// queue has to exist before the first round can be sent.
+		await PrintQueueInterface.ensureTables();
 		await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_daily_sequences (
 			store_id TEXT NOT NULL, sequence_date TEXT NOT NULL, last_queue_no INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY(store_id, sequence_date)
@@ -81,6 +114,11 @@ export class RestaurantInterface {
 		const roundInfo = await db.execute("PRAGMA table_info(restaurant_order_rounds)");
 		const roundColumns = new Set(roundInfo.rows.map((row: any) => String(row.name)));
 		if (!roundColumns.has("dispatch_mode")) await db.execute("ALTER TABLE restaurant_order_rounds ADD COLUMN dispatch_mode TEXT NOT NULL DEFAULT 'kitchen'");
+		// What the kitchen has and has not finished. Held on the round because a
+		// round is what the kitchen is handed: one slip, one thing to tick off.
+		for (const [ name, definition ] of [
+			["kitchen_status", "TEXT NOT NULL DEFAULT 'pending'"], ["kitchen_done_at", "TEXT"], ["kitchen_done_by", "TEXT"],
+		] as const) if (!roundColumns.has(name)) await db.execute(`ALTER TABLE restaurant_order_rounds ADD COLUMN ${name} ${definition}`);
 		const itemInfo = await db.execute("PRAGMA table_info(order_items)");
 		const itemColumns = new Set(itemInfo.rows.map((row: any) => String(row.name)));
 		for (const [name, definition] of [
@@ -88,6 +126,8 @@ export class RestaurantInterface {
 			["sent_at", "TEXT"], ["cancelled_at", "TEXT"], ["cancelled_by", "TEXT"], ["cancel_reason", "TEXT"],
 			["inventory_applied_at", "TEXT"], ["cost_source_at_sale", "TEXT NOT NULL DEFAULT 'purchase'"],
 		] as const) if (!itemColumns.has(name)) await db.execute(`ALTER TABLE order_items ADD COLUMN ${name} ${definition}`);
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_kitchen_stations_store ON kitchen_stations(store_id, is_active, sort_order)");
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_kitchen_round_station_status_round ON kitchen_round_station_status(round_id, kitchen_status)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_zones_store ON restaurant_zones(store_id, is_active, sort_order)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_tables_store_zone ON restaurant_tables(store_id, zone_id, is_active, sort_order)");
 		await db.execute("CREATE INDEX IF NOT EXISTS idx_restaurant_orders_table ON orders(store_id, restaurant_table_id, status)");
@@ -118,9 +158,13 @@ export class RestaurantInterface {
 	static async listPickupQueue(storeId: string): Promise<any[]> {
 		await RestaurantInterface.ensureTables();
 		const db = DbConn.getClient();
-		const orders = await db.execute({ sql: `SELECT id,order_no,queue_no,total,payment_method,paid_at,created_at
-			FROM orders WHERE store_id=? AND service_mode='pickup' AND payment_status='paid'
-			AND fulfillment_status='waiting_pickup' ORDER BY COALESCE(paid_at,created_at),created_at`, args: [storeId] });
+		const orders = await db.execute({ sql: `SELECT o.id,o.order_no,o.queue_no,o.total,o.payment_method,o.paid_at,o.created_at,
+			CASE WHEN COALESCE(s.kitchen_delivery_mode,'paper') NOT IN ('screen','both') OR NOT EXISTS(
+				SELECT 1 FROM restaurant_order_rounds r WHERE r.order_id=o.id AND r.kitchen_status<>'done'
+			) THEN 1 ELSE 0 END AS kitchen_ready
+			FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.store_id=? AND o.service_mode='pickup' AND o.payment_status='paid'
+			AND (o.fulfillment_status='waiting_pickup' OR (o.fulfillment_status IS NULL AND o.queue_no IS NOT NULL AND o.collected_at IS NULL AND o.queue_date=?))
+			ORDER BY COALESCE(o.paid_at,o.created_at),o.created_at`, args: [storeId, restaurantDate()] });
 		if (!orders.rows.length) return [];
 		const ids = orders.rows.map((row: any) => String(row.id));
 		const items = await db.execute({ sql: `SELECT oi.order_id,oi.product_id,p.name,oi.qty,oi.line_total,oi.is_gift
@@ -168,8 +212,14 @@ export class RestaurantInterface {
 		await RestaurantInterface.ensureTables();
 		const db = DbConn.getClient();
 		const stamp = now();
+		const readiness = await db.execute({ sql: `SELECT CASE WHEN COALESCE(s.kitchen_delivery_mode,'paper') NOT IN ('screen','both') OR NOT EXISTS(
+			SELECT 1 FROM restaurant_order_rounds r WHERE r.order_id=o.id AND r.kitchen_status<>'done'
+		) THEN 1 ELSE 0 END AS kitchen_ready FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.id=? AND o.store_id=?`, args: [ orderId, storeId ] });
+		if (!readiness.rows[0]) throw ApiError.NotFoundError("queue order not found");
+		if (!Number(readiness.rows[0].kitchen_ready)) throw conflict("kitchen has not finished this order");
 		const result = await db.execute({ sql: `UPDATE orders SET fulfillment_status='collected',collected_at=?,collected_by=?
-			WHERE id=? AND store_id=? AND service_mode='pickup' AND payment_status='paid' AND fulfillment_status='waiting_pickup'`, args: [stamp, actorId, orderId, storeId] });
+			WHERE id=? AND store_id=? AND service_mode='pickup' AND payment_status='paid'
+			AND (fulfillment_status='waiting_pickup' OR (fulfillment_status IS NULL AND queue_no IS NOT NULL AND collected_at IS NULL AND queue_date=?))`, args: [stamp, actorId, orderId, storeId, restaurantDate()] });
 		if (!result.rowsAffected) {
 			const existing = await db.execute({ sql: "SELECT id,fulfillment_status,collected_at,collected_by FROM orders WHERE id=? AND store_id=?", args: [orderId, storeId] });
 			if (!existing.rows[0]) throw ApiError.NotFoundError("queue order not found");
@@ -177,7 +227,7 @@ export class RestaurantInterface {
 			return existing.rows[0];
 		}
 		await RestaurantInterface.audit(db as Executor, storeId, actorId, "pos.pickup.collected", "order", orderId, { collected_at: stamp });
-		return { id: orderId, fulfillment_status: "collected", collected_at: stamp, collected_by: actorId };
+		return { id: orderId, fulfillment_status: "collected", collected_at: stamp, collected_by: actorId, revision: bumpKitchenRevision(storeId) };
 	}
 
 	static async listZones(storeId: string): Promise<any[]> {
@@ -214,6 +264,283 @@ export class RestaurantInterface {
 		if (tables.rows.length) throw conflict("กรุณาลบหรือย้ายโต๊ะในโซนก่อน");
 		const result = await db.execute({ sql: "DELETE FROM restaurant_zones WHERE id=? AND store_id=?", args: [id, storeId] });
 		if (!result.rowsAffected) throw ApiError.NotFoundError("zone not found");
+	}
+
+	/** Stations and the categories routed to them travel together: the screen that
+	 * names a station is the same one that decides what it cooks. */
+	/** What the kitchen still has to cook. Rounds rather than orders: a table that
+	 * ordered three times is three separate things to make, and the second round
+	 * being ready says nothing about the third. Drinks taken from the counter are
+	 * left out, so a round of nothing but beer never reaches this list. */
+	static async kitchenQueue(storeId: string, options: { stationId?: string } = {}): Promise<any[]> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const stationId = text(options.stationId);
+		const rounds = await db.execute({
+			sql: `SELECT r.id,r.round_no,r.sent_at,r.kitchen_status,r.kitchen_done_at,r.dispatch_mode,
+				o.id AS order_id,o.order_no,o.service_mode,o.queue_no,o.status AS order_status,o.payment_status,
+				t.name AS table_name,z.name AS zone_name
+				FROM restaurant_order_rounds r
+				JOIN orders o ON o.id=r.order_id
+				LEFT JOIN restaurant_tables t ON t.id=o.restaurant_table_id
+				LEFT JOIN restaurant_zones z ON z.id=t.zone_id
+				WHERE o.store_id=? AND o.status<>'cancelled'
+				AND (o.service_mode<>'pickup' OR COALESCE(o.fulfillment_status,'')<>'collected')
+				AND ((r.kitchen_status='pending' AND r.sent_at >= ?) OR r.kitchen_done_at >= ?)
+				ORDER BY r.sent_at DESC LIMIT 60`,
+			args: [
+				storeId,
+				// Nothing from a previous service is still being cooked. Without this a
+				// shop whose kitchen works off paper — where nobody ever ticks a round
+				// off — would show a queue that only ever grows.
+				new Date(Date.now() - STALE_ROUND_MS).toISOString(),
+				// Finished rounds stay just long enough for the counter to notice them
+				// and carry the food out.
+				new Date(Date.now() - READY_WINDOW_MS).toISOString(),
+			],
+		});
+		if (!rounds.rows.length) return [];
+		const ids = (rounds.rows as any[]).map((row) => String(row.id));
+		const items = await db.execute({
+			sql: `SELECT oi.round_id,oi.qty,oi.note,oi.is_gift,oi.line_status,p.name,c.station_id,s.name AS station_name
+				FROM order_items oi JOIN products p ON p.id=oi.product_id
+				LEFT JOIN product_categories c ON c.id=p.category_id
+				LEFT JOIN kitchen_stations s ON s.id=c.station_id
+				WHERE oi.round_id IN (${ids.map(() => "?").join(",")})
+				AND COALESCE(p.send_to_kitchen,c.send_to_kitchen,1)<>0
+				AND COALESCE(oi.line_status,'sent')<>'cancelled'
+				${stationId ? "AND c.station_id=?" : ""}
+				ORDER BY s.sort_order, oi.rowid`,
+			args: stationId ? [ ...ids, stationId ] : ids,
+		});
+		const byRound = new Map<string, any[]>();
+		for (const item of items.rows as any[]) {
+			const list = byRound.get(String(item.round_id)) || [];
+			list.push(item);
+			byRound.set(String(item.round_id), list);
+		}
+		const statuses = await db.execute({
+			sql: `SELECT round_id,station_key,station_id,kitchen_status,kitchen_done_at,served_at,served_by
+				FROM kitchen_round_station_status WHERE round_id IN (${ids.map(() => "?").join(",")})`,
+			args: ids,
+		});
+		const statusMap = new Map((statuses.rows as any[]).map((row) => [ `${row.round_id}:${row.station_key}`, row ]));
+		const tickets: any[] = [];
+		for (const round of rounds.rows as any[]) {
+			const roundItems = byRound.get(String(round.id)) || [];
+			const groups = new Map<string, any[]>();
+			for (const item of roundItems) {
+				const key = String(item.station_id || "__unassigned__");
+				groups.set(key, [ ...(groups.get(key) || []), item ]);
+			}
+			for (const [ stationKey, groupedItems ] of groups) {
+				const stationStatus = statusMap.get(`${round.id}:${stationKey}`) as any;
+				// Legacy rounds marked done before station tracking are done everywhere.
+				const done = round.kitchen_status === "done" || stationStatus?.kitchen_status === "done";
+				if (stationStatus?.served_at) continue;
+				tickets.push({
+					...round,
+					queue_id: `${round.id}:${stationKey}`,
+					station_id: stationKey === "__unassigned__" ? null : stationKey,
+					station_name: groupedItems[0]?.station_name || null,
+					station_total: groups.size,
+					station_done: round.kitchen_status === "done" ? groups.size : [ ...groups.keys() ].filter((key) => (statusMap.get(`${round.id}:${key}`) as any)?.kitchen_status === "done").length,
+					kitchen_status: done ? "done" : "pending",
+					kitchen_done_at: done ? (stationStatus?.kitchen_done_at || round.kitchen_done_at) : null,
+					items: groupedItems,
+				});
+			}
+		}
+		return tickets;
+	}
+
+	/** Settling a table bill means the food went out: whatever the kitchen never
+	 * ticked off is finished by definition, and leaving it pending would haunt the
+	 * queue for the rest of the day. A quick sale paid before it is cooked is the
+	 * exception, and it gets its round after this runs. */
+	private static closeKitchenRoundsStatement(orderId: string, actorId: string): any {
+		return {
+			sql: "UPDATE restaurant_order_rounds SET kitchen_status='done',kitchen_done_at=?,kitchen_done_by=? WHERE order_id=? AND kitchen_status='pending'",
+			args: [now(), actorId, orderId],
+		};
+	}
+
+	static async markKitchenRound(storeId: string, roundId: string, done: boolean, actorId: string, stationId?: string | null): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const stamp = now();
+		const tx = await db.transaction("write");
+		try {
+			const round = await tx.execute({ sql: `SELECT r.id FROM restaurant_order_rounds r JOIN orders o ON o.id=r.order_id WHERE r.id=? AND o.store_id=?`, args: [ roundId, storeId ] });
+			if (!round.rows.length) throw ApiError.NotFoundError("kitchen round not found");
+			const stationRows = await tx.execute({
+				sql: `SELECT DISTINCT COALESCE(c.station_id,'__unassigned__') AS station_key,c.station_id
+					FROM order_items oi JOIN products p ON p.id=oi.product_id
+					LEFT JOIN product_categories c ON c.id=p.category_id
+					WHERE oi.round_id=? AND COALESCE(p.send_to_kitchen,c.send_to_kitchen,1)<>0 AND COALESCE(oi.line_status,'sent')<>'cancelled'`,
+				args: [ roundId ],
+			});
+			const available = stationRows.rows as any[];
+			const requestedKey = stationId === undefined ? "" : String(stationId || "__unassigned__");
+			const targets = requestedKey ? available.filter((row) => String(row.station_key) === requestedKey) : available;
+			if (requestedKey && !targets.length) throw ApiError.NotFoundError("kitchen station is not part of this round");
+			for (const target of targets) await tx.execute({
+					sql: `INSERT INTO kitchen_round_station_status(round_id,station_key,station_id,kitchen_status,kitchen_done_at,kitchen_done_by)
+					VALUES(?,?,?,?,?,?) ON CONFLICT(round_id,station_key) DO UPDATE SET
+					kitchen_status=excluded.kitchen_status,kitchen_done_at=excluded.kitchen_done_at,kitchen_done_by=excluded.kitchen_done_by,served_at=NULL,served_by=NULL`,
+				args: [ roundId, target.station_key, target.station_id || null, done ? "done" : "pending", done ? stamp : null, done ? actorId : null ],
+			});
+			const completed = await tx.execute({ sql: "SELECT station_key FROM kitchen_round_station_status WHERE round_id=? AND kitchen_status='done'", args: [ roundId ] });
+			const allDone = available.length > 0 && available.every((station) => completed.rows.some((row: any) => String(row.station_key) === String(station.station_key)));
+			await tx.execute({
+				sql: "UPDATE restaurant_order_rounds SET kitchen_status=?,kitchen_done_at=?,kitchen_done_by=? WHERE id=?",
+				args: [ allDone ? "done" : "pending", allDone ? stamp : null, allDone ? actorId : null, roundId ],
+			});
+			await tx.commit();
+			return { id: roundId, station_id: stationId ?? null, kitchen_status: done ? "done" : "pending", round_status: allDone ? "done" : "pending", kitchen_done_at: done ? stamp : null, revision: bumpKitchenRevision(storeId) };
+		} catch (error) {
+			if (!tx.closed) await tx.rollback().catch(() => undefined);
+			throw error;
+		} finally {
+			tx.close();
+		}
+	}
+
+	static async markKitchenServed(storeId: string, roundId: string, actorId: string, stationId?: string | null): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const stationKey = String(stationId || "__unassigned__");
+		const stamp = now();
+		// Old rounds may have been completed before per-station state existed.
+		// Materialize that station once so it can still be acknowledged as served.
+		await db.execute({
+			sql: `INSERT OR IGNORE INTO kitchen_round_station_status(round_id,station_key,station_id,kitchen_status,kitchen_done_at,kitchen_done_by)
+				SELECT r.id,?,NULLIF(?,'__unassigned__'),'done',r.kitchen_done_at,r.kitchen_done_by
+				FROM restaurant_order_rounds r JOIN orders o ON o.id=r.order_id
+				WHERE r.id=? AND o.store_id=? AND o.service_mode='dine-in' AND r.kitchen_status='done'
+				AND EXISTS(SELECT 1 FROM order_items oi JOIN products p ON p.id=oi.product_id LEFT JOIN product_categories c ON c.id=p.category_id
+					WHERE oi.round_id=r.id AND COALESCE(c.station_id,'__unassigned__')=?)`,
+			args: [ stationKey, stationKey, roundId, storeId, stationKey ],
+		});
+		const result = await db.execute({
+			sql: `UPDATE kitchen_round_station_status SET served_at=?,served_by=?
+				WHERE round_id=? AND station_key=? AND kitchen_status='done'
+				AND round_id IN (SELECT r.id FROM restaurant_order_rounds r JOIN orders o ON o.id=r.order_id WHERE o.store_id=? AND o.service_mode='dine-in')`,
+			args: [ stamp, actorId, roundId, stationKey, storeId ],
+		});
+		if (!result.rowsAffected) throw conflict("station is not ready to serve");
+		return { id: roundId, station_id: stationId ?? null, served_at: stamp, served_by: actorId, revision: bumpKitchenRevision(storeId) };
+	}
+
+	static async listStations(storeId: string): Promise<{ stations: any[]; categories: any[] }> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const [ stations, categories ] = await Promise.all([
+			db.execute({ sql: `SELECT s.*,
+				(SELECT COUNT(*) FROM product_categories c WHERE c.station_id=s.id AND c.store_id=s.store_id) AS category_count
+				FROM kitchen_stations s WHERE s.store_id=? ORDER BY s.sort_order, s.name`, args: [storeId] }),
+			db.execute({ sql: "SELECT id,name,station_id FROM product_categories WHERE store_id=? ORDER BY sort_order, name", args: [storeId] }),
+		]);
+		return { stations: stations.rows as any[], categories: categories.rows as any[] };
+	}
+
+	/** Everything that decides where a dish is cooked, and whether the kitchen
+	 * hears about it at all, on one screen: stations, what each category does, and
+	 * the individual products that break their category's rule. */
+	static async kitchenRouting(storeId: string, search: string): Promise<{ stations: any[]; categories: any[]; products: any[] }> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const query = text(search).toLowerCase();
+		const [ stations, categories, products ] = await Promise.all([
+			db.execute({ sql: `SELECT s.*,
+				(SELECT COUNT(*) FROM product_categories c WHERE c.station_id=s.id AND c.store_id=s.store_id) AS category_count
+				FROM kitchen_stations s WHERE s.store_id=? ORDER BY s.sort_order, s.name`, args: [storeId] }),
+			db.execute({ sql: "SELECT id,name,station_id,send_to_kitchen FROM product_categories WHERE store_id=? ORDER BY sort_order, name", args: [storeId] }),
+			// Overrides are always listed; a search adds the rest of the menu so a
+			// new exception can be found without scrolling a thousand products.
+			db.execute({
+				sql: `SELECT p.id,p.name,p.sku,p.send_to_kitchen,c.name AS category_name,COALESCE(c.send_to_kitchen,1) AS category_send_to_kitchen
+					FROM products p LEFT JOIN product_categories c ON c.id=p.category_id
+					WHERE p.store_id=? AND p.deleted_at IS NULL
+					AND (p.send_to_kitchen IS NOT NULL OR (? <> '' AND (LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ?)))
+					ORDER BY p.name LIMIT 60`,
+				args: [storeId, query, `%${query}%`, `%${query}%`],
+			}),
+		]);
+		return { stations: stations.rows as any[], categories: categories.rows as any[], products: products.rows as any[] };
+	}
+
+	static async setCategoryKitchen(storeId: string, categoryId: string, sendToKitchen: boolean): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const result = await db.execute({ sql: "UPDATE product_categories SET send_to_kitchen=? WHERE id=? AND store_id=?", args: [sendToKitchen ? 1 : 0, categoryId, storeId] });
+		if (!result.rowsAffected) throw ApiError.NotFoundError("category not found");
+		return { id: categoryId, send_to_kitchen: sendToKitchen ? 1 : 0 };
+	}
+
+	/** null clears the override and hands the product back to its category. */
+	static async setProductKitchen(storeId: string, productId: string, sendToKitchen: boolean | null): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		await ProductInterface.ensureColumns();
+		const db = DbConn.getClient();
+		const value = sendToKitchen === null ? null : (sendToKitchen ? 1 : 0);
+		const result = await db.execute({ sql: "UPDATE products SET send_to_kitchen=? WHERE id=? AND store_id=?", args: [value, productId, storeId] });
+		if (!result.rowsAffected) throw ApiError.NotFoundError("product not found");
+		return { id: productId, send_to_kitchen: value };
+	}
+
+	static async listKitchenStations(storeId: string): Promise<any[]> {
+		await RestaurantInterface.ensureTables();
+		const result = await DbConn.getClient().execute({ sql: "SELECT id,name,sort_order,is_active FROM kitchen_stations WHERE store_id=? ORDER BY sort_order, name", args: [storeId] });
+		return result.rows as any[];
+	}
+
+	static async saveStation(storeId: string, input: any, id?: string): Promise<any> {
+		await RestaurantInterface.ensureTables();
+		const name = text(input.name);
+		if (!name) throw ApiError.BadRequestError("station name is required");
+		const db = DbConn.getClient();
+		const stamp = now();
+		try {
+			if (id) {
+				const updated = await db.execute({ sql: "UPDATE kitchen_stations SET name=?, sort_order=?, is_active=?, updated_at=? WHERE id=? AND store_id=?", args: [name, number(input.sort_order), input.is_active === false || number(input.is_active) === 0 ? 0 : 1, stamp, id, storeId] });
+				if (!updated.rowsAffected) throw ApiError.NotFoundError("station not found");
+			} else {
+				id = randomUUID();
+				await db.execute({ sql: "INSERT INTO kitchen_stations(id,store_id,name,sort_order,is_active,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", args: [id, storeId, name, number(input.sort_order), 1, stamp, stamp] });
+			}
+		} catch (error: any) { if (String(error?.message).includes("UNIQUE")) throw conflict("ชื่อครัวนี้มีอยู่แล้ว"); throw error; }
+		if (Array.isArray(input.category_ids)) await RestaurantInterface.assignStationCategories(storeId, id, input.category_ids);
+		const row = await db.execute({ sql: "SELECT * FROM kitchen_stations WHERE id=? AND store_id=?", args: [id, storeId] });
+		if (!row.rows[0]) throw ApiError.NotFoundError("station not found");
+		return row.rows[0];
+	}
+
+	/** Assignment is exclusive: a category is cooked in one place, so claiming it
+	 * for this station is also what releases it from the one that had it. */
+	private static async assignStationCategories(storeId: string, stationId: string, categoryIds: unknown[]): Promise<void> {
+		const ids = categoryIds.map((value) => text(value)).filter(Boolean);
+		const db = DbConn.getClient();
+		const statements: any[] = [
+			{ sql: "UPDATE product_categories SET station_id=NULL WHERE store_id=? AND station_id=?", args: [storeId, stationId] },
+		];
+		if (ids.length) {
+			statements.push({
+				sql: `UPDATE product_categories SET station_id=? WHERE store_id=? AND id IN (${ids.map(() => "?").join(",")})`,
+				args: [stationId, storeId, ...ids],
+			});
+		}
+		await db.batch(statements, "write");
+	}
+
+	static async deleteStation(storeId: string, id: string): Promise<void> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const [ , removed ] = await db.batch([
+			{ sql: "UPDATE product_categories SET station_id=NULL WHERE store_id=? AND station_id=?", args: [storeId, id] },
+			{ sql: "DELETE FROM kitchen_stations WHERE id=? AND store_id=?", args: [id, storeId] },
+		], "write");
+		if (!removed.rowsAffected) throw ApiError.NotFoundError("station not found");
 	}
 
 	static async listTables(storeId: string): Promise<any[]> {
@@ -449,7 +776,10 @@ export class RestaurantInterface {
 		const tx = await db.transaction("write");
 		try {
 			await RestaurantInterface.assertVersion(tx, storeId, orderId, number(input.expected_version));
-			const sent = await tx.execute({ sql: "SELECT COUNT(*) AS total FROM order_items WHERE order_id=? AND line_status='sent'", args: [orderId] });
+			// Read as lines rather than a count: the ones already sent are exactly the
+			// ones the kitchen has to be told to stop cooking.
+			const sentLines = await tx.execute({ sql: "SELECT oi.product_id,oi.qty,oi.note,p.name FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=? AND oi.line_status='sent'", args: [orderId] });
+			const sent = { rows: [ { total: sentLines.rows.length } ] };
 			if (number(sent.rows[0]?.total) > 0 && !allowSent) throw ApiError.ForbiddenError("Manager permission is required to cancel an order already sent to kitchen");
 			const reason = text(input.reason) || (number(sent.rows[0]?.total) > 0 ? "" : "ยกเลิกก่อนส่งครัว");
 			if (number(sent.rows[0]?.total) > 0 && !reason) throw ApiError.BadRequestError("cancel reason is required");
@@ -458,6 +788,9 @@ export class RestaurantInterface {
 			await tx.execute({ sql: "UPDATE orders SET status='cancelled',closed_at=?,version=version+1 WHERE id=?", args: [stamp, orderId] });
 			await RestaurantInterface.audit(tx, storeId, actorId, "pos.restaurant.cancel_order", "order", orderId, { reason, had_sent_items: number(sent.rows[0]?.total) > 0 });
 			await tx.commit();
+			RestaurantInterface.queueVoidTicket(storeId, orderId, `void-order:${orderId}`, reason, (sentLines.rows as any[]).map((row) => ({
+				product_id: String(row.product_id), name: String(row.name), qty: number(row.qty), note: row.note ? String(row.note) : null,
+			})));
 			return RestaurantInterface.getOrder(storeId, orderId);
 		} catch (error) {
 			if (!tx.closed) await tx.rollback().catch(() => undefined);
@@ -578,14 +911,79 @@ export class RestaurantInterface {
 
 	static async cancelSentItem(storeId:string,orderId:string,itemId:string,input:any,actorId:string):Promise<any>{
 		await RestaurantInterface.ensureTables();const reason=text(input.reason)||null;const db=DbConn.getClient();const tx=await db.transaction("write");try{await RestaurantInterface.assertVersion(tx,storeId,orderId,number(input.expected_version));
-			const found=await tx.execute({sql:"SELECT qty,is_gift FROM order_items WHERE id=? AND order_id=? AND line_status='sent' LIMIT 1",args:[itemId,orderId]});const item=found.rows[0];if(!item)throw conflict("แก้ไขได้เฉพาะรายการที่บันทึกแล้ว");if(number(item.is_gift))throw conflict("ไม่สามารถแก้จำนวนของแถมจากรายการนี้ได้");
+			const found=await tx.execute({sql:"SELECT oi.qty,oi.is_gift,oi.product_id,oi.note,p.name FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.id=? AND oi.order_id=? AND oi.line_status='sent' LIMIT 1",args:[itemId,orderId]});const item=found.rows[0];if(!item)throw conflict("แก้ไขได้เฉพาะรายการที่บันทึกแล้ว");if(number(item.is_gift))throw conflict("ไม่สามารถแก้จำนวนของแถมจากรายการนี้ได้");
 			const previousQty=Math.round(number(item.qty));const nextQty=input.qty===undefined?0:Math.round(number(input.qty));if(nextQty<0||nextQty>=previousQty)throw ApiError.BadRequestError("new quantity must be lower than current quantity");
 			if(nextQty===0)await tx.execute({sql:"UPDATE order_items SET line_status='cancelled',cancelled_at=?,cancelled_by=?,cancel_reason=? WHERE id=? AND order_id=? AND line_status='sent'",args:[now(),actorId,reason,itemId,orderId]});
 			else await tx.execute({sql:"UPDATE order_items SET qty=?,qty_base=?,line_total=price_base_at_sale*? WHERE id=? AND order_id=? AND line_status='sent'",args:[nextQty,nextQty,nextQty,itemId,orderId]});
 			const invalid=(await RestaurantInterface.promotionState(tx,storeId,orderId)).find((promotion:any)=>promotion.over_granted_qty>0);if(invalid)throw conflict(`รายการนี้ทำให้สิทธิ์ ${invalid.name} หาย กรุณาให้ Manager จัดการของแถมก่อน`);
 			await RestaurantInterface.audit(tx,storeId,actorId,nextQty===0?"pos.restaurant.cancel_sent":"pos.restaurant.adjust_sent_quantity","order_item",itemId,{order_id:orderId,previous_qty:previousQty,new_qty:nextQty,reason});
-			await RestaurantInterface.recalculate(tx,orderId);await tx.commit();return RestaurantInterface.getOrder(storeId,orderId);
+			await RestaurantInterface.recalculate(tx,orderId);await tx.commit();
+			// Queued after the commit, not inside it: the bill is already corrected,
+			// and a printer nobody switched on must not roll back a cancellation.
+			RestaurantInterface.queueVoidTicket(storeId,orderId,`void:${itemId}:${previousQty}:${nextQty}`,reason,[
+				{product_id:String(item.product_id),name:String(item.name),qty:previousQty-nextQty,note:item.note?String(item.note):null},
+			]);
+			return RestaurantInterface.getOrder(storeId,orderId);
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
+
+	/** A quick sale that was paid in one step never went through a round, so the
+	 * kitchen had no record of it. This gives it the same shape a table bill has:
+	 * one dispatched round, from which the print queue works. Runs after the sale
+	 * has been committed and paid — a printer nobody switched on must never be
+	 * able to undo a completed sale. */
+	static async recordDirectSaleRound(storeId: string, orderId: string, idempotencyKey: string, actorId: string): Promise<void> {
+		await RestaurantInterface.ensureTables();
+		const db = DbConn.getClient();
+		const roundKey = `direct:${text(idempotencyKey) || orderId}`;
+		const stamp = now();
+		const existing = await db.execute({ sql: "SELECT id,round_no FROM restaurant_order_rounds WHERE order_id=? AND idempotency_key=? LIMIT 1", args: [orderId, roundKey] });
+		const eligible = existing.rows.length ? null : await db.execute({
+			sql: `SELECT 1 FROM order_items oi JOIN products p ON p.id=oi.product_id
+				LEFT JOIN product_categories c ON c.id=p.category_id
+				WHERE oi.order_id=? AND oi.round_id IS NULL AND COALESCE(p.send_to_kitchen,c.send_to_kitchen,1)<>0 LIMIT 1`,
+			args: [orderId],
+		});
+		if (!existing.rows.length && !eligible?.rows.length) return;
+		// The unique key on (order_id, idempotency_key) is what makes a replayed
+		// checkout reuse the round it already created rather than open a second one.
+		await db.execute({
+			sql: `INSERT INTO restaurant_order_rounds(id,order_id,round_no,sent_by,sent_at,idempotency_key,dispatch_mode)
+				VALUES(?,?,COALESCE((SELECT MAX(round_no) FROM restaurant_order_rounds WHERE order_id=?),0)+1,?,?,?,'direct')
+				ON CONFLICT(order_id,idempotency_key) DO NOTHING`,
+			args: [randomUUID(), orderId, orderId, actorId, stamp, roundKey],
+		});
+		const round = existing.rows.length ? existing : await db.execute({ sql: "SELECT id,round_no FROM restaurant_order_rounds WHERE order_id=? AND idempotency_key=? LIMIT 1", args: [orderId, roundKey] });
+		const roundId = text(round.rows[0]?.id);
+		if (!roundId) return;
+		await db.execute({ sql: `UPDATE order_items SET round_id=?,sent_at=COALESCE(sent_at,?) WHERE order_id=? AND round_id IS NULL
+			AND product_id IN (SELECT p.id FROM products p LEFT JOIN product_categories c ON c.id=p.category_id
+				WHERE COALESCE(p.send_to_kitchen,c.send_to_kitchen,1)<>0)`, args: [roundId, stamp, orderId] });
+		const items = await db.execute({
+			sql: `SELECT oi.product_id,oi.qty,oi.note,oi.is_gift,p.name FROM order_items oi JOIN products p ON p.id=oi.product_id
+				WHERE oi.order_id=? AND oi.round_id=? AND COALESCE(oi.line_status,'sent')<>'cancelled'`,
+			args: [orderId, roundId],
+		});
+		const statements = await PrintQueueInterface.ticketStatements(db as Executor, storeId, {
+			kind: "kitchen",
+			orderId,
+			roundId,
+			roundNo: number(round.rows[0]?.round_no) || 1,
+			dedupeKey: `round:${roundId}`,
+			items: (items.rows as any[]).map((row) => ({
+				product_id: String(row.product_id), name: String(row.name), qty: number(row.qty),
+				note: row.note ? String(row.note) : null, is_gift: Boolean(number(row.is_gift)),
+			})),
+		});
+		if (statements.length) await db.batch(statements, "write");
+		bumpKitchenRevision(storeId);
+	}
+
+	private static queueVoidTicket(storeId:string,orderId:string,dedupeKey:string,reason:string|null,items:Array<{product_id:string;name:string;qty:number;note?:string|null}>):void{
+		bumpKitchenRevision(storeId);
+		if(!items.length)return;
+		void PrintQueueInterface.enqueue(storeId,{kind:"void",orderId,dedupeKey,reason,items})
+			.catch((error)=>console.error("[print-queue] void ticket failed",error));
+	}
 
 	private static async dispatchDraftItems(executor: Executor, storeId: string, orderId: string, idempotencyKey: string, actorId: string, dispatchMode: "kitchen" | "direct", options: { syncAutomatic?: boolean; recalculateVersionIncrement?: number; returnOrder?: boolean } = {}): Promise<{ roundId: string; roundNo: number; order?: any }> {
 		if (options.syncAutomatic !== false) await RestaurantInterface.syncAutomaticPromotions(executor, storeId, orderId);
@@ -655,6 +1053,23 @@ export class RestaurantInterface {
 				}
 			}
 		}
+		// Queued in the same transaction as the round: a ticket for food that was
+		// never dispatched, or a dispatch the kitchen was never told about, are both
+		// worse than the browser printing the shop had before.
+		writes.push(...await PrintQueueInterface.ticketStatements(executor, storeId, {
+			kind: "kitchen",
+			orderId,
+			roundId,
+			roundNo,
+			dedupeKey: `round:${roundId}`,
+			items: (draft.rows as any[]).map((row) => ({
+				product_id: String(row.product_id),
+				name: String(row.name),
+				qty: number(row.qty),
+				note: row.note ? String(row.note) : null,
+				is_gift: Boolean(number(row.is_gift)),
+			})),
+		}));
 		if (options.recalculateVersionIncrement) writes.push(RestaurantInterface.recalculateStatement(orderId, options.recalculateVersionIncrement));
 		const readStatements=options.returnOrder?RestaurantInterface.orderReadStatements(storeId,orderId):[];
 		const statements=[...writes,...readStatements];
@@ -714,6 +1129,7 @@ export class RestaurantInterface {
 			const round=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,idempotencyKey,actorId,"kitchen",{syncAutomatic:false,recalculateVersionIncrement:2,returnOrder:true});
 			await tx.commit();
 			NotificationInterface.queueStockRefresh(storeId);
+			bumpKitchenRevision(storeId);
 			RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.send_kitchen","order",orderId,{round_id:round.roundId,round_no:round.roundNo,idempotency_key:idempotencyKey});
 			return round.order;
 		}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}
@@ -782,11 +1198,15 @@ export class RestaurantInterface {
 		const db=DbConn.getClient();
 		const previous=await db.execute({sql:"SELECT id FROM orders WHERE store_id=? AND checkout_idempotency_key=? LIMIT 1",args:[storeId,idempotencyKey]});if(previous.rows[0])return RestaurantInterface.getOrder(storeId,String(previous.rows[0].id));
 		const tx=await db.transaction("write");try{const order=await RestaurantInterface.assertVersion(tx,storeId,orderId,number(input.expected_version));const draft=await tx.execute({sql:"SELECT 1 FROM order_items WHERE order_id=? AND line_status='draft' LIMIT 1",args:[orderId]});
+		// Closed before anything new is dispatched: the rounds sent earlier in this
+		// sitting are finished by the fact that the bill is being settled, but the
+		// draft going out on this same checkout still has to be cooked.
+		await tx.execute(RestaurantInterface.closeKitchenRoundsStatement(orderId,actorId));
 		let directRound:null|{roundId:string;roundNo:number}=null;
 		if(draft.rows.length&&input.dispatch_mode==="direct")directRound=await RestaurantInterface.dispatchDraftItems(tx,storeId,orderId,`direct:${idempotencyKey}`,actorId,"direct");
 		else if(draft.rows.length)throw conflict("กรุณาส่งครัวก่อนชำระเงิน หรือเลือกชำระและจบเลย");
 		const invalid=(await RestaurantInterface.promotionState(tx,storeId,orderId)).find((promotion:any)=>promotion.over_granted_qty>0);if(invalid)throw conflict(`โปรโมชั่น ${invalid.name} มีของแถมเกินสิทธิ์ กรุณาให้ Manager ตรวจสอบ`);
-		const store=(await tx.execute({sql:"SELECT currency,supported_currencies,vat_enabled,vat_rate,vat_mode FROM stores WHERE id=?",args:[storeId]})).rows[0];const subtotal=number(order.subtotal);const rawRate=number(store?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;const vat=number(store?.vat_enabled)?Math.round(String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;const total=String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;const method=text(input.payment_method);
+		const store=(await tx.execute({sql:"SELECT currency,supported_currencies,vat_enabled,vat_rate,vat_mode,pickup_queue_enabled FROM stores WHERE id=?",args:[storeId]})).rows[0];const subtotal=number(order.subtotal);const rawRate=number(store?.vat_rate);const rate=rawRate>100?rawRate/100:rawRate;const vat=number(store?.vat_enabled)?Math.round(String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal*rate/(100+rate):subtotal*rate/100):0;const total=String(store?.vat_mode).toUpperCase()==="INCLUSIVE"?subtotal:subtotal+vat;const method=text(input.payment_method);
 		// Paying in another currency: the rate is read here, not taken from the
 		// client, and locked onto the order so the takings cannot move later.
 		const rateRows=requestedCurrency?(await tx.execute({sql:"SELECT currency,rate_to_base FROM store_currency_rates WHERE store_id=?",args:[storeId]})).rows:[];
@@ -807,11 +1227,13 @@ export class RestaurantInterface {
 			const account=await tx.execute({sql:"SELECT id FROM store_payment_accounts WHERE id=? AND store_id=? AND is_active=1",args:[paymentAccountId,storeId]});
 			if(!account.rows.length)throw ApiError.BadRequestError("payment account is invalid or inactive");
 		}
-		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,payment_account_id=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,payment_currency=?,payment_exchange_rate=?,amount_tendered_foreign=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,version=version+1 WHERE id=?`,args:[method,paymentAccountId,subtotal,vat,total,tendered,tendered-total,paymentCurrency.currency,paymentCurrency.exchangeRate,tenderedForeign,stamp,stamp,idempotencyKey,orderId]});
+		const fulfillmentStatus=Number(store?.pickup_queue_enabled)&&String(order.service_mode)==="pickup"?"waiting_pickup":null;
+		await tx.execute({sql:`UPDATE orders SET status='completed',payment_status='paid',payment_method=?,payment_account_id=?,subtotal=?,vat_amount=?,total=?,amount_tendered=?,change_amount=?,payment_currency=?,payment_exchange_rate=?,amount_tendered_foreign=?,paid_at=?,closed_at=?,checkout_idempotency_key=?,fulfillment_status=?,version=version+1 WHERE id=?`,args:[method,paymentAccountId,subtotal,vat,total,tendered,tendered-total,paymentCurrency.currency,paymentCurrency.exchangeRate,tenderedForeign,stamp,stamp,idempotencyKey,fulfillmentStatus,orderId]});
 		await tx.execute({sql:`INSERT INTO cash_flow_entries(id,store_id,account_id,direction,entry_type,source_type,source_id,amount,currency,reference,note,metadata,occurred_at,created_by,created_at) VALUES(?,?,NULL,'in','sale','order',?,?,?,?,?,?,?, ?,?)`,args:[randomUUID(),storeId,orderId,total,String(store?.currency||"LAK"),text(input.payment_reference)||null,text(input.note)||null,JSON.stringify({payment_method:method,payment_account_id:paymentAccountId,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing",payment_currency:paymentCurrency.currency,exchange_rate:paymentCurrency.exchangeRate,amount_tendered_foreign:tenderedForeign}),stamp,actorId,stamp]});
 		await tx.commit();
 		if(directRound)NotificationInterface.queueStockRefresh(storeId);
 		if(directRound)RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.dispatch_direct","order",orderId,{round_id:directRound.roundId,round_no:directRound.roundNo});
+		bumpKitchenRevision(storeId);
 		RestaurantInterface.auditAsync(storeId,actorId,"pos.restaurant.checkout","order",orderId,{payment_method:method,total,idempotency_key:idempotencyKey,dispatch_mode:input.dispatch_mode||"existing"});
 		return RestaurantInterface.getOrder(storeId,orderId);
 	}catch(error){if(!tx.closed)await tx.rollback().catch(()=>undefined);throw error;}finally{tx.close();}}

@@ -82,6 +82,10 @@ export class InventoryCostInterface {
 	static async ensureTables(): Promise<void> {
 		if (InventoryCostInterface.initialized) return;
 
+		// Issuing stock reads the store's cost_method to decide between FIFO and
+		// average, and that column is added by the store module. Declared here
+		// rather than assumed, so cost layers work whatever ran first.
+		await StoreInterface.ensureColumns();
 		const db = DbConn.getClient();
 		await db.execute(`
 			CREATE TABLE IF NOT EXISTS inventory_cost_summaries (
@@ -125,13 +129,19 @@ export class InventoryCostInterface {
 		// an old loss change whenever a new PO arrives.
 		const movementColumns = await db.execute("PRAGMA table_info(inventory_movements)");
 		const knownMovementColumns = new Set(movementColumns.rows.map((column) => String(column.name)));
-		for (const [ column, definition ] of [
-			[ "adjustment_reason", "TEXT" ],
-			[ "unit_cost_base", "REAL" ],
-			[ "total_cost_base", "REAL" ],
-			[ "cost_method", "TEXT" ],
-		] as const) {
-			if (!knownMovementColumns.has(column)) await db.execute(`ALTER TABLE inventory_movements ADD COLUMN ${column} ${definition}`);
+		// No columns means no table: every table has at least one. The movements
+		// table belongs to the order module, so on a database where that has not run
+		// yet these columns are simply added the first time it does — better than
+		// failing here and taking the cost layers down with it.
+		if (knownMovementColumns.size > 0) {
+			for (const [ column, definition ] of [
+				[ "adjustment_reason", "TEXT" ],
+				[ "unit_cost_base", "REAL" ],
+				[ "total_cost_base", "REAL" ],
+				[ "cost_method", "TEXT" ],
+			] as const) {
+				if (!knownMovementColumns.has(column)) await db.execute(`ALTER TABLE inventory_movements ADD COLUMN ${column} ${definition}`);
+			}
 		}
 
 		InventoryCostInterface.initialized = true;

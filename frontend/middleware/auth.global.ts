@@ -32,6 +32,7 @@ function requiredSettingsPermission(path: string): string | null {
 	const normalizedPath = path.replace(/\/+$/, "") || "/";
 	const routes: Array<[string, string]> = [
 		[ "/settings/printing/sales-receipt", "settings.printing.view" ],
+		[ "/settings/printing/kitchen", "settings.printing.view" ],
 		[ "/settings/store-finance", "settings.finance.view" ],
 		[ "/settings/stock", "settings.stock_policy.view" ],
 		[ "/settings/store-payments", "settings.payments.view" ],

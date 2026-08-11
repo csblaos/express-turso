@@ -16,8 +16,6 @@ type QuotaRecord = {
 	status: "active" | "suspended";
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	owned_stores_count: number;
 	remaining_store_capacity: number | null;
 	created_at: string;
@@ -32,11 +30,9 @@ type QuotaListResponse = {
 	summary: {
 		accounts_total: number;
 		store_quota_enabled: number;
-		branch_quota_enabled: number;
 		limited_store_capacity_total: number;
 		remaining_store_capacity_total: number;
 		unlimited_store_accounts: number;
-		unlimited_branch_accounts: number;
 		attention_accounts: number;
 		stores_total: number;
 		store_user_limit: number | null;
@@ -48,14 +44,14 @@ const { apiFetch } = useApiClient();
 const { locale } = useI18n();
 
 const copy = computed(() => locale.value === "lo" ? {
-	description: "ຈັດການໂຄຕາບັນຊີ ຮ້ານ ແລະ ການຂະຫຍາຍຮ້ານພາຍໃຕ້ Super Admin ນີ້", reload: "ໂຫຼດໃໝ່", title: "ໂຄຕາ Super Admin", hint: "ເບິ່ງຄວາມຈຸຈິງ ແລະ ບັນຊີທີ່ໃກ້ຮອດຂີດຈຳກັດ", search: "ຄົ້ນຫາຊື່ ຫຼື ອີເມວ", all: "ໂຄຕາທັງໝົດ", storeEnabled: "ສ້າງຮ້ານໄດ້", limited: "ຈຳກັດ", unlimited: "ບໍ່ຈຳກັດ", attention: "ໃກ້ຮອດຂີດຈຳກັດ", apply: "ໃຊ້ຕົວກອງ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", accounts: "ບັນຊີ", noQuota: "ບໍ່ມີຂໍ້ມູນໂຄຕາໃນຂອບເຂດນີ້", active: "ໃຊ້ງານ", suspended: "ລະງັບ", disabled: "ປິດສິດ", stores: "ຮ້ານ", branchesPerStore: "ສາຂາ/ຮ້ານ", createdAt: "ສ້າງເມື່ອ", used: "ໃຊ້ໄປ", storeQuota: "ໂຄຕາຮ້ານ", remaining: "ເຫຼືອ", branchQuota: "ໂຄຕາສາຂາ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ໜ້າຖັດໄປ", page: "ໜ້າ", of: "ຈາກ", staff: "ພະນັກງານ",
-	stats: [["ເປີດໂຄຕາຮ້ານ", "ບັນຊີທີ່ເລີ່ມສ້າງຮ້ານໄດ້"], ["ໃຊ້ຮ້ານແລ້ວ", "ຮ້ານໃນຂອບເຂດ Super Admin ນີ້"], ["ເຫຼືອແບບຈຳກັດ", "ຄວາມຈຸທີ່ເຫຼືອຂອງບັນຊີແບບຈຳກັດ"], ["ຕ້ອງກວດເບິ່ງ", "ບັນຊີທີ່ໃຊ້ໂຄຕາເຕັມ ຫຼື ເກີນ"], ["ຮ້ານບໍ່ຈຳກັດ", "ບັນຊີທີ່ບໍ່ມີເພດານຈຳນວນຮ້ານ"], ["ເປີດສາຂາໄດ້", "ບັນຊີທີ່ເພີ່ມສາຂາໄດ້"], ["ສາຂາບໍ່ຈຳກັດ", "ບັນຊີທີ່ບໍ່ຈຳກັດສາຂາຕໍ່ຮ້ານ"], ["ຄວາມຈຸຈຳກັດ", "ໂຄຕາຮ້ານແບບຈຳກັດລວມທັງໝົດ"]]
+	description: "ຈັດການໂຄຕາບັນຊີ ຮ້ານ ແລະ ການຂະຫຍາຍຮ້ານພາຍໃຕ້ Super Admin ນີ້", reload: "ໂຫຼດໃໝ່", title: "ໂຄຕາ Super Admin", hint: "ເບິ່ງຄວາມຈຸຈິງ ແລະ ບັນຊີທີ່ໃກ້ຮອດຂີດຈຳກັດ", search: "ຄົ້ນຫາຊື່ ຫຼື ອີເມວ", all: "ໂຄຕາທັງໝົດ", storeEnabled: "ສ້າງຮ້ານໄດ້", limited: "ຈຳກັດ", unlimited: "ບໍ່ຈຳກັດ", attention: "ໃກ້ຮອດຂີດຈຳກັດ", apply: "ໃຊ້ຕົວກອງ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", accounts: "ບັນຊີ", noQuota: "ບໍ່ມີຂໍ້ມູນໂຄຕາໃນຂອບເຂດນີ້", active: "ໃຊ້ງານ", suspended: "ລະງັບ", disabled: "ປິດສິດ", stores: "ຮ້ານ", createdAt: "ສ້າງເມື່ອ", used: "ໃຊ້ໄປ", storeQuota: "ໂຄຕາຮ້ານ", remaining: "ເຫຼືອ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ໜ້າຖັດໄປ", page: "ໜ້າ", of: "ຈາກ", staff: "ພະນັກງານ",
+	stats: [["ເປີດໂຄຕາຮ້ານ", "ບັນຊີທີ່ເລີ່ມສ້າງຮ້ານໄດ້"], ["ໃຊ້ຮ້ານແລ້ວ", "ຮ້ານໃນຂອບເຂດ Super Admin ນີ້"], ["ເຫຼືອແບບຈຳກັດ", "ຄວາມຈຸທີ່ເຫຼືອຂອງບັນຊີແບບຈຳກັດ"], ["ຕ້ອງກວດເບິ່ງ", "ບັນຊີທີ່ໃຊ້ໂຄຕາເຕັມ ຫຼື ເກີນ"], ["ຮ້ານບໍ່ຈຳກັດ", "ບັນຊີທີ່ບໍ່ມີເພດານຈຳນວນຮ້ານ"], ["ຄວາມຈຸຈຳກັດ", "ໂຄຕາຮ້ານແບບຈຳກັດລວມທັງໝົດ"]]
 } : locale.value === "en" ? {
-	description: "Manage account, store, and expansion quotas within this Super Admin scope.", reload: "Reload", title: "Super Admin quotas", hint: "Review real capacity and accounts close to their limit.", search: "Search name or email", all: "All quotas", storeEnabled: "Can create stores", limited: "Limited", unlimited: "Unlimited", attention: "At limit", apply: "Apply filter", noData: "No data yet", accounts: "accounts", noQuota: "No quota data in this scope", active: "Active", suspended: "Suspended", disabled: "Disabled", stores: "stores", branchesPerStore: "branches/store", createdAt: "Created", used: "Used", storeQuota: "Store quota", remaining: "Remaining", branchQuota: "Branch quota", perPage: "Per page", previous: "Previous", next: "Next", page: "Page", of: "of", staff: "Staff",
-	stats: [["Store quota enabled", "Accounts that can create stores"], ["Stores used", "Stores in this Super Admin scope"], ["Remaining limited", "Remaining capacity from limited accounts"], ["Attention", "Accounts at or over quota"], ["Unlimited stores", "Accounts without a store limit"], ["Branch enabled", "Accounts that can add branches"], ["Unlimited branches", "Accounts without a branch-per-store limit"], ["Limited capacity", "Total limited store capacity"]]
+	description: "Manage account, store, and expansion quotas within this Super Admin scope.", reload: "Reload", title: "Super Admin quotas", hint: "Review real capacity and accounts close to their limit.", search: "Search name or email", all: "All quotas", storeEnabled: "Can create stores", limited: "Limited", unlimited: "Unlimited", attention: "At limit", apply: "Apply filter", noData: "No data yet", accounts: "accounts", noQuota: "No quota data in this scope", active: "Active", suspended: "Suspended", disabled: "Disabled", stores: "stores", createdAt: "Created", used: "Used", storeQuota: "Store quota", remaining: "Remaining", perPage: "Per page", previous: "Previous", next: "Next", page: "Page", of: "of", staff: "Staff",
+	stats: [["Store quota enabled", "Accounts that can create stores"], ["Stores used", "Stores in this Super Admin scope"], ["Remaining limited", "Remaining capacity from limited accounts"], ["Attention", "Accounts at or over quota"], ["Unlimited stores", "Accounts without a store limit"], ["Limited capacity", "Total limited store capacity"]]
 } : {
-	description: "จัดการ quota ของบัญชี ร้าน และการขยายร้าน ภายใต้ Super Admin นี้", reload: "รีโหลด", title: "Super Admin quotas", hint: "มุมมอง quota เพื่อดู capacity จริงและบัญชีที่ใกล้ชน limit", search: "ค้นหาชื่อหรืออีเมล", all: "ทุก quota", storeEnabled: "สร้างร้านได้", limited: "แบบจำกัด", unlimited: "ไม่จำกัด", attention: "ชน limit", apply: "ใช้ตัวกรอง", noData: "ยังไม่มีข้อมูล", accounts: "บัญชี", noQuota: "ยังไม่มีข้อมูล quota ใน scope นี้", active: "ใช้งาน", suspended: "ระงับ", disabled: "ปิดสิทธิ์", stores: "ร้าน", branchesPerStore: "สาขา/ร้าน", createdAt: "สร้างเมื่อ", used: "ใช้ไป", storeQuota: "Store quota", remaining: "Remaining", branchQuota: "Branch quota", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", page: "หน้า", of: "จาก", staff: "พนักงาน",
-	stats: [["Store quota enabled", "บัญชีที่เริ่มสร้างร้านได้"], ["Stores used", "ร้านใน scope ของ Super Admin นี้"], ["Remaining limited", "capacity ที่ยังเหลือจากบัญชีแบบจำกัด"], ["Attention", "บัญชีที่ใช้ quota เต็มหรือเกินแล้ว"], ["Unlimited stores", "บัญชีที่ไม่มีเพดานจำนวนร้าน"], ["Branch enabled", "บัญชีที่เพิ่มสาขาได้"], ["Unlimited branches", "บัญชีที่ไม่จำกัดสาขาต่อร้าน"], ["Limited capacity", "โควต้าร้านรวมแบบจำกัดทั้งหมด"]]
+	description: "จัดการ quota ของบัญชี ร้าน และการขยายร้าน ภายใต้ Super Admin นี้", reload: "รีโหลด", title: "Super Admin quotas", hint: "มุมมอง quota เพื่อดู capacity จริงและบัญชีที่ใกล้ชน limit", search: "ค้นหาชื่อหรืออีเมล", all: "ทุก quota", storeEnabled: "สร้างร้านได้", limited: "แบบจำกัด", unlimited: "ไม่จำกัด", attention: "ชน limit", apply: "ใช้ตัวกรอง", noData: "ยังไม่มีข้อมูล", accounts: "บัญชี", noQuota: "ยังไม่มีข้อมูล quota ใน scope นี้", active: "ใช้งาน", suspended: "ระงับ", disabled: "ปิดสิทธิ์", stores: "ร้าน", createdAt: "สร้างเมื่อ", used: "ใช้ไป", storeQuota: "Store quota", remaining: "Remaining", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", page: "หน้า", of: "จาก", staff: "พนักงาน",
+	stats: [["Store quota enabled", "บัญชีที่เริ่มสร้างร้านได้"], ["Stores used", "ร้านใน scope ของ Super Admin นี้"], ["Remaining limited", "capacity ที่ยังเหลือจากบัญชีแบบจำกัด"], ["Attention", "บัญชีที่ใช้ quota เต็มหรือเกินแล้ว"], ["Unlimited stores", "บัญชีที่ไม่มีเพดานจำนวนร้าน"], ["Limited capacity", "โควต้าร้านรวมแบบจำกัดทั้งหมด"]]
 });
 
 const searchQuery = ref("");
@@ -70,11 +66,9 @@ const totalItems = ref(0);
 const summary = ref<QuotaListResponse["summary"]>({
 	accounts_total: 0,
 	store_quota_enabled: 0,
-	branch_quota_enabled: 0,
 	limited_store_capacity_total: 0,
 	remaining_store_capacity_total: 0,
 	unlimited_store_accounts: 0,
-	unlimited_branch_accounts: 0,
 	attention_accounts: 0,
 	stores_total: 0,
 	store_user_limit: 0,

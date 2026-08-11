@@ -5,6 +5,8 @@ import { InValue } from "@libsql/client";
 import { DbConn } from "@connections/DbConn";
 import { InventoryCostInterface } from "@interfaces/InventoryCostInterface";
 import { NotificationInterface } from "@interfaces/NotificationInterface";
+import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
+import { ProductInterface } from "@interfaces/ProductInterface";
 import { PromotionInterface } from "@interfaces/PromotionInterface";
 import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
@@ -159,6 +161,12 @@ export class OrderInterface {
 		)`);
 		await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS uq_restaurant_queue_per_day
 			ON orders(store_id, queue_date, queue_no) WHERE queue_date IS NOT NULL AND queue_no IS NOT NULL`);
+		await db.execute(`CREATE TABLE IF NOT EXISTS restaurant_order_rounds (
+			id TEXT PRIMARY KEY, order_id TEXT NOT NULL, round_no INTEGER NOT NULL, sent_by TEXT NOT NULL,
+			sent_at TEXT NOT NULL, idempotency_key TEXT NOT NULL, kitchen_status TEXT NOT NULL DEFAULT 'pending',
+			kitchen_done_at TEXT, kitchen_done_by TEXT, dispatch_mode TEXT NOT NULL DEFAULT 'kitchen',
+			UNIQUE(order_id, round_no), UNIQUE(order_id, idempotency_key)
+		)`);
 			OrderInterface.initialized = true;
 		})().catch((error) => {
 			OrderInterface.initializationPromise = null;
@@ -178,6 +186,8 @@ export class OrderInterface {
 		// to exist before the catalogue read asks for it.
 		await InventoryCostInterface.ensureTables();
 		await StoreInterface.ensureColumns();
+		await ProductInterface.ensureColumns();
+		await ProductCategoryInterface.ensureColumns();
 		if (!payload.store_id.trim()) throw ApiError.BadRequestError("store_id is required");
 		if (!ALLOWED_METHODS.has(payload.payment_method)) throw ApiError.BadRequestError("payment_method is invalid");
 		if (!ALLOWED_MODES.has(payload.service_mode)) throw ApiError.BadRequestError("service_mode is invalid");
@@ -214,9 +224,11 @@ export class OrderInterface {
 			}, {
 				sql: `SELECT p.id, p.sku, p.name, p.base_unit_id, p.price_base, p.cost_base, p.active,
 					COALESCE(p.inventory_mode, 'tracked') AS inventory_mode, COALESCE(p.manual_sold_out, 0) AS manual_sold_out,
+					COALESCE(p.send_to_kitchen, c.send_to_kitchen, 1) AS send_to_kitchen,
 					COALESCE(p.cost_source, 'purchase') AS cost_source,
 					COALESCE(ib.on_hand_base, 0) AS on_hand_base, COALESCE(ib.reserved_base, 0) AS reserved_base
-					FROM products p LEFT JOIN inventory_balances ib ON ib.store_id = p.store_id AND ib.product_id = p.id
+					FROM products p LEFT JOIN product_categories c ON c.id=p.category_id
+					LEFT JOIN inventory_balances ib ON ib.store_id = p.store_id AND ib.product_id = p.id
 					WHERE p.store_id = ? AND p.id IN (${ids.map(() => "?").join(",")})`,
 				args: [ payload.store_id, ...ids ],
 			} ];
@@ -357,6 +369,11 @@ export class OrderInterface {
 					})),
 				},
 			};
+			const kitchenLines = String(store.store_type) === "RESTAURANT"
+				? lines.filter((line) => Number(line.row.send_to_kitchen) !== 0)
+				: [];
+			const directRoundId = kitchenLines.length ? randomUUID() : null;
+			const directRoundKey = `direct:${payload.idempotency_key}`;
 
 			const writesStartedAt = performance.now();
 			const writeStatements: Array<{ sql: string; args: InValue[] }> = [ {
@@ -377,6 +394,11 @@ export class OrderInterface {
 					Number(store.pickup_queue_enabled) && payload.service_mode === "pickup" ? "waiting_pickup" : null,
 					paymentCurrency.exchangeRate, amountTenderedForeign ],
 			} ];
+			if (directRoundId) writeStatements.push({
+				sql: `INSERT INTO restaurant_order_rounds(id,order_id,round_no,sent_by,sent_at,idempotency_key,dispatch_mode)
+					VALUES(?,?,1,?,?,?,'direct')`,
+				args: [ directRoundId, orderId, payload.created_by, now, directRoundKey ],
+			});
 			for (const promotion of appliedPromotions) {
 				writeStatements.push({ sql: `INSERT INTO order_promotions (id, order_id, promotion_id, promotion_name, promotion_type, applications, gift_product_id, gift_qty, discount_method, discount_value, discount_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [ randomUUID(), orderId, promotion.promotion_id, promotion.name, promotion.type, promotion.applications, promotion.gift_product_id || "", promotion.gift_qty, promotion.discount_method || null, promotion.discount_value || 0, promotion.discount_amount || 0, now ] });
 			}
@@ -398,12 +420,13 @@ export class OrderInterface {
 				const costBaseAtSale = fifoCosting && tracked
 					? InventoryCostInterface.issueUnitCost(costPlan?.allocations.get(productId), fallbackCostBase)
 					: fallbackCostBase;
+				const goesToKitchen = Boolean(directRoundId) && Number(line.row.send_to_kitchen) !== 0;
 				writeStatements.push({
-					sql: `INSERT INTO order_items (id, order_id, product_id, unit_id, qty, qty_base, price_base_at_sale, cost_base_at_sale, line_total, is_gift, promotion_id, cost_source_at_sale)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					sql: `INSERT INTO order_items (id, order_id, product_id, unit_id, qty, qty_base, price_base_at_sale, cost_base_at_sale, line_total, is_gift, promotion_id, cost_source_at_sale, line_status, round_id, sent_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)`,
 					args: [ randomUUID(), orderId, productId, String(line.row.base_unit_id), line.qty, line.qty,
 						(line as any).isGift ? 0 : Number(line.row.price_base || 0), costBaseAtSale, line.lineTotal, (line as any).isGift ? 1 : 0, (line as any).promotionId || null,
-						String(line.row.cost_source || "purchase") ],
+						String(line.row.cost_source || "purchase"), goesToKitchen ? directRoundId : null, goesToKitchen ? now : null ],
 				});
 				if (!tracked) continue;
 				const nextOnHand = Number(line.row.on_hand_base) - consumed - line.qty;
@@ -447,6 +470,16 @@ export class OrderInterface {
 			});
 			await transaction.batch(writeStatements);
 			await transaction.commit();
+			// A quick sale paid up front still has food to cook. Recording it as a
+			// dispatched round is what puts it in front of the kitchen — by the same
+			// route a table bill takes — instead of leaving the order to be shouted
+			// across the counter. Imported here rather than at the top because the
+			// restaurant module is built on this one.
+			if (String(store.store_type) === "RESTAURANT") {
+				const { RestaurantInterface } = await import("@interfaces/RestaurantInterface");
+				await RestaurantInterface.recordDirectSaleRound(payload.store_id, orderId, payload.idempotency_key, payload.created_by)
+					.catch((error) => console.error("[print-queue] direct sale round failed", error));
+			}
 			NotificationInterface.queueStockRefresh(payload.store_id);
 			void db.execute({
 				sql: `INSERT INTO audit_events (id, scope, store_id, actor_user_id, actor_role, action, entity_type, entity_id, result, request_id, metadata, occurred_at)

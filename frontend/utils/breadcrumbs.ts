@@ -98,10 +98,6 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Quotas" },
 	],
-	"/superadmin/branch": [
-		{ label: "Super Admin", to: "/superadmin" },
-		{ label: "Branch Config" },
-	],
 	"/superadmin/integrations": [
 		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Integrations" },
@@ -168,7 +164,6 @@ const segmentLabelMap: Record<string, string> = {
 	security: "Security",
 	"thirdparty-usage": "Third-party Usage",
 	quotas: "Quotas",
-	branch: "Branch Config",
 	integrations: "Integrations",
 	config: "Config",
 	roles: "Roles",

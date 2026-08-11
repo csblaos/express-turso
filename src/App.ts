@@ -4,6 +4,7 @@ import { ApiError } from "@middlewares/ApiError";
 import { ErrorHandler } from "@middlewares/ErrorHandler";
 import { RequestMiddleware } from "@middlewares/RequestMiddleware";
 import { IndexRouter } from "@routers/IndexRouter";
+import { KitchenRealtime } from "@services/KitchenRealtime";
 import { SuccessHandler } from "@utils/SuccessHandler";
 
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
@@ -31,6 +32,10 @@ app.use(RequestMiddleware.requestResponseLog);
 
 app.get("/healthz", (req, res) => {
 	SuccessHandler.send(res, req.requestId, "ok");
+});
+
+app.get("/healthz/realtime", (req, res) => {
+	SuccessHandler.send(res, req.requestId, KitchenRealtime.health());
 });
 
 app.use(express.json({ limit: "5mb" }));

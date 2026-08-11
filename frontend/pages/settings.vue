@@ -37,7 +37,7 @@ const plannedTone = {
 	icon: "bg-primary-50 text-primary-700 ring-primary-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20",
 };
 
-const hiddenSettingEntryIds = new Set([ "security", "stores", "shipping", "branchSwitch", "branchConfig" ]);
+const hiddenSettingEntryIds = new Set([ "security", "stores", "shipping" ]);
 
 function linkedEntries(section: SettingsSection) {
 	return section.entries.filter((entry) => Boolean(entry.to) && canViewEntry(entry));
@@ -64,12 +64,12 @@ const settingsSections: SettingsSection[] = [
 		titleKey: "settings.title",
 		descriptionKey: "settings.description",
 		entries: [
-			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "printing", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "customerDisplay", "shipping", "branchSwitch", "branchConfig" ] as const).map((key, index) => ({
+			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "printing", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "customerDisplay", "shipping" ] as const).map((key, index) => ({
 				id: key, titleKey: `settings.entries.${key}.title`, descriptionKey: `settings.entries.${key}.description`,
-				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-computer-desktop", "i-heroicons-truck", "i-heroicons-arrows-right-left", "i-heroicons-adjustments-horizontal" ][index]!,
-				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", "/notifications", "/settings/printing/sales-receipt", undefined, "/settings/store-profile", "/settings/store-finance", "/settings/stock", "/settings/store-payments", "/settings/customer-display", undefined, undefined, undefined ][index],
-				permission: [ undefined, undefined, undefined, "settings.users.view", "products.view", "products.view", "settings.restaurant.view", undefined, "settings.printing.view", undefined, "settings.store.view", "settings.finance.view", "settings.stock_policy.view", "settings.payments.view", "settings.customer_display.view", undefined, undefined, undefined ][index],
-				availability: ([ 2, 9, 15, 16, 17 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
+				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-computer-desktop", "i-heroicons-truck" ][index]!,
+				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", "/notifications", "/settings/printing/sales-receipt", undefined, "/settings/store-profile", "/settings/store-finance", "/settings/stock", "/settings/store-payments", "/settings/customer-display", undefined ][index],
+				permission: [ undefined, undefined, undefined, "settings.users.view", "products.view", "products.view", "settings.restaurant.view", undefined, "settings.printing.view", undefined, "settings.store.view", "settings.finance.view", "settings.stock_policy.view", "settings.payments.view", "settings.customer_display.view", undefined ][index],
+				availability: ([ 2, 9, 15 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
 			})).filter((entry) => !hiddenSettingEntryIds.has(entry.id)),
 		],
 	},

@@ -88,6 +88,8 @@ function copyFor(activeLocale: string) {
 			preview: "Receipt preview",
 			previewHint: "80 mm receipt preview",
 			salesReceipt: "Sales receipt",
+			kitchenPrinters: "Kitchen printers",
+			kitchenPrintersHint: "Printers, agents and the print queue",
 			invoice: "Invoice",
 			purchaseOrder: "Purchase order",
 			comingSoon: "Coming soon",
@@ -141,6 +143,8 @@ function copyFor(activeLocale: string) {
 			preview: "ตัวอย่างบิล",
 			previewHint: "ตัวอย่างบิลขนาด 80 มม.",
 			salesReceipt: "บิลขาย",
+			kitchenPrinters: "เครื่องพิมพ์ครัว",
+			kitchenPrintersHint: "เครื่องพิมพ์ agent และคิวงานพิมพ์",
 			invoice: "Invoice",
 			purchaseOrder: "ใบสั่งซื้อ",
 			comingSoon: "เร็ว ๆ นี้",
@@ -193,6 +197,8 @@ function copyFor(activeLocale: string) {
 		preview: "ຕົວຢ່າງບິນ",
 		previewHint: "ຕົວຢ່າງບິນຂະໜາດ 80 ມມ.",
 		salesReceipt: "ບິນຂາຍ",
+		kitchenPrinters: "ເຄື່ອງພິມຄົວ",
+		kitchenPrintersHint: "ເຄື່ອງພິມ agent ແລະ ຄິວງານພິມ",
 		invoice: "Invoice",
 		purchaseOrder: "ໃບສັ່ງຊື້",
 		comingSoon: "ໄວໆນີ້",
@@ -416,6 +422,15 @@ onMounted(loadSettings);
 							<UBadge color="neutral" variant="soft" :label="copy.comingSoon" />
 						</div>
 					</div>
+					<NuxtLink to="/settings/printing/kitchen" class="rounded-md border border-neutral-200 bg-white p-4 transition hover:border-emerald-300 hover:bg-emerald-50/40">
+						<div class="flex items-center gap-3">
+							<UIcon name="i-lucide-printer" class="h-5 w-5 text-stone-500" />
+							<div>
+								<p class="text-sm font-semibold text-stone-800">{{ copy.kitchenPrinters }}</p>
+								<p class="text-xs text-stone-500">{{ copy.kitchenPrintersHint }}</p>
+							</div>
+						</div>
+					</NuxtLink>
 					<div class="rounded-md border border-neutral-200 bg-white p-4 text-stone-500">
 						<div class="flex items-center justify-between gap-3">
 							<p class="text-sm font-semibold text-stone-800">{{ copy.purchaseOrder }}</p>
@@ -493,6 +508,7 @@ onMounted(loadSettings);
 										</div>
 										<UBadge :color="showQueue ? 'success' : 'neutral'" variant="soft" :label="showQueue ? copy.queueEnabled : copy.queueDisabled" />
 									</div>
+
 
 									<label class="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-3 sm:col-span-2">
 										<div>

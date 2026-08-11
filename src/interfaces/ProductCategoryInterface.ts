@@ -38,7 +38,39 @@ function getUpdatePayload(data: UpdateProductCategoryInput): Record<string, InVa
 }
 
 export class ProductCategoryInterface {
+	private static ensured = false;
+	private static ensureColumnsPromise: Promise<void> | null = null;
+
+	/** The kitchen station a category is cooked at. Held on the category rather
+	 * than the product because a menu is grouped the way the kitchen is laid out:
+	 * one assignment covers every dish on the grill. */
+	static async ensureColumns(): Promise<void> {
+		if (ProductCategoryInterface.ensured) return;
+		if (ProductCategoryInterface.ensureColumnsPromise) return ProductCategoryInterface.ensureColumnsPromise;
+
+		ProductCategoryInterface.ensureColumnsPromise = (async () => {
+			const db = DbConn.getClient();
+			const pragmaResult = await db.execute("PRAGMA table_info(product_categories)");
+			const existingColumns = new Set(pragmaResult.rows.map((row) => String(row.name || "")));
+			if (!existingColumns.has("station_id")) {
+				await db.execute("ALTER TABLE product_categories ADD COLUMN station_id TEXT");
+			}
+			// Drinks taken from a fridge at the counter are sold and stocked like
+			// anything else; they simply have no reason to appear on a kitchen slip.
+			if (!existingColumns.has("send_to_kitchen")) {
+				await db.execute("ALTER TABLE product_categories ADD COLUMN send_to_kitchen INTEGER NOT NULL DEFAULT 1");
+			}
+			ProductCategoryInterface.ensured = true;
+		})().catch((error) => {
+			ProductCategoryInterface.ensureColumnsPromise = null;
+			throw error;
+		});
+
+		return ProductCategoryInterface.ensureColumnsPromise;
+	}
+
 	static async findAll(storeId?: string): Promise<ProductCategory[]> {
+		await ProductCategoryInterface.ensureColumns();
 		const db = DbConn.getClient();
 
 		if (storeId) {

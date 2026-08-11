@@ -37,8 +37,6 @@ const POLICY_COLUMNS = [
 function getDefaultPayload(now: string): SystemConfig {
 	return {
 		id: DEFAULT_SYSTEM_CONFIG_ID,
-		default_can_create_branches: 1,
-		default_max_branches_per_store: 5,
 		default_max_users_per_store: 20,
 		created_at: now,
 		updated_at: now,
@@ -123,8 +121,6 @@ export class SystemConfigInterface {
 				sql: `
 				INSERT INTO system_config (
 					id,
-					default_can_create_branches,
-					default_max_branches_per_store,
 					default_max_users_per_store,
 					created_at,
 					updated_at,
@@ -143,12 +139,10 @@ export class SystemConfigInterface {
 					auth_max_failed_attempts,
 					auth_lockout_minutes,
 					auth_allow_multi_session
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 				args: [
 				fallback.id,
-				fallback.default_can_create_branches,
-				fallback.default_max_branches_per_store,
 				fallback.default_max_users_per_store,
 				fallback.created_at,
 				fallback.updated_at,

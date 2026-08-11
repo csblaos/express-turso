@@ -21,8 +21,6 @@ type ClientRecord = {
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
@@ -119,8 +117,6 @@ const detailForm = reactive({
 	ui_locale: "th",
 	can_create_stores: true,
 	max_stores: "1",
-	can_create_branches: true,
-	max_branches_per_store: "1",
 	must_change_password: false,
 	status: "active" as "active" | "suspended",
 	suspend_reason: "",
@@ -495,8 +491,6 @@ function openDetailModal(userId: string) {
 	detailForm.ui_locale = user.ui_locale || "th";
 	detailForm.can_create_stores = Boolean(user.can_create_stores);
 	detailForm.max_stores = user.max_stores === null ? "" : String(user.max_stores);
-	detailForm.can_create_branches = Boolean(user.can_create_branches);
-	detailForm.max_branches_per_store = user.max_branches_per_store === null ? "" : String(user.max_branches_per_store);
 	detailForm.must_change_password = Boolean(user.must_change_password);
 	detailForm.status = user.status;
 	detailForm.suspend_reason = user.client_suspended_reason || "";
@@ -597,8 +591,6 @@ async function saveDetail() {
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
 				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
-				can_create_branches: detailForm.can_create_stores && detailForm.can_create_branches ? 1 : 0,
-				max_branches_per_store: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_branches_per_store) : null,
 				must_change_password: detailForm.must_change_password,
 				actor_user_id: currentUser.value?.id || null,
 			},
@@ -706,8 +698,6 @@ watch(() => createForm.store_id, async (storeId) => {
 watch(() => detailForm.can_create_stores, (enabled) => {
 	if (enabled) return;
 	detailForm.max_stores = "";
-	detailForm.max_branches_per_store = "";
-	detailForm.can_create_branches = false;
 });
 
 onMounted(loadUsers);
@@ -1143,16 +1133,8 @@ onMounted(loadUsers);
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.max_stores }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxBranches') }}</p>
-									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.max_branches_per_store }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.allowCreateStores') }}</p>
 									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.can_create_stores ? 'ອະນຸຍາດ' : 'ບໍ່ອະນຸຍາດ' }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.allowCreateBranches') }}</p>
-									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.can_create_branches ? 'ອະນຸຍາດ' : 'ບໍ່ອະນຸຍາດ' }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</p>
@@ -1177,19 +1159,11 @@ onMounted(loadUsers);
 									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxStores') }}</label>
 									<input v-model="detailForm.max_stores" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
-								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxBranches') }}</label>
-									<input v-model="detailForm.max_branches_per_store" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
-								</div>
 							</div>
 							<div class="grid gap-3">
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<input v-model="detailForm.can_create_stores" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.allowCreateStores') }}</p></div>
-								</label>
-								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_branches" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.allowCreateBranches') }}</p></div>
 								</label>
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<input v-model="detailForm.must_change_password" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
