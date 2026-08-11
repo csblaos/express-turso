@@ -98,6 +98,10 @@ const tables = ref<DiningTable[]>([]);
 const products = ref<Product[]>([]);
 const productCategories = ref<ProductCategory[]>([]);
 const openOrders = ref<OpenOrder[]>([]);
+const parkedBillsOpen = ref(false);
+// A parked quick-sale bill is an unpaid pickup order. Keep it separate from
+// table orders so the cashier can resume it without searching the full list.
+const parkedBills = computed(() => openOrders.value.filter((opened) => opened.service_mode === "pickup"));
 const order = ref<Order | null>(null);
 const completedOrder = ref<Order | null>(null);
 const localCart = ref<LocalCartEntry[]>([]);
@@ -1714,6 +1718,42 @@ function parkOrder() {
 	void loadDashboard();
 }
 
+function showQuickSale() {
+	if (order.value) parkOrder();
+	else view.value = "quick";
+}
+
+// A quick-sale cart exists only in this browser session. Turn it into a real
+// open pickup order before clearing the cart, so the cashier can safely serve
+// the next customer and resume this bill from Open orders later.
+let parkQuickSaleKey = "";
+async function parkQuickSale() {
+	if (order.value || !localCart.value.length) return;
+	moreActionsOpen.value = false;
+	actionPending.value = true;
+	try {
+		parkQuickSaleKey ||= crypto.randomUUID();
+		const response = await apiFetch<Envelope<Order>>("/pos/restaurant/orders", {
+			method: "POST",
+			headers: { "Idempotency-Key": parkQuickSaleKey },
+			body: {
+				store_id: props.storeId,
+				service_mode: "pickup",
+				items: localCart.value.map(({ product_id, qty, note }) => ({ product_id, qty, note: note || null })),
+			},
+		});
+		parkQuickSaleKey = "";
+		localCart.value = [];
+		selectedPromotionIds.value = [];
+		selectedPromotionCounts.value = {};
+		persistLocalCart();
+		await loadDashboard();
+		toast.success({ title: t("toastMessages.billParked"), description: response.data.order_no });
+	} catch (error) {
+		toast.error({ title: t("toastMessages.billSaveFailed"), description: localizedApiError(error) });
+	} finally { actionPending.value = false; }
+}
+
 async function cancelOrder() {
 	if (!order.value) return;
 	const hasSent = order.value.items.some((item) => item.line_status === "sent");
@@ -1931,7 +1971,7 @@ onBeforeUnmount(() => {
 			<div class="flex h-full min-h-0 flex-col gap-3">
 				<div class="relative flex items-center gap-2">
 					<div class="restaurant-pos-tab-scroll flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
-						<AppButton class="shrink-0" size="sm" :color="view === 'quick' ? 'primary' : 'neutral'" :variant="view === 'quick' ? 'solid' : 'soft'" icon="i-heroicons-bolt" @click="view = 'quick'">{{ t('restaurantPos.quickSale') }}</AppButton>
+						<AppButton class="shrink-0" size="sm" :color="view === 'quick' ? 'primary' : 'neutral'" :variant="view === 'quick' ? 'solid' : 'soft'" icon="i-heroicons-bolt" @click="showQuickSale">{{ t('restaurantPos.quickSale') }}</AppButton>
 						<AppButton class="shrink-0" size="sm" :color="view === 'tables' ? 'primary' : 'neutral'" :variant="view === 'tables' ? 'solid' : 'soft'" icon="i-heroicons-table-cells" @click="showTables">{{ t('restaurantPos.selectTable') }}</AppButton>
 						<AppButton class="shrink-0" size="sm" :color="view === 'open' ? 'primary' : 'neutral'" :variant="view === 'open' ? 'solid' : 'soft'" icon="i-heroicons-queue-list" @click="view = 'open'">{{ t('restaurantPos.openOrders') }} <span v-if="openOrders.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ openOrders.length }}</span></AppButton>
 						<AppButton v-if="pickupQueueEnabled" class="shrink-0" size="sm" :color="view === 'pickupQueue' ? 'primary' : 'neutral'" :variant="view === 'pickupQueue' ? 'solid' : 'soft'" icon="i-lucide-list-ordered" @click="view = 'pickupQueue'">{{ t('restaurantPos.pickupQueue') }} <span v-if="pickupQueue.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ pickupQueue.length }}</span></AppButton>
@@ -1950,6 +1990,10 @@ onBeforeUnmount(() => {
 						</AppButton>
 					</div>
 					<AppButton v-if="customerDisplayEnabled" class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-computer-desktop" :aria-label="t('restaurantPos.customerScreen')" :title="t('restaurantPos.customerScreen')" @click="openCustomerDisplay" />
+					<AppButton v-if="view === 'quick' && parkedBills.length" class="shrink-0 shadow-sm ring-1 ring-amber-700/10" size="sm" color="warning" variant="solid" icon="i-heroicons-bookmark" :aria-label="t('restaurantPos.parkOrder')" :title="t('restaurantPos.parkOrder')" @click="parkedBillsOpen = true">
+						<span class="hidden sm:inline">{{ t('restaurantPos.parkOrder') }}</span>
+						<span class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 text-[11px] font-bold tabular-nums">{{ parkedBills.length }}</span>
+					</AppButton>
 					<AppButton v-if="view === 'quick'" class="shrink-0 shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-gift" :aria-label="t('restaurantPos.promotions')" :title="t('restaurantPos.promotions')" @click="promotionPanelOpen = true">
 						<span class="hidden sm:inline">{{ t('restaurantPos.promotions') }}</span>
 						<span v-if="promotionOptionCount" class="ml-1 hidden min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold tabular-nums sm:inline-flex">{{ promotionOptionCount }}</span>
@@ -2013,6 +2057,15 @@ onBeforeUnmount(() => {
 								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-sky-800 hover:bg-sky-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bolt" class="size-4" />{{ t('restaurantPos.quickSale') }}</button>
 								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-emerald-800 hover:bg-emerald-50" @click="tableActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4" />{{ t('restaurantPos.moveTable') }}</button>
 								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-800 hover:bg-amber-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark" class="size-4" />{{ t('restaurantPos.parkOrder') }}</button>
+							</div>
+						</div>
+						<div v-else-if="order?.service_mode === 'pickup'" class="mb-2 rounded-md border border-amber-300 bg-amber-50/70 shadow-sm ring-1 ring-amber-100 lg:mb-3">
+							<div class="flex items-center justify-between gap-2 border-l-4 border-amber-500 px-2.5 py-2 lg:border-l-[6px] lg:px-3">
+								<div class="flex min-w-0 items-center gap-2.5">
+									<span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-500 text-white shadow-sm shadow-amber-900/10 lg:size-9"><UIcon name="i-heroicons-bookmark" class="size-4" /></span>
+									<div class="min-w-0"><div class="flex min-w-0 flex-wrap items-center gap-1.5"><p class="truncate text-sm font-bold text-amber-950">{{ t('restaurantPos.parkOrder') }} · {{ orderLabel }}</p><UBadge color="warning" variant="soft">{{ t('restaurantPos.open') }}</UBadge></div><p class="mt-0.5 text-xs text-amber-800">{{ t('restaurantPos.takeaway') }} · {{ elapsed(order.opened_at) }}</p></div>
+								</div>
+								<AppButton class="min-h-9 border border-sky-200 bg-sky-50 px-3 text-sky-800 shadow-sm hover:bg-sky-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bolt" @click="parkOrder">{{ t('restaurantPos.quickSale') }}</AppButton>
 							</div>
 						</div>
 						<div class="sticky top-0 z-20 -mx-1 flex gap-2 bg-white/95 px-1 pb-2 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
@@ -2213,10 +2266,11 @@ onBeforeUnmount(() => {
 									<strong class="text-xl tabular-nums">{{ money(displayTotal) }}</strong>
 								</div>
 								<template v-if="!order">
+									<AppButton block color="success" variant="solid" :loading="actionPending" @click="openCheckout('direct')">
+										<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ quickSaleUsesKitchen ? t('restaurantPos.sendAndPay') : t('restaurantPos.payDirect') }}</span>
+									</AppButton>
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
-										<AppButton class="w-full justify-center" color="success" variant="solid" :loading="actionPending" @click="openCheckout('direct')">
-											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ quickSaleUsesKitchen ? t('restaurantPos.sendAndPay') : t('restaurantPos.payDirect') }}</span>
-										</AppButton>
+										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-bookmark" :disabled="actionPending || !localCart.length" @click="parkQuickSale">{{ t('restaurantPos.parkOrder') }}</AppButton>
 										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-table-cells" :disabled="actionPending" @click="beginCartTable">{{ t('restaurantPos.openTableWithCart') }}</AppButton>
 										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
@@ -2238,7 +2292,7 @@ onBeforeUnmount(() => {
 									</div>
 								</template>
 								<template v-else>
-									<div class="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_44px] gap-2">
+									<div class="grid gap-2" :class="order.service_mode === 'dine-in' ? 'grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_44px]' : 'grid-cols-[minmax(0,1fr)_44px]'">
 										<AppButton v-if="order.service_mode === 'dine-in'" class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-document-text" :loading="actionPending" @click="markReady">{{ t('restaurantPos.checkBill') }}</AppButton>
 										<AppButton class="w-full justify-center" color="success" variant="solid" :loading="actionPending" @click="openCheckout('existing')">
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
@@ -2501,6 +2555,18 @@ onBeforeUnmount(() => {
 			</div>
 		</template>
 	</AppSidebarShell>
+
+	<AppResponsivePanel v-model="parkedBillsOpen" :title="t('restaurantPos.parkOrder')" :description="t('restaurantPos.noOpenOrdersDescription')" desktop-width="520px" desktop-placement="center" mobile-max-height="80vh" content-class="px-0 py-0">
+		<div class="space-y-2 p-4">
+			<button v-for="parked in parkedBills" :key="parked.id" type="button" class="flex w-full items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-left transition hover:border-amber-300 hover:bg-amber-50" @click="parkedBillsOpen = false; loadOrder(parked.id)">
+				<span class="flex min-w-0 items-center gap-3">
+					<span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-white text-amber-600 shadow-sm ring-1 ring-amber-100"><UIcon name="i-heroicons-bookmark" class="size-4" /></span>
+					<span class="min-w-0"><span class="block truncate text-sm font-bold text-stone-900">{{ openOrderTitle(parked) }}</span><span class="mt-0.5 block truncate text-xs text-stone-500">{{ t('common.itemCount', { count: Number(parked.draft_count) + Number(parked.sent_count) }) }} · {{ elapsed(parked.opened_at) }}</span></span>
+				</span>
+				<span class="shrink-0 text-right"><span class="block text-sm font-bold tabular-nums text-stone-900">{{ money(parked.total) }}</span><span class="mt-0.5 block text-[11px] font-medium text-amber-700">{{ t('restaurantPos.viewBill') }}</span></span>
+			</button>
+		</div>
+	</AppResponsivePanel>
 
 	<AppResponsivePanel v-model="pickupQueueHistoryOpen" :title="t('pickupQueueHistory.title')" :description="t('pickupQueueHistory.hint')" desktop-width="680px" desktop-placement="center" mobile-max-height="90vh" fill-mobile-height panel-class="lg:h-[560px]" content-class="flex flex-col !overflow-hidden">
 		<div class="min-h-0 flex-1">

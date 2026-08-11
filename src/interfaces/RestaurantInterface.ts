@@ -625,6 +625,7 @@ export class RestaurantInterface {
 		await RestaurantInterface.ensureTables();
 		const db = DbConn.getClient();
 		const serviceMode = input.service_mode === "pickup" ? "pickup" : "dine-in";
+		const draftItems = Array.isArray(input.items) ? input.items : (input.initial_item ? [input.initial_item] : []);
 		const tableId = serviceMode === "dine-in" ? text(input.table_id) : "";
 		const idempotencyKey = text(input.idempotency_key);
 		if (serviceMode === "pickup" && !idempotencyKey) throw ApiError.BadRequestError("Idempotency-Key is required for pickup order");
@@ -645,7 +646,7 @@ export class RestaurantInterface {
 				if (!table.rows.length) throw ApiError.NotFoundError("table not found");
 				const existing = await tx.execute({ sql: "SELECT id FROM orders WHERE store_id=? AND restaurant_table_id=? AND status IN ('open','ready_to_pay') LIMIT 1", args: [storeId, tableId] });
 				if (existing.rows.length) {
-					if (input.initial_item) throw conflict("โต๊ะนี้มีออเดอร์เปิดอยู่แล้ว");
+				if (draftItems.length) throw conflict("โต๊ะนี้มีออเดอร์เปิดอยู่แล้ว");
 					await tx.rollback();
 					return RestaurantInterface.getOrder(storeId, String(existing.rows[0].id));
 				}
@@ -664,8 +665,8 @@ export class RestaurantInterface {
 					VALUES(?,?,?,'restaurant','open',0,0,0,0,0,0,?,?,?,'','unpaid',?,0,0,?,?,?,?,1,?,?,?)`,
 				args: [id, storeId, orderNo, actorId, stamp, String(store.rows[0].currency || "LAK"), serviceMode, tableId || null, Math.max(1, Math.round(number(input.guest_count) || 1)), guestSpecified ? 1 : 0, stamp, queueNo, queueDate, idempotencyKey || null],
 			});
-			if (input.initial_item) {
-				await RestaurantInterface.insertDraftItem(tx, storeId, id, input.initial_item);
+			if (draftItems.length) {
+				for (const item of draftItems) await RestaurantInterface.insertDraftItem(tx, storeId, id, item);
 				await RestaurantInterface.syncAutomaticPromotions(tx, storeId, id);
 				await RestaurantInterface.recalculate(tx, id);
 			}
@@ -723,7 +724,7 @@ export class RestaurantInterface {
 				LEFT JOIN restaurant_tables t ON t.id=o.restaurant_table_id
 				LEFT JOIN restaurant_zones z ON z.id=t.zone_id
 				LEFT JOIN order_items oi ON oi.order_id=o.id
-				WHERE o.store_id=? AND o.service_mode='dine-in' AND o.status IN ('open','ready_to_pay')
+				WHERE o.store_id=? AND o.service_mode IN ('dine-in','pickup') AND o.status IN ('open','ready_to_pay')
 					AND (o.channel='restaurant' OR o.restaurant_table_id IS NOT NULL)
 				GROUP BY o.id,t.name,z.name
 				ORDER BY o.opened_at`,

@@ -15,6 +15,7 @@ export default class RestaurantValidator extends ValidatorMiddleware {
 		table_id: z.string().trim().min(1).optional(),
 		guest_count: z.coerce.number().int().positive().max(100).optional(),
 		initial_item: z.object({ product_id: z.string().trim().min(1), qty: z.coerce.number().int().positive(), note: z.string().trim().max(280).nullable().optional() }).optional(),
+		items: z.array(z.object({ product_id: z.string().trim().min(1), qty: z.coerce.number().int().positive(), note: z.string().trim().max(280).nullable().optional() })).min(1).max(200).optional(),
 	}).superRefine((value, context) => {
 		if ((value.service_mode || (value.table_id ? "dine-in" : "pickup")) === "dine-in" && !value.table_id) context.addIssue({ code: "custom", path: ["table_id"], message: "table_id is required for dine-in" });
 	}) });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Loader } from "@lucide/vue";
 import { needsAuthOnboarding } from "~/utils/auth-onboarding";
 const { login, currentAccess } = useAuthSession();
 const appToast = useAppToast();
@@ -198,14 +199,13 @@ async function loginToPos() {
 											color="primary"
 											variant="solid"
 											size="md"
-											icon="i-heroicons-arrow-right-20-solid"
-											:loading="submitting"
-											:spin-icon-on-loading="true"
+											:icon="submitting ? undefined : 'i-heroicons-arrow-right-20-solid'"
 											:disabled="submitting"
 											:block="true"
 											class="min-h-11 font-semibold shadow-sm"
 										>
-											{{ submitting ? t('loginPage.signingIn') : t('loginPage.signIn') }}
+											<Loader v-if="submitting" class="size-5 animate-spin" :stroke-width="2.5" aria-hidden="true" />
+											<span>{{ submitting ? t('loginPage.signingIn') : t('loginPage.signIn') }}</span>
 										</AppButton>
 									</div>
 								</form>
