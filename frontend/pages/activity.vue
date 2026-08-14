@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -17,6 +18,9 @@ type ApiAuditEvent = {
 	action: string;
 	entity_type: string;
 	entity_id: string | null;
+	related_order_no: string | null;
+	related_queue_no: string | null;
+	related_table_name: string | null;
 	result: string;
 	reason_code: string | null;
 	ip_address: string | null;
@@ -37,11 +41,55 @@ type AuditEventListResponse = {
 };
 
 const { apiFetch } = useApiClient();
+const { t, locale } = useI18n();
+const appLocale = computed(() => locale.value as "th" | "lo" | "en");
 
 const searchQuery = ref("");
 const activeScope = ref("all");
 const activeResult = ref("all");
 const activeEntityType = ref("all");
+const datePreset = ref("today");
+
+function dateValue(date: Date) {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+function addDays(date: Date, days: number) {
+	const next = new Date(date);
+	next.setDate(next.getDate() + days);
+	return next;
+}
+function startOfWeek(date: Date) {
+	const next = new Date(date);
+	const offset = (next.getDay() + 6) % 7;
+	next.setDate(next.getDate() - offset);
+	return next;
+}
+function rangeForPreset(preset: string) {
+	const today = new Date();
+	if (preset === "yesterday") {
+		const day = addDays(today, -1);
+		return { from: dateValue(day), to: dateValue(day) };
+	}
+	if (preset === "this_week") return { from: dateValue(startOfWeek(today)), to: dateValue(today) };
+	if (preset === "last_week") {
+		const end = addDays(startOfWeek(today), -1);
+		return { from: dateValue(addDays(end, -6)), to: dateValue(end) };
+	}
+	if (preset === "this_month") return { from: dateValue(new Date(today.getFullYear(), today.getMonth(), 1)), to: dateValue(today) };
+	if (preset === "last_month") {
+		return {
+			from: dateValue(new Date(today.getFullYear(), today.getMonth() - 1, 1)),
+			to: dateValue(new Date(today.getFullYear(), today.getMonth(), 0)),
+		};
+	}
+	return { from: dateValue(today), to: dateValue(today) };
+}
+const initialRange = rangeForPreset("today");
+const dateFrom = ref(initialRange.from);
+const dateTo = ref(initialRange.to);
 const events = ref<ApiAuditEvent[]>([]);
 const pending = ref(true);
 const error = ref<string | null>(null);
@@ -53,36 +101,38 @@ const selectedEventId = ref("");
 const detailOpen = ref(false);
 
 const numberFormatter = new Intl.NumberFormat("th-TH");
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
-
 let loadTimer: ReturnType<typeof setTimeout> | null = null;
 
 const scopeOptions = computed(() => [
-	{ id: "all", label: "ทุก scope" },
+	{ id: "all", label: t("activityPage.allAreas") },
 	...Array.from(new Set(events.value.map((event) => event.scope))).map((scope) => ({
 		id: scope,
-		label: scope,
+		label: scope === "store" ? t("activityPage.storeArea") : scope === "system" ? t("activityPage.systemArea") : scope,
 	})),
 ]);
 
 const entityTypeOptions = computed(() => [
-	{ id: "all", label: "ทุก entity" },
+	{ id: "all", label: t("activityPage.allTypes") },
 	...Array.from(new Set(events.value.map((event) => event.entity_type))).map((entityType) => ({
 		id: entityType,
-		label: entityType,
+		label: entityLabels.value[entityType] || entityType,
 	})),
 ]);
 
-const resultOptions = [
-	{ id: "all", label: "ทุกผลลัพธ์" },
-	{ id: "success", label: "สำเร็จ" },
-	{ id: "failed", label: "ล้มเหลว" },
-	{ id: "warning", label: "เตือน" },
-	{ id: "pending", label: "รอดำเนินการ" },
-];
+const resultOptions = computed(() => [
+	{ id: "all", label: t("activityPage.allResults") },
+	{ id: "success", label: t("activityPage.success") },
+	{ id: "failed", label: t("activityPage.failed") },
+]);
+const datePresetOptions = computed(() => [
+	{ id: "today", label: t("activityPage.today") },
+	{ id: "yesterday", label: t("activityPage.yesterday") },
+	{ id: "this_week", label: t("activityPage.thisWeek") },
+	{ id: "last_week", label: t("activityPage.lastWeek") },
+	{ id: "this_month", label: t("activityPage.thisMonth") },
+	{ id: "last_month", label: t("activityPage.lastMonth") },
+	{ id: "custom", label: t("activityPage.customRange") },
+]);
 
 const selectedEvent = computed(() =>
 	events.value.find((event) => event.id === selectedEventId.value)
@@ -93,7 +143,7 @@ const selectedEvent = computed(() =>
 const successCount = computed(() => events.value.filter((event) => event.result === "success").length);
 const failedCount = computed(() => events.value.filter((event) => event.result === "failed").length);
 const totalPages = computed(() => Math.max(1, Math.ceil(totalEvents.value / pageSize.value)));
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("activityPage.page", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	totalEvents.value === 0
 		? 0
@@ -102,9 +152,63 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalEvents.value));
 const pageSummaryText = computed(() => (
 	totalEvents.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalEvents.value} events`
+		? t("activityPage.noData")
+		: t("activityPage.itemsRange", { start: pageStart.value, end: pageEnd.value, total: totalEvents.value })
 ));
+
+const actionLabels = computed<Record<string, string>>(() => ({
+	"pos.checkout": t("activityPage.actions.checkout"), "pos.restaurant.open": t("activityPage.actions.openTable"),
+	"pos.restaurant.send_kitchen": t("activityPage.actions.sendKitchen"), "pos.restaurant.checkout": t("activityPage.actions.tableCheckout"),
+	"pos.restaurant.cancel_order": t("activityPage.actions.cancelOrder"), "pos.pickup.collected": t("activityPage.actions.collected"),
+	"product.create": t("activityPage.actions.createProduct"), "product.update": t("activityPage.actions.updateProduct"),
+	"inventory.adjust": t("activityPage.actions.adjustStock"), "promotion.create": t("activityPage.actions.createPromotion"),
+	"promotion.update": t("activityPage.actions.updatePromotion"),
+	"store.settings_updated": t("activityPage.actions.updateStoreSettings"),
+	"store.currency_rates_updated": t("activityPage.actions.updateCurrencyRates"),
+	"store.business_day_default_confirmed": t("activityPage.actions.confirmBusinessDayDefault"),
+}));
+
+const entityLabels = computed<Record<string, string>>(() => ({
+	order: t("activityPage.entities.order"), product: t("activityPage.entities.product"),
+	inventory: t("activityPage.entities.inventory"), promotion: t("activityPage.entities.promotion"),
+	store: t("activityPage.entities.store"), user: t("activityPage.entities.user"),
+}));
+
+function actionLabel(action: string) {
+	return actionLabels.value[action] || action.split(".").join(" › ");
+}
+
+function entityLabel(entity: string) {
+	return entityLabels.value[entity] || entity;
+}
+
+function resultLabel(result: string) {
+	if (result === "success") return t("activityPage.success");
+	if (result === "failed") return t("activityPage.failed");
+	if (result === "warning") return t("activityPage.warning");
+	if (result === "pending") return t("activityPage.pending");
+	return result;
+}
+
+function actorLabel(event: ApiAuditEvent) {
+	return event.actor_name || t("activityPage.storeSystem");
+}
+
+function actorInitial(event: ApiAuditEvent) {
+	return actorLabel(event).trim().charAt(0).toUpperCase() || "S";
+}
+
+function relatedLabel(event: ApiAuditEvent) {
+	if (event.related_table_name) return t("activityPage.tableRef", { value: event.related_table_name });
+	if (event.related_queue_no) {
+		const queueNumber = event.related_queue_no.replace(/^Q/i, "");
+		return t("activityPage.queueRef", { value: queueNumber });
+	}
+	if (event.related_order_no) return t("activityPage.orderRef", { value: event.related_order_no });
+	return entityLabel(event.entity_type);
+}
+
+const eventsListScrollRef = ref<HTMLElement | null>(null);
 
 watch(events, (value) => {
 	if (!value.length) {
@@ -119,10 +223,11 @@ watch(events, (value) => {
 	}
 }, { immediate: true });
 
-watch([searchQuery, activeScope, activeResult, activeEntityType], () => {
+watch([searchQuery, activeScope, activeResult, activeEntityType, dateFrom, dateTo], () => {
 	if (loadTimer) clearTimeout(loadTimer);
 	loadTimer = setTimeout(() => {
 		currentPage.value = 1;
+		scrollEventsListToTop();
 		void loadEvents();
 	}, 180);
 });
@@ -147,6 +252,8 @@ async function loadEvents() {
 		if (activeScope.value !== "all") params.set("scope", activeScope.value);
 		if (activeResult.value !== "all") params.set("result", activeResult.value);
 		if (activeEntityType.value !== "all") params.set("entity_type", activeEntityType.value);
+		if (dateFrom.value) params.set("from", dateFrom.value);
+		if (dateTo.value) params.set("to", dateTo.value);
 		params.set("page", String(currentPage.value));
 		params.set("limit", String(pageSize.value));
 
@@ -162,17 +269,39 @@ async function loadEvents() {
 			void loadEvents();
 			return;
 		}
-	} catch (err) {
-		error.value = err instanceof Error ? err.message : "โหลดกิจกรรมไม่สำเร็จ";
+		await nextTick();
+		scrollEventsListToTop();
+	} catch {
+		// Keep user-facing alerts localized and avoid exposing raw API/network text.
+		error.value = t("activityPage.loadFailed");
 	} finally {
 		pending.value = false;
 	}
+}
+
+function selectDatePreset(preset: string) {
+	datePreset.value = preset;
+	if (preset === "custom") return;
+	const range = rangeForPreset(preset);
+	dateFrom.value = range.from;
+	dateTo.value = range.to;
+}
+
+function updateCustomFrom(value: string) {
+	datePreset.value = "custom";
+	dateFrom.value = value;
+}
+
+function updateCustomTo(value: string) {
+	datePreset.value = "custom";
+	dateTo.value = value;
 }
 
 function goToPage(page: number) {
 	const normalizedPage = Math.max(1, Math.min(page, totalPages.value));
 	if (normalizedPage === currentPage.value || pending.value) return;
 	currentPage.value = normalizedPage;
+	scrollEventsListToTop();
 	void loadEvents();
 }
 
@@ -181,6 +310,7 @@ function updatePageSize(value: string) {
 	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
 	pageSize.value = normalizedSize;
 	currentPage.value = 1;
+	scrollEventsListToTop();
 	void loadEvents();
 }
 
@@ -194,11 +324,7 @@ function closeEvent() {
 }
 
 function formatDate(value: string) {
-	try {
-		return dateFormatter.format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, appLocale.value);
 }
 
 function getResultColor(result: string) {
@@ -215,15 +341,11 @@ function getScopeColor(scope: string) {
 	return "neutral";
 }
 
-function stringifyBlock(value: unknown) {
-	if (value === null || value === undefined) return "ไม่มีข้อมูล";
-	if (typeof value === "string") return value;
-
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+function scrollEventsListToTop() {
+	eventsListScrollRef.value?.scrollTo({
+		top: 0,
+		behavior: "auto",
+	});
 }
 </script>
 
@@ -232,102 +354,183 @@ function stringifyBlock(value: unknown) {
 		:nav-items="appNavItems"
 		:active-ids="['activity']"
 		sidebar-eyebrow="Activity"
-		sidebar-title="กิจกรรม"
+		:sidebar-title="t('nav.activity')"
 		sidebar-compact-title="LOG"
-		sidebar-description="ดู audit events, ประวัติการเปลี่ยนแปลง และผลลัพธ์ของ action สำคัญในระบบ"
+		:sidebar-description="t('activityPage.historyHint')"
 	>
 		<template #default="{ openSidebar }">
-			<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="กิจกรรมระบบ"
-					description=""
-					:tablet-layout="true"
+					class="block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
-					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadEvents">
-								รีโหลด
-							</AppButton>
-						</div>
-					</template>
-
 					<template #default>
-						<div class="space-y-2">
-							<div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-								<div class="relative min-w-0">
-									<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-									<input
-										v-model="searchQuery"
-										type="text"
-										placeholder="ค้นหา actor, action, entity, request id"
-										class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-									>
-									<button
-										v-if="searchQuery"
-										type="button"
-										class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
-										@click="searchQuery = ''"
-									>
-										<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
-									</button>
-								</div>
-
-								<select v-model="activeScope" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option v-for="option in scopeOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-								</select>
-
-								<select v-model="activeEntityType" class="rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option v-for="option in entityTypeOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-								</select>
-							</div>
-
-							<div class="flex w-full flex-wrap items-center justify-end gap-2">
-								<AppButton
-									v-for="option in resultOptions"
-									:key="option.id"
-									:color="activeResult === option.id ? 'primary' : 'neutral'"
-									:variant="activeResult === option.id ? 'solid' : 'soft'"
-									size="md"
-									class="rounded-md"
-									@click="activeResult = option.id"
+						<div class="pt-0.5 sm:pt-1">
+							<div class="relative w-full min-w-0">
+								<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+								<input
+									v-model="searchQuery"
+									type="text"
+				:placeholder="t('activityPage.search')"
+									class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-11 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
-									{{ option.label }}
-								</AppButton>
-							</div>
-
-								<div class="grid gap-2 sm:grid-cols-3">
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ทั้งหมด</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalEvents) }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สำเร็จในหน้า</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(successCount) }}</p>
-								</div>
-								<div class="rounded-md border border-neutral-200 bg-white p-3">
-									<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Failed ในหน้า</p>
-									<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(failedCount) }}</p>
-								</div>
+								<button
+									v-if="searchQuery"
+									type="button"
+									class="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
+									@click="searchQuery = ''"
+								>
+									<UIcon name="i-heroicons-x-mark-20-solid" class="h-4 w-4" />
+								</button>
 							</div>
 						</div>
 					</template>
 				</AppPageHeader>
 
-				<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3">
-					<div class="h-full min-h-0 overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
-						<div class="flex h-full min-h-0 flex-col">
-							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
-								<div>
-									<p class="text-sm font-semibold text-stone-950">Audit events</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ไล่ดูเหตุการณ์ล่าสุดเพื่อเช็กการเปลี่ยนแปลงและผลลัพธ์จาก action สำคัญ</p>
-								</div>
-								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ pageSummaryText }}
+				<div class="grid grid-cols-3 gap-2 lg:pr-1">
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+					<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ t('activityPage.total') }}</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(totalEvents) }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+					<p class="text-[11px] font-semibold tracking-[0.08em] text-stone-400">{{ t('activityPage.successOnPage') }}</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(successCount) }}</p>
+					</div>
+					<div class="rounded-md border border-neutral-200 bg-white p-3 text-center">
+					<p class="text-[11px] font-semibold tracking-[0.08em] text-stone-400">{{ t('activityPage.reviewOnPage') }}</p>
+						<p class="mt-1 text-xl font-semibold text-stone-950">{{ numberFormatter.format(failedCount) }}</p>
+					</div>
+				</div>
+
+				<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+					<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+						<div>
+							<p class="text-sm font-semibold text-stone-950">{{ t('activityPage.filters') }}</p>
+						</div>
+						<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+							{{ t('common.itemCount', { count: numberFormatter.format(totalEvents) }) }}
+						</div>
+					</div>
+
+					<div class="grid gap-2 px-4 py-3">
+						<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
+							<div class="min-w-0">
+								<label class="mb-1 block text-[11px] font-medium text-stone-500" for="activity-scope-select">
+									{{ t('activityPage.area') }}
+								</label>
+								<div class="relative">
+									<select
+										id="activity-scope-select"
+										v-model="activeScope"
+										class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option v-for="option in scopeOptions" :key="option.id" :value="option.id">
+											{{ option.label }}
+										</option>
+									</select>
+									<UIcon
+										name="i-heroicons-chevron-up-down"
+										class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+									/>
 								</div>
 							</div>
 
-							<div class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+							<div class="min-w-0">
+								<label class="mb-1 block text-[11px] font-medium text-stone-500" for="activity-entity-select">
+									{{ t('activityPage.dataType') }}
+								</label>
+								<div class="relative">
+									<select
+										id="activity-entity-select"
+										v-model="activeEntityType"
+										class="w-full appearance-none rounded-md border border-neutral-200 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-stone-800 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option v-for="option in entityTypeOptions" :key="option.id" :value="option.id">
+											{{ option.label }}
+										</option>
+									</select>
+									<UIcon
+										name="i-heroicons-arrows-up-down"
+										class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<div class="scrollbar-hidden md:scrollbar-soft flex flex-nowrap gap-2 overflow-x-auto pb-1">
+							<AppButton
+								v-for="option in resultOptions"
+								:key="option.id"
+								:color="activeResult === option.id ? 'primary' : 'neutral'"
+								:variant="activeResult === option.id ? 'solid' : 'soft'"
+								size="md"
+								class="shrink-0 whitespace-nowrap rounded-md"
+								@click="activeResult = option.id"
+							>
+								{{ option.label }}
+							</AppButton>
+						</div>
+
+						<div class="border-t border-[#ece6dc] pt-3">
+							<label class="mb-2 block text-[11px] font-medium text-stone-500">{{ t('activityPage.dateRange') }}</label>
+							<div class="scrollbar-hidden md:scrollbar-soft flex flex-nowrap gap-2 overflow-x-auto pb-1">
+								<AppButton
+									v-for="option in datePresetOptions"
+									:key="option.id"
+									:color="datePreset === option.id ? 'primary' : 'neutral'"
+									:variant="datePreset === option.id ? 'solid' : 'soft'"
+									size="md"
+									class="shrink-0 whitespace-nowrap rounded-md"
+									@click="selectDatePreset(option.id)"
+								>
+									{{ option.label }}
+								</AppButton>
+							</div>
+							<div v-if="datePreset === 'custom'" class="mt-3 max-w-2xl">
+								<AppDateRangePicker
+									:from="dateFrom"
+									:to="dateTo"
+									:from-label="t('activityPage.fromDate')"
+									:to-label="t('activityPage.toDate')"
+									:select-label="t('activityPage.selectDate')"
+									@update:from="updateCustomFrom"
+									@update:to="updateCustomTo"
+								/>
+							</div>
+						</div>
+					</div>
+				</div>
+
+					<div class="overflow-hidden rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+							<div class="flex h-full min-h-0 flex-col">
+								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
+									<div>
+										<p class="text-sm font-semibold text-stone-950">{{ t('activityPage.history') }}</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('activityPage.historyHint') }}</p>
+									</div>
+									<div class="flex items-center gap-2">
+										<AppButton
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-arrow-path-20-solid"
+											class="w-10 justify-center rounded-md px-0 sm:w-auto sm:px-3"
+											:loading="pending"
+											:disabled="pending"
+											:spin-icon-on-loading="true"
+											@click="loadEvents"
+										>
+											<span class="hidden sm:inline">{{ t('activityPage.reload') }}</span>
+										</AppButton>
+										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
+											{{ pageSummaryText }}
+										</div>
+									</div>
+								</div>
+
+							<div ref="eventsListScrollRef" class="min-h-0 flex-1 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
 								<div v-if="pending" class="min-h-[280px]">
 									<div class="overflow-hidden bg-neutral-100">
 										<div class="activity-loading-line h-[2px] w-1/3 rounded-r-full bg-primary" />
@@ -336,41 +539,57 @@ function stringifyBlock(value: unknown) {
 								<div v-else-if="error" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ error }}</p>
-										<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadEvents">ลองใหม่</AppButton>
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" @click="loadEvents">{{ t('common.retry') }}</AppButton>
 									</div>
 								</div>
 								<div v-else-if="!events.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-stone-500">
-									ยังไม่มี audit event
+									{{ t('activityPage.noActivity') }}
 								</div>
 								<div v-else>
-									<button
-										v-for="event in events"
-										:key="event.id"
-										type="button"
-										class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-										:class="selectedEvent?.id === event.id ? 'bg-primary-50' : 'bg-white'"
-										@click="openEvent(event.id)"
-									>
-										<div class="flex flex-wrap items-start justify-between gap-3">
-											<div class="min-w-0">
-												<div class="flex flex-wrap items-center gap-2">
-													<UBadge :color="getScopeColor(event.scope)" variant="soft" :label="event.scope" />
-													<UBadge :color="getResultColor(event.result)" variant="soft" :label="event.result" />
-													<span class="text-xs text-stone-400">{{ formatDate(event.occurred_at) }}</span>
-												</div>
-												<p class="mt-2 text-sm font-semibold text-stone-900">
-													{{ event.action }}
-													<span class="font-normal text-stone-500">· {{ event.entity_type }}</span>
-												</p>
-												<p class="mt-1 text-sm text-stone-500">
-													{{ event.actor_name || event.actor_user_id || "ไม่ระบุผู้กระทำ" }}
-													<span v-if="event.entity_id">· {{ event.entity_id }}</span>
-													<span v-if="event.request_id">· {{ event.request_id }}</span>
-												</p>
-											</div>
-											<UIcon name="i-heroicons-chevron-right-20-solid" class="h-5 w-5 shrink-0 text-stone-300" />
-										</div>
-									</button>
+									<div class="overflow-x-auto">
+										<table class="min-w-[860px] w-full border-separate border-spacing-0">
+											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+												<tr>
+															<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">{{ t('activityPage.time') }}</th>
+															<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold tracking-[0.08em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">{{ t('activityPage.activity') }}</th>
+															<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold tracking-[0.08em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">{{ t('activityPage.operator') }}</th>
+															<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold tracking-[0.08em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">{{ t('activityPage.relatedData') }}</th>
+															<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-left text-xs font-semibold tracking-[0.08em] text-stone-400 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-500">{{ t('activityPage.result') }}</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="event in events"
+													:key="event.id"
+													class="cursor-pointer bg-white transition hover:bg-primary-50"
+													:class="selectedEvent?.id === event.id ? 'bg-primary-50' : ''"
+													@click="openEvent(event.id)"
+												>
+														<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+															{{ formatDate(event.occurred_at) }}
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+															<p class="text-sm font-semibold text-stone-900">{{ actionLabel(event.action) }}</p>
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+															<div class="flex items-center gap-2.5">
+																<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">{{ actorInitial(event) }}</div>
+																<div>
+																	<p class="text-sm font-medium text-stone-900">{{ actorLabel(event) }}</p>
+																</div>
+															</div>
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
+															<p class="font-medium text-stone-800">{{ relatedLabel(event) }}</p>
+															<p class="mt-1 text-xs text-stone-400">{{ t('activityPage.clickDetails') }}</p>
+														</td>
+														<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
+															<UBadge :color="getResultColor(event.result)" variant="soft" :label="resultLabel(event.result)" />
+														</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
 								</div>
 							</div>
 
@@ -388,7 +607,7 @@ function stringifyBlock(value: unknown) {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('activityPage.perPage') }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -408,11 +627,11 @@ function stringifyBlock(value: unknown) {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || pending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="t('activityPage.previous')"
+												:title="t('activityPage.previous')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ t('activityPage.previous') }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -421,30 +640,30 @@ function stringifyBlock(value: unknown) {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || pending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="t('activityPage.next')"
+												:title="t('activityPage.next')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ t('activityPage.next') }}</span>
 											</AppButton>
 										</div>
 									</div>
 								</div>
 							</div>
 						</div>
-					</div>
 				</div>
 			</div>
 
+			<Teleport to="body">
 			<AppResponsivePanel
 				v-model="detailOpen"
-				title="รายละเอียดกิจกรรม"
-				description="ตรวจข้อมูลก่อน-หลัง และ metadata ของเหตุการณ์นี้"
-				desktop-width="460px"
+				:title="t('activityPage.details')"
+				:description="t('activityPage.detailsHint')"
+				desktop-width="680px"
 				close-button-size="md"
 				compact-header
-				panel-z-class="z-[59]"
-				backdrop-z-class="z-[58]"
+				panel-z-class="z-[170]"
+				backdrop-z-class="z-[160]"
 				content-class="flex h-full flex-col overflow-hidden px-0 py-0"
 				@close="closeEvent"
 			>
@@ -459,15 +678,14 @@ function stringifyBlock(value: unknown) {
 									<div class="min-w-0 flex-1">
 										<div class="flex flex-wrap items-start justify-between gap-2">
 											<div class="min-w-0">
-												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedEvent.action }}</h3>
-												<p class="mt-1 truncate text-sm text-stone-500">{{ selectedEvent.entity_type }}<span v-if="selectedEvent.entity_id"> · {{ selectedEvent.entity_id }}</span></p>
+												<h3 class="truncate text-base font-semibold text-stone-950">{{ actionLabel(selectedEvent.action) }}</h3>
+												<p class="mt-1 truncate text-sm text-stone-500">{{ relatedLabel(selectedEvent) }}</p>
 											</div>
-											<UBadge :color="getResultColor(selectedEvent.result)" variant="soft" :label="selectedEvent.result" />
+											<UBadge :color="getResultColor(selectedEvent.result)" variant="soft" :label="resultLabel(selectedEvent.result)" />
 										</div>
 
 										<div class="mt-3 flex flex-wrap gap-2">
-											<UBadge :color="getScopeColor(selectedEvent.scope)" variant="soft" :label="selectedEvent.scope" />
-											<UBadge color="neutral" variant="soft" :label="selectedEvent.actor_role || 'ไม่ระบุ role'" />
+											<UBadge :color="getScopeColor(selectedEvent.scope)" variant="soft" :label="selectedEvent.scope === 'store' ? t('activityPage.storeArea') : t('activityPage.systemArea')" />
 											<UBadge color="neutral" variant="soft" :label="formatDate(selectedEvent.occurred_at)" />
 										</div>
 									</div>
@@ -475,45 +693,35 @@ function stringifyBlock(value: unknown) {
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+								<h3 class="text-sm font-semibold text-stone-950">{{ t('activityPage.mainSummary') }}</h3>
 								<dl class="mt-4 space-y-3 text-sm">
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">Actor</dt>
-										<dd class="text-right font-medium text-stone-900">{{ selectedEvent.actor_name || selectedEvent.actor_user_id || "-" }}</dd>
+										<dt class="text-stone-500">{{ t('activityPage.operator') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ actorLabel(selectedEvent) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">Request ID</dt>
-										<dd class="max-w-[220px] break-all text-right font-medium text-stone-900">{{ selectedEvent.request_id || "-" }}</dd>
+										<dt class="text-stone-500">{{ t('activityPage.activity') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ actionLabel(selectedEvent.action) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">IP Address</dt>
-										<dd class="text-right font-medium text-stone-900">{{ selectedEvent.ip_address || "-" }}</dd>
+										<dt class="text-stone-500">{{ t('activityPage.dataType') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ entityLabel(selectedEvent.entity_type) }}</dd>
+									</div>
+									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+										<dt class="text-stone-500">{{ t('activityPage.relatedData') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ relatedLabel(selectedEvent) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4">
-										<dt class="text-stone-500">Reason</dt>
-										<dd class="text-right font-medium text-stone-900">{{ selectedEvent.reason_code || "-" }}</dd>
+										<dt class="text-stone-500">{{ t('activityPage.result') }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ resultLabel(selectedEvent.result) }}</dd>
 									</div>
 								</dl>
-							</div>
-
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">Metadata</h3>
-								<pre class="mt-4 max-h-48 overflow-auto rounded-md border border-neutral-200 bg-white p-4 text-xs leading-6 text-stone-700">{{ stringifyBlock(selectedEvent.metadata) }}</pre>
-							</div>
-
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">Before</h3>
-								<pre class="mt-4 max-h-48 overflow-auto rounded-md border border-neutral-200 bg-white p-4 text-xs leading-6 text-stone-700">{{ stringifyBlock(selectedEvent.before) }}</pre>
-							</div>
-
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<h3 class="text-sm font-semibold text-stone-950">After</h3>
-								<pre class="mt-4 max-h-48 overflow-auto rounded-md border border-neutral-200 bg-white p-4 text-xs leading-6 text-stone-700">{{ stringifyBlock(selectedEvent.after) }}</pre>
 							</div>
 						</div>
 					</div>
 				</template>
 			</AppResponsivePanel>
+			</Teleport>
 		</template>
 	</AppSidebarShell>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AppNavItem } from "~/utils/app-nav";
 import { resolveBreadcrumbs } from "~/utils/breadcrumbs";
+import { formatAppDateTime } from "~/utils/date-format";
 
 const props = defineProps<{
 	navItems: AppNavItem[];
@@ -12,15 +13,21 @@ const props = defineProps<{
 }>();
 
 const mobileSidebarOpen = ref(false);
+// The shell is recreated when a page changes. Keep the desktop menu scroll
+// offset in Nuxt state so the item a user just chose does not jump off-screen.
+const sidebarScrollTop = useState<number>("app-sidebar-scroll-top", () => 0);
+const sidebarScrollRef = ref<HTMLElement | null>(null);
 const sidebarCollapsedCookie = useCookie<boolean>("app.sidebarCollapsed", {
 	sameSite: "lax",
 	path: "/",
 	default: () => true,
 });
 const sidebarCollapsed = useState<boolean>("app-sidebar-collapsed", () => sidebarCollapsedCookie.value ?? true);
-const logoutConfirmOpen = ref(false);
 const profileMenuOpen = ref(false);
+const notificationMenuOpen = ref(false);
 const storeSwitcherOpen = ref(false);
+const logoutConfirmOpen = ref(false);
+const logoutPending = ref(false);
 const shellError = ref<string | null>(null);
 const requestHeaders = import.meta.server ? useRequestHeaders([ "user-agent" ]) : {};
 const initialUserAgent = import.meta.server ? requestHeaders["user-agent"] || "" : "";
@@ -29,16 +36,22 @@ const isDesktopViewport = ref(import.meta.server
 	: false);
 const isReducedMotion = ref(false);
 const pendingMobileNavigation = ref(false);
-const { logout, currentUser, currentAccess, currentStoreId, switchStore } = useAuthSession();
+const { currentUser, currentAccess, currentStoreId, switchStore, logout, can } = useAuthSession();
 const { apiFetch } = useApiClient();
+const notificationCenter = useNotificationCenter();
 const appToast = useAppToast();
-const colorMode = useColorMode();
 const systemRoleCookie = useCookie<string | null>("pos.auth.systemRole", {
 	sameSite: "lax",
 	path: "/",
 	default: () => null,
 });
 const route = useRoute();
+const { t, locale } = useI18n();
+const navLabel = (item: AppNavItem) => item.labelKey ? t(item.labelKey) : item.label;
+const translatedSidebarTitle = computed(() => {
+	const active = props.navItems.find((item) => props.activeIds.includes(item.id));
+	return active?.labelKey ? t(active.labelKey) : props.sidebarTitle;
+});
 type AccessibleStoreRecord = {
 	id: string;
 	name: string;
@@ -54,9 +67,10 @@ let mediaQueryList: MediaQueryList | null = null;
 let syncViewportListener: (() => void) | null = null;
 let reducedMotionQueryList: MediaQueryList | null = null;
 let syncReducedMotionListener: (() => void) | null = null;
+let notificationRefreshTimer: ReturnType<typeof setInterval> | null = null;
 const MOBILE_SIDEBAR_CLOSE_DELAY_MS = 180;
 const switchStorePending = ref(false);
-const accessibleStores = ref<AccessibleStoreRecord[]>([]);
+const accessibleStores = useState<AccessibleStoreRecord[]>("auth-accessible-stores", () => []);
 
 const sidebarWidthClass = computed(() => {
 	if (!isDesktopViewport.value) {
@@ -87,6 +101,10 @@ function toggleSidebar() {
 
 function closeMobileSidebar() {
 	mobileSidebarOpen.value = false;
+}
+
+function rememberSidebarScroll() {
+	if (sidebarScrollRef.value) sidebarScrollTop.value = sidebarScrollRef.value.scrollTop;
 }
 
 function isModifiedClick(event: MouseEvent) {
@@ -125,8 +143,8 @@ async function handleNavItemClick(event: MouseEvent, item: AppNavItem) {
 
 const topbarMenuTitle = computed(() => (
 	isDesktopViewport.value
-		? (sidebarCollapsed.value ? "ขยายเมนู" : "ย่อเมนู")
-		: "เปิดเมนู"
+		? (sidebarCollapsed.value ? t("shell.expandMenu") : t("shell.collapseMenu"))
+		: t("shell.openMenu")
 ));
 
 const topbarMenuIcon = computed(() => {
@@ -138,13 +156,13 @@ const topbarMenuIcon = computed(() => {
 
 const roleLabelMap: Record<string, string> = {
 	system_admin: "System admin",
-	superadmin: "Superadmin",
+	superadmin: "Super Admin",
 	store_admin: "Store admin",
 	manager: "Manager",
 };
 
-const profileDisplayName = computed(() => currentUser.value?.name || "ทีมงานร้าน");
-const profileDisplayEmail = computed(() => currentUser.value?.email || "ไม่ได้ระบุอีเมล");
+const profileDisplayName = computed(() => currentUser.value?.name || t("shell.storeStaff"));
+const profileDisplayEmail = computed(() => currentUser.value?.email || t("shell.noEmail"));
 const inferredWorkspaceRole = computed(() => {
 	if (route.path === "/system-admin" || route.path.startsWith("/system-admin/")) return "system_admin";
 	if (route.path === "/superadmin" || route.path.startsWith("/superadmin/")) return "superadmin";
@@ -163,9 +181,60 @@ const profileDisplayRole = computed(() => {
 });
 const profileStoreSummary = computed(() => {
 	const membershipCount = currentAccess.value?.memberships?.length || 0;
-	if (!membershipCount) return "ยังไม่ได้ผูกกับร้าน";
-	return membershipCount === 1 ? "ดูแล 1 store" : `ดูแล ${membershipCount} stores`;
+	if (!membershipCount) return t("shell.noStores");
+	return t("shell.managedStores", { count: membershipCount });
 });
+const canViewNotifications = computed(() => (
+	resolvedSystemRole.value === "superadmin"
+	|| can("settings.users.view")
+));
+const notificationCopy = computed(() => {
+	if (locale.value === "lo") return { title: "ການແຈ້ງເຕືອນ", unread: "ຍັງບໍ່ອ່ານ", allRead: "ອ່ານທັງໝົດແລ້ວ", viewAll: "ເບິ່ງທັງໝົດ", empty: "ບໍ່ມີການແຈ້ງເຕືອນ", read: "ໝາຍວ່າອ່ານແລ້ວ", out: "ສິນຄ້າໝົດ", low: "ສະຕັອກໃກ້ໝົດ", ending: "ໂປຣໂມຊັນໃກ້ສິ້ນສຸດ" };
+	if (locale.value === "th") return { title: "การแจ้งเตือน", unread: "ยังไม่อ่าน", allRead: "อ่านทั้งหมดแล้ว", viewAll: "ดูทั้งหมด", empty: "ไม่มีการแจ้งเตือน", read: "ทำเครื่องหมายว่าอ่านแล้ว", out: "สินค้าหมด", low: "สต็อกใกล้หมด", ending: "โปรโมชั่นใกล้สิ้นสุด" };
+	return { title: "Notifications", unread: "unread", allRead: "Mark all read", viewAll: "View all", empty: "No notifications", read: "Mark as read", out: "Out of stock", low: "Low stock", ending: "Promotion ending soon" };
+});
+
+function notificationTitle(item: AppNotification) {
+	if (item.due_status === "out_of_stock") return notificationCopy.value.out;
+	if (item.due_status === "low_stock") return notificationCopy.value.low;
+	return notificationCopy.value.ending;
+}
+
+function notificationTime(value: string) {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	return formatAppDateTime(date, locale.value === "lo" ? "lo" : locale.value === "th" ? "th" : "en");
+}
+
+async function refreshNotifications() {
+	if (!canViewNotifications.value || !currentStoreId.value) {
+		notificationCenter.clear();
+		return;
+	}
+	try {
+		await notificationCenter.fetchNotifications(currentStoreId.value, { limit: 10 });
+	} catch {
+		// Navbar refresh failures should not interrupt the current workspace.
+	}
+}
+
+async function openNotification(item: AppNotification) {
+	if (currentStoreId.value && !item.is_read) {
+		await notificationCenter.markRead(currentStoreId.value, item.id).catch(() => undefined);
+	}
+	notificationMenuOpen.value = false;
+	await navigateTo(item.payload.target || (item.topic === "stock" ? "/inventory" : "/promotions"));
+}
+
+async function markNotificationRead(item: AppNotification) {
+	if (!currentStoreId.value || item.is_read) return;
+	await notificationCenter.markRead(currentStoreId.value, item.id).catch(() => undefined);
+}
+
+async function markAllNotificationsRead() {
+	if (!currentStoreId.value || notificationCenter.unreadCount.value <= 0) return;
+	await notificationCenter.markAllRead(currentStoreId.value).catch(() => undefined);
+}
 const canShowStoreSection = computed(() => (
 	resolvedSystemRole.value !== "system_admin"
 	&& (currentAccess.value?.memberships?.length ?? 0) > 0
@@ -176,11 +245,11 @@ const canSwitchStores = computed(() => (
 ));
 const currentStoreCount = computed(() => visibleSwitchableStores.value.length);
 const storeSectionTitle = computed(() => (
-	canSwitchStores.value ? "เปลี่ยนร้าน" : "ร้านปัจจุบัน"
+	canSwitchStores.value ? t("shell.switchStore") : t("shell.currentStore")
 ));
 const currentStoreLabel = computed(() => (
 	accessibleStores.value.find((store) => store.id === currentStoreId.value)?.name
-	|| (currentStoreId.value ? "ร้านที่กำลังใช้งาน" : "ยังไม่ได้เลือกร้าน")
+	|| (currentStoreId.value ? t("shell.activeStore") : t("shell.noStoreSelected"))
 ));
 const visibleSwitchableStores = computed(() => {
 	if (!canShowStoreSection.value) return [];
@@ -192,7 +261,7 @@ const visibleSwitchableStores = computed(() => {
 	);
 	return Array.from(membershipIds).map((storeId) => ({
 		id: storeId,
-		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : "ร้านที่ไม่ทราบชื่อ"),
+		name: storesById.get(storeId)?.name || (storeId === currentStoreId.value ? currentStoreLabel.value : t("shell.unknownStore")),
 		currency: storesById.get(storeId)?.currency,
 	}));
 });
@@ -211,28 +280,33 @@ const profileInitials = computed(() => (
 	.join("") || "ST"
 ));
 const currentBreadcrumbs = computed(() => resolveBreadcrumbs(route.path, props.navItems));
-const STORE_NAV_IDS = new Set([ "pos", "products", "orders", "stock", "purchase", "reports", "activity", "settings" ]);
-const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-thirdparty-usage" ]);
+// Store-level screens are available to an active store member, including a
+// superadmin acting as that store's owner. Keep this list in sync with
+// `app-nav.ts`; otherwise a newly added store screen is silently hidden.
+const STORE_NAV_IDS = new Set([ "pos", "dashboard", "products", "orders", "stock", "purchase", "promotions", "reports", "activity", "settings" ]);
+const SYSTEM_ADMIN_NAV_IDS = new Set([ "system-dashboard", "system-clients", "system-policy", "system-monitoring", "system-security", "system-reports", "system-thirdparty-usage" ]);
+
+function canViewNavItem(item: AppNavItem, systemRole: string) {
+	// Match the API's elevated-role access rule. `resolvedSystemRole` also reads
+	// the role cookie, so these items do not disappear during a hard refresh
+	// while the client restores the full auth session.
+	if (systemRole === "system_admin" || systemRole === "superadmin") return true;
+	return !item.permission || can(item.permission);
+}
 
 const visibleNavItems = computed(() => {
 	const systemRole = resolvedSystemRole.value;
 
 	if (systemRole === "system_admin") {
-		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id));
+		return props.navItems.filter((item) => SYSTEM_ADMIN_NAV_IDS.has(item.id) && canViewNavItem(item, systemRole));
 	}
 
 	if (systemRole === "superadmin") {
-		return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) || item.id === "superadmin");
+		return props.navItems.filter((item) => (STORE_NAV_IDS.has(item.id) || item.id === "superadmin") && canViewNavItem(item, systemRole));
 	}
 
-	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id));
+	return props.navItems.filter((item) => STORE_NAV_IDS.has(item.id) && canViewNavItem(item, systemRole));
 });
-const isDarkMode = computed(() => colorMode.value === "dark");
-const colorModeLabel = computed(() => isDarkMode.value ? "โหมดสว่าง" : "โหมดมืด");
-const colorModeIcon = computed(() => (
-	isDarkMode.value ? "i-heroicons-sun-20-solid" : "i-heroicons-moon-20-solid"
-));
-
 function isNavItemActive(item: AppNavItem) {
 	if (props.activeIds.includes(item.id)) return true;
 
@@ -247,28 +321,26 @@ function isNavItemActive(item: AppNavItem) {
 	return route.path === item.to || route.path.startsWith(`${item.to}/`);
 }
 
-function toggleColorMode() {
-	const nextMode = isDarkMode.value ? "light" : "dark";
-	colorMode.preference = nextMode;
-	colorMode.value = nextMode;
-	if (import.meta.client) {
-		document.documentElement.style.colorScheme = nextMode;
-	}
-}
-
-function openLogoutConfirm() {
-	logoutConfirmOpen.value = true;
-}
-
-async function openLogoutConfirmFromProfile() {
-	profileMenuOpen.value = false;
-	await nextTick();
-	logoutConfirmOpen.value = true;
-}
-
 async function navigateToProfile() {
 	profileMenuOpen.value = false;
 	await navigateTo("/profile");
+}
+
+function openLogoutConfirm() {
+	profileMenuOpen.value = false;
+	logoutConfirmOpen.value = true;
+}
+
+async function confirmLogout() {
+	if (logoutPending.value) return;
+	logoutPending.value = true;
+	try {
+		await logout();
+		logoutConfirmOpen.value = false;
+		await navigateTo("/login", { replace: true });
+	} finally {
+		logoutPending.value = false;
+	}
 }
 
 async function openStoreSwitcher() {
@@ -294,7 +366,7 @@ async function handleSwitchStore(storeId: string) {
 		return;
 	}
 
-	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || "ร้านที่เลือก";
+	const targetStoreName = visibleSwitchableStores.value.find((store) => store.id === storeId)?.name || storeId;
 	storeSwitcherOpen.value = false;
 	profileMenuOpen.value = false;
 	switchStorePending.value = true;
@@ -304,25 +376,19 @@ async function handleSwitchStore(storeId: string) {
 			await navigateTo("/");
 		}
 		appToast.success({
-			title: "เปลี่ยนร้านแล้ว",
+			title: t("chooseStorePage.storeSelected"),
 			description: targetStoreName,
 			timeout: 1800,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "เปลี่ยนร้านไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("chooseStorePage.selectFailed"),
+			description: error instanceof Error ? error.message : t("validation.generic"),
 			timeout: 3200,
 		});
 	} finally {
 		switchStorePending.value = false;
 	}
-}
-
-async function confirmLogout() {
-	logoutConfirmOpen.value = false;
-	await logout();
-	return navigateTo("/login");
 }
 
 function extractShellErrorMessage(error: unknown) {
@@ -355,6 +421,94 @@ watch(profileMenuOpen, (opened) => {
 	void loadAccessibleStores();
 });
 
+watch(notificationMenuOpen, (opened) => {
+	if (opened) void refreshNotifications();
+});
+
+// Setup items the shop still has to deal with. Fetched once per store rather than
+// per navigation: it runs behind a top-bar button, not a page.
+type SetupSeverity = "blocking" | "warning" | "suggestion";
+type SetupStatusItem = { id: string; severity: SetupSeverity; permission: string; data?: Record<string, unknown> };
+const setupPanelOpen = ref(false);
+const setupItems = ref<SetupStatusItem[]>([]);
+const setupLoading = ref(false);
+
+// Where each item is fixed, and which route the button goes to. Kept beside the
+// list so a new check cannot ship without somewhere to send the user.
+const SETUP_TARGETS: Record<string, string> = {
+	no_products: "/products",
+	currency_rates_missing: "/settings/store-finance/rates",
+	vat_rate_missing: "/settings/store-finance",
+	no_payment_account: "/settings/store-payments",
+	payment_account_missing_qr: "/settings/store-payments",
+	products_without_cost: "/products",
+	customer_display_no_ads: "/settings/customer-display",
+	store_profile_incomplete: "/settings/store-profile",
+	business_day_start_unconfirmed: "/settings/restaurant",
+};
+
+// Staff are never shown an item they have no permission to fix: a badge somebody
+// cannot clear is worse than no badge at all.
+const visibleSetupItems = computed(() => setupItems.value.filter((item) => (
+	Boolean(SETUP_TARGETS[item.id]) && can(item.permission)
+)));
+const setupCount = computed(() => visibleSetupItems.value.length);
+// A button that is always there and always green teaches people to stop looking.
+const showSetupButton = computed(() => setupCount.value > 0);
+const setupHasBlocking = computed(() => visibleSetupItems.value.some((item) => item.severity === "blocking"));
+const SETUP_SEVERITY_ORDER: SetupSeverity[] = [ "blocking", "warning", "suggestion" ];
+const setupGroups = computed(() => SETUP_SEVERITY_ORDER
+	.map((severity) => ({ severity, items: visibleSetupItems.value.filter((item) => item.severity === severity) }))
+	.filter((group) => group.items.length));
+
+function setupItemDetail(item: SetupStatusItem) {
+	const data = item.data || {};
+	if (Array.isArray(data.currencies)) return (data.currencies as string[]).join(", ");
+	if (Array.isArray(data.missing)) return (data.missing as string[]).map((key) => t(`setupStatus.profile.${key}`)).join(", ");
+	if (typeof data.count === "number") return String(data.count);
+	return "";
+}
+
+async function refreshSetupStatus() {
+	if (!currentStoreId.value) { setupItems.value = []; return; }
+	setupLoading.value = true;
+	try {
+		const response = await apiFetch<{ data: { items: SetupStatusItem[] } }>(`/stores/${encodeURIComponent(currentStoreId.value)}/setup-status`);
+		setupItems.value = Array.isArray(response.data?.items) ? response.data.items : [];
+	} catch {
+		// Never block the workspace over a checklist.
+		setupItems.value = [];
+	} finally {
+		setupLoading.value = false;
+	}
+}
+
+async function confirmBusinessDayDefault() {
+	if (!currentStoreId.value) return;
+	setupLoading.value = true;
+	try {
+		await apiFetch(`/stores/${encodeURIComponent(currentStoreId.value)}/setup-status/business-day-default`, { method: "POST" });
+		await refreshSetupStatus();
+	} finally {
+		setupLoading.value = false;
+	}
+}
+
+function openSetupTarget(item: SetupStatusItem) {
+	const target = SETUP_TARGETS[item.id];
+	if (!target) return;
+	setupPanelOpen.value = false;
+	void navigateTo(target);
+}
+
+watch(currentStoreId, () => {
+	void refreshSetupStatus();
+}, { immediate: true });
+
+watch([currentStoreId, canViewNotifications], () => {
+	void refreshNotifications();
+}, { immediate: true });
+
 watch(membershipStoreKey, () => {
 	accessibleStores.value = [];
 });
@@ -375,17 +529,24 @@ onMounted(() => {
 
 	syncViewportListener();
 	syncReducedMotionListener();
+	void nextTick(() => {
+		if (sidebarScrollRef.value) sidebarScrollRef.value.scrollTop = sidebarScrollTop.value;
+	});
 	mediaQueryList.addEventListener("change", syncViewportListener);
 	reducedMotionQueryList.addEventListener("change", syncReducedMotionListener);
+	void refreshNotifications();
+	notificationRefreshTimer = setInterval(() => void refreshNotifications(), 60_000);
 });
 
 onUnmounted(() => {
+	rememberSidebarScroll();
 	if (mediaQueryList && syncViewportListener) {
 		mediaQueryList.removeEventListener("change", syncViewportListener);
 	}
 	if (reducedMotionQueryList && syncReducedMotionListener) {
 		reducedMotionQueryList.removeEventListener("change", syncReducedMotionListener);
 	}
+	if (notificationRefreshTimer) clearInterval(notificationRefreshTimer);
 });
 
 onErrorCaptured((error) => {
@@ -414,23 +575,23 @@ onErrorCaptured((error) => {
 				</Transition>
 
 				<aside
-					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
+					class="fixed inset-y-0 left-0 z-[100] flex transform-gpu bg-[#fffefd] shadow-2xl ring-1 ring-[#e7e4dd] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] dark:bg-[#171d16] dark:ring-[#30402f] lg:relative lg:h-screen lg:overflow-hidden lg:shadow-none lg:transition-[width,transform] lg:duration-200 lg:ease-out"
 					:class="[
 						sidebarWidthClass,
 						mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 					]"
 				>
-				<div class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3">
+				<div ref="sidebarScrollRef" class="scrollbar-soft flex w-full flex-col gap-4 overflow-y-auto p-3" @scroll.passive="rememberSidebarScroll">
 					<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
-							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd]">
+							<div class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#f8e9de] ring-1 ring-[#e7e4dd] dark:bg-emerald-500/10 dark:ring-emerald-500/20">
 								<img src="/icons/icon-192.png" alt="App logo" class="h-full w-full object-cover" />
 							</div>
 							<div
 								v-if="!isSidebarCompact"
 								class="min-w-0 flex-1"
 							>
-								<p class="truncate text-base font-bold tracking-[-0.01em] text-stone-950">
+								<p class="truncate text-base font-bold tracking-[-0.01em] text-stone-950 dark:text-emerald-50">
 									O KhaiDee<span class="text-primary-600">+</span>
 								</p>
 							</div>
@@ -440,9 +601,9 @@ onErrorCaptured((error) => {
 							color="neutral"
 							variant="soft"
 							size="sm"
-							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 lg:hidden"
-							aria-label="ปิดเมนู"
-							title="ปิดเมนู"
+							class="h-10 w-10 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-0 text-stone-600 shadow-[0_8px_18px_rgba(31,28,24,0.08)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 lg:hidden"
+							:aria-label="$t('shell.closeMenu')"
+							:title="$t('shell.closeMenu')"
 								@click="closeMobileSidebar"
 							>
 							<UIcon name="i-heroicons-x-mark-20-solid" class="h-5.5 w-5.5" />
@@ -455,17 +616,17 @@ onErrorCaptured((error) => {
 									:key="item.id"
 								:to="item.to"
 								class="group relative flex items-center rounded-2xl px-3 py-3 text-left transition-all duration-200"
-							:title="item.label"
-							:aria-label="item.label"
-							:class="[
+							:title="navLabel(item)"
+							:aria-label="navLabel(item)"
+								:class="[
 								isSidebarCompact ? 'gap-0' : 'gap-3',
 									isNavItemActive(item)
 										? (isSidebarCompact
-											? 'text-primary-700'
-											: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200')
+											? 'text-primary-700 dark:text-emerald-300'
+											: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/20')
 										: (isSidebarCompact
-											? 'text-stone-500 hover:text-primary-700'
-											: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200')
+											? 'text-stone-500 hover:text-primary-700 dark:text-stone-400 dark:hover:text-emerald-300'
+											: 'text-stone-500 hover:bg-primary-50 hover:text-primary-700 hover:ring-1 hover:ring-primary-200 dark:text-stone-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300 dark:hover:ring-emerald-400/20')
 								]"
 								@click="handleNavItemClick($event, item)"
 							>
@@ -473,11 +634,11 @@ onErrorCaptured((error) => {
 								class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold transition-colors"
 								:class="isNavItemActive(item)
 									? (isSidebarCompact
-										? 'bg-primary-100 text-primary-700'
-										: 'bg-primary-100 text-primary-700 ring-1 ring-primary-200')
+										? 'bg-primary-100 text-primary-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+										: 'bg-primary-100 text-primary-700 ring-1 ring-primary-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20')
 									: (isSidebarCompact
-										? 'bg-[#f7f5f1] text-stone-600 group-hover:bg-primary-50 group-hover:text-primary-700'
-										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-primary-700 group-hover:ring-primary-200')"
+										? 'bg-[#f7f5f1] text-stone-600 group-hover:bg-primary-50 group-hover:text-primary-700 dark:bg-[#232922] dark:text-stone-400 dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-300'
+										: 'bg-[#f7f5f1] text-stone-600 ring-1 ring-[#e7e4dd] group-hover:bg-white group-hover:text-primary-700 group-hover:ring-primary-200 dark:bg-[#232922] dark:text-stone-400 dark:ring-[#314132] dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-300 dark:group-hover:ring-emerald-400/20')"
 							>
 								<UIcon :name="item.icon" class="h-5 w-5" />
 							</div>
@@ -486,38 +647,17 @@ onErrorCaptured((error) => {
 								:class="isSidebarCompact ? 'w-0 opacity-0' : 'flex-1 opacity-100'"
 								aria-hidden="true"
 							>
-								<p class="truncate text-sm font-medium whitespace-nowrap">{{ item.label }}</p>
+								<p class="truncate text-sm font-medium whitespace-nowrap">{{ navLabel(item) }}</p>
 								<p
 									v-if="!isDesktopViewport"
 									class="mt-0.5 truncate text-xs text-stone-400"
 								>
-									{{ item.to === '/' ? 'หน้าเริ่มต้น' : 'เปิดหน้าจัดการ' }}
+									{{ item.to === '/' ? $t('shell.home') : $t('shell.openManagement') }}
 									</p>
 								</div>
 							</NuxtLink>
 						</nav>
 
-					<div class="px-3 pt-1">
-						<AppButton
-							color="neutral"
-							variant="ghost"
-							size="sm"
-							icon="i-heroicons-arrow-left-on-rectangle"
-							class="items-center rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] text-stone-600 shadow-sm transition-colors hover:bg-white hover:text-stone-900"
-							:class="isSidebarCompact ? 'h-11 w-11 justify-center px-0' : 'flex h-11 w-full justify-start gap-3 px-3 py-2.5'"
-							:title="isSidebarCompact ? 'ออกจากระบบ' : undefined"
-							:aria-label="'ออกจากระบบ'"
-							@click="openLogoutConfirm"
-						>
-							<span
-								class="min-w-0 overflow-hidden text-sm font-medium whitespace-nowrap transition-[width,opacity] duration-150 ease-out"
-								:class="isSidebarCompact ? 'w-0 opacity-0' : 'w-auto opacity-100'"
-								aria-hidden="true"
-							>
-								ออกจากระบบ
-							</span>
-						</AppButton>
-					</div>
 				</div>
 			</aside>
 
@@ -532,7 +672,7 @@ onErrorCaptured((error) => {
 							<div class="sticky top-0 z-40 shrink-0 overflow-hidden border-b border-[#e7e4dd] bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
 								<div>
 									<AppTopNavbar
-										:title="currentNavItem?.label || sidebarTitle"
+									:title="currentNavItem ? navLabel(currentNavItem) : translatedSidebarTitle"
 										:eyebrow="sidebarEyebrow"
 										:icon="currentNavItem?.icon"
 										:menu-title="topbarMenuTitle"
@@ -551,50 +691,141 @@ onErrorCaptured((error) => {
 											<slot name="navbar-right" />
 
 											<AppButton
+												v-if="showSetupButton"
 												color="neutral"
 												variant="soft"
 												size="sm"
-												:icon="colorModeIcon"
-												class="h-9 cursor-pointer rounded-md border border-[#e7e4dd] bg-[#fbfbf8] px-2 text-stone-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 sm:h-10"
-												:title="colorModeLabel"
-												:aria-label="colorModeLabel"
-												@click="toggleColorMode"
+												:icon="setupHasBlocking ? 'i-heroicons-exclamation-circle' : 'i-heroicons-wrench-screwdriver'"
+												class="relative h-9 cursor-pointer rounded-md border px-2 transition"
+												:class="setupHasBlocking
+													? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100'
+													: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100'"
+												:title="t('setupStatus.title')"
+												:aria-label="t('setupStatus.openWithCount', { count: setupCount })"
+												@click="setupPanelOpen = true"
 											>
-												<span class="hidden text-xs font-medium md:inline">{{ colorModeLabel }}</span>
+												<span class="text-xs font-semibold tabular-nums">{{ setupCount }}</span>
 											</AppButton>
+											
+											<UPopover
+												v-if="canViewNotifications"
+												v-model:open="notificationMenuOpen"
+												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
+											>
+												<AppButton
+													color="neutral"
+													variant="soft"
+													size="sm"
+													icon="i-heroicons-bell"
+													class="relative h-9 w-9 cursor-pointer justify-center rounded-md border border-[#e7e4dd] bg-[#fbfbf8] p-0 text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-[#314132] dark:bg-[#1f241d] dark:text-stone-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200 sm:h-10 sm:w-10"
+													:title="notificationCopy.title"
+													:aria-label="notificationCopy.title"
+												>
+													<span
+														v-if="notificationCenter.unreadCount.value > 0"
+														class="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white dark:ring-[#171d16]"
+													>
+														{{ notificationCenter.unreadCount.value > 99 ? "99+" : notificationCenter.unreadCount.value }}
+													</span>
+												</AppButton>
+
+												<template #content>
+													<div class="w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd] dark:bg-[#171d16] dark:ring-[#30402f]">
+														<div class="flex items-center justify-between border-b border-[#efece4] px-4 py-3 dark:border-[#2d382d]">
+															<div>
+																<p class="text-sm font-semibold text-stone-950 dark:text-stone-100">{{ notificationCopy.title }}</p>
+																<p class="mt-0.5 text-xs text-stone-500">{{ notificationCenter.unreadCount.value }} {{ notificationCopy.unread }}</p>
+															</div>
+															<button
+																v-if="notificationCenter.unreadCount.value > 0"
+																type="button"
+																class="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300"
+																@click="markAllNotificationsRead"
+															>
+																{{ notificationCopy.allRead }}
+															</button>
+														</div>
+
+														<div class="max-h-[420px] overflow-y-auto">
+															<div v-if="notificationCenter.pending.value && !notificationCenter.items.value.length" class="space-y-2 p-4">
+																<USkeleton v-for="index in 3" :key="index" class="h-16 w-full rounded-md" />
+															</div>
+															<div v-else-if="!notificationCenter.items.value.length" class="px-4 py-10 text-center">
+																<UIcon name="i-heroicons-bell-slash" class="mx-auto h-7 w-7 text-stone-300 dark:text-stone-600" />
+																<p class="mt-2 text-sm text-stone-500">{{ notificationCopy.empty }}</p>
+															</div>
+															<div v-else class="divide-y divide-[#f0ede6] dark:divide-[#2d382d]">
+																<div
+																	v-for="item in notificationCenter.items.value"
+																	:key="item.id"
+																	class="group flex gap-2 px-3 py-3 transition hover:bg-emerald-50/60 dark:hover:bg-emerald-500/10"
+																	:class="item.is_read ? 'opacity-70' : 'bg-emerald-50/30 dark:bg-emerald-500/5'"
+																>
+																	<button type="button" class="min-w-0 flex-1 text-left" @click="openNotification(item)">
+																		<div class="flex items-center gap-2">
+																			<span class="h-2 w-2 shrink-0 rounded-full" :class="item.severity === 'critical' ? 'bg-rose-500' : 'bg-amber-500'" />
+																			<p class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ notificationTitle(item) }}</p>
+																		</div>
+																		<p class="mt-1 truncate pl-4 text-xs text-stone-600 dark:text-stone-400">{{ item.payload.name || item.payload.sku || "-" }}</p>
+																		<p class="mt-1 pl-4 text-[10px] text-stone-400">{{ notificationTime(item.last_detected_at) }}</p>
+																	</button>
+																	<button
+																		v-if="!item.is_read"
+																		type="button"
+																		class="mt-1 h-7 w-7 shrink-0 rounded-md text-stone-400 opacity-100 hover:bg-white hover:text-emerald-700 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-[#232922] dark:hover:text-emerald-300"
+																		:title="notificationCopy.read"
+																		:aria-label="notificationCopy.read"
+																		@click="markNotificationRead(item)"
+																	>
+																		<UIcon name="i-heroicons-check" class="h-4 w-4" />
+																	</button>
+																</div>
+															</div>
+														</div>
+
+														<NuxtLink
+															to="/notifications"
+															class="block border-t border-[#efece4] px-4 py-3 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-[#2d382d] dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+															@click="notificationMenuOpen = false"
+														>
+															{{ notificationCopy.viewAll }}
+														</NuxtLink>
+													</div>
+												</template>
+											</UPopover>
 
 											<UPopover
 												v-model:open="profileMenuOpen"
 												:content="{ side: 'bottom', align: 'end', sideOffset: 10, collisionPadding: 8 }"
 											>
-												<AppButton
-													color="neutral"
-													variant="ghost"
-													size="sm"
-													class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 sm:h-10 sm:px-2"
-													:title="profileDisplayName"
-													:aria-label="profileDisplayName"
-												>
-													<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700 sm:h-8 sm:w-8 sm:text-xs">
-														{{ profileInitials }}
-													</span>
-													<span class="hidden min-w-0 text-left md:block">
-														<span class="block truncate text-xs font-semibold text-stone-900">{{ profileDisplayName }}</span>
+											<AppButton
+												color="neutral"
+												variant="ghost"
+												size="sm"
+												class="group h-9 cursor-pointer rounded-md px-1.5 text-stone-700 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-[#232922] sm:h-10 sm:px-2"
+												:title="profileDisplayName"
+												:aria-label="profileDisplayName"
+											>
+												<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200 dark:group-hover:bg-[#2a3028] sm:h-8 sm:w-8 sm:text-xs">
+													{{ profileInitials }}
+												</span>
+												<span class="hidden min-w-0 text-left md:block">
+													<span class="block truncate text-xs font-semibold text-stone-900">{{ profileDisplayName }}</span>
 														<span class="block truncate text-[10px] text-stone-500">{{ profileStoreSummary }}</span>
 													</span>
-													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700" />
+													<UIcon name="i-heroicons-chevron-down-20-solid" class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:text-primary-700 dark:group-hover:text-emerald-200" />
 												</AppButton>
 
 												<template #content>
-													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd]">
-														<div class="border-b border-[#efece4] px-4 py-4">
-															<div class="flex items-start gap-3">
-																<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700">
+													<div class="w-[296px] overflow-hidden rounded-md bg-white shadow-2xl ring-1 ring-[#e7e4dd] dark:bg-[#171d16] dark:ring-[#30402f]">
+														<div class="border-b border-[#efece4] px-4 py-4 dark:border-[#2d382d]">
+																<div class="flex items-start gap-3">
+																<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
 																	{{ profileInitials }}
 																</div>
 																<div class="min-w-0 flex-1">
-																	<p class="truncate text-sm font-semibold text-stone-950">{{ profileDisplayName }}</p>
-																	<p class="mt-1 truncate text-xs text-stone-500">{{ profileDisplayEmail }}</p>
+																	<p class="truncate text-sm font-semibold text-stone-950 dark:text-emerald-50">{{ profileDisplayName }}</p>
+																	<p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{{ profileDisplayEmail }}</p>
 																	<div class="mt-2 flex flex-wrap gap-1.5">
 																		<UBadge color="primary" variant="soft" :label="profileDisplayRole" />
 																		<UBadge color="neutral" variant="soft" :label="profileStoreSummary" />
@@ -606,62 +837,62 @@ onErrorCaptured((error) => {
 														<div class="p-2">
 															<div
 																v-if="canShowStoreSection"
-																class="mb-2 rounded-md border border-[#efece4] bg-[#fbfbf8] px-3 py-2.5"
+																class="mb-2 rounded-md border border-[#efece4] bg-[#fbfbf8] px-3 py-2.5 dark:border-[#2d382d] dark:bg-[#1f241d]"
 															>
 																<div class="flex items-center gap-3">
-																	<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 ring-1 ring-[#e7e4dd]">
+																	<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 ring-1 ring-[#e7e4dd] dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
 																		<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4.5 w-4.5" />
 																	</div>
 																	<div class="min-w-0 flex-1">
-																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">{{ storeSectionTitle }}</p>
-																		<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
-																		<p class="mt-0.5 truncate text-[11px] text-stone-500">
-																			{{ canSwitchStores ? `${currentStoreCount} stores available` : "1 store available" }}
+																		<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400 dark:text-stone-500">{{ storeSectionTitle }}</p>
+																		<p class="mt-1 truncate text-sm font-medium text-stone-900 dark:text-emerald-50">{{ currentStoreLabel }}</p>
+																		<p class="mt-0.5 truncate text-[11px] text-stone-500 dark:text-stone-400">
+													{{ $t('shell.availableStores', { count: currentStoreCount }) }}
 																		</p>
 																	</div>
 																	<button
 																		v-if="canSwitchStores"
 																		type="button"
-																		class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
+																		class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
 																		@click="openStoreSwitcher"
 																	>
 																		<UIcon name="i-heroicons-arrows-right-left-20-solid" class="h-4 w-4" />
-																		<span>เปลี่ยนร้าน</span>
+																				<span>{{ $t('shell.switchStore') }}</span>
 																	</button>
 																	<div
 																		v-else
-																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd]"
+																		class="inline-flex h-8 shrink-0 items-center rounded-full bg-white px-2.5 text-[11px] font-medium text-stone-500 ring-1 ring-[#e7e4dd] dark:bg-[#1f241d] dark:text-stone-400 dark:ring-[#314132]"
 																	>
-																		Current
+																								{{ $t('common.current') }}
 																	</div>
 																</div>
 															</div>
 
 															<button
 																type="button"
-																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700"
+																class="group flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 dark:text-stone-300 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
 																@click="navigateToProfile"
 															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700 dark:bg-[#232922] dark:text-stone-300 dark:group-hover:bg-emerald-500/10 dark:group-hover:text-emerald-200">
 																	<UIcon name="i-heroicons-user-circle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">
-																	<span class="block font-medium">ตั้งค่าโปรไฟล์</span>
-																	<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">จัดการข้อมูลผู้ใช้และ session ของคุณ</span>
+																			<span class="block font-medium">{{ $t('shell.profileSettings') }}</span>
+																			<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('shell.profileSettingsHint') }}</span>
 																</span>
 															</button>
-
+															<div class="my-2 border-t border-[#efece4] dark:border-[#2d382d]" />
 															<button
 																type="button"
-																class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
-																@click="openLogoutConfirmFromProfile"
+																class="group flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-950/35 dark:hover:text-red-300"
+																@click="openLogoutConfirm"
 															>
-																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition group-hover:bg-rose-100 group-hover:text-rose-700">
-																	<UIcon name="i-heroicons-arrow-left-on-rectangle-20-solid" class="h-5 w-5" />
+																<span class="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-600 transition group-hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:group-hover:bg-red-900/50 dark:group-hover:text-red-300">
+																	<UIcon name="i-heroicons-arrow-right-on-rectangle-20-solid" class="h-5 w-5" />
 																</span>
 																<span class="min-w-0 flex-1">
-																	<span class="block font-medium">ออกจากระบบ</span>
-																	<span class="block truncate text-xs text-rose-400 transition group-hover:text-rose-500">จบ session ปัจจุบันและกลับไปหน้า login</span>
+																	<span class="block font-medium">{{ $t('shell.signOut') }}</span>
+																	<span class="block truncate text-xs text-stone-500 transition dark:text-stone-400 dark:group-hover:text-red-300/80">{{ $t('shell.signOutHint') }}</span>
 																</span>
 															</button>
 														</div>
@@ -686,7 +917,7 @@ onErrorCaptured((error) => {
 									class="flex h-full min-h-[260px] items-center justify-center"
 								>
 									<div class="w-full max-w-xl rounded-2xl border border-[#f1d6cc] bg-[#fff8f5] p-6 text-center ring-1 ring-[#f7e7df]">
-										<p class="text-sm font-semibold text-stone-900">โหลดหน้านี้ไม่สำเร็จ</p>
+										<p class="text-sm font-semibold text-stone-900">{{ $t('shell.pageLoadFailed') }}</p>
 										<p class="mt-2 text-sm text-stone-500">{{ shellError }}</p>
 										<div class="mt-4 flex justify-center gap-2">
 											<AppButton
@@ -696,7 +927,7 @@ onErrorCaptured((error) => {
 												class="rounded-md"
 												@click="reloadCurrentView"
 											>
-												รีโหลดหน้า
+												{{ $t('shell.reloadPage') }}
 											</AppButton>
 										</div>
 									</div>
@@ -709,15 +940,10 @@ onErrorCaptured((error) => {
 			</div>
 		</div>
 
-		<LogoutConfirmModal
-			:open="logoutConfirmOpen"
-			@close="logoutConfirmOpen = false"
-			@confirm="confirmLogout"
-		/>
 		<AppResponsivePanel
 			v-model="storeSwitcherOpen"
-			title="เปลี่ยนร้าน"
-			description="เลือกร้านที่ต้องการใช้เป็น workspace ปัจจุบัน"
+			:title="$t('shell.switchStore')"
+			:description="$t('shell.switchStoreHint')"
 			desktop-width="680px"
 			mobile-max-height="82dvh"
 			close-button-size="md"
@@ -729,7 +955,7 @@ onErrorCaptured((error) => {
 				<div class="border-b border-[#efece4] bg-[#fbfbf8] px-5 py-4">
 					<p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">Current store</p>
 					<p class="mt-1 truncate text-sm font-medium text-stone-900">{{ currentStoreLabel }}</p>
-					<p class="mt-1 text-xs text-stone-500">{{ currentStoreCount }} stores available</p>
+					<p class="mt-1 text-xs text-stone-500">{{ $t('shell.availableStores', { count: currentStoreCount }) }}</p>
 				</div>
 
 				<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -739,14 +965,16 @@ onErrorCaptured((error) => {
 							:key="store.id"
 							type="button"
 							class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3 text-left transition"
-							:class="store.id === currentStoreId ? 'border-primary-200 bg-primary-50 text-primary-700' : 'border-[#efece4] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
+							:class="store.id === currentStoreId
+								? 'border-primary-200 bg-primary-50 text-primary-700 ring-1 ring-primary-100 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/20'
+								: 'border-[#efece4] bg-white text-stone-700 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700'"
 							:disabled="switchStorePending"
 							@click="handleSwitchStore(store.id)"
 						>
 							<span class="min-w-0">
 								<span class="block truncate text-sm font-medium">{{ store.name }}</span>
-								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600' : 'text-stone-400'">
-									{{ store.id === currentStoreId ? "ร้านที่กำลังใช้งาน" : "แตะเพื่อเปลี่ยนร้าน" }}
+								<span class="mt-0.5 block truncate text-[11px]" :class="store.id === currentStoreId ? 'text-primary-600 dark:text-emerald-300' : 'text-stone-400'">
+									{{ store.id === currentStoreId ? $t('shell.activeStore') : $t('shell.tapToSwitch') }}
 								</span>
 							</span>
 							<UIcon
@@ -757,7 +985,85 @@ onErrorCaptured((error) => {
 					</div>
 				</div>
 			</div>
+
 		</AppResponsivePanel>
+		<AppResponsivePanel
+			v-model="setupPanelOpen"
+			:title="t('setupStatus.title')"
+			:description="t('setupStatus.description')"
+			desktop-width="520px"
+			desktop-placement="center"
+			compact-header
+			close-button-size="sm"
+		>
+			<div class="space-y-4">
+				<div v-for="group in setupGroups" :key="group.severity" class="space-y-2">
+					<p
+						class="text-[11px] font-semibold uppercase tracking-[0.14em]"
+						:class="group.severity === 'blocking' ? 'text-red-600' : group.severity === 'warning' ? 'text-amber-700' : 'text-stone-400'"
+					>
+						{{ t(`setupStatus.severity.${group.severity}`) }}
+					</p>
+					<div
+						v-for="item in group.items"
+						:key="item.id"
+						class="rounded-md border p-3"
+						:class="group.severity === 'blocking'
+							? 'border-red-200 bg-red-50/60'
+							: group.severity === 'warning' ? 'border-amber-200 bg-amber-50/60' : 'border-neutral-200'"
+					>
+						<div class="flex items-start justify-between gap-3">
+							<div class="min-w-0">
+								<p class="text-sm font-semibold text-stone-900">{{ t(`setupStatus.items.${item.id}.label`) }}</p>
+								<!-- What breaks, not just what is missing: the owner needs to know a
+								     setting they switched on is quietly doing nothing. -->
+								<p class="mt-1 text-xs leading-5 text-stone-600">{{ t(`setupStatus.items.${item.id}.hint`) }}</p>
+								<p v-if="setupItemDetail(item)" class="mt-1 text-xs font-medium text-stone-500">{{ setupItemDetail(item) }}</p>
+							</div>
+							<AppButton
+								v-if="item.id === 'business_day_start_unconfirmed'"
+								color="primary"
+								variant="outline"
+								size="xs"
+								class="shrink-0"
+								icon="i-heroicons-check-20-solid"
+								:loading="setupLoading"
+								:label="t('setupStatus.items.business_day_start_unconfirmed.confirm')"
+								@click="confirmBusinessDayDefault"
+							/>
+							<AppButton
+								:color="item.id === 'business_day_start_unconfirmed' ? 'primary' : 'neutral'"
+								:variant="item.id === 'business_day_start_unconfirmed' ? 'solid' : 'soft'"
+								size="xs"
+								class="shrink-0"
+								icon="i-heroicons-arrow-right-20-solid"
+								:label="t(`setupStatus.items.${item.id}.action`)"
+								@click="openSetupTarget(item)"
+							/>
+						</div>
+					</div>
+				</div>
+				<AppButton
+					block
+					color="neutral"
+					variant="soft"
+					size="sm"
+					icon="i-heroicons-arrow-path"
+					:loading="setupLoading"
+					@click="refreshSetupStatus"
+				>
+					{{ t('setupStatus.recheck') }}
+				</AppButton>
+			</div>
+		</AppResponsivePanel>
+		<Teleport to="body">
+			<LogoutConfirmModal
+				:open="logoutConfirmOpen"
+				:pending="logoutPending"
+				@close="logoutConfirmOpen = false"
+				@confirm="confirmLogout"
+			/>
+		</Teleport>
 		<AppFloatingGoTop :hidden="mobileSidebarOpen" />
 	</main>
 </template>

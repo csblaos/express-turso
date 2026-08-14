@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
 import { resolveApiErrorMessage } from "~/utils/api-errors";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type InventoryStatus = "all" | "low" | "out" | "negative" | "active" | "inactive";
@@ -34,6 +35,29 @@ type ApiInventoryBalance = {
 	updated_at: string;
 };
 
+type ApiInventoryList = {
+	items: ApiInventoryBalance[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+	stats: {
+		total: number;
+		ready: number;
+		low: number;
+		out: number;
+		negative: number;
+		totalAvailableQty: number;
+		totalValue: number;
+		currency: string;
+	};
+	categories: Array<{
+		id: string;
+		label: string;
+		count: number;
+	}>;
+};
+
 	type ApiInventoryMovement = {
 		id: string;
 		store_id: string;
@@ -45,6 +69,10 @@ type ApiInventoryBalance = {
 		ref_type: string;
 		ref_id: string | null;
 		note: string | null;
+		adjustment_reason: string | null;
+		unit_cost_base: number | null;
+		total_cost_base: number | null;
+		cost_method: string | null;
 		created_by: string | null;
 		created_by_name: string | null;
 		created_at: string;
@@ -78,27 +106,28 @@ type InventoryRecord = {
 	const { apiFetch } = useApiClient();
 	const { can } = useAuthSession();
 	const appToast = useAppToast();
+	const { t, locale } = useI18n();
 
-const statusOptions: Array<{ id: InventoryStatus; label: string }> = [
-	{ id: "all", label: "ทั้งหมด" },
-	{ id: "active", label: "พร้อมใช้งาน" },
-	{ id: "low", label: "สต็อกต่ำ" },
-	{ id: "out", label: "หมดสต็อก" },
-	{ id: "negative", label: "ติดลบ" },
-	{ id: "inactive", label: "ปิดใช้งาน" },
-];
+const statusOptions = computed<Array<{ id: InventoryStatus; label: string }>>(() => [
+	{ id: "all", label: t("inventoryPage.all") },
+	{ id: "active", label: t("inventoryPage.active") },
+	{ id: "low", label: t("inventoryPage.lowStock") },
+	{ id: "out", label: t("inventoryPage.outOfStock") },
+	{ id: "negative", label: t("inventoryPage.negative") },
+	{ id: "inactive", label: t("inventoryPage.inactive") },
+]);
 
-const sortOptions: Array<{ id: SortKey; label: string }> = [
-	{ id: "updated", label: "อัปเดตล่าสุด" },
-	{ id: "name", label: "ชื่อสินค้า" },
-	{ id: "available", label: "คงเหลือ" },
-];
+const sortOptions = computed<Array<{ id: SortKey; label: string }>>(() => [
+	{ id: "updated", label: t("inventoryPage.updatedAt") },
+	{ id: "name", label: t("inventoryPage.productName") },
+	{ id: "available", label: t("inventoryPage.available") },
+]);
 
-const adjustmentModeOptions: Array<{ id: AdjustmentMode; label: string; icon: string }> = [
-	{ id: "increment", label: "เพิ่มเข้า", icon: "i-heroicons-arrow-down-circle" },
-	{ id: "decrement", label: "ตัดออก", icon: "i-heroicons-arrow-up-circle" },
-	{ id: "set", label: "ตั้งค่าใหม่", icon: "i-heroicons-pencil-square" },
-];
+const adjustmentModeOptions = computed<Array<{ id: AdjustmentMode; label: string; icon: string }>>(() => [
+	{ id: "increment", label: t("inventoryPage.adjustmentIn"), icon: "i-heroicons-arrow-down-circle" },
+	{ id: "decrement", label: t("inventoryPage.adjustmentOut"), icon: "i-heroicons-arrow-up-circle" },
+	{ id: "set", label: t("inventoryPage.adjustmentSet"), icon: "i-heroicons-pencil-square" },
+]);
 
 const accentPalette = [
 	"linear-gradient(135deg, #fed7aa 0%, #ea580c 100%)",
@@ -130,61 +159,65 @@ const cameraScannerError = ref<string | null>(null);
 	const adjustmentMode = ref<AdjustmentMode>("increment");
 	const adjustmentQty = ref("");
 	const adjustmentNote = ref("");
+	const adjustmentReason = ref("");
 	const adjustmentQtyInputRef = ref<HTMLInputElement | null>(null);
 const adjustmentSubmitting = ref(false);
 const adjustmentBadgeIso = useState("inventory-adjustment-badge-iso", () => new Date().toISOString());
 const currentPage = ref(1);
 const pageSize = ref(20);
-const pageSizeOptions = [10, 20, 50];
+const pageSizeOptions = [10, 20, 50, 100];
+	const balancesTotal = ref(0);
+	const balancesTotalPages = ref(1);
+	const inventoryStats = ref<ApiInventoryList["stats"]>({
+		total: 0,
+		ready: 0,
+		low: 0,
+		out: 0,
+		negative: 0,
+		totalAvailableQty: 0,
+		totalValue: 0,
+		currency: "LAK",
+	});
+	const inventoryCategories = ref<ApiInventoryList["categories"]>([]);
 
 	let cameraScannerControls: { stop?: () => void } | null = null;
 	let scannerBuffer = "";
 	let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let balanceLoadSequence = 0;
 	let lastScannerKeyAt = 0;
+	let pendingScan: { code: string; source: "scanner" | "camera" } | null = null;
 
-	const canAdjustInventory = computed(() => can("inventory.adjust"));
+const canAdjustInventory = computed(() => can("inventory.adjust"));
+const adjustmentReasonOptions = computed(() => locale.value === "th" ? [
+	{ id: "damaged", label: "สินค้าเสียหาย" }, { id: "expired", label: "สินค้าหมดอายุ" }, { id: "lost", label: "สูญหาย" }, { id: "count_variance", label: "ผลตรวจนับต่าง" }, { id: "internal_use", label: "ใช้ภายในร้าน" }, { id: "other", label: "อื่น ๆ" },
+] : locale.value === "lo" ? [
+	{ id: "damaged", label: "ສິນຄ້າເສຍ" }, { id: "expired", label: "ໝົດອາຍຸ" }, { id: "lost", label: "ສູນຫາຍ" }, { id: "count_variance", label: "ກວດນັບບໍ່ກົງ" }, { id: "internal_use", label: "ໃຊ້ພາຍໃນຮ້ານ" }, { id: "other", label: "ອື່ນໆ" },
+] : [
+	{ id: "damaged", label: "Damaged" }, { id: "expired", label: "Expired" }, { id: "lost", label: "Lost" }, { id: "count_variance", label: "Count variance" }, { id: "internal_use", label: "Internal use" }, { id: "other", label: "Other" },
+]);
+// Balances are derived from products and filtered on the server, so an empty
+// list without filters means the store has no products to track yet.
+const hasActiveInventoryFilters = computed(() => (
+	Boolean(searchQuery.value.trim())
+	|| activeCategory.value !== "all"
+	|| activeStatus.value !== "all"
+));
+const canCreateProduct = computed(() => can("products.create"));
+
+function clearInventoryFilters() {
+	searchQuery.value = "";
+	activeCategory.value = "all";
+	activeStatus.value = "all";
+}
 	const canUpdateProduct = computed(() => can("products.update"));
 
-const numberFormatter = new Intl.NumberFormat("th-TH");
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
-
 const categoryOptions = computed(() => [
-	{ id: "all", label: "ทั้งหมด" },
-	...Array.from(
-		new Map(
-			balances.value
-				.filter((item) => item.categoryId !== "uncategorized")
-				.map((item) => [item.categoryId, { id: item.categoryId, label: item.categoryLabel }]),
-		).values(),
-	),
+	{ id: "all", label: t("inventoryPage.all") },
+	...inventoryCategories.value.map((category) => ({ id: category.id, label: category.label })),
 ]);
 
-const filteredBalances = computed(() => {
-	const query = searchQuery.value.trim().toLowerCase();
-	let result = balances.value.filter((item) => {
-		const matchesQuery = !query || [item.name, item.sku, item.barcode, item.location || ""].some((value) => value.toLowerCase().includes(query));
-		const matchesCategory = activeCategory.value === "all" || item.categoryId === activeCategory.value;
-		const matchesStatus = activeStatus.value === "all"
-			|| (activeStatus.value === "active" && item.status === "active")
-			|| (activeStatus.value === "inactive" && item.status === "inactive")
-			|| item.stockState === activeStatus.value;
-
-		return matchesQuery && matchesCategory && matchesStatus;
-	});
-
-	if (activeSort.value === "name") {
-		result = [...result].sort((a, b) => a.name.localeCompare(b.name, "th"));
-	} else if (activeSort.value === "available") {
-		result = [...result].sort((a, b) => a.available - b.available || a.name.localeCompare(b.name, "th"));
-	} else {
-		result = [...result].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, "th"));
-	}
-
-	return result;
-});
+const filteredBalances = computed(() => balances.value);
 
 const selectedBalance = computed(() =>
 	balances.value.find((item) => item.id === selectedProductId.value)
@@ -195,25 +228,22 @@ const selectedBalance = computed(() =>
 const categoryCounts = computed(() =>
 	categoryOptions.value.reduce<Record<string, number>>((result, category) => {
 		result[category.id] = category.id === "all"
-			? balances.value.length
-			: balances.value.filter((item) => item.categoryId === category.id).length;
+			? inventoryStats.value.total
+			: inventoryCategories.value.find((item) => item.id === category.id)?.count || 0;
 		return result;
 	}, {}),
 );
 
-const totalSkuCount = computed(() => balances.value.length);
-const readyCount = computed(() => balances.value.filter((item) => item.stockState === "ready").length);
-const lowCount = computed(() => balances.value.filter((item) => item.stockState === "low").length);
-const outCount = computed(() => balances.value.filter((item) => item.stockState === "out").length);
-const negativeCount = computed(() => balances.value.filter((item) => item.stockState === "negative").length);
-const totalAvailableQty = computed(() => balances.value.reduce((sum, item) => sum + item.available, 0));
-const totalItems = computed(() => filteredBalances.value.length);
-const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)));
-const paginatedBalances = computed(() => {
-	const startIndex = (currentPage.value - 1) * pageSize.value;
-	return filteredBalances.value.slice(startIndex, startIndex + pageSize.value);
-});
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const totalSkuCount = computed(() => inventoryStats.value.total);
+const readyCount = computed(() => inventoryStats.value.ready);
+const lowCount = computed(() => inventoryStats.value.low);
+const outCount = computed(() => inventoryStats.value.out);
+const negativeCount = computed(() => inventoryStats.value.negative);
+const totalAvailableQty = computed(() => inventoryStats.value.totalAvailableQty);
+const totalItems = computed(() => balancesTotal.value);
+const totalPages = computed(() => balancesTotalPages.value);
+const paginatedBalances = computed(() => balances.value);
+const pageLabel = computed(() => t("inventoryPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	totalItems.value === 0
 		? 0
@@ -222,22 +252,18 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalItems.value));
 const pageSummaryText = computed(() => (
 	totalItems.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalItems.value} รายการ`
+		? t("inventoryPage.noData")
+		: t("inventoryPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: totalItems.value })
 ));
 
-watch([filteredBalances, pageSize], ([value]) => {
-	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
-	if (currentPage.value > maxPage) {
-		currentPage.value = maxPage;
-	}
+watch(balances, (value) => {
 	if (!value.length) {
 		selectedProductId.value = "";
 		detailOpen.value = false;
 		return;
 	}
 	if (!value.some((item) => item.id === selectedProductId.value)) {
-		selectedProductId.value = paginatedBalances.value[0]?.id || value[0].id;
+		selectedProductId.value = value[0].id;
 	}
 }, { immediate: true });
 
@@ -251,24 +277,25 @@ watch([filteredBalances, pageSize], ([value]) => {
 		void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
 	}, { immediate: false });
 
-watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
+watch(searchQuery, () => {
 	currentPage.value = 1;
+	if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+	searchDebounceTimer = setTimeout(() => {
+		void loadBalances();
+	}, pendingScan ? 0 : 250);
 });
 
-watch(pageSize, () => {
+watch([activeCategory, activeStatus, activeSort], () => {
 	currentPage.value = 1;
+	void loadBalances();
 });
 
 function formatDate(value: string) {
-	try {
-		return dateFormatter.format(new Date(value));
-	} catch {
-		return value;
-	}
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function formatQty(value: number) {
-	return numberFormatter.format(value);
+	return new Intl.NumberFormat(locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH").format(value);
 }
 
 function getInitials(name: string) {
@@ -315,8 +342,8 @@ function mapBalance(item: ApiInventoryBalance): InventoryRecord {
 		barcode: item.barcode || "-",
 		location: item.location?.trim() ? item.location.trim() : null,
 		categoryId,
-		categoryLabel: item.category_name || "ไม่ระบุหมวด",
-		unitLabel: item.unit_name || "หน่วยหลัก",
+		categoryLabel: item.category_name || t("inventoryPage.uncategorized"),
+		unitLabel: item.unit_name || t("inventoryPage.baseUnit"),
 		status: item.active ? "active" : "inactive",
 		stockState: getStockState(item),
 		available: Number(item.available_base || 0),
@@ -339,11 +366,11 @@ function getStockTone(state: StockState) {
 }
 
 function getStockLabel(item: InventoryRecord) {
-	if (item.stockState === "inactive") return "ปิดใช้งาน";
-	if (item.stockState === "negative") return "สต็อกติดลบ";
-	if (item.stockState === "out") return "หมดสต็อก";
-	if (item.stockState === "low") return `ต่ำกว่าเกณฑ์ ${item.lowStockThreshold ?? 0}`;
-	return "พร้อมขาย";
+	if (item.stockState === "inactive") return t("inventoryPage.inactive");
+	if (item.stockState === "negative") return t("inventoryPage.negativeStock");
+	if (item.stockState === "out") return t("inventoryPage.outOfStock");
+	if (item.stockState === "low") return t("inventoryPage.belowThreshold", { count: item.lowStockThreshold ?? 0 });
+	return t("inventoryPage.readyForSale");
 }
 
 function getMovementTone(type: string) {
@@ -354,9 +381,9 @@ function getMovementTone(type: string) {
 }
 
 function getMovementLabel(type: string) {
-	if (type === "ADJUSTMENT_IN") return "เพิ่มเข้า";
-	if (type === "ADJUSTMENT_OUT") return "ตัดออก";
-	if (type === "ADJUSTMENT_SET") return "ตั้งค่าใหม่";
+	if (type === "ADJUSTMENT_IN") return t("inventoryPage.adjustmentIn");
+	if (type === "ADJUSTMENT_OUT") return t("inventoryPage.adjustmentOut");
+	if (type === "ADJUSTMENT_SET") return t("inventoryPage.adjustmentSet");
 	return type;
 }
 
@@ -366,20 +393,62 @@ function getMovementQtyLabel(value: number) {
 }
 
 async function loadBalances() {
+	const loadSequence = ++balanceLoadSequence;
 	balancesPending.value = true;
 	balancesError.value = null;
 
 	try {
-		const response = await apiFetch<ApiEnvelope<ApiInventoryBalance[]>>("/inventory");
-		balances.value = response.data.map(mapBalance);
+		const response = await apiFetch<ApiEnvelope<ApiInventoryList>>("/inventory", {
+			query: {
+				page: currentPage.value,
+				limit: pageSize.value,
+				query: searchQuery.value.trim() || undefined,
+				category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+				status: activeStatus.value,
+				sort: activeSort.value,
+			},
+		});
+		if (loadSequence !== balanceLoadSequence) return;
+		balances.value = response.data.items.map(mapBalance);
+		balancesTotal.value = response.data.total;
+		balancesTotalPages.value = Math.max(1, response.data.totalPages);
+		inventoryStats.value = response.data.stats;
+		inventoryCategories.value = response.data.categories;
+
+		if (currentPage.value > balancesTotalPages.value) {
+			currentPage.value = balancesTotalPages.value;
+			void loadBalances();
+			return;
+		}
+
 		if (!selectedProductId.value && balances.value.length) {
 			selectedProductId.value = balances.value[0].id;
 		}
+
+		if (pendingScan) {
+			const scan = pendingScan;
+			pendingScan = null;
+			const normalized = scan.code.toLowerCase();
+			const matched = balances.value.find((item) => (
+				item.barcode.toLowerCase() === normalized || item.sku.toLowerCase() === normalized
+			));
+
+			if (matched) openDetail(matched.id);
+			toastInfo(
+				matched
+					? t("inventoryPage.scanFound", { source: scan.source === "camera" ? t("inventoryPage.cameraScan") : t("inventoryPage.scan"), code: scan.code, name: matched.name })
+					: t("inventoryPage.scanNotFound", { source: scan.source === "camera" ? t("inventoryPage.cameraScan") : t("inventoryPage.scan"), code: scan.code }),
+			);
+		}
 	} catch (error) {
+		if (loadSequence !== balanceLoadSequence) return;
+		pendingScan = null;
 		balances.value = [];
-		balancesError.value = resolveApiErrorMessage(error, "โหลดข้อมูลสต็อกไม่สำเร็จ");
+		balancesTotal.value = 0;
+		balancesTotalPages.value = 1;
+		balancesError.value = resolveApiErrorMessage(error, t("inventoryPage.loadFailed"));
 	} finally {
-		balancesPending.value = false;
+		if (loadSequence === balanceLoadSequence) balancesPending.value = false;
 	}
 }
 
@@ -398,7 +467,7 @@ async function loadMovements(storeId: string, productId: string) {
 		movements.value = response.data;
 	} catch (error) {
 		movements.value = [];
-		movementsError.value = resolveApiErrorMessage(error, "โหลดประวัติการปรับสต็อกไม่สำเร็จ");
+		movementsError.value = resolveApiErrorMessage(error, t("inventoryPage.loadMovementsFailed"));
 	} finally {
 		movementsPending.value = false;
 	}
@@ -441,7 +510,7 @@ function focusSearchInput() {
 	function openSelectedProductLocationEditor() {
 		if (!selectedBalance.value) return;
 		if (!canUpdateProduct.value) {
-			toastError("คุณไม่มีสิทธิ์แก้ไขตำแหน่งสินค้า");
+			toastError(t("inventoryPage.locationPermissionDenied"));
 			return;
 		}
 		detailOpen.value = false;
@@ -491,21 +560,13 @@ function selectFromScan(code: string, source: "scanner" | "camera") {
 	const normalized = code.trim();
 	if (!normalized) return;
 
-	searchQuery.value = normalized;
-	const lower = normalized.toLowerCase();
-	const matched = balances.value.find((item) =>
-		item.barcode.toLowerCase() === lower || item.sku.toLowerCase() === lower,
-	) ?? filteredBalances.value[0];
-
-	if (matched) {
-		openDetail(matched.id);
+	pendingScan = { code: normalized, source };
+	currentPage.value = 1;
+	if (searchQuery.value === normalized) {
+		void loadBalances();
+	} else {
+		searchQuery.value = normalized;
 	}
-
-		toastInfo(
-			matched
-				? `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} พบ ${matched.name}`
-				: `${source === "camera" ? "สแกนกล้อง" : "สแกน"} ${normalized} แต่ไม่พบสินค้า`,
-		);
 
 	nextTick(() => {
 		focusSearchInput();
@@ -580,6 +641,7 @@ function goToPage(nextPage: number) {
 	const normalizedPage = Math.min(Math.max(1, nextPage), totalPages.value);
 	if (normalizedPage === currentPage.value) return;
 	currentPage.value = normalizedPage;
+	void loadBalances();
 	nextTick(() => {
 		scrollInventoryListToTop();
 	});
@@ -589,6 +651,8 @@ function updatePageSize(nextPageSize: number | string) {
 	const normalizedSize = Number(nextPageSize);
 	if (!Number.isFinite(normalizedSize) || normalizedSize <= 0 || normalizedSize === pageSize.value) return;
 	pageSize.value = normalizedSize;
+	currentPage.value = 1;
+	void loadBalances();
 	nextTick(() => {
 		scrollInventoryListToTop();
 	});
@@ -616,7 +680,7 @@ async function openCameraScanner() {
 		const videoElement = scannerVideoRef.value;
 		if (!videoElement) {
 			cameraScannerStarting.value = false;
-			cameraScannerError.value = "ไม่พบพื้นที่แสดงภาพจากกล้อง";
+			cameraScannerError.value = t("inventoryPage.cameraPreviewUnavailable");
 			return;
 		}
 
@@ -650,7 +714,7 @@ async function openCameraScanner() {
 				}
 
 				if (error && error.name !== "NotFoundException") {
-					cameraScannerError.value = "กล้องเปิดได้ แต่ยังอ่านบาร์โค้ดไม่สำเร็จ ลองขยับกล้องหรือเปลี่ยนระยะ";
+					cameraScannerError.value = t("inventoryPage.cameraReadFailed");
 				}
 			},
 		);
@@ -661,7 +725,7 @@ async function openCameraScanner() {
 		cameraScannerStarting.value = false;
 		cameraScannerError.value = error instanceof Error
 			? error.message
-			: "ไม่สามารถเปิดกล้องสแกนบาร์โค้ดได้";
+			: t("inventoryPage.cameraOpenFailed");
 	}
 }
 
@@ -670,7 +734,12 @@ async function openCameraScanner() {
 
 		const qty = Number(String(adjustmentQty.value).replace(/\D/g, ""));
 		if (!Number.isFinite(qty) || (adjustmentMode.value === "set" ? qty < 0 : qty <= 0)) {
-			toastError("ระบุจำนวนสต็อกให้ถูกต้องก่อนบันทึก");
+			toastError(t("inventoryPage.invalidQuantity"));
+			return;
+		}
+		const reducesStock = adjustmentMode.value === "decrement" || (adjustmentMode.value === "set" && qty < selectedBalance.value.onHand);
+		if (reducesStock && !adjustmentReason.value) {
+			toastError(locale.value === "th" ? "กรุณาเลือกเหตุผลที่ปรับลดสต็อก" : locale.value === "lo" ? "ກະລຸນາເລືອກເຫດຜົນການຕັດສະຕັອກ" : "Choose a reason for the stock reduction");
 			return;
 		}
 
@@ -684,6 +753,7 @@ async function openCameraScanner() {
 					mode: adjustmentMode.value,
 					qty_base: qty,
 					note: adjustmentNote.value.trim() || null,
+					adjustment_reason: reducesStock ? adjustmentReason.value : null,
 				},
 			});
 
@@ -694,16 +764,17 @@ async function openCameraScanner() {
 				movements.value = [response.data.movement, ...movements.value].slice(0, 12);
 			}
 
-			toastSuccess("บันทึกการปรับสต็อกแล้ว");
+			toastSuccess(t("inventoryPage.adjustmentSaved"));
 			adjustmentQty.value = "";
 			adjustmentNote.value = "";
+			adjustmentReason.value = "";
 			// Still refresh from API for correctness (sorting/filtering may change).
 			void loadBalances();
 			if (selectedBalance.value) {
 				void loadMovements(selectedBalance.value.storeId, selectedBalance.value.id);
 			}
 		} catch (error) {
-			toastError(resolveApiErrorMessage(error, "บันทึกการปรับสต็อกไม่สำเร็จ"));
+			toastError(resolveApiErrorMessage(error, t("inventoryPage.adjustmentSaveFailed")));
 		} finally {
 			adjustmentSubmitting.value = false;
 		}
@@ -719,6 +790,9 @@ onMounted(() => {
 		if (scannerBufferTimer) {
 			clearTimeout(scannerBufferTimer);
 		}
+		if (searchDebounceTimer) {
+			clearTimeout(searchDebounceTimer);
+		}
 		window.removeEventListener("keydown", handleGlobalScannerKeydown);
 	});
 </script>
@@ -727,26 +801,27 @@ onMounted(() => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['stock']"
-		sidebar-eyebrow="Inventory"
-		sidebar-title="สต็อก"
+		:sidebar-eyebrow="t('inventoryPage.title')"
+		:sidebar-title="t('inventoryPage.title')"
 		sidebar-compact-title="STK"
-		sidebar-description="ตรวจยอดคงเหลือและปรับสต็อก"
+		:sidebar-description="t('inventoryPage.sidebarDescription')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
-					title="สต็อก"
-					description="ตรวจยอดคงเหลือและปรับสต็อก พร้อมดูประวัติการเคลื่อนไหว"
+					title=""
+					compact
+					:description="t('inventoryPage.headerDescription')"
 					@menu="openSidebar"
 				>
-					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-2 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
+					<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
 						<div class="relative min-w-0">
 							<UInput
 								ref="searchInputRef"
 								v-model="searchQuery"
 								size="lg"
 								icon="i-heroicons-magnifying-glass-20-solid"
-								placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+								:placeholder="t('inventoryPage.searchPlaceholder')"
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								@keydown.enter.prevent="submitSearchInput"
@@ -758,8 +833,8 @@ onMounted(() => {
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"
 								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-								aria-label="ล้างคำค้น"
-								title="ล้างคำค้น"
+								:aria-label="t('inventoryPage.clearSearch')"
+								:title="t('inventoryPage.clearSearch')"
 								@click="searchQuery = ''"
 							/>
 						</div>
@@ -770,11 +845,11 @@ onMounted(() => {
 							size="md"
 							icon="i-heroicons-clock-20-solid"
 							class="justify-center rounded-md"
-							aria-label="ประวัติสต็อก"
-							title="ประวัติสต็อก"
+							:aria-label="t('inventoryPage.inventoryHistory')"
+							:title="t('inventoryPage.inventoryHistory')"
 							@click="navigateTo('/inventory/history')"
 						>
-							<span class="hidden sm:inline">ประวัติ</span>
+							<span class="hidden sm:inline">{{ t('inventoryPage.history') }}</span>
 						</AppButton>
 
 						<AppButton
@@ -783,11 +858,11 @@ onMounted(() => {
 							size="md"
 							icon="i-heroicons-qr-code-20-solid"
 							class="justify-center rounded-md"
-							aria-label="สแกนบาร์โค้ด"
-							title="สแกนบาร์โค้ด"
+							:aria-label="t('inventoryPage.scanBarcode')"
+							:title="t('inventoryPage.scanBarcode')"
 							@click="openCameraScanner"
 						>
-							<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
+							<span class="hidden sm:inline">{{ t('inventoryPage.scanBarcode') }}</span>
 						</AppButton>
 
 							<AppButton
@@ -796,34 +871,37 @@ onMounted(() => {
 								size="md"
 								icon="i-heroicons-arrow-path-20-solid"
 								class="justify-center rounded-md"
-								aria-label="รีโหลดสต็อก"
-								title="รีโหลดสต็อก"
+								:aria-label="t('inventoryPage.reload')"
+								:title="t('inventoryPage.reload')"
 								:loading="balancesPending"
 								:disabled="balancesPending"
 								:spin-icon-on-loading="true"
 								@click="loadBalances"
 							>
-								<span class="hidden sm:inline">รีโหลด</span>
+								<span class="hidden sm:inline">{{ t('inventoryPage.reload') }}</span>
 							</AppButton>
 					</div>
 				</AppPageHeader>
 
-				<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
-					<div class="grid grid-cols-4 gap-2 p-0">
+				<UCard
+					class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md"
+					:ui="{ body: 'p-1.5 sm:p-2 lg:p-2.5' }"
+				>
+					<div class="grid grid-cols-4 gap-1.5 p-0">
 						<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ทั้งหมด</p>
+							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('inventoryPage.all') }}</p>
 							<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ totalSkuCount }}</p>
 						</div>
 						<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ต่ำ</p>
+							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('inventoryPage.low') }}</p>
 							<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ lowCount }}</p>
 						</div>
 						<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">หมด</p>
+							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('inventoryPage.out') }}</p>
 							<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ outCount }}</p>
 						</div>
 						<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ติดลบ</p>
+							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('inventoryPage.negative') }}</p>
 							<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ negativeCount }}</p>
 						</div>
 					</div>
@@ -833,10 +911,10 @@ onMounted(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
-								<p class="text-sm font-semibold text-stone-950">ตัวกรองสต็อก</p>
+								<p class="text-sm font-semibold text-stone-950">{{ t('inventoryPage.stockFilters') }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-								{{ totalItems }} รายการ
+								{{ t('inventoryPage.itemCount', { count: totalItems }) }}
 							</div>
 						</div>
 
@@ -844,7 +922,7 @@ onMounted(() => {
 							<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
 								<div class="min-w-0">
 									<label class="mb-1 block text-[11px] font-medium text-stone-500" for="inventory-category-select">
-										หมวดสินค้า
+										{{ t('inventoryPage.category') }}
 									</label>
 									<div class="relative">
 										<select
@@ -865,7 +943,7 @@ onMounted(() => {
 
 								<div class="min-w-0">
 									<label class="mb-1 block text-[11px] font-medium text-stone-500" for="inventory-sort-select">
-										เรียงลำดับ
+										{{ t('inventoryPage.sort') }}
 									</label>
 									<div class="relative">
 										<select
@@ -906,8 +984,8 @@ onMounted(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 							<div>
-								<p class="text-sm font-semibold text-stone-950">Inventory</p>
-								<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูยอดคงเหลือ ปรับสต็อก และประวัติการเคลื่อนไหว</p>
+								<p class="text-sm font-semibold text-stone-950">{{ t('inventoryPage.title') }}</p>
+								<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('inventoryPage.listDescription') }}</p>
 							</div>
 							<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 								{{ pageSummaryText }}
@@ -921,27 +999,56 @@ onMounted(() => {
 							<div v-else-if="balancesError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 								<div class="space-y-3">
 									<p class="text-sm text-stone-600">{{ balancesError }}</p>
-									<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadBalances" />
+									<AppButton color="primary" variant="soft" size="md" class="rounded-md" :label="t('inventoryPage.tryAgain')" @click="loadBalances" />
 								</div>
 							</div>
-							<div v-else-if="!filteredBalances.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-								<div class="space-y-3">
-									<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-									<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
-								</div>
+							<div v-else-if="!filteredBalances.length" class="flex h-full min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+								<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+									<UIcon :name="hasActiveInventoryFilters ? 'i-heroicons-magnifying-glass' : 'i-heroicons-cube'" class="size-5" />
+								</span>
+								<p class="mt-3 font-semibold text-stone-900">
+									{{ hasActiveInventoryFilters ? t('inventoryPage.noResults') : t('inventoryPage.emptyCatalog') }}
+								</p>
+								<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+									{{ hasActiveInventoryFilters
+										? t('inventoryPage.noResultsHint')
+										: (canCreateProduct ? t('inventoryPage.emptyCatalogHint') : t('inventoryPage.emptyCatalogHintReadOnly')) }}
+								</p>
+								<AppButton
+									v-if="hasActiveInventoryFilters"
+									class="mt-4 rounded-md"
+									color="neutral"
+									variant="soft"
+									size="md"
+									icon="i-heroicons-x-mark-20-solid"
+									@click="clearInventoryFilters"
+								>
+									{{ t('inventoryPage.clearFilters') }}
+								</AppButton>
+								<AppButton
+									v-else-if="canCreateProduct"
+									class="mt-4 rounded-md"
+									color="primary"
+									variant="solid"
+									size="md"
+									icon="i-heroicons-plus-20-solid"
+									@click="navigateTo('/products')"
+								>
+									{{ t('inventoryPage.emptyCatalogAction') }}
+								</AppButton>
 							</div>
 
 							<table v-else class="min-w-[1100px] w-full border-separate border-spacing-0">
-								<thead class="sticky top-0 z-10 bg-[#fcfbf8]">
-									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-										<th class="border-b border-[#ece6dc] px-4 py-3">สินค้า</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">หมวด</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">คงเหลือ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">ในคลัง</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">จอง</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">สถานะ</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3">อัปเดต</th>
-										<th class="border-b border-[#ece6dc] px-4 py-3 text-right">Action</th>
+								<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
+									<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.product') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.category') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.available') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.onHand') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.reserved') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.status') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.updated') }}</th>
+										<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('inventoryPage.action') }}</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -982,7 +1089,7 @@ onMounted(() => {
 											{{ formatQty(item.reserved) }}
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4">
-											<UBadge :color="item.status === 'active' ? 'info' : 'neutral'" variant="soft" :label="item.status === 'active' ? 'พร้อมใช้งาน' : 'ปิดใช้งาน'" />
+											<UBadge :color="item.status === 'active' ? 'info' : 'neutral'" variant="soft" :label="item.status === 'active' ? t('inventoryPage.active') : t('inventoryPage.inactive')" />
 										</td>
 										<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 whitespace-nowrap">
 											{{ item.updatedAt }}
@@ -996,7 +1103,7 @@ onMounted(() => {
 												icon="i-heroicons-chevron-right-20-solid"
 												@click.stop="openDetail(item.id)"
 											>
-												จัดการ
+												{{ t('inventoryPage.manage') }}
 											</AppButton>
 										</td>
 									</tr>
@@ -1018,7 +1125,7 @@ onMounted(() => {
 
 								<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 									<div class="flex items-center gap-2">
-										<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+										<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('inventoryPage.perPage') }}</label>
 										<select
 											:value="pageSize"
 											class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -1038,11 +1145,11 @@ onMounted(() => {
 											class="rounded-md"
 											icon="i-heroicons-chevron-left-20-solid"
 											:disabled="currentPage <= 1 || balancesPending"
-											aria-label="หน้าก่อนหน้า"
-											title="หน้าก่อนหน้า"
+											:aria-label="t('inventoryPage.previousPage')"
+											:title="t('inventoryPage.previousPage')"
 											@click="goToPage(currentPage - 1)"
 										>
-											<span class="hidden sm:inline">ก่อนหน้า</span>
+											<span class="hidden sm:inline">{{ t('inventoryPage.previous') }}</span>
 										</AppButton>
 										<AppButton
 											color="neutral"
@@ -1051,11 +1158,11 @@ onMounted(() => {
 											class="rounded-md"
 											trailing-icon="i-heroicons-chevron-right-20-solid"
 											:disabled="currentPage >= totalPages || balancesPending"
-											aria-label="หน้าถัดไป"
-											title="หน้าถัดไป"
+											:aria-label="t('inventoryPage.nextPage')"
+											:title="t('inventoryPage.nextPage')"
 											@click="goToPage(currentPage + 1)"
 										>
-											<span class="hidden sm:inline">ถัดไป</span>
+											<span class="hidden sm:inline">{{ t('inventoryPage.next') }}</span>
 										</AppButton>
 									</div>
 								</div>
@@ -1067,8 +1174,8 @@ onMounted(() => {
 				<AppResponsivePanel
 					v-if="selectedBalance"
 					v-model="detailOpen"
-					title="ข้อมูลสต็อก"
-					description="ดูยอดคงเหลือ ปรับสต็อก และตรวจประวัติการเคลื่อนไหว"
+					:title="t('inventoryPage.stockDetails')"
+					:description="t('inventoryPage.stockDetailsDescription')"
 					desktop-width="680px"
 					:show-handle="false"
 					close-button-size="md"
@@ -1112,15 +1219,15 @@ onMounted(() => {
 
 								<div class="grid grid-cols-3 gap-2">
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">คงเหลือ</p>
+										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ t('inventoryPage.available') }}</p>
 										<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.available) }}</p>
 									</div>
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ในคลัง</p>
+										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ t('inventoryPage.onHand') }}</p>
 										<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.onHand) }}</p>
 									</div>
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">จอง</p>
+										<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ t('inventoryPage.reserved') }}</p>
 										<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatQty(selectedBalance.reserved) }}</p>
 									</div>
 								</div>
@@ -1128,17 +1235,17 @@ onMounted(() => {
 								<section class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 									<div class="flex items-start justify-between gap-3">
 										<div>
-											<h3 class="text-sm font-semibold text-stone-900">ปรับสต็อก</h3>
-											<p class="mt-1 text-xs leading-5 text-stone-500">แยก flow ปรับสต็อกออกจากข้อมูลสินค้า เพื่อให้ตรวจสอบย้อนหลังได้ง่าย</p>
+											<h3 class="text-sm font-semibold text-stone-900">{{ t('inventoryPage.adjustStock') }}</h3>
+											<p class="mt-1 text-xs leading-5 text-stone-500">{{ t('inventoryPage.adjustStockDescription') }}</p>
 										</div>
 										<UBadge color="neutral" variant="soft" :label="formatDate(adjustmentBadgeIso)" />
 									</div>
 
 										<div class="mt-3 flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-stone-700">
 											<UIcon name="i-heroicons-map-pin-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-											<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ตำแหน่งสินค้า</span>
+											<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('inventoryPage.productLocation') }}</span>
 											<UBadge color="neutral" variant="soft" class="max-w-full">
-												<span class="truncate">{{ selectedBalance.location || "ยังไม่ตั้งค่า" }}</span>
+												<span class="truncate">{{ selectedBalance.location || t('inventoryPage.notSet') }}</span>
 											</UBadge>
 											<AppButton
 												v-if="canUpdateProduct"
@@ -1147,7 +1254,7 @@ onMounted(() => {
 												size="xs"
 												class="ml-auto rounded-md"
 												icon="i-heroicons-pencil-square-20-solid"
-												:label="selectedBalance.location ? 'แก้ไข' : 'ตั้งค่า'"
+												:label="selectedBalance.location ? t('inventoryPage.edit') : t('inventoryPage.set')"
 												@click="openSelectedProductLocationEditor"
 											/>
 										</div>
@@ -1169,7 +1276,7 @@ onMounted(() => {
 
 									<div class="mt-4 grid gap-3">
 											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน (หน่วยฐาน)</label>
+												<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('inventoryPage.quantityBaseUnit') }}</label>
 												<input
 													v-model="adjustmentQty"
 													ref="adjustmentQtyInputRef"
@@ -1177,36 +1284,43 @@ onMounted(() => {
 													inputmode="numeric"
 													pattern="[0-9,]*"
 													class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-													placeholder="ระบุจำนวน"
+													:placeholder="t('inventoryPage.quantityPlaceholder')"
 													@input="handleAdjustmentQtyInput"
 												>
-											</div>
+										</div>
+										<div v-if="adjustmentMode !== 'increment'">
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ locale === 'th' ? 'เหตุผลการปรับลด' : locale === 'lo' ? 'ເຫດຜົນການຕັດສະຕັອກ' : 'Reason for reduction' }}</label>
+											<select v-model="adjustmentReason" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												<option value="">{{ locale === 'th' ? 'เลือกเหตุผล' : locale === 'lo' ? 'ເລືອກເຫດຜົນ' : 'Select a reason' }}</option>
+												<option v-for="reason in adjustmentReasonOptions" :key="reason.id" :value="reason.id">{{ reason.label }}</option>
+											</select>
+										</div>
 										<div>
-											<label class="mb-2 block text-xs font-medium text-stone-500">หมายเหตุ</label>
+											<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('inventoryPage.note') }}</label>
 											<textarea
 												v-model="adjustmentNote"
 												rows="3"
 												class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
-												placeholder="เช่น รับของเข้า, นับใหม่, ของเสีย"
+												:placeholder="t('inventoryPage.notePlaceholder')"
 											/>
 										</div>
 										<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" class="justify-center rounded-md" :loading="adjustmentSubmitting" :disabled="!canAdjustInventory" :spin-icon-on-loading="true" @click="submitAdjustment">
-											บันทึกการปรับสต็อก
+											{{ t('inventoryPage.saveAdjustment') }}
 										</AppButton>
 									</div>
 								</section>
 
 								<section class="space-y-3">
 									<div class="flex items-center justify-between gap-3">
-										<h3 class="text-sm font-semibold text-stone-900">ประวัติการเคลื่อนไหว</h3>
+										<h3 class="text-sm font-semibold text-stone-900">{{ t('inventoryPage.movementHistory') }}</h3>
 										<div class="flex items-center gap-2">
-											<UBadge color="neutral" variant="soft" :label="`${movements.length} รายการ`" />
+											<UBadge color="neutral" variant="soft" :label="t('inventoryPage.itemCount', { count: movements.length })" />
 											<AppButton
 												color="neutral"
 												variant="soft"
 												size="xs"
 												icon="i-heroicons-arrow-top-right-on-square-20-solid"
-												label="ดูทั้งหมด"
+												:label="t('inventoryPage.viewAll')"
 												@click="navigateTo(`/inventory/history?product_id=${encodeURIComponent(selectedBalance.id)}`)"
 											/>
 										</div>
@@ -1217,7 +1331,7 @@ onMounted(() => {
 										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
 									>
 										<div class="py-8 text-center">
-											<p class="text-sm font-semibold text-stone-900">กำลังโหลดประวัติสต็อก</p>
+											<p class="text-sm font-semibold text-stone-900">{{ t('inventoryPage.loadingHistory') }}</p>
 										</div>
 									</UCard>
 
@@ -1226,7 +1340,7 @@ onMounted(() => {
 										class="border border-dashed border-[#f1c7c0] bg-[#fff7f5] shadow-none"
 									>
 										<div class="py-6 text-center">
-											<p class="text-sm font-semibold text-stone-900">โหลด movement ไม่สำเร็จ</p>
+											<p class="text-sm font-semibold text-stone-900">{{ t('inventoryPage.loadMovementsFailed') }}</p>
 											<p class="mt-2 text-xs text-stone-500">{{ movementsError }}</p>
 										</div>
 									</UCard>
@@ -1236,8 +1350,8 @@ onMounted(() => {
 										class="border border-dashed border-[#d9d5cd] bg-[#fbfbf8] shadow-none"
 									>
 										<div class="py-6 text-center">
-											<p class="text-sm font-semibold text-stone-900">ยังไม่มีประวัติการปรับสต็อก</p>
-											<p class="mt-2 text-xs text-stone-500">เมื่อบันทึกการปรับสต็อก รายการล่าสุดจะมาแสดงที่นี่</p>
+											<p class="text-sm font-semibold text-stone-900">{{ t('inventoryPage.noMovementHistory') }}</p>
+											<p class="mt-2 text-xs text-stone-500">{{ t('inventoryPage.noMovementHistoryHint') }}</p>
 										</div>
 									</UCard>
 
@@ -1253,9 +1367,9 @@ onMounted(() => {
 														<UBadge :color="getMovementTone(movement.type)" variant="soft" :label="getMovementLabel(movement.type)" />
 														<p class="text-xs text-stone-500">{{ formatDate(movement.created_at) }}</p>
 													</div>
-													<p class="mt-2 text-sm font-medium text-stone-900">{{ movement.note || "ไม่มีหมายเหตุ" }}</p>
+													<p class="mt-2 text-sm font-medium text-stone-900">{{ movement.note || t('inventoryPage.noNote') }}</p>
 													<p class="mt-1 text-xs text-stone-500">
-														โดย {{ movement.created_by_name || (movement.created_by ? "ไม่พบชื่อผู้ใช้" : "ระบบ") }} · {{ movement.product_sku }} · {{ movement.unit_name || "หน่วยฐาน" }}
+														{{ t('inventoryPage.by') }} {{ movement.created_by_name || (movement.created_by ? t('inventoryPage.userNotFound') : t('inventoryPage.system')) }} · {{ movement.product_sku }} · {{ movement.unit_name || t('inventoryPage.baseUnit') }}
 													</p>
 												</div>
 												<p class="text-sm font-semibold tabular-nums text-stone-900">{{ getMovementQtyLabel(movement.qty_base) }}</p>
@@ -1271,7 +1385,7 @@ onMounted(() => {
 								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 							>
 								<div class="grid w-full grid-cols-1 gap-2">
-									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDetail">ปิด</AppButton>
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeDetail">{{ t('inventoryPage.close') }}</AppButton>
 								</div>
 							</div>
 						</div>
@@ -1280,8 +1394,8 @@ onMounted(() => {
 
 				<AppResponsivePanel
 					v-model="cameraScannerOpen"
-					title="สแกนบาร์โค้ดด้วยกล้อง"
-					description="ใช้ได้บน mobile, tablet และ desktop ที่มีกล้องเมื่อไม่มี scanner device"
+					:title="t('inventoryPage.cameraScannerTitle')"
+					:description="t('inventoryPage.cameraScannerDescription')"
 					desktop-width="680px"
 					mobile-max-height="88vh"
 					fill-mobile-height
@@ -1315,13 +1429,13 @@ onMounted(() => {
 							<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 								<div class="min-w-0">
 									<p v-if="cameraScannerStarting" class="text-sm text-stone-600">
-										กำลังเปิดกล้องและเริ่มตัวอ่านบาร์โค้ด...
+										{{ t('inventoryPage.cameraStarting') }}
 									</p>
 									<p v-else-if="cameraScannerError" class="text-sm text-rose-600">
 										{{ cameraScannerError }}
 									</p>
 									<p v-else class="text-sm text-stone-600">
-										จัดบาร์โค้ดให้อยู่ในกรอบ ระบบจะเติมค่าในช่องค้นหาและเปิดรายละเอียดสินค้าให้อัตโนมัติ
+										{{ t('inventoryPage.cameraInstructions') }}
 									</p>
 								</div>
 
@@ -1332,7 +1446,7 @@ onMounted(() => {
 										variant="soft"
 										size="md"
 										class="rounded-md"
-										label="ลองเปิดใหม่"
+										:label="t('inventoryPage.tryOpenAgain')"
 										@click="openCameraScanner"
 									/>
 									<AppButton
@@ -1340,7 +1454,7 @@ onMounted(() => {
 										variant="soft"
 										size="md"
 										class="rounded-md"
-										label="ปิด"
+										:label="t('inventoryPage.close')"
 										@click="stopCameraScanner"
 									/>
 								</div>

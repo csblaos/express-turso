@@ -60,6 +60,7 @@ TURSO_AUTH_TOKEN=your_turso_token
 REDIS_DRIVER=upstash
 UPSTASH_REDIS_REST_URL=https://your-upstash-instance.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+FRONTEND_ORIGINS=https://okhaidee.pages.dev,https://your-custom-frontend-domain.example
 ```
 
 หมายเหตุ:
@@ -70,6 +71,7 @@ UPSTASH_REDIS_REST_TOKEN=your_upstash_token
 ### Health check ที่ควรใช้
 
 - `GET /healthz`
+- `GET /healthz/realtime` สำหรับสถานะ Socket.IO และจำนวน client ที่เชื่อมอยู่
 - `GET /api/health`
 
 ถ้า platform ต้องการ health check path ให้ใช้ `/healthz`
@@ -98,6 +100,7 @@ node frontend/.output/server/index.mjs
 
 ```dotenv
 NUXT_PUBLIC_API_BASE=https://api.example.com/api
+NUXT_PUBLIC_REALTIME_BASE=https://api.example.com
 PORT=3001
 ```
 
@@ -113,6 +116,19 @@ PORT=3001
 
 - route `www.example.com` ไป Nuxt frontend
 - route `api.example.com` ไป Express backend
+
+Socket.IO ใช้ path `/socket.io` บน API domain และ reverse proxy ต้องส่ง WebSocket
+upgrade headers ตัวอย่าง Nginx:
+
+```nginx
+location /socket.io/ {
+    proxy_pass http://127.0.0.1:3005;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
 
 นี่เป็นแบบที่สะอาดที่สุดสำหรับโปรเจกต์นี้
 
@@ -210,3 +226,62 @@ NUXT_PUBLIC_API_BASE=https://api.example.com/api
 - backend ปัจจุบันเป็น CommonJS TypeScript app
 - Nuxt ฝั่ง production เป็น Nitro/ESM server output
 - การรวมกันเพิ่มความซับซ้อนเรื่อง runtime และ startup มากกว่าประโยชน์
+
+## 9) DigitalOcean Droplet + GitHub Actions (branch `pos-okhaidee`)
+
+Workflow `.github/workflows/deploy-pos-okhaidee.yml` ทำงานเฉพาะเมื่อ push backend ที่เกี่ยวข้องขึ้น branch `pos-okhaidee` หรือสั่ง `workflow_dispatch` ด้วยตนเอง
+
+ลำดับการ deploy:
+
+1. GitHub Actions ติดตั้ง dependency และ compile TypeScript
+2. Build Docker image บน GitHub runner ไม่ใช่บน Droplet
+3. Push image แบบ immutable (`sha-<commit>`) ไป GitHub Container Registry
+4. ส่ง `compose.production.yml` และ production env ไป Droplet ผ่าน SSH
+5. Pull image, restart container และตรวจ `GET /healthz`
+
+### GitHub Environment และ Secrets
+
+สร้าง Environment ชื่อ `production` ใน GitHub แล้วเพิ่ม secrets:
+
+| Secret | ค่า |
+| --- | --- |
+| `DO_HOST` | Public IPv4 หรือ hostname ของ Droplet |
+| `DO_USER` | ผู้ใช้ deploy บน Droplet เช่น `deploy` |
+| `DO_SSH_PORT` | SSH port ปกติคือ `22` |
+| `DO_SSH_PRIVATE_KEY` | Private key ของ deploy key สำหรับ GitHub Actions |
+| `DO_SSH_KNOWN_HOSTS` | ผลจาก `ssh-keyscan -H <DO_HOST>` หลังตรวจ fingerprint แล้ว |
+| `TURSO_DATABASE_URL` | Turso database URL |
+| `TURSO_AUTH_TOKEN` | Turso auth token |
+| `INTEGRATION_ENCRYPTION_KEY` | Encryption key สำหรับ integration |
+| `ANOUSITH_EXPRESS_BASE_URL` | Anousith Express API base URL |
+| `REDIS_DRIVER` | ใช้ `upstash` ใน production |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token |
+| `AUTH_JWT_SECRET` | JWT signing secret |
+| `R2_ACCOUNT_ID` | Cloudflare R2 account ID |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key ID |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret access key |
+| `R2_BUCKET` | Cloudflare R2 bucket name |
+| `R2_PUBLIC_BASE_URL` | Public base URL สำหรับ R2 files |
+| `R2_STORE_LOGO_PREFIX` | Object prefix สำหรับ store logos |
+
+GitHub Actions จะสร้าง `/opt/pos-okhaidee/.env.production` จาก secrets เหล่านี้ทุกครั้งที่ deploy ดังนั้นแก้ค่าใดใน GitHub Environment `production` แล้วกด **Re-run failed jobs** หรือ push backend ครั้งถัดไปได้ทันที โดยไม่ต้อง encode Base64
+
+`NODE_ENV`, `PORT` และ `NODE_OPTIONS` ถูกกำหนดใน Compose แล้ว
+
+### Droplet prerequisites
+
+- Docker Engine และ Docker Compose plugin
+- Caddy บน host reverse proxy ไป `127.0.0.1:3005`
+- directory `/opt/pos-okhaidee` ที่ `DO_USER` เขียนได้
+- Firewall เปิด `22`, `80`, `443`; ไม่ต้องเปิด `3005` สู่ internet
+
+ตัวอย่าง Caddyfile:
+
+```caddy
+api.example.com {
+    reverse_proxy 127.0.0.1:3005
+}
+```
+
+Container ถูกจำกัด RAM ที่ 512 MB, CPU ที่ 0.8 core และหมุน log สูงสุดประมาณ 30 MB เพื่อให้เหมาะกับ Droplet 1 GB

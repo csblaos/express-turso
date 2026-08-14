@@ -1,4 +1,7 @@
 node_modules
+# Database setup is a standalone local tool; keep its own installed packages out
+# of the repository even when it is used independently from the POS app.
+database-setup/node_modules/
 dist
 frontend/node_modules
 frontend/.nuxt
@@ -24,7 +27,31 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# local credential notes
+dev-accounts.local.md
+
 # misc
 .DS_Store
 coverage
 .eslintcache
+.credentials/
+
+# Beszel runtime data and secrets
+monitoring/.env
+monitoring/data/
+monitoring/socket/
+monitoring/agent-data/
+monitoring/secrets/
+
+# Landing site build output. The site carries its own .gitignore as well; these
+# are here so the artefacts stay out even if it is merged into this repo.
+landing/node_modules/
+landing/.next/
+landing/.vinext/
+landing/dist/
+landing/out/
+landing/.wrangler/
+landing/outputs/
+landing/work/
+landing/.vercel/
+landing/.env*

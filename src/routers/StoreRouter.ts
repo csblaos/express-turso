@@ -4,6 +4,7 @@ import { StoreController } from "@controllers/StoreController";
 import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
 import { RoleScopeMiddleware } from "@middlewares/RoleScopeMiddleware";
+import { StorePaymentAccountRouter } from "@routers/StorePaymentAccountRouter";
 import CommonValidator from "@validators/CommonValidator";
 
 export class StoreRouter {
@@ -12,14 +13,20 @@ export class StoreRouter {
 
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getAll);
-			this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("stores.view"), StoreController.getById);
-			this.router.get("/:id/currency-rates", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRates);
-			this.router.get("/:id/currency-rates/history", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);
-			this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.create"), StoreController.create);
-			this.router.put("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), StoreController.update);
-			this.router.put("/:id/currency-rates", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.updateCurrencyRates);
-			this.router.delete("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("settings.store.archive"), StoreController.delete);
+		this.router.get("/", PermissionMiddleware.require("stores.view"), StoreController.getAll);
+		this.router.use("/:storeId/payment-accounts", StorePaymentAccountRouter.getInstance().getRouter());
+		this.router.get("/:id", PermissionMiddleware.require("stores.view"), StoreController.getById);
+		// Only stores.view: every item carries the permission needed to act on it and
+		// the client hides what the user cannot fix.
+		this.router.get("/:id/setup-status", PermissionMiddleware.require("stores.view"), CommonValidator.resourceId, StoreController.getSetupStatus);
+		this.router.post("/:id/setup-status/business-day-default", PermissionMiddleware.require("settings.store.update"), CommonValidator.resourceId, StoreController.confirmBusinessDayDefault);
+		this.router.get("/:id/cost-method/history", PermissionMiddleware.require("settings.finance.view"), CommonValidator.resourceId, StoreController.getCostMethodHistory);
+		this.router.get("/:id/currency-rates", PermissionMiddleware.require("settings.finance.view"), CommonValidator.resourceId, StoreController.getCurrencyRates);
+		this.router.get("/:id/currency-rates/history", PermissionMiddleware.require("settings.finance.view"), CommonValidator.resourceId, StoreController.getCurrencyRateHistory);
+		this.router.post("/", PermissionMiddleware.require("settings.store.create"), StoreController.create);
+		this.router.put("/:id", PermissionMiddleware.requireStoreSettingsUpdate(), StoreController.update);
+		this.router.put("/:id/currency-rates", PermissionMiddleware.require("settings.finance.update"), CommonValidator.resourceId, StoreController.updateCurrencyRates);
+		this.router.delete("/:id", PermissionMiddleware.require("settings.store.archive"), StoreController.delete);
 	}
 
 	static getInstance(): StoreRouter {

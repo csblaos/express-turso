@@ -267,11 +267,49 @@ Frontend ใช้ `frontend/.env` หรือ env จาก platform
 
 - สไตล์ฐานที่ต้องยึดตอนนี้คือ `/products`, `/inventory`, และหน้า PO ที่ปรับแล้วให้ใกล้เคียงกัน
 - modal หลักของสินค้า/PO ใช้ `desktop-width="680px"` เป็นค่าเริ่มต้น และใช้ header/footer แบบเต็มขอบ
+- pattern ของ modal/drawer ด้วย `AppResponsivePanel.vue` (สำคัญ):
+	- ใส่ `content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"` แล้วสร้าง layout ภายในเป็น `grid-rows-[minmax(0,1fr)_auto]`
+	- body scroll ใช้ `scrollbar-soft min-h-0 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2`
+	- footer ใช้ full-width bar + ยกขึ้นเหนือคีย์บอร์ดด้วย `:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"`
 - ตัวเลขเงินทั้งระบบแสดงเป็น `100₭ / 100฿ / 100$` ไม่แสดง `LAK / THB / USD` ต่อท้ายจำนวนเงิน
 - PO flow:
 	- `Draft` แก้ได้เต็ม
+	- `Draft` ใน modal รายละเอียดมี action `ยืนยันสั่งซื้อ` ที่ footer
 	- `Ordered` แก้ได้เฉพาะต้นทุน / rate / shipping / other cost
 	- `Received` ล็อกข้อมูล
 	- รองรับ `receive now / partial / later`
+- `ยังไม่รับตอนนี้` ตอนนี้เปลี่ยนสถานะเป็น `arrived` เพื่อบอกว่า PO มาถึงแล้วแต่ยังไม่ตัด stock
+- Store finance now has `cost_method` (`average` / `fifo`) and keeps change history; POS selling stays unchanged
 - PO detail ควรเปิดเร็วที่สุด และใช้ inline loading bar ใต้ header card เท่านั้น
+- sensitive multi-step writes ต้องใช้ libSQL write transaction เดียว (`db.transaction("write")`) เสมอ เช่น `PO create`, `PO receive`, `inventory adjust`, และ `store currency rate update`
 - ถ้าผู้ใช้บอกว่า `same style` โดยไม่ระบุหน้าอื่น ให้ยึด layout จาก `/products` และ `/inventory` เป็นหลัก
+- POS checkout flow ตอนนี้ใช้ modal กลางจอแบบ 2 step:
+	- step 1 = เลือก `เงินสด` หรือ `QR / โอน`
+	- step 2 = preview รายการสินค้า + bill summary
+	- header stepper เป็นแบบ compact line/dot และ step 2 จะยัง disabled จนกว่าจะเลือกวิธีชำระ
+	- confirm ตอนนี้ยังเป็น preview/toast flow ก่อนผูก backend payment จริง
+
+## 14) งานที่ทำเสร็จวันนี้
+
+- ปรับ PO payment flow และหน้าประวัติ payment แล้ว
+	- เพิ่ม payment settlement summary
+	- เพิ่ม variance / estimated base amount
+	- ทำ history UI ให้ดูรายละเอียดการชำระเงินได้
+- ปรับ logic รองรับต้นทุนสินค้าในตอนรับ PO
+	- เพิ่ม cost layer / cost summary สำหรับต่อยอด FIFO และต้นทุนเฉลี่ย
+	- ปรับ helper stock ให้คืนค่าจาก transaction โดยตรง
+- ตรวจสอบ migration และ build แล้ว
+	- build ผ่าน
+	- migration script รันผ่าน
+- ตรวจสอบ DB live แล้ว
+	- ตาราง cost มีอยู่จริง
+	- insert ทดสอบใน `inventory_cost_summaries` ผ่าน
+- ปรับ POS checkout modal ใน `frontend/pages/index.vue`
+	- ย้าย from action buttons ไปเป็น modal กลางจอ
+	- เพิ่ม stepper แบบ compact line/dot กดกลับ/ไปต่อได้
+	- step 2 ล็อกจนกว่าจะเลือก `เงินสด` หรือ `QR / โอน`
+	- step 2 แสดงรายการสินค้าในบิลและสรุปยอดชำระ
+- build frontend ผ่านแล้ว
+	- `npm --prefix frontend run build` ผ่าน
+- จุดที่ยังต้องตามต่อ
+	- ถ้า PO receive ยัง error อยู่ ให้ตามที่ `InventoryCostInterface.recordReceipt(...)` และรีสตาร์ต API runtime ให้โหลดโค้ดล่าสุด

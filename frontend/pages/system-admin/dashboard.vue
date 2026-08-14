@@ -147,11 +147,14 @@ const watchToneBadgeColorMap: Record<WatchItem["tone"], "success" | "warning" | 
 };
 
 const watchToneLabelMap: Record<WatchItem["tone"], string> = {
-	success: "Stable",
-	warning: "Check",
-	error: "Alert",
-	info: "Info",
+	success: "ປົກກະຕິ", warning: "ຄວນກວດ", error: "ແຈ້ງເຕືອນ", info: "ຂໍ້ມູນ",
 };
+
+function serviceStatusLabel(status: ServiceHealthStatus) {
+	if (status === "healthy") return "ປົກກະຕິ";
+	if (status === "degraded") return "ຊ້າກວ່າປົກກະຕິ";
+	return "ບໍ່ພ້ອມໃຊ້";
+}
 
 const combinedWarnings = computed(() => {
 	const values = new Set<string>();
@@ -170,7 +173,7 @@ const unhealthyServiceCount = computed(() => {
 });
 
 const lastRefreshedLabel = computed(() => {
-	if (!snapshot.value?.checked_at) return "ยังไม่ได้โหลด";
+	if (!snapshot.value?.checked_at) return "ຍັງບໍ່ໄດ້ໂຫຼດ";
 	return formatDateTime(snapshot.value.checked_at);
 });
 
@@ -183,34 +186,34 @@ const snapshotCards = computed<SnapshotCard[]>(() => {
 	return [
 		{
 			id: "clients",
-			label: "Active clients",
+			label: "ລູກຄ້າທີ່ໃຊ້ງານ",
 			value: String(data.client_summary.active),
 			tone: "success",
-			note: `จากทั้งหมด ${data.client_summary.total} บัญชีในระบบกลาง`,
+			note: `ຈາກທັງໝົດ ${data.client_summary.total} ບັນຊີໃນລະບົບກາງ`,
 			icon: "i-heroicons-user-group",
 		},
 		{
 			id: "suspended",
-			label: "Suspended",
+			label: "ບັນຊີຖືກລະງັບ",
 			value: String(data.client_summary.suspended),
 			tone: data.client_summary.suspended > 0 ? "warning" : "success",
-			note: data.client_summary.suspended > 0 ? "มีบัญชีที่ถูกพักการใช้งานและควรเปิดดูต่อ" : "ยังไม่พบบัญชีที่ถูกพักการใช้งาน",
+			note: data.client_summary.suspended > 0 ? "ມີບັນຊີຖືກລະງັບ ແລະ ຄວນເປີດເບິ່ງຕໍ່" : "ຍັງບໍ່ພົບບັນຊີທີ່ຖືກລະງັບ",
 			icon: "i-heroicons-no-symbol",
 		},
 		{
 			id: "sessions",
-			label: "Session policy",
+			label: "ນະໂຍບາຍ Session",
 			value: String(data.system.default_session_limit),
 			tone: "primary",
-			note: `Access token ${data.system.auth_access_token_ttl_minutes} นาที`,
+			note: `Access token ${data.system.auth_access_token_ttl_minutes} ນາທີ`,
 			icon: "i-heroicons-device-phone-mobile",
 		},
 		{
 			id: "alerts",
-			label: "Open alerts",
+			label: "ການແຈ້ງເຕືອນ",
 			value: String(openAlerts),
 			tone: openAlerts > 0 ? "error" : "success",
-			note: openAlerts > 0 ? "มี warning หรือ service issue ที่ควรเปิดดูต่อ" : "ยังไม่พบ warning สำคัญในรอบล่าสุด",
+			note: openAlerts > 0 ? "ມີຄຳເຕືອນ ຫຼື ບັນຫາບໍລິການທີ່ຄວນເບິ່ງຕໍ່" : "ຍັງບໍ່ພົບຄຳເຕືອນສຳຄັນ",
 			icon: "i-heroicons-exclamation-triangle",
 		},
 	];
@@ -231,31 +234,31 @@ const watchItems = computed<WatchItem[]>(() => {
 	return [
 		{
 			id: "service-health",
-			title: unhealthyServiceCount.value > 0 ? "Service health ต้องตรวจต่อ" : "Service health ปกติ",
-			description: `API ${data.monitoring.services.api.status}, DB ${data.monitoring.services.db.status}, Redis ${data.monitoring.services.redis.status}`,
+			title: unhealthyServiceCount.value > 0 ? "ສຸຂະພາບບໍລິການຄວນກວດຕໍ່" : "ສຸຂະພາບບໍລິການປົກກະຕິ",
+			description: `API ${serviceStatusLabel(data.monitoring.services.api.status)}, ຖານຂໍ້ມູນ ${serviceStatusLabel(data.monitoring.services.db.status)}, Redis ${serviceStatusLabel(data.monitoring.services.redis.status)}`,
 			tone: serviceHealthTone,
 			icon: "i-heroicons-signal",
 		},
 		{
 			id: "auth-posture",
-			title: jwtRisk ? "JWT / auth posture มีความเสี่ยง" : "Auth posture อยู่ในเกณฑ์ใช้ได้",
+			title: jwtRisk ? "JWT / auth ມີຄວາມສ່ຽງ" : "ສະຖານະ auth ຢູ່ໃນເກນໃຊ້ງານ",
 			description: jwtRisk
-				? `JWT secret length ${data.security.security.jwt_secret_length} และควรตรวจ config เพิ่ม`
-				: `Lockout ${data.security.auth_policy.lockout_minutes} นาที, failed attempts ${data.security.auth_policy.max_failed_attempts}`,
+				? `ຄວາມຍາວ JWT secret ${data.security.security.jwt_secret_length} ແລະ ຄວນກວດ config ເພີ່ມ`
+				: `ລະງັບບັນຊີ ${data.security.auth_policy.lockout_minutes} ນາທີ, ຜິດພາດໄດ້ ${data.security.auth_policy.max_failed_attempts} ຄັ້ງ`,
 			tone: authTone,
 			icon: "i-heroicons-shield-check",
 		},
 		{
 			id: "client-state",
-			title: data.client_summary.suspended > 0 ? "มีบัญชี client ถูกพักการใช้งาน" : "สถานะ client คงที่",
-			description: `Active ${data.client_summary.active} / Suspended ${data.client_summary.suspended} จากทั้งหมด ${data.client_summary.total}`,
+			title: data.client_summary.suspended > 0 ? "ມີບັນຊີລູກຄ້າຖືກລະງັບ" : "ສະຖານະລູກຄ້າປົກກະຕິ",
+			description: `ໃຊ້ງານ ${data.client_summary.active} / ຖືກລະງັບ ${data.client_summary.suspended} ຈາກທັງໝົດ ${data.client_summary.total}`,
 			tone: clientTone,
 			icon: "i-heroicons-user-group",
 		},
 		{
 			id: "policy-state",
-			title: policyTone === "error" ? "Build policy ควรตรวจ" : "System policy พร้อมใช้งาน",
-			description: `Latest build ${data.system.app_latest_build} / Min required ${data.system.app_min_required_build}`,
+			title: policyTone === "error" ? "ນະໂຍບາຍ build ຄວນກວດ" : "ນະໂຍບາຍລະບົບພ້ອມໃຊ້",
+			description: `build ຫຼ້າສຸດ ${data.system.app_latest_build} / build ຂັ້ນຕ່ຳ ${data.system.app_min_required_build}`,
 			tone: policyTone,
 			icon: "i-heroicons-cog-8-tooth",
 		},
@@ -269,33 +272,33 @@ const checkpoints = computed<Checkpoint[]>(() => {
 	return [
 		{
 			id: "refresh",
-			label: "Last refresh",
+			label: "ອັບເດດຫຼ້າສຸດ",
 			value: lastRefreshedLabel.value,
-			description: "snapshot ของ dashboard รอบล่าสุด",
+			description: "snapshot ຂອງແດຊບອດຮອບຫຼ້າສຸດ",
 		},
 		{
 			id: "policy",
-			label: "Build policy",
+			label: "ສະຖານະ build",
 			value: `${data.system.app_latest_build} / ${data.system.app_min_required_build}`,
-			description: "latest build เทียบกับ minimum build ที่บังคับใช้",
+			description: "build ຫຼ້າສຸດ ທຽບກັບ build ຂັ້ນຕ່ຳທີ່ບັງຄັບ",
 		},
 		{
 			id: "redis-driver",
-			label: "Redis driver",
+			label: "ໄດຣເວີ Redis",
 			value: data.security.security.redis_driver,
-			description: "driver ปัจจุบันที่ระบบ auth/session ใช้งาน",
+			description: "ໄດຣເວີທີ່ auth/session ໃຊ້ງານຢູ່",
 		},
 		{
 			id: "stores",
-			label: "Stores total",
+			label: "ຮ້ານທັງໝົດ",
 			value: String(data.monitoring.summary.stores_total),
-			description: "จำนวนร้านทั้งหมดจาก monitoring summary",
+			description: "ຈຳນວນຮ້ານຈາກ monitoring summary",
 		},
 	];
 });
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat("th-TH", {
+	return new Intl.DateTimeFormat("lo-LA", {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
@@ -314,8 +317,8 @@ async function loadDashboard(options?: { refresh?: boolean }) {
 		const response = await apiFetch<ApiEnvelope<DashboardSnapshot>>("/system-admin/dashboard");
 		snapshot.value = response.data;
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลด dashboard ไม่สำเร็จ", {
-			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู System Admin Dashboard",
+		error.value = resolveApiErrorMessage(err, "ໂຫຼດແດຊບອດບໍ່ສຳເລັດ", {
+			forbiddenMessage: "ບັນຊີນີ້ບໍ່ມີສິດເບິ່ງແດຊບອດຜູ້ດູແລລະບົບ",
 		});
 	} finally {
 		pending.value = false;
@@ -337,30 +340,29 @@ onMounted(async () => {
 		<AppSidebarShell
 			:nav-items="appNavItems"
 			:active-ids="['system-dashboard']"
-			sidebar-eyebrow="System"
-			sidebar-title="System Admin"
+			sidebar-eyebrow="ລະບົບ"
+			sidebar-title="ຜູ້ດູແລລະບົບ"
 		sidebar-compact-title="SYS"
-		sidebar-description="ภาพรวมของระบบกลาง, clients, policy, monitoring และ security จากมุมเดียว"
+		sidebar-description="ພາບລວມລະບົບກາງ, ລູກຄ້າ, ນະໂຍບາຍ, ການຕິດຕາມ ແລະ ຄວາມປອດໄພ"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
-				<AppPageHeader
-					title="Dashboard"
-					description="ภาพรวมสำหรับผู้ดูแลระบบกลาง ใช้ดู health, สถานะสำคัญ และทางลัดไปยังส่วนที่ต้องจัดการต่อ"
-					:tablet-layout="true"
+					<AppPageHeader
+						title="ແດຊບອດ"
+						description="ພາບລວມສຳລັບຜູ້ດູແລລະບົບ ເບິ່ງສະຖານະສຳຄັນ ແລະ ທາງລັດໄປຈັດການຕໍ່"
+						:title-badge="false"
+						compact
+						body-class="px-3 py-2.5 sm:px-4 sm:py-3"
+						:tablet-layout="true"
 					@menu="openSidebar"
 				>
-					<template #badges>
-						<UBadge color="primary" variant="soft" label="System Admin" />
-						<UBadge color="neutral" variant="soft" :label="`Refreshed ${lastRefreshedLabel}`" />
-					</template>
 					<template #actions>
 						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
 							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="refreshing" :spin-icon-on-loading="true" @click="refreshDashboard">
-								รีโหลด
+								ໂຫຼດໃໝ່
 							</AppButton>
 							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-user-group-20-solid" @click="navigateTo('/system-admin/clients')">
-								จัดการ Clients
+								ຈັດການລູກຄ້າ
 							</AppButton>
 						</div>
 					</template>
@@ -371,11 +373,11 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">System dashboard</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">หน้า overview สำหรับตัดสินใจว่าควรเปิดไปที่ clients, security, monitoring หรือ system policy ต่อทันที</p>
+									<p class="text-sm font-semibold text-stone-950">ແດຊບອດລະບົບ</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ພາບລວມເພື່ອເລືອກໄປຈັດການລູກຄ້າ, ຄວາມປອດໄພ, ການຕິດຕາມ ຫຼື ນະໂຍບາຍລະບົບ</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									4 widgets
+									4 ສ່ວນສະຫຼຸບ
 								</div>
 							</div>
 
@@ -417,11 +419,11 @@ onMounted(async () => {
 											<div class="space-y-4">
 												<div class="flex flex-wrap items-start justify-between gap-3">
 													<div>
-														<h2 class="text-lg font-semibold text-stone-950">Operations watchlist</h2>
-														<p class="mt-1 text-xs leading-5 text-stone-500">สรุปจุดที่ควรตรวจต่อจาก dashboard โดยไม่ต้องสลับหลายหน้าในทันที</p>
+														<h2 class="text-lg font-semibold text-stone-950">ລາຍການທີ່ຄວນຕິດຕາມ</h2>
+														<p class="mt-1 text-xs leading-5 text-stone-500">ສະຫຼຸບຈຸດທີ່ຄວນກວດຕໍ່ໂດຍບໍ່ຕ້ອງສະຫຼັບຫຼາຍໜ້າ</p>
 													</div>
 													<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-														{{ watchItems.length }} items
+														{{ watchItems.length }} ລາຍການ
 													</div>
 												</div>
 
@@ -458,8 +460,8 @@ onMounted(async () => {
 											<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 												<div class="space-y-4">
 													<div>
-														<h2 class="text-lg font-semibold text-stone-950">Recent checkpoints</h2>
-														<p class="mt-1 text-xs leading-5 text-stone-500">ค่าอ้างอิงสั้น ๆ เพื่อใช้เทียบก่อนลงไปหน้า detail</p>
+														<h2 class="text-lg font-semibold text-stone-950">ຈຸດກວດສອບຫຼ້າສຸດ</h2>
+														<p class="mt-1 text-xs leading-5 text-stone-500">ຂໍ້ມູນອ້າງອີງແບບຫຍໍ້ກ່ອນເຂົ້າເບິ່ງລາຍລະອຽດ</p>
 													</div>
 
 													<div class="space-y-3">

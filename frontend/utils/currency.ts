@@ -19,6 +19,13 @@ export function getCurrencySymbol(currency: CurrencyCode | string): string {
 	}
 }
 
+// Kip is never quoted with decimals, baht and dollars always are. The money
+// formatter defaults to none, which is right for the base currency but would
+// swallow a customer's satang when they pay in baht.
+export function currencyDecimals(currency: CurrencyCode | string): number {
+	return String(currency).toUpperCase() === "LAK" ? 0 : 2;
+}
+
 export function formatDecimal(value: number, options?: { locale?: string; maximumFractionDigits?: number; minimumFractionDigits?: number }) {
 	const locale = options?.locale ?? "th-TH";
 	const maximumFractionDigits = options?.maximumFractionDigits ?? 0;
@@ -46,3 +53,34 @@ export function formatMoneyWithSymbol(
 	return suffix ? `${formatted}${symbol}` : `${symbol}${formatted}`;
 }
 
+
+/**
+ * Formats a money value while it is being typed: keeps thousand separators in
+ * step with the digits, tolerates a trailing dot so "1000." stays typable, and
+ * caps the decimals. Pair it with a parser that strips commas before use.
+ */
+export function normalizeMoneyTyping(raw: string, options?: { maxDecimals?: number }) {
+	const maxDecimals = options?.maxDecimals ?? 2;
+	let normalized = String(raw ?? "").replace(/\s+/g, "").replace(/,/g, "").replace(/[^0-9.]/g, "");
+
+	const firstDot = normalized.indexOf(".");
+	if (firstDot !== -1) {
+		normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
+	}
+
+	if (!normalized) return "";
+
+	const hasTrailingDot = normalized.endsWith(".");
+	const [ intRaw = "", decRaw = "" ] = normalized.split(".");
+	// Typing after a leading zero would otherwise read "05,000"; a lone "0" is
+	// kept so "0" and "0.5" stay typable.
+	const intDigitsRaw = intRaw.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+	const decDigits = decRaw.replace(/\D/g, "").slice(0, Math.max(0, maxDecimals));
+
+	const needsLeadingZero = normalized.startsWith(".");
+	const intDigits = (intDigitsRaw || needsLeadingZero) ? (intDigitsRaw || "0") : "";
+	const intWithCommas = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : "";
+
+	if (hasTrailingDot) return `${intWithCommas || "0"}.`;
+	return decDigits ? `${intWithCommas || "0"}.${decDigits}` : intWithCommas;
+}

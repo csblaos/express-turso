@@ -2,10 +2,10 @@ import { Request, RequestHandler } from "express";
 
 import { ENV } from "@configs/ENV";
 import { RedisConn } from "@connections/RedisConn";
-import { AuthInterface } from "@interfaces/AuthInterface";
 import { RbacInterface } from "@interfaces/RbacInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { AuthToken } from "@utils/AuthToken";
+import { appendServerTiming } from "@utils/ServerTiming";
 
 type SessionRecord = {
 	id: string;
@@ -42,7 +42,7 @@ async function getJsonValue<T>(key: string): Promise<T | null> {
 
 export class AuthGuardMiddleware {
 	static requireAuth(): RequestHandler {
-		return async (req, _res, next) => {
+		return async (req, res, next) => {
 			try {
 				const authorization = req.header("authorization") || "";
 				const accessToken = authorization.startsWith("Bearer ")
@@ -58,12 +58,26 @@ export class AuthGuardMiddleware {
 					throw ApiError.UnauthorizedError("Invalid bearer token");
 				}
 
+				const sessionStartedAt = process.hrtime.bigint();
 				const session = await getJsonValue<SessionRecord>(`auth:session:${token.sid}`);
+				appendServerTiming(
+					res,
+					"session",
+					Number(process.hrtime.bigint() - sessionStartedAt) / 1_000_000,
+				);
 				if (!session || session.userId !== token.sub) {
 					throw ApiError.UnauthorizedError("Session expired or revoked");
 				}
 
-				const user = await AuthInterface.findUserById(token.sub);
+				const storeId = getStoreIdFromRequest(req);
+				const authDbStartedAt = process.hrtime.bigint();
+				const access = await RbacInterface.getRequestAccess(token.sub, storeId);
+				appendServerTiming(
+					res,
+					"auth-db",
+					Number(process.hrtime.bigint() - authDbStartedAt) / 1_000_000,
+				);
+				const user = access.user;
 				if (!user) {
 					throw ApiError.UnauthorizedError("User not found");
 				}
@@ -72,15 +86,12 @@ export class AuthGuardMiddleware {
 					throw ApiError.ForbiddenError("User is suspended");
 				}
 
-				const storeId = getStoreIdFromRequest(req);
-				const access = await RbacInterface.getUserPermissions(String(user.id), storeId);
-
 				req.auth = {
 					userId: String(user.id),
 					sessionId: token.sid,
 					systemRole: user.system_role,
 					storeId,
-					permissions: access.permissions.map((permission) => permission.key),
+					permissions: access.permissionKeys,
 				};
 
 				next();

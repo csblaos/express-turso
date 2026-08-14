@@ -77,10 +77,7 @@ const VISIBILITY_RESUME_REFRESH_THRESHOLD_SECONDS = 15;
 const SIGNAL_SLOT_COUNT = 24;
 const REFRESH_INTERVAL_STORAGE_KEY = "system-admin-security-refresh-interval-seconds";
 const refreshIntervalOptions = [
-	{ label: "30 วิ", value: 30 },
-	{ label: "1 นาที", value: 60 },
-	{ label: "3 นาที", value: 180 },
-	{ label: "5 นาที", value: 300 },
+	{ label: "30 ວິນາທີ", value: 30 }, { label: "1 ນາທີ", value: 60 }, { label: "3 ນາທີ", value: 180 }, { label: "5 ນາທີ", value: 300 },
 ];
 const pending = ref(true);
 const refreshing = ref(false);
@@ -99,13 +96,13 @@ function statusTone(status: ServiceHealthStatus) {
 }
 
 function statusLabel(status: ServiceHealthStatus) {
-	if (status === "healthy") return "Healthy";
-	if (status === "degraded") return "Degraded";
-	return "Down";
+	if (status === "healthy") return "ປົກກະຕິ";
+	if (status === "degraded") return "ຊ້າກວ່າປົກກະຕິ";
+	return "ບໍ່ພ້ອມໃຊ້";
 }
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat("th-TH", {
+	return new Intl.DateTimeFormat("lo-LA", {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
@@ -113,7 +110,7 @@ function formatDateTime(value: string) {
 
 function refreshIntervalLabel(seconds: number) {
 	const matched = refreshIntervalOptions.find((option) => option.value === seconds);
-	return matched?.label || `${seconds} วิ`;
+	return matched?.label || `${seconds} ວິນາທີ`;
 }
 
 function isAllowedRefreshInterval(seconds: number) {
@@ -220,8 +217,8 @@ async function loadSecurity(mode: "initial" | "manual" | "auto" = "initial") {
 		nextRefreshInSeconds.value = selectedRefreshIntervalSeconds.value;
 	} catch (err) {
 		if (!snapshot.value) {
-			error.value = resolveApiErrorMessage(err, "โหลด security monitoring ไม่สำเร็จ", {
-				forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู Security ของ System Admin",
+			error.value = resolveApiErrorMessage(err, "ໂຫຼດຂໍ້ມູນຄວາມປອດໄພບໍ່ສຳເລັດ", {
+				forbiddenMessage: "ບັນຊີນີ້ບໍ່ມີສິດເບິ່ງຄວາມປອດໄພຂອງລະບົບ",
 			});
 		}
 		if (getApiErrorStatus(err) === 403) {
@@ -290,28 +287,31 @@ onBeforeUnmount(() => {
 		<AppSidebarShell
 			:nav-items="appNavItems"
 			:active-ids="['system-security']"
-			sidebar-eyebrow="System"
-			sidebar-title="System Admin"
+			sidebar-eyebrow="ລະບົບ"
+			sidebar-title="ຜູ້ດູແລລະບົບ"
 		sidebar-compact-title="SYS"
-		sidebar-description="security dashboard สำหรับดู auth policy, JWT posture และ account risk summary"
+		sidebar-description="ພາບລວມ auth policy, JWT ແລະ ຄວາມສ່ຽງຂອງບັນຊີ"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
-				<AppPageHeader
-					title="Security"
-					description="ตรวจสถานะความปลอดภัยระบบกลาง: auth policy, account posture และ service health"
-					:tablet-layout="true"
+					<AppPageHeader
+						title="ຄວາມປອດໄພ"
+						description="ກວດສອບ auth policy, ສະຖານະບັນຊີ ແລະ ສຸຂະພາບຂອງບໍລິການ"
+						:title-badge="false"
+						compact
+						body-class="px-3 py-2.5 sm:px-4 sm:py-3"
+						:tablet-layout="true"
 					@menu="openSidebar"
 				>
 						<template #actions>
 							<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 lg:flex lg:w-auto">
 								<NuxtLink to="/system-admin/monitoring">
 									<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-signal-20-solid">
-										ดู Service health
+										ເບິ່ງສຸຂະພາບບໍລິການ
 									</AppButton>
 								</NuxtLink>
 								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending || refreshing" :disabled="pending || refreshing" :spin-icon-on-loading="true" @click="loadSecurity('manual')">
-									รีโหลด
+									ໂຫຼດໃໝ່
 								</AppButton>
 							</div>
 						</template>
@@ -322,12 +322,12 @@ onBeforeUnmount(() => {
 						<div class="flex h-full min-h-0 flex-col">
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
-										<p class="text-sm font-semibold text-stone-950">System security</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">อัปเดตอัตโนมัติตามช่วงเวลาที่เลือก และกดรีโหลดได้ทุกเมื่อ</p>
+										<p class="text-sm font-semibold text-stone-950">ຄວາມປອດໄພລະບົບ</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">ອັບເດດອັດຕະໂນມັດຕາມຮອບເວລາທີ່ເລືອກ ແລະ ໂຫຼດໃໝ່ໄດ້ທຸກເວລາ</p>
 									</div>
 									<div class="flex flex-wrap items-center gap-2">
 										<label class="flex items-center gap-2 rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-											<span>ทุก</span>
+											<span>ທຸກ</span>
 											<select
 												:value="selectedRefreshIntervalSeconds"
 												class="min-w-[88px] border-0 bg-transparent pr-6 text-right text-xs font-medium text-stone-700 focus:outline-none"
@@ -339,10 +339,10 @@ onBeforeUnmount(() => {
 											</select>
 										</label>
 										<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-											{{ refreshing ? `กำลังรีโหลด...` : `รีเฟรชใน ${nextRefreshInSeconds} วิ • ทุก ${refreshIntervalLabel(selectedRefreshIntervalSeconds)}` }}
+											{{ refreshing ? `ກຳລັງໂຫຼດໃໝ່...` : `ໂຫຼດໃໝ່ໃນ ${nextRefreshInSeconds} ວິນາທີ • ທຸກ ${refreshIntervalLabel(selectedRefreshIntervalSeconds)}` }}
 										</div>
 										<div v-if="snapshot" class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-											อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}
+											ອັບເດດລ່າສຸດ {{ formatDateTime(snapshot.checked_at) }}
 										</div>
 									</div>
 								</div>
@@ -364,8 +364,8 @@ onBeforeUnmount(() => {
 										<div class="space-y-4">
 											<div class="flex flex-wrap items-center justify-between gap-3">
 												<div>
-													<h2 class="text-lg font-semibold text-stone-950">Security dependency status</h2>
-													<p class="mt-1 text-xs leading-5 text-stone-500">สถานะย่อของ API, DB และ Redis สำหรับงาน security</p>
+													<h2 class="text-lg font-semibold text-stone-950">ສະຖານະບໍລິການດ້ານຄວາມປອດໄພ</h2>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ສະຫຼຸບສະຖານະ API, ຖານຂໍ້ມູນ ແລະ Redis ສຳລັບລະບົບຄວາມປອດໄພ</p>
 												</div>
 												<NuxtLink to="/system-admin/monitoring" class="shrink-0">
 													<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-top-right-on-square-20-solid">
@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
 												<div
 													v-for="service in [
 														{ id: 'api', label: 'API', data: snapshot.services.api },
-														{ id: 'db', label: 'Database', data: snapshot.services.db },
+																		{ id: 'db', label: 'ຖານຂໍ້ມູນ', data: snapshot.services.db },
 														{ id: 'redis', label: 'Redis', data: snapshot.services.redis },
 													]"
 													:key="service.id"
@@ -387,9 +387,9 @@ onBeforeUnmount(() => {
 														<p class="text-sm font-semibold text-stone-900">{{ service.label }}</p>
 														<UBadge :color="statusTone(service.data.status)" variant="soft" :label="statusLabel(service.data.status)" />
 													</div>
-													<p class="mt-2 text-xs font-medium text-stone-700">Latency: {{ service.data.latency_ms === null ? "n/a" : `${service.data.latency_ms}ms` }}</p>
+													<p class="mt-2 text-xs font-medium text-stone-700">Latency: {{ service.data.latency_ms === null ? "ບໍ່ມີຂໍ້ມູນ" : `${service.data.latency_ms} ms` }}</p>
 													<div class="mt-3 flex items-center justify-between gap-2 text-xs">
-														<p class="text-stone-500">Signal window</p>
+														<p class="text-stone-500">ຊ່ວງການກວດສອບ</p>
 														<p class="text-stone-500">{{ historyHealthyPercent(service.data.history) }}%</p>
 													</div>
 													<div class="mt-2 flex items-end gap-1">
@@ -434,37 +434,37 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Auth policy</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ค่าปัจจุบันจาก system_config ที่ใช้กับ login/session</p>
+												<h2 class="text-lg font-semibold text-stone-950">ນະໂຍບາຍການເຂົ້າລະບົບ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ຄ່າປັດຈຸບັນຈາກ system_config ທີ່ໃຊ້ກັບ login ແລະ session</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Access token TTL</p>
+													<p class="text-xs text-stone-500">ອາຍຸ Access token</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.access_token_ttl_minutes }} นาที</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Refresh token TTL</p>
+													<p class="text-xs text-stone-500">ອາຍຸ Refresh token</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.refresh_token_ttl_days }} วัน</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Remember me TTL</p>
+													<p class="text-xs text-stone-500">ອາຍຸ Remember me</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.remember_me_refresh_ttl_days }} วัน</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Session default limit</p>
+													<p class="text-xs text-stone-500">ຈຳນວນ session ເລີ່ມຕົ້ນ</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.default_session_limit }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Max failed attempts</p>
+													<p class="text-xs text-stone-500">ຈຳນວນຄັ້ງທີ່ຜິດສູງສຸດ</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.max_failed_attempts }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Lockout minutes</p>
+													<p class="text-xs text-stone-500">ເວລາລະງັບບັນຊີ (ນາທີ)</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.lockout_minutes }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5 sm:col-span-2">
-													<p class="text-xs text-stone-500">Allow multi session</p>
-													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.allow_multi_session ? "เปิด" : "ปิด" }}</p>
+													<p class="text-xs text-stone-500">ອະນຸຍາດຫຼາຍ session</p>
+													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.auth_policy.allow_multi_session ? "ເປີດ" : "ປິດ" }}</p>
 												</div>
 											</div>
 										</div>
@@ -473,14 +473,14 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Security posture</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ค่า environment ที่สำคัญต่อ auth stack</p>
+												<h2 class="text-lg font-semibold text-stone-950">ສະຖານະຄວາມປອດໄພ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ຄ່າ environment ທີ່ສຳຄັນຕໍ່ auth stack</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
 													<p class="text-xs text-stone-500">JWT secret</p>
 													<p class="mt-1 text-base font-semibold" :class="snapshot.security.jwt_secret_is_default ? 'text-rose-600' : 'text-emerald-700'">
-														{{ snapshot.security.jwt_secret_is_default ? "Default (เสี่ยง)" : "Custom" }}
+														{{ snapshot.security.jwt_secret_is_default ? "ຄ່າເລີ່ມຕົ້ນ (ມີຄວາມສ່ຽງ)" : "ກຳນົດເອງ" }}
 													</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -502,8 +502,8 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Account risk summary</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">สรุปสถานะบัญชีผู้ใช้ที่มีผลต่อความปลอดภัยระบบ</p>
+												<h2 class="text-lg font-semibold text-stone-950">ສະຫຼຸບຄວາມສ່ຽງຂອງບັນຊີ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ສະຫຼຸບສະຖານະບັນຊີຜູ້ໃຊ້ທີ່ສົ່ງຜົນຕໍ່ຄວາມປອດໄພ</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -515,7 +515,7 @@ onBeforeUnmount(() => {
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.summary.users_system_admin }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
-													<p class="text-xs text-stone-500">Superadmin</p>
+													<p class="text-xs text-stone-500">Super Admin</p>
 													<p class="mt-1 text-base font-semibold text-stone-900">{{ snapshot.summary.users_superadmin }}</p>
 												</div>
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -540,7 +540,7 @@ onBeforeUnmount(() => {
 												</div>
 											</div>
 											<div v-if="snapshot.warnings.length" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-												<p class="font-medium">Warnings</p>
+												<p class="font-medium">ຄຳເຕືອນ</p>
 												<p class="mt-1">{{ snapshot.warnings.join(" • ") }}</p>
 											</div>
 										</div>
@@ -549,8 +549,8 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Password hygiene</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ภาพรวมความพร้อมของบัญชีต่อการใช้งาน auth policy ปัจจุบัน</p>
+												<h2 class="text-lg font-semibold text-stone-950">ຄວາມພ້ອມຂອງລະຫັດຜ່ານ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ພາບລວມຄວາມພ້ອມຂອງບັນຊີຕາມ auth policy ປັດຈຸບັນ</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -576,8 +576,8 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Recent security activity</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ความเคลื่อนไหวที่มีผลต่อบัญชีใน {{ snapshot.recent_activity.window_hours }} ชั่วโมง</p>
+												<h2 class="text-lg font-semibold text-stone-950">ກິດຈະກຳຄວາມປອດໄພຫຼ້າສຸດ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ການເຄື່ອນໄຫວທີ່ສົ່ງຜົນຕໍ່ບັນຊີໃນ {{ snapshot.recent_activity.window_hours }} ຊົ່ວໂມງ</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -603,8 +603,8 @@ onBeforeUnmount(() => {
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
 										<div class="space-y-4">
 											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Auth telemetry</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">แรงกดดันของการ login ใน {{ snapshot.auth_telemetry.window_hours }} ชั่วโมงล่าสุด</p>
+												<h2 class="text-lg font-semibold text-stone-950">ຂໍ້ມູນການເຂົ້າລະບົບ</h2>
+												<p class="mt-1 text-xs leading-5 text-stone-500">ພາບລວມການ login ໃນ {{ snapshot.auth_telemetry.window_hours }} ຊົ່ວໂມງຫຼ້າສຸດ</p>
 											</div>
 											<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 												<div class="rounded-md bg-neutral-50 px-3 py-3.5">
@@ -640,18 +640,18 @@ onBeforeUnmount(() => {
 							<div class="fixed inset-x-0 bottom-0 z-[70] shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm lg:hidden">
 								<div class="mx-auto flex w-full max-w-[1100px] flex-col gap-2.5">
 									<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
-										<span v-if="pending">กำลังโหลด security…</span>
-										<span v-else-if="snapshot">อัปเดตล่าสุด {{ formatDateTime(snapshot.checked_at) }}</span>
-										<span v-else>ยังไม่มีข้อมูล security</span>
+										<span v-if="pending">ກຳລັງໂຫຼດຄວາມປອດໄພ…</span>
+										<span v-else-if="snapshot">ອັບເດດລ່າສຸດ {{ formatDateTime(snapshot.checked_at) }}</span>
+										<span v-else>ຍັງບໍ່ມີຂໍ້ມູນຄວາມປອດໄພ</span>
 									</div>
 									<div class="grid w-full grid-cols-2 gap-2">
 										<NuxtLink to="/system-admin/monitoring" class="w-full">
 											<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-signal-20-solid" :block="true">
-												Monitoring
+												ການຕິດຕາມ
 											</AppButton>
 										</NuxtLink>
 										<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" :block="true" @click="loadSecurity">
-											รีโหลด
+											ໂຫຼດໃໝ່
 										</AppButton>
 									</div>
 								</div>

@@ -4,6 +4,10 @@ import CommonValidator from "@validators/CommonValidator";
 import { ValidatorMiddleware } from "@middlewares/ValidatorMiddleware";
 
 const optionalText = z.string().trim().min(1).optional();
+const optionalDate = z.string()
+	.regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+	.refine((value) => Number.isFinite(new Date(`${value}T00:00:00+07:00`).getTime()), "must be a valid date")
+	.optional();
 
 const positiveInteger = z.preprocess((value) => {
 	if (typeof value === "string") {
@@ -24,6 +28,8 @@ export default class AuditEventValidator extends ValidatorMiddleware {
 		result: optionalText,
 		entity_type: optionalText,
 		actor_role: optionalText,
+		from: optionalDate,
+		to: optionalDate,
 		page: positiveInteger,
 		limit: positiveInteger,
 	});

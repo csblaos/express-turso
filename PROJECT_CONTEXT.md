@@ -33,6 +33,9 @@ It replaces the previous context docs:
 - Observability:
 	- request-id request/response log per request
 	- (optional) tracer can be added later if needed
+- Transaction rule:
+	- multi-step writes that must stay atomic should use a single libSQL write transaction (`db.transaction("write")`) with `COMMIT` / `ROLLBACK`
+	- use this for flows that touch more than one table or do `DELETE + INSERT` in the same action
 
 ---
 
@@ -381,5 +384,48 @@ Rule:
 	- `Ordered` = cost-only edit allowed
 	- `Received` = locked
 	- receive options = `now / partial / later`
+	- `later` maps to `arrived` so the PO waits for stock receiving without stock movement
+- Store finance now includes `cost_method` (`average` / `fifo`) with a small change history; POS price stays unchanged
 - PO detail should prioritize fast open state with inline loading under the header card, not a separate loading section.
 - If a future task says `same style` for product, inventory, or PO pages, treat these as the current shared baseline first before inventing a new pattern.
+- POS checkout flow baseline:
+	- ใช้ modal กลางจอแบบ 2 step แทน drawer ด้านขวา
+	- step 1 = เลือก `เงินสด` หรือ `QR / โอน`
+	- step 2 = preview รายการสินค้า + bill summary
+	- step header เป็นแบบ compact line/dot และคลิกกลับ step ได้
+	- step 2 ต้อง disabled จนกว่าจะเลือกวิธีชำระ
+	- confirm ตอนนี้ยังเป็น preview/toast flow ก่อนผูก backend payment จริง
+
+## 16) Work completed today
+
+- Updated PO payment flow and history UI:
+	- `frontend/pages/purchase-orders.vue`
+	- `frontend/pages/purchase-orders/history.vue`
+	- added payment settlement summary, variance fields, and payment history details
+- Extended PO payment persistence:
+	- `src/interfaces/PurchaseOrderInterface.ts`
+	- `src/models/PurchaseOrderPayment.ts`
+	- added support for `estimated_amount_base` and `variance_base`
+- Added inventory cost layering support for PO receipt:
+	- `src/interfaces/InventoryCostInterface.ts`
+	- receipt flow now records cost layer / summary data for future FIFO and average-cost work
+- Updated inventory stock helpers:
+	- `src/interfaces/InventoryInterface.ts`
+	- removed the old read-back verification path and now returns computed balance/movement data directly from the transaction
+- Build / migration status verified:
+	- `npm run build` passed
+	- `npm run build:web` passed
+	- `node dist/scripts/Migrate.js` ran successfully
+- Live DB verification:
+	- confirmed cost tables exist in Turso
+	- confirmed direct insert into `inventory_cost_summaries` works
+- Updated POS checkout modal/stepper in `frontend/pages/index.vue`:
+	- moved the payment flow into a centered modal
+	- added compact line/dot step navigation in the modal header
+	- step 2 stays disabled until a payment method is selected
+	- step 2 shows cart item preview and bill summary
+	- confirm action is preview/toast only for now
+- Frontend build verified:
+	- `npm --prefix frontend run build` passed
+- Current follow-up area:
+	- PO receive path still needs one more runtime/debug pass around `InventoryCostInterface.recordReceipt(...)` if the live API continues to show the old 404 stack

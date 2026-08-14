@@ -75,6 +75,7 @@ export default class RbacValidator extends ValidatorMiddleware {
 	private static readonly createStoreMemberBodySchema = z.object({
 		store_id: nonEmptyString,
 		name: nonEmptyString,
+		username: z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._]{2,31}$/),
 		email: z.string().trim().email(),
 		password: z.string().min(6, "password must be at least 6 characters"),
 		role_id: nonEmptyString.optional(),

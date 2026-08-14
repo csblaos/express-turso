@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { InValue } from "@libsql/client";
 import bcrypt from "bcryptjs";
 
-import { AuthInterface } from "@interfaces/AuthInterface";
+import { assertUsername, AuthInterface } from "@interfaces/AuthInterface";
 import { DbConn } from "@connections/DbConn";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { Permission } from "@models/Permission";
@@ -34,6 +34,17 @@ type UserAccessSummary = {
 	memberships: UserAccessMembership[];
 };
 
+type RequestAccessUser = {
+	id: string;
+	system_role: string;
+	client_suspended: number;
+};
+
+export type RequestAccess = {
+	user: RequestAccessUser | null;
+	permissionKeys: string[];
+};
+
 type StoreMemberRoleAssignment = {
 	store_id: string;
 	user_id: string;
@@ -46,6 +57,7 @@ type StoreMemberListItem = {
 	store_id: string;
 	user_id: string;
 	name: string;
+	username: string;
 	email: string;
 	system_role: string;
 	ui_locale: string;
@@ -61,6 +73,7 @@ type StoreMemberListItem = {
 type StoreMemberCreateInput = {
 	store_id: string;
 	name: string;
+	username: string;
 	email: string;
 	password: string;
 	role_id?: string;
@@ -90,6 +103,13 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "pos.create_order", resource: "pos", action: "create_order" },
 	{ key: "pos.apply_discount", resource: "pos", action: "apply_discount" },
 	{ key: "pos.override_price", resource: "pos", action: "override_price" },
+	{ key: "pos.restaurant.open", resource: "pos.restaurant", action: "open" },
+	{ key: "pos.restaurant.send_kitchen", resource: "pos.restaurant", action: "send_kitchen" },
+	{ key: "pos.restaurant.transfer", resource: "pos.restaurant", action: "transfer" },
+	{ key: "pos.restaurant.cancel_sent", resource: "pos.restaurant", action: "cancel_sent" },
+	{ key: "pos.restaurant.apply_promotion", resource: "pos.restaurant", action: "apply_promotion" },
+	{ key: "pos.restaurant.print", resource: "pos.restaurant", action: "print" },
+	{ key: "dashboard.view", resource: "dashboard", action: "view" },
 	{ key: "products.read", resource: "products", action: "read" },
 	{ key: "products.view", resource: "products", action: "view" },
 	{ key: "products.create", resource: "products", action: "create" },
@@ -97,6 +117,10 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "products.update_cost", resource: "products", action: "update_cost" },
 	{ key: "products.deactivate", resource: "products", action: "deactivate" },
 	{ key: "products.archive", resource: "products", action: "archive" },
+	{ key: "promotions.view", resource: "promotions", action: "view" },
+	{ key: "promotions.create", resource: "promotions", action: "create" },
+	{ key: "promotions.update", resource: "promotions", action: "update" },
+	{ key: "promotions.archive", resource: "promotions", action: "archive" },
 	{ key: "inventory.read", resource: "inventory", action: "read" },
 	{ key: "inventory.view", resource: "inventory", action: "view" },
 	{ key: "inventory.adjust", resource: "inventory", action: "adjust" },
@@ -126,12 +150,25 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "settings.store.create", resource: "settings.store", action: "create" },
 	{ key: "settings.store.update", resource: "settings.store", action: "update" },
 	{ key: "settings.store.archive", resource: "settings.store", action: "archive" },
+	{ key: "settings.printing.view", resource: "settings.printing", action: "view" },
+	{ key: "settings.printing.update", resource: "settings.printing", action: "update" },
+	{ key: "settings.finance.view", resource: "settings.finance", action: "view" },
+	{ key: "settings.finance.update", resource: "settings.finance", action: "update" },
+	{ key: "settings.stock_policy.view", resource: "settings.stock_policy", action: "view" },
+	{ key: "settings.stock_policy.update", resource: "settings.stock_policy", action: "update" },
+	{ key: "settings.payments.view", resource: "settings.payments", action: "view" },
+	{ key: "settings.payments.update", resource: "settings.payments", action: "update" },
+	{ key: "settings.customer_display.view", resource: "settings.customer_display", action: "view" },
+	{ key: "settings.customer_display.update", resource: "settings.customer_display", action: "update" },
+	{ key: "settings.restaurant.view", resource: "settings.restaurant", action: "view" },
+	{ key: "settings.restaurant.update", resource: "settings.restaurant", action: "update" },
 	{ key: "settings.users.view", resource: "settings.users", action: "view" },
 	{ key: "settings.users.create", resource: "settings.users", action: "create" },
 	{ key: "settings.users.update", resource: "settings.users", action: "update" },
 	{ key: "settings.users.suspend", resource: "settings.users", action: "suspend" },
 	{ key: "settings.users.assign_role", resource: "settings.users", action: "assign_role" },
 	{ key: "settings.users.reset_password", resource: "settings.users", action: "reset_password" },
+	{ key: "settings.users.remove_member", resource: "settings.users", action: "remove_member" },
 	{ key: "settings.roles.view", resource: "settings.roles", action: "view" },
 	{ key: "settings.roles.create", resource: "settings.roles", action: "create" },
 	{ key: "settings.roles.update", resource: "settings.roles", action: "update" },
@@ -154,6 +191,7 @@ const DEFAULT_PERMISSION_SEED = [
 	{ key: "system_admin.dashboard.view", resource: "system_admin.dashboard", action: "view" },
 	{ key: "system_admin.monitoring.view", resource: "system_admin.monitoring", action: "view" },
 	{ key: "system_admin.security.view", resource: "system_admin.security", action: "view" },
+	{ key: "system_admin.reports.view", resource: "system_admin.reports", action: "view" },
 	{ key: "system_admin.clients.view", resource: "system_admin.clients", action: "view" },
 	{ key: "system_admin.clients.create", resource: "system_admin.clients", action: "create" },
 	{ key: "system_admin.clients.update", resource: "system_admin.clients", action: "update" },
@@ -163,6 +201,8 @@ const DEFAULT_PERMISSION_SEED = [
 
 const DEFAULT_STORE_MEMBER_ROLE_NAME = "Cashier";
 const DEFAULT_STORE_OWNER_ROLE_NAME = "Owner";
+const STORE_ROLE_PRESET_SCHEMA_VERSION = 5;
+const RETIRED_STORE_ROLE_NAMES = [ "Viewer" ] as const;
 
 const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 	name: string;
@@ -172,35 +212,53 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Owner",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
-			"pos.override_price",
+			"dashboard.view",
+			"pos.restaurant.open",
+			"pos.restaurant.send_kitchen",
+			"pos.restaurant.transfer",
+			"pos.restaurant.cancel_sent",
+			"pos.restaurant.apply_promotion",
+			"pos.restaurant.print",
 			"products.view",
 			"products.create",
 			"products.update",
 			"products.update_cost",
 			"products.archive",
+			"promotions.view",
+			"promotions.create",
+			"promotions.update",
+			"promotions.archive",
 			"inventory.view",
 			"inventory.adjust",
-			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
-			"purchase_orders.cancel",
 			"purchase_orders.receive",
 			"reports.view",
-			"reports.export",
 			"activity.view",
 			"stores.view",
-			"stores.update",
 			"settings.view",
 			"settings.store.view",
 			"settings.store.update",
+			"settings.printing.view",
+			"settings.printing.update",
+			"settings.finance.view",
+			"settings.finance.update",
+			"settings.stock_policy.view",
+			"settings.stock_policy.update",
+			"settings.payments.view",
+			"settings.payments.update",
+			"settings.customer_display.view",
+			"settings.customer_display.update",
+			"settings.restaurant.view",
+			"settings.restaurant.update",
 			"settings.users.view",
 			"settings.users.create",
 			"settings.users.update",
 			"settings.users.suspend",
 			"settings.users.assign_role",
 			"settings.users.reset_password",
+			"settings.users.remove_member",
 			"settings.roles.view",
 			"settings.roles.create",
 			"settings.roles.update",
@@ -211,59 +269,102 @@ const DEFAULT_STORE_ROLE_PRESETS: ReadonlyArray<{
 		name: "Manager",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
+			"dashboard.view",
+			"pos.restaurant.open",
+			"pos.restaurant.send_kitchen",
+			"pos.restaurant.transfer",
+			"pos.restaurant.cancel_sent",
+			"pos.restaurant.apply_promotion",
+			"pos.restaurant.print",
 			"products.view",
 			"products.create",
 			"products.update",
+			"products.update_cost",
+			"products.archive",
+			"promotions.view",
+			"promotions.create",
+			"promotions.update",
+			"promotions.archive",
 			"inventory.view",
 			"inventory.adjust",
-			"inventory.adjust_negative",
 			"purchase_orders.view",
 			"purchase_orders.create",
 			"purchase_orders.update",
 			"purchase_orders.receive",
 			"reports.view",
-			"reports.export",
 			"activity.view",
+			"stores.view",
 			"settings.view",
+			"settings.store.view",
+			"settings.printing.view",
+			"settings.printing.update",
+			"settings.stock_policy.view",
+			"settings.stock_policy.update",
+			"settings.customer_display.view",
+			"settings.customer_display.update",
+			"settings.users.view",
+			"settings.users.update",
+			"settings.users.suspend",
+			"settings.users.reset_password",
+			"settings.restaurant.view",
+			"settings.restaurant.update",
+		],
+	},
+	{
+		name: "Store Admin",
+		permissionKeys: [
+			"pos.create_order",
+			"dashboard.view",
+			"pos.restaurant.open",
+			"pos.restaurant.send_kitchen",
+			"pos.restaurant.transfer",
+			"pos.restaurant.cancel_sent",
+			"pos.restaurant.apply_promotion",
+			"pos.restaurant.print",
+			"products.view",
+			"promotions.view",
+			"inventory.view",
+			"purchase_orders.view",
+			"reports.view",
+			"activity.view",
+			"stores.view",
+			"settings.view",
+			"settings.store.view",
+			"settings.printing.view",
+			"settings.customer_display.view",
+			"settings.restaurant.view",
+			"settings.restaurant.update",
 			"settings.users.view",
 			"settings.users.create",
 			"settings.users.update",
 			"settings.users.suspend",
 			"settings.users.assign_role",
+			"settings.users.reset_password",
 		],
 	},
 	{
 		name: "Cashier",
 		permissionKeys: [
 			"pos.create_order",
-			"pos.apply_discount",
-			"products.view",
-			"inventory.view",
-			"purchase_orders.view",
+			"dashboard.view",
+			"pos.restaurant.open",
+			"pos.restaurant.send_kitchen",
+			"pos.restaurant.transfer",
+			"pos.restaurant.apply_promotion",
+			"pos.restaurant.print",
 		],
 	},
 	{
 		name: "Inventory Staff",
 		permissionKeys: [
+			"dashboard.view",
 			"products.view",
 			"inventory.view",
 			"inventory.adjust",
 			"purchase_orders.view",
 			"purchase_orders.create",
+			"purchase_orders.update",
 			"purchase_orders.receive",
-		],
-	},
-	{
-		name: "Viewer",
-		permissionKeys: [
-			"products.view",
-			"inventory.view",
-			"purchase_orders.view",
-			"reports.view",
-			"stores.view",
-			"settings.view",
-			"activity.view",
 		],
 	},
 ] as const;
@@ -381,6 +482,7 @@ export class RbacInterface {
 				PRIMARY KEY (store_id, user_id)
 			)
 		`);
+		await db.execute("CREATE INDEX IF NOT EXISTS idx_store_members_user_status_store ON store_members(user_id, status, store_id)");
 
 		await RbacInterface.ensureRoleColumns();
 	}
@@ -424,6 +526,65 @@ export class RbacInterface {
 		});
 
 		return RbacInterface.ensurePermissionSeedPromise;
+	}
+
+	static async warmup(): Promise<void> {
+		await RbacInterface.ensurePermissionSeed();
+	}
+
+	static async getRequestAccess(userId: string, storeId?: string): Promise<RequestAccess> {
+		await RbacInterface.ensurePermissionSeed();
+		const db = DbConn.getClient();
+		const permissionWhere = [ "sm.user_id = ?", "sm.status = ?" ];
+		const permissionArgs: InValue[] = [ userId, "active" ];
+
+		if (storeId) {
+			permissionWhere.push("sm.store_id = ?");
+			permissionArgs.push(storeId);
+		}
+
+		const [ userResult, permissionResult ] = await db.batch([
+			{
+				sql: `
+					SELECT id, system_role, client_suspended
+					FROM users
+					WHERE id = ?
+					LIMIT 1
+				`,
+				args: [ userId ],
+			},
+			{
+				sql: `
+					SELECT p.key AS permission_key
+					FROM store_members sm
+					INNER JOIN roles r
+						ON r.id = sm.role_id
+						AND r.deleted_at IS NULL
+					LEFT JOIN role_permissions rp ON rp.role_id = r.id
+					LEFT JOIN permissions p ON p.id = rp.permission_id
+					WHERE ${permissionWhere.join(" AND ")}
+				`,
+				args: permissionArgs,
+			},
+		], "read");
+
+		const userRow = userResult.rows[0] as Record<string, unknown> | undefined;
+		const permissionKeys = Array.from(new Set(
+			permissionResult.rows
+				.map((row) => String(row.permission_key || ""))
+				.filter(Boolean),
+		));
+
+		return {
+			user: userRow
+				? {
+					id: String(userRow.id),
+					system_role: String(userRow.system_role || "staff"),
+					client_suspended: Number(userRow.client_suspended || 0),
+				}
+				: null,
+			permissionKeys,
+		};
 	}
 
 	static async listPermissions(): Promise<Permission[]> {
@@ -670,14 +831,28 @@ export class RbacInterface {
 				]),
 			);
 			const missingPresets = DEFAULT_STORE_ROLE_PRESETS.filter((preset) => !rolesByName.has(normalizeRoleName(preset.name)));
-			if (missingPresets.length === 0) {
-				RbacInterface.defaultRolesReadyByStore.add(storeId);
-				return;
-			}
-
 			const availablePermissionMap = await RbacInterface.getAvailablePermissionKeyMap();
+			await db.execute(`
+				CREATE TABLE IF NOT EXISTS store_role_preset_migrations (
+					store_id TEXT NOT NULL,
+					version INTEGER NOT NULL,
+					applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (store_id, version)
+				)
+			`);
+			const migrationResult = await db.execute({
+				sql: `
+					SELECT 1
+					FROM store_role_preset_migrations
+					WHERE store_id = ? AND version = ?
+					LIMIT 1
+				`,
+				args: [ storeId, STORE_ROLE_PRESET_SCHEMA_VERSION ],
+			});
+			const shouldReconcilePresets = migrationResult.rows.length === 0;
 
-			// Backfill new permissions into existing system presets without removing custom permissions.
+			// Existing installations are reconciled once per preset schema version. Later
+			// user edits remain intact, while newly introduced keys can still be backfilled.
 			for (const preset of DEFAULT_STORE_ROLE_PRESETS) {
 				const existing = rolesByName.get(normalizeRoleName(preset.name));
 				if (!existing || existing.is_system !== 1) continue;
@@ -686,25 +861,85 @@ export class RbacInterface {
 					availablePermissionMap,
 				);
 				if (compatiblePresetKeys.length === 0) continue;
-				await RbacInterface.addRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				if (shouldReconcilePresets) {
+					await RbacInterface.replaceRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				} else {
+					await RbacInterface.addRolePermissionsByKeys(existing.id, compatiblePresetKeys);
+				}
 			}
 
-			for (const preset of missingPresets) {
-				const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
-					preset.permissionKeys,
-					availablePermissionMap,
+			// Creating the presets through createRole() costs six round trips per
+			// role, which dominates store creation on a remote database. Every role
+			// row and its permission rows go out in a single batch instead.
+			if (missingPresets.length > 0) {
+				const permissionIdByKey = new Map(
+					(await RbacInterface.listPermissions()).map((permission) => [ permission.key, permission.id ]),
 				);
-				if (compatiblePresetKeys.length === 0) continue;
+				const createdAt = new Date().toISOString();
+				const statements: { sql: string; args: InValue[] }[] = [];
 
-				const created = await RbacInterface.createRole({
-					store_id: storeId,
-					name: preset.name,
-					is_system: 1,
-				}, compatiblePresetKeys);
-				rolesByName.set(normalizeRoleName(created.name), {
-					id: created.id,
-					name: created.name,
-					is_system: Number(created.is_system || 0),
+				for (const preset of missingPresets) {
+					const compatiblePresetKeys = RbacInterface.resolveCompatiblePermissionKeys(
+						preset.permissionKeys,
+						availablePermissionMap,
+					);
+					if (compatiblePresetKeys.length === 0) continue;
+
+					const roleId = randomUUID();
+					statements.push({
+						sql: `
+							INSERT INTO roles (id, store_id, name, is_system, created_at)
+							VALUES (?, ?, ?, ?, ?)
+						`,
+						args: [ roleId, storeId, preset.name, 1, createdAt ],
+					});
+
+					const permissionIds = compatiblePresetKeys
+						.map((key) => permissionIdByKey.get(key))
+						.filter((permissionId): permissionId is string => Boolean(permissionId));
+					if (permissionIds.length > 0) {
+						statements.push({
+							sql: `
+								INSERT INTO role_permissions (role_id, permission_id)
+								VALUES ${permissionIds.map(() => "(?, ?)").join(", ")}
+							`,
+							args: permissionIds.flatMap((permissionId) => [ roleId, permissionId ]),
+						});
+					}
+
+					rolesByName.set(normalizeRoleName(preset.name), {
+						id: roleId,
+						name: preset.name,
+						is_system: 1,
+					});
+				}
+
+				if (statements.length > 0) {
+					await db.batch(statements, "write");
+				}
+			}
+
+			if (shouldReconcilePresets) {
+				for (const retiredRoleName of RETIRED_STORE_ROLE_NAMES) {
+					const retiredRole = rolesByName.get(normalizeRoleName(retiredRoleName));
+					if (!retiredRole || retiredRole.is_system !== 1) continue;
+					const memberResult = await db.execute({
+						sql: "SELECT 1 FROM store_members WHERE role_id = ? LIMIT 1",
+						args: [ retiredRole.id ],
+					});
+					if (memberResult.rows.length > 0) continue;
+					await db.execute({
+						sql: "UPDATE roles SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+						args: [ retiredRole.id ],
+					});
+				}
+
+				await db.execute({
+					sql: `
+						INSERT OR IGNORE INTO store_role_preset_migrations (store_id, version)
+						VALUES (?, ?)
+					`,
+					args: [ storeId, STORE_ROLE_PRESET_SCHEMA_VERSION ],
 				});
 			}
 
@@ -846,7 +1081,7 @@ export class RbacInterface {
 			scopedArgs.push(storeId);
 		}
 
-		const membershipsResult = await db.execute({
+		const membershipsQuery = {
 			sql: `
 				SELECT
 					sm.store_id,
@@ -866,9 +1101,9 @@ export class RbacInterface {
 				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
 			`,
 			args: [ userId ],
-		});
+		};
 
-		const scopedPermissionsResult = await db.execute({
+		const scopedPermissionsQuery = {
 			sql: `
 				SELECT
 					sm.store_id,
@@ -888,7 +1123,14 @@ export class RbacInterface {
 				ORDER BY sm.store_id, r.name, p.resource, p.action, p.key
 			`,
 			args: scopedArgs,
-		});
+		};
+
+		const [ membershipsResult, scopedPermissionsResult ] = storeId
+			? await db.batch([ membershipsQuery, scopedPermissionsQuery ], "read")
+			: await (async () => {
+				const result = await db.execute(membershipsQuery);
+				return [ result, result ] as const;
+			})();
 
 		const membershipMap = new Map<string, UserAccessMembership>();
 		const permissionMap = new Map<string, Permission>();
@@ -985,9 +1227,9 @@ export class RbacInterface {
 		}
 
 		if (params.search?.trim()) {
-			where.push("(LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ?)");
+			where.push("(LOWER(u.name) LIKE ? OR LOWER(u.username) LIKE ? OR LOWER(u.email) LIKE ?)");
 			const keyword = `%${params.search.trim().toLowerCase()}%`;
-			args.push(keyword, keyword);
+			args.push(keyword, keyword, keyword);
 		}
 
 		const result = await db.execute({
@@ -1000,6 +1242,7 @@ export class RbacInterface {
 					sm.created_at,
 					sm.added_by,
 					u.name,
+					u.username,
 					u.email,
 					u.system_role,
 					u.ui_locale,
@@ -1027,6 +1270,7 @@ export class RbacInterface {
 					store_id: String(row.store_id),
 					user_id: String(row.user_id),
 					name: String(row.name),
+					username: String(row.username || ""),
 					email: String(row.email),
 					system_role: String(row.system_role || "staff"),
 					ui_locale: String(row.ui_locale || "th"),
@@ -1072,21 +1316,28 @@ export class RbacInterface {
 		if (existingUser.rows.length > 0) {
 			userId = String(existingUser.rows[0].id);
 		} else {
+			const normalizedUsername = assertUsername(payload.username);
+			const existingUsername = await db.execute({
+				sql: "SELECT 1 FROM users WHERE LOWER(username) = ? LIMIT 1",
+				args: [ normalizedUsername.toLowerCase() ],
+			});
+			if (existingUsername.rows.length > 0) throw new Error("USERNAME_TAKEN");
 			const passwordHash = await bcrypt.hash(payload.password, 10);
 			const now = new Date().toISOString();
 			userId = randomUUID();
 			const insertResult = await db.execute({
 				sql: `
 					INSERT INTO users (
-						id, email, name, password_hash, created_at, session_limit, system_role,
+					id, email, name, username, password_hash, created_at, session_limit, system_role,
 						created_by, must_change_password, password_updated_at, ui_locale, client_suspended
 					)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 				args: [
 					userId,
 					normalizedEmail,
 					payload.name.trim(),
+					normalizedUsername,
 					passwordHash,
 					now,
 					null,
@@ -1167,6 +1418,15 @@ export class RbacInterface {
 		});
 
 		return RbacInterface.getStoreMemberById(payload.store_id, payload.user_id);
+	}
+
+	static async deleteStoreMember(storeId: string, userId: string): Promise<void> {
+		const db = DbConn.getClient();
+		const owner = await db.execute({ sql: "SELECT owner_user_id FROM stores WHERE id = ? LIMIT 1", args: [ storeId ] });
+		if (owner.rows[0]?.owner_user_id && String(owner.rows[0].owner_user_id) === userId) {
+			throw new Error("STORE_OWNER_DELETE_FORBIDDEN");
+		}
+		await db.execute({ sql: "DELETE FROM store_members WHERE store_id = ? AND user_id = ?", args: [ storeId, userId ] });
 	}
 
 	static async softDeleteRole(id: string): Promise<RoleWithPermissions | null> {

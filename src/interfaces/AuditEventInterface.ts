@@ -11,6 +11,9 @@ export type AuditEventFilters = {
 	result?: string;
 	entityType?: string;
 	actorRole?: string;
+	from?: string;
+	to?: string;
+	excludePrivilegedActors?: boolean;
 	page?: number;
 	limit?: number;
 };
@@ -42,6 +45,9 @@ export type AuditEventRecord = {
 	action: string;
 	entity_type: string;
 	entity_id: string | null;
+	related_order_no: string | null;
+	related_queue_no: string | null;
+	related_table_name: string | null;
 	result: string;
 	reason_code: string | null;
 	ip_address: string | null;
@@ -107,6 +113,9 @@ function mapRow(row: Record<string, unknown>): AuditEventRecord {
 		action: String(row.action),
 		entity_type: String(row.entity_type),
 		entity_id: row.entity_id ? String(row.entity_id) : null,
+		related_order_no: row.related_order_no ? String(row.related_order_no) : null,
+		related_queue_no: row.related_queue_no ? String(row.related_queue_no) : null,
+		related_table_name: row.related_table_name ? String(row.related_table_name) : null,
 		result: String(row.result),
 		reason_code: row.reason_code ? String(row.reason_code) : null,
 		ip_address: row.ip_address ? String(row.ip_address) : null,
@@ -122,7 +131,7 @@ function mapRow(row: Record<string, unknown>): AuditEventRecord {
 export class AuditEventInterface {
 	private static initialized = false;
 
-	private static async ensureTable(): Promise<void> {
+	static async ensureTable(): Promise<void> {
 		if (AuditEventInterface.initialized) return;
 
 		const db = DbConn.getClient();
@@ -173,7 +182,7 @@ export class AuditEventInterface {
 		if (filters.query) {
 			const like = `%${filters.query.trim().toLowerCase()}%`;
 			where.push(
-				"(LOWER(COALESCE(actor_name, '')) LIKE ? OR LOWER(action) LIKE ? OR LOWER(entity_type) LIKE ? OR LOWER(COALESCE(entity_id, '')) LIKE ? OR LOWER(COALESCE(request_id, '')) LIKE ?)",
+				"(LOWER(COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id), '')) LIKE ? OR LOWER(action) LIKE ? OR LOWER(entity_type) LIKE ? OR LOWER(COALESCE(entity_id, '')) LIKE ? OR LOWER(COALESCE(request_id, '')) LIKE ?)",
 			);
 			args.push(like, like, like, like, like);
 		}
@@ -198,6 +207,28 @@ export class AuditEventInterface {
 			args.push(filters.actorRole);
 		}
 
+		// Activity dates are business-facing calendar dates in Laos time. Use an
+		// exclusive end so the full final day is included without relying on 23:59.
+		if (filters.from) {
+			where.push("occurred_at >= ?");
+			args.push(new Date(`${filters.from}T00:00:00+07:00`).toISOString());
+		}
+		if (filters.to) {
+			const end = new Date(`${filters.to}T00:00:00+07:00`);
+			end.setUTCDate(end.getUTCDate() + 1);
+			where.push("occurred_at < ?");
+			args.push(end.toISOString());
+		}
+
+		if (filters.excludePrivilegedActors) {
+			where.push(`LOWER(COALESCE(actor_role, '')) NOT IN ('superadmin', 'system_admin')
+				AND NOT EXISTS (
+					SELECT 1 FROM users privileged_actor
+					WHERE privileged_actor.id = audit_events.actor_user_id
+						AND LOWER(COALESCE(privileged_actor.system_role, '')) IN ('superadmin', 'system_admin')
+				)`);
+		}
+
 		const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 		const page = Math.max(1, Number(filters.page) || 1);
 		const limit = Math.max(1, Math.min(filters.limit ?? 100, 200));
@@ -220,11 +251,14 @@ export class AuditEventInterface {
 					scope,
 					store_id,
 					actor_user_id,
-					actor_name,
+					COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id)) AS actor_name,
 					actor_role,
 					action,
 					entity_type,
 					entity_id,
+					(SELECT o.order_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_order_no,
+					(SELECT o.queue_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_queue_no,
+					(SELECT t.name FROM orders o LEFT JOIN restaurant_tables t ON t.id = o.restaurant_table_id WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_table_name,
 					result,
 					reason_code,
 					ip_address,
@@ -253,7 +287,10 @@ export class AuditEventInterface {
 		};
 	}
 
-	static async findById(id: string): Promise<AuditEventRecord | null> {
+	static async findById(
+		id: string,
+		options: { storeId?: string; excludePrivilegedActors?: boolean } = {},
+	): Promise<AuditEventRecord | null> {
 		await AuditEventInterface.ensureTable();
 
 		const db = DbConn.getClient();
@@ -264,11 +301,14 @@ export class AuditEventInterface {
 					scope,
 					store_id,
 					actor_user_id,
-					actor_name,
+					COALESCE(actor_name, (SELECT name FROM users WHERE users.id = audit_events.actor_user_id)) AS actor_name,
 					actor_role,
 					action,
 					entity_type,
 					entity_id,
+					(SELECT o.order_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_order_no,
+					(SELECT o.queue_no FROM orders o WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_queue_no,
+					(SELECT t.name FROM orders o LEFT JOIN restaurant_tables t ON t.id = o.restaurant_table_id WHERE entity_type = 'order' AND o.id = audit_events.entity_id LIMIT 1) AS related_table_name,
 					result,
 					reason_code,
 					ip_address,
@@ -280,9 +320,16 @@ export class AuditEventInterface {
 					occurred_at
 				FROM audit_events
 				WHERE id = ?
+					${options.storeId ? "AND store_id = ?" : ""}
+					${options.excludePrivilegedActors ? `AND LOWER(COALESCE(actor_role, '')) NOT IN ('superadmin', 'system_admin')
+						AND NOT EXISTS (
+							SELECT 1 FROM users privileged_actor
+							WHERE privileged_actor.id = audit_events.actor_user_id
+								AND LOWER(COALESCE(privileged_actor.system_role, '')) IN ('superadmin', 'system_admin')
+						)` : ""}
 				LIMIT 1
 			`,
-			args: [id],
+			args: options.storeId ? [id, options.storeId] : [id],
 		});
 
 		const row = result.rows[0] as Record<string, unknown> | undefined;
@@ -339,14 +386,11 @@ export class AuditEventInterface {
 		return result.rows.map((row) => mapRow(row as Record<string, unknown>));
 	}
 
-	static async create(payload: AuditEventCreatePayload): Promise<AuditEventRecord> {
-		await AuditEventInterface.ensureTable();
-
-		const db = DbConn.getClient();
-		const id = randomUUID();
-		const occurredAt = payload.occurred_at || new Date().toISOString();
-
-		await db.execute({
+	// Exposed as a statement so a caller already inside a write transaction can
+	// append the audit row to its own batch instead of spending another round
+	// trip on a separate connection.
+	static buildInsertStatement(id: string, payload: AuditEventCreatePayload, occurredAt: string) {
+		return {
 			sql: `
 				INSERT INTO audit_events (
 					id,
@@ -388,8 +432,18 @@ export class AuditEventInterface {
 				serializeJson(payload.before),
 				serializeJson(payload.after),
 				occurredAt,
-			],
-		});
+			] as InValue[],
+		};
+	}
+
+	static async create(payload: AuditEventCreatePayload): Promise<AuditEventRecord> {
+		await AuditEventInterface.ensureTable();
+
+		const db = DbConn.getClient();
+		const id = randomUUID();
+		const occurredAt = payload.occurred_at || new Date().toISOString();
+
+		await db.execute(AuditEventInterface.buildInsertStatement(id, payload, occurredAt));
 
 		const created = await AuditEventInterface.findById(id);
 		if (!created) {

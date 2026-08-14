@@ -23,6 +23,7 @@ export default class AuthValidator extends ValidatorMiddleware {
 
 	private static readonly profileBodySchema = z.object({
 		name: z.string().trim().min(1, "name is required").max(120, "name is too long"),
+		username: z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._]{2,31}$/, "username must be 3-32 characters: a-z, 0-9, . or _"),
 	});
 
 	private static readonly changePasswordBodySchema = z.object({

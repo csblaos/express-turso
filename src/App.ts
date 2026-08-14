@@ -4,12 +4,18 @@ import { ApiError } from "@middlewares/ApiError";
 import { ErrorHandler } from "@middlewares/ErrorHandler";
 import { RequestMiddleware } from "@middlewares/RequestMiddleware";
 import { IndexRouter } from "@routers/IndexRouter";
+import { KitchenRealtime } from "@services/KitchenRealtime";
 import { SuccessHandler } from "@utils/SuccessHandler";
 
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 	res.setHeader("access-control-allow-origin", "*");
 	res.setHeader("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-	res.setHeader("access-control-allow-headers", "content-type,authorization,request-id");
+	res.setHeader(
+		"access-control-allow-headers",
+		"content-type,authorization,request-id,idempotency-key",
+	);
+	res.setHeader("access-control-expose-headers", "request-id,server-timing");
+	res.setHeader("timing-allow-origin", "*");
 
 	if (req.method === "OPTIONS") {
 		res.status(204).end();
@@ -28,8 +34,12 @@ app.get("/healthz", (req, res) => {
 	SuccessHandler.send(res, req.requestId, "ok");
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.get("/healthz/realtime", (req, res) => {
+	SuccessHandler.send(res, req.requestId, KitchenRealtime.health());
+});
+
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 	if (err instanceof SyntaxError) {

@@ -40,7 +40,7 @@ export class UnitInterface {
 
 		if (filters?.storeId && filters?.scope) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE store_id = ? AND scope = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE store_id = ? AND scope = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.storeId, filters.scope ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
@@ -48,7 +48,7 @@ export class UnitInterface {
 
 		if (filters?.storeId) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE store_id = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE store_id = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.storeId ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
@@ -56,13 +56,13 @@ export class UnitInterface {
 
 		if (filters?.scope) {
 			const result = await db.execute({
-				sql: "SELECT * FROM units WHERE scope = ? ORDER BY code ASC",
+				sql: "SELECT * FROM units WHERE scope = ? ORDER BY name_th ASC, code ASC",
 				args: [ filters.scope ],
 			});
 			return result.rows.map(UnitInterface.mapRow);
 		}
 
-		const result = await db.execute("SELECT * FROM units ORDER BY code ASC");
+		const result = await db.execute("SELECT * FROM units ORDER BY name_th ASC, code ASC");
 		return result.rows.map(UnitInterface.mapRow);
 	}
 
@@ -96,25 +96,37 @@ export class UnitInterface {
 		return created;
 	}
 
+	// Inserting the presets one by one costs two round trips each, which is the
+	// dominant cost on a remote database. Everything goes out in a single batch.
 	static async ensureDefaultUnitsForStore(storeId: string): Promise<Unit[]> {
 		const existingUnits = await UnitInterface.findAll({ storeId, scope: "store" });
 		const existingCodes = new Set(existingUnits.map((unit) => String(unit.code || "").trim().toLowerCase()));
-		const createdUnits: Unit[] = [];
 
-		for (const preset of DEFAULT_STORE_UNIT_PRESETS) {
-			const normalizedCode = preset.code.trim().toLowerCase();
-			if (existingCodes.has(normalizedCode)) continue;
-			const created = await UnitInterface.create({
+		const pending = DEFAULT_STORE_UNIT_PRESETS
+			.filter((preset) => !existingCodes.has(preset.code.trim().toLowerCase()))
+			.map((preset) => ({
+				id: randomUUID(),
 				code: preset.code,
 				name_th: preset.name_th,
-				scope: "store",
-				store_id: storeId,
-			});
-			createdUnits.push(created);
-			existingCodes.add(normalizedCode);
-		}
+			}));
 
-		return createdUnits;
+		if (pending.length === 0) return [];
+
+		const db = DbConn.getClient();
+		await db.batch(
+			pending.map((unit) => ({
+				sql: "INSERT INTO units (id, code, name_th, scope, store_id) VALUES (?, ?, ?, 'store', ?)",
+				args: [ unit.id, unit.code, unit.name_th, storeId ] as InValue[],
+			})),
+			"write",
+		);
+
+		const placeholders = pending.map(() => "?").join(", ");
+		const result = await db.execute({
+			sql: `SELECT * FROM units WHERE id IN (${placeholders}) ORDER BY name_th ASC, code ASC`,
+			args: pending.map((unit) => unit.id),
+		});
+		return result.rows.map(UnitInterface.mapRow);
 	}
 
 	static async update(id: string, data: UpdateUnitInput): Promise<Unit> {

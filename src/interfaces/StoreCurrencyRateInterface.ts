@@ -49,9 +49,13 @@ export class StoreCurrencyRateInterface {
 		}));
 	}
 
-	static async replaceRates(storeId: string, rates: Array<{ currency: string; rate_to_base: number }>): Promise<void> {
+	static async replaceRates(
+		storeId: string,
+		rates: Array<{ currency: string; rate_to_base: number }>,
+		executor?: Pick<ReturnType<typeof DbConn.getClient>, "execute">,
+	): Promise<void> {
 		await StoreCurrencyRateInterface.ensureTable();
-		const db = DbConn.getClient();
+		const db = executor || DbConn.getClient();
 
 		await db.execute({
 			sql: "DELETE FROM store_currency_rates WHERE store_id = ?",

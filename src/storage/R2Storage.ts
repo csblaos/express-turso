@@ -9,6 +9,7 @@ type R2Config = {
 	bucket: string;
 	publicBaseUrl?: string;
 	productImagePrefix: string;
+	paymentAccountImagePrefix: string;
 	region: string;
 };
 
@@ -52,6 +53,7 @@ function getR2Config(): R2Config {
 	const bucket = String(process.env.R2_BUCKET || "").trim();
 	const publicBaseUrl = String(process.env.R2_PUBLIC_BASE_URL || "").trim() || undefined;
 	const productImagePrefix = String(process.env.R2_PRODUCT_IMAGE_PREFIX || "product-images").trim() || "product-images";
+	const paymentAccountImagePrefix = String(process.env.R2_PAYMENT_ACCOUNT_IMAGE_PREFIX || "payment-account-images").trim() || "payment-account-images";
 	const region = String(process.env.R2_REGION || "auto").trim() || "auto";
 
 	if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
@@ -65,6 +67,7 @@ function getR2Config(): R2Config {
 		bucket,
 		publicBaseUrl,
 		productImagePrefix,
+		paymentAccountImagePrefix,
 		region,
 	};
 }
@@ -170,5 +173,163 @@ export class R2Storage {
 			bytes: parsed.bytes.length,
 			mime: parsed.mime,
 		};
+	}
+
+	static async uploadStoreLogo(input: {
+		storeId: string;
+		dataUrl: string;
+	}): Promise<{ key: string; bytes: number; mime: string }> {
+		return R2Storage.uploadProductImage({
+			storeId: input.storeId,
+			productId: "store-logo",
+			dataUrl: input.dataUrl,
+		});
+	}
+
+	static async uploadStorePaymentQrImage(input: {
+		storeId: string;
+		dataUrl: string;
+	}): Promise<{ key: string; bytes: number; mime: string }> {
+		const config = getR2Config();
+		const parsed = parseImageDataUrl(input.dataUrl);
+		if (!parsed) {
+			throw ApiError.BadRequestError("qr_image_url must be a data URL (base64)");
+		}
+
+		if (parsed.mime !== "image/webp") {
+			throw ApiError.BadRequestError("qr_image_url must be image/webp");
+		}
+
+		if (parsed.bytes.length > 3 * 1024 * 1024) {
+			throw ApiError.BadRequestError("qr_image_url exceeds 3 MB");
+		}
+
+		const storeToken = input.storeId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "store";
+		const objectId = randomUUID().slice(0, 12);
+		const key = `${config.paymentAccountImagePrefix}/${storeToken}/${Date.now()}-${objectId}.webp`;
+
+		const host = `${config.accountId}.r2.cloudflarestorage.com`;
+		const pathname = `/${config.bucket}/${key}`;
+		const url = `https://${host}${pathname}`;
+
+		const method = "PUT";
+		const service = "s3";
+		const now = new Date();
+		const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+		const dateStamp = amzDate.slice(0, 8);
+		const payloadHash = sha256Hex(parsed.bytes);
+
+		const headers: Record<string, string> = {
+			host,
+			"content-type": parsed.mime,
+			"cache-control": "public, max-age=31536000, immutable",
+			"x-amz-content-sha256": payloadHash,
+			"x-amz-date": amzDate,
+		};
+
+		const signedHeaderKeys = Object.keys(headers)
+			.map((keyName) => keyName.toLowerCase())
+			.sort();
+		const canonicalHeaders = signedHeaderKeys
+			.map((keyName) => `${keyName}:${String(headers[keyName]).trim()}\n`)
+			.join("");
+		const signedHeaders = signedHeaderKeys.join(";");
+
+		const canonicalRequest = [
+			method,
+			buildCanonicalUri(pathname),
+			"",
+			canonicalHeaders,
+			signedHeaders,
+			payloadHash,
+		].join("\n");
+
+		const credentialScope = `${dateStamp}/${config.region}/${service}/aws4_request`;
+		const stringToSign = [
+			"AWS4-HMAC-SHA256",
+			amzDate,
+			credentialScope,
+			sha256Hex(canonicalRequest),
+		].join("\n");
+
+		const signingKey = getAwsSignatureKey(config.secretAccessKey, dateStamp, config.region, service);
+		const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+		const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+		const response = await fetch(url, {
+			method,
+			headers: {
+				...headers,
+				authorization,
+			},
+			body: new Blob([ new Uint8Array(parsed.bytes) ], { type: parsed.mime }),
+		});
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			throw ApiError.InternalError(`R2 upload failed (${response.status}): ${text || response.statusText}`);
+		}
+
+		return {
+			key,
+			bytes: parsed.bytes.length,
+			mime: parsed.mime,
+		};
+	}
+
+	static async deleteObject(rawKey: string): Promise<boolean> {
+		const config = getR2Config();
+		let key = rawKey.trim();
+		if (!key) return false;
+		if (config.publicBaseUrl && key.startsWith(config.publicBaseUrl.replace(/\/$/, ""))) {
+			key = key.slice(config.publicBaseUrl.replace(/\/$/, "").length).replace(/^\/+/, "");
+		}
+		if (!key.startsWith(`${config.productImagePrefix}/`) && !key.startsWith(`${config.paymentAccountImagePrefix}/`)) {
+			return false;
+		}
+
+		const host = `${config.accountId}.r2.cloudflarestorage.com`;
+		const pathname = `/${config.bucket}/${key}`;
+		const url = `https://${host}${pathname}`;
+		const now = new Date();
+		const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+		const dateStamp = amzDate.slice(0, 8);
+		const payloadHash = sha256Hex("");
+		const headers: Record<string, string> = {
+			host,
+			"x-amz-content-sha256": payloadHash,
+			"x-amz-date": amzDate,
+		};
+		const signedHeaderKeys = Object.keys(headers).map((header) => header.toLowerCase()).sort();
+		const canonicalHeaders = signedHeaderKeys.map((header) => `${header}:${headers[header]}\n`).join("");
+		const signedHeaders = signedHeaderKeys.join(";");
+		const canonicalRequest = [
+			"DELETE",
+			buildCanonicalUri(pathname),
+			"",
+			canonicalHeaders,
+			signedHeaders,
+			payloadHash,
+		].join("\n");
+		const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
+		const stringToSign = [
+			"AWS4-HMAC-SHA256",
+			amzDate,
+			credentialScope,
+			sha256Hex(canonicalRequest),
+		].join("\n");
+		const signingKey = getAwsSignatureKey(config.secretAccessKey, dateStamp, config.region, "s3");
+		const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+		const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+		const response = await fetch(url, {
+			method: "DELETE",
+			headers: { ...headers, authorization },
+		});
+		if (!response.ok && response.status !== 404) {
+			const text = await response.text().catch(() => "");
+			throw ApiError.InternalError(`R2 delete failed (${response.status}): ${text || response.statusText}`);
+		}
+		return response.ok;
 	}
 }

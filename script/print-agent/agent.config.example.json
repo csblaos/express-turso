@@ -1,0 +1,6 @@
+{
+	"apiBaseUrl": "https://your-api-host/api",
+	"token": "pa_paste_the_token_from_settings_printing",
+	"pollSeconds": 3,
+	"batchSize": 5
+}

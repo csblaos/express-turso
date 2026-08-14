@@ -81,10 +81,10 @@ export class StoreCurrencyRateHistoryInterface {
 		rate_to_base: number;
 		actor_user_id?: string | null;
 		occurred_at?: string;
-	}>): Promise<void> {
+	}>, executor?: Pick<ReturnType<typeof DbConn.getClient>, "execute">): Promise<void> {
 		await StoreCurrencyRateHistoryInterface.ensureTable();
 		if (items.length === 0) return;
-		const db = DbConn.getClient();
+		const db = executor || DbConn.getClient();
 		for (const item of items) {
 			await db.execute({
 				sql: `

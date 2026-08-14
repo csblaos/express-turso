@@ -18,15 +18,16 @@ type StoreRecord = {
 	vat_mode: string;
 };
 
-const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string; hint: string }> = [
-	{ code: "LAK", label: "LAK", hint: "กีบ (Lao Kip)" },
-	{ code: "THB", label: "THB", hint: "บาท (Thai Baht)" },
-	{ code: "USD", label: "USD", hint: "ดอลลาร์ (US Dollar)" },
-];
-
 const { apiFetch } = useApiClient();
+const { t } = useI18n();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
+
+const CURRENCY_OPTIONS = computed<Array<{ code: CurrencyCode; label: string; hint: string }>>(() => [
+	{ code: "LAK", label: "LAK", hint: t("storeFinancePage.currency.lak") },
+	{ code: "THB", label: "THB", hint: t("storeFinancePage.currency.thb") },
+	{ code: "USD", label: "USD", hint: t("storeFinancePage.currency.usd") },
+]);
 
 	const storesPending = ref(true);
 	const storePending = ref(true);
@@ -60,7 +61,7 @@ const isElevatedStoreManager = computed(() => (
 	|| currentUser.value?.systemRole === "system_admin"
 ));
 
-const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
+const canUpdateStoreFinance = computed(() => isElevatedStoreManager.value || can("settings.finance.update"));
 
 const baseCurrency = ref<CurrencyCode>("LAK");
 const supportedCurrencies = reactive<Record<CurrencyCode, boolean>>({
@@ -89,7 +90,7 @@ const initialSnapshot = ref<{
 	rates: Record<CurrencyCode, string>;
 } | null>(null);
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = t("storeFinancePage.rates.tryAgain")) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -173,14 +174,14 @@ function parseLocaleNumber(raw: string) {
 	}
 
 	const enabledCurrencies = computed(() => {
-		const list = CURRENCY_OPTIONS.map((item) => item.code).filter((code) => supportedCurrencies[code] || code === baseCurrency.value);
+	const list = CURRENCY_OPTIONS.value.map((item) => item.code).filter((code) => supportedCurrencies[code] || code === baseCurrency.value);
 		return Array.from(new Set([ baseCurrency.value, ...list ])) as CurrencyCode[];
 	});
 
 	const rateFields = computed(() => enabledCurrencies.value.filter((code) => code !== baseCurrency.value));
 	const rateRows = computed(() => (
 		rateFields.value.map((code) => {
-			const meta = CURRENCY_OPTIONS.find((item) => item.code === code);
+			const meta = CURRENCY_OPTIONS.value.find((item) => item.code === code);
 			return {
 				code,
 				hint: meta?.hint || "",
@@ -193,7 +194,7 @@ const hasChanges = computed(() => {
 	if (initialSnapshot.value.storeId !== effectiveStoreId.value) return true;
 	if (initialSnapshot.value.baseCurrency !== baseCurrency.value) return true;
 	if (initialSnapshot.value.enabledCurrencies.join(",") !== enabledCurrencies.value.join(",")) return true;
-	for (const option of CURRENCY_OPTIONS) {
+	for (const option of CURRENCY_OPTIONS.value) {
 		const code = option.code;
 		if (normalizeRateTyping(initialSnapshot.value.rates[code]) !== normalizeRateTyping(exchangeRates[code])) return true;
 	}
@@ -208,7 +209,7 @@ const canSave = computed(() => (
 ));
 
 function ensureBaseCurrencySelected() {
-	for (const option of CURRENCY_OPTIONS) {
+	for (const option of CURRENCY_OPTIONS.value) {
 		supportedCurrencies[option.code] = supportedCurrencies[option.code] || option.code === baseCurrency.value;
 	}
 	exchangeRates[baseCurrency.value] = "1";
@@ -249,13 +250,13 @@ async function fetchStores() {
 			baseCurrency.value = normalizeCurrencyCode(store.currency) || "LAK";
 
 			const supported = parseSupportedCurrencies(store.supported_currencies);
-			for (const option of CURRENCY_OPTIONS) {
+			for (const option of CURRENCY_OPTIONS.value) {
 				supportedCurrencies[option.code] = supported.includes(option.code) || option.code === baseCurrency.value;
 			}
 			ensureBaseCurrencySelected();
 
 			const rates = ratesResponse.data || {};
-			for (const option of CURRENCY_OPTIONS) {
+			for (const option of CURRENCY_OPTIONS.value) {
 				const code = option.code;
 				if (code === baseCurrency.value) {
 					exchangeRates[code] = "1";
@@ -276,7 +277,7 @@ async function fetchStores() {
 				rates: { ...exchangeRates },
 			};
 		} catch (err) {
-			error.value = resolveApiErrorMessage(err, "โหลดข้อมูลอัตราแลกเปลี่ยนไม่สำเร็จ");
+			error.value = resolveApiErrorMessage(err, t("storeFinancePage.rates.loadRatesFailed"));
 		} finally {
 			storePending.value = false;
 			historyPending.value = false;
@@ -332,7 +333,7 @@ async function saveRates() {
 		for (const code of rateFields.value) {
 			const parsed = parseLocaleNumber(exchangeRates[code]);
 			if (!Number.isFinite(parsed) || parsed <= 0) {
-				throw new Error(`กรุณากรอกอัตราแลกเปลี่ยนของ ${code}`);
+				throw new Error(t("storeFinancePage.rates.rateRequired", { code }));
 			}
 		}
 
@@ -351,14 +352,14 @@ async function saveRates() {
 		});
 
 		appToast.success({
-			title: "บันทึกอัตราแลกเปลี่ยนแล้ว",
-			description: `${selectedStore.value.name} • base ${baseCurrency.value}`,
+			title: t("storeFinancePage.rates.saved"),
+			description: t("storeFinancePage.rates.savedDescription", { store: selectedStore.value.name, currency: baseCurrency.value }),
 		});
 
 		await hydrateFromStore();
 	} catch (err) {
 		const message = resolveApiErrorMessage(err);
-		appToast.error({ title: "บันทึกไม่สำเร็จ", description: message, timeout: 3200 });
+		appToast.error({ title: t("storeFinancePage.rates.saveFailed"), description: message, timeout: 3200 });
 		error.value = message;
 	} finally {
 		saving.value = false;
@@ -382,7 +383,7 @@ onMounted(async () => {
 	try {
 		await fetchStores();
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลดร้านไม่สำเร็จ");
+		error.value = resolveApiErrorMessage(err, t("storeFinancePage.rates.loadStoresFailed"));
 	} finally {
 		storesPending.value = false;
 	}
@@ -392,59 +393,72 @@ onMounted(async () => {
 	<template>
 		<AppSidebarShell
 			:nav-items="appNavItems"
-			:active-ids="['settings']"
-		sidebar-eyebrow="Settings"
-		sidebar-title="Exchange Rates"
-		sidebar-compact-title="RATE"
-		sidebar-description="จัดการอัตราแลกเปลี่ยนสำหรับร้านที่กำลังใช้งาน"
+		:active-ids="['settings']"
+		:sidebar-eyebrow="t('storeFinancePage.rates.settings')"
+		:sidebar-title="t('storeFinancePage.rates.title')"
+		:sidebar-compact-title="t('storeFinancePage.rates.compactTitle')"
+		:sidebar-description="t('storeFinancePage.rates.sidebarDescription')"
 	>
 			<template #default="{ openSidebar }">
-				<div class="grid gap-3 pb-3 lg:gap-4">
-					<AppPageHeader title="อัตราแลกเปลี่ยน" description="อัปเดตเรทสำหรับ POS (แยกจากหน้าตั้งค่า Store Finance)" @menu="openSidebar">
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 pt-2 md:w-auto">
-							<AppButton
-								color="neutral"
-								variant="soft"
-								size="md"
-								icon="i-heroicons-arrow-left-20-solid"
-								to="/settings/store-finance"
-							>
-								กลับ
-							</AppButton>
-								<AppButton
-									color="neutral"
-									variant="soft"
-									size="md"
-									icon="i-heroicons-arrow-path-20-solid"
-									:loading="reloading"
-									:spin-icon-on-loading="true"
-									:disabled="saving || reloading"
-									@click="hydrateFromStore"
-								>
-									{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
-								</AppButton>
-						</div>
-					</AppPageHeader>
+				<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
+					<div class="hidden md:block">
+						<AppPageHeader
+							title=""
+							:description="t('storeFinancePage.rates.headerDescription')"
+							:title-badge="false"
+							compact
+							tablet-layout
+							@menu="openSidebar"
+						>
+							<template #actions>
+								<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-arrow-left-20-solid"
+										class="rounded-md justify-center"
+										to="/settings/store-finance"
+									>
+										{{ t('storeFinancePage.rates.back') }}
+									</AppButton>
+									<AppButton
+										color="neutral"
+										variant="soft"
+										size="md"
+										icon="i-heroicons-arrow-path-20-solid"
+										class="rounded-md justify-center"
+										:loading="reloading"
+										:spin-icon-on-loading="true"
+										:disabled="saving || reloading"
+										@click="hydrateFromStore"
+									>
+										{{ reloading ? t('storeFinancePage.rates.loading') : t('storeFinancePage.rates.reload') }}
+									</AppButton>
+								</div>
+							</template>
+						</AppPageHeader>
+					</div>
 
 					<div class="grid gap-3 lg:pr-1">
-						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
+						<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 dark:bg-stone-900 dark:ring-stone-700 sm:rounded-md">
 						<div class="grid grid-cols-4 gap-2 p-0">
-							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ร้าน</p>
+							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-stone-700 dark:bg-stone-800">
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storeFinancePage.rates.store') }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950" :title="selectedStore?.name || ''">
 									{{ selectedStore?.name || "-" }}
 								</p>
 							</div>
-							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Base</p>
+							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-stone-700 dark:bg-stone-800">
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storeFinancePage.rates.base') }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ baseCurrency }}</p>
 							</div>
-							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">รองรับ</p>
+							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-stone-700 dark:bg-stone-800">
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storeFinancePage.rates.supported') }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ enabledCurrencies.length }}</p>
 							</div>
-							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">อัตรา</p>
+							<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center dark:border-stone-700 dark:bg-stone-800">
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('storeFinancePage.rates.rateCount') }}</p>
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ rateFields.length }}</p>
 							</div>
 						</div>
@@ -454,16 +468,16 @@ onMounted(async () => {
 							{{ error }}
 						</div>
 
-							<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+							<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] dark:border-stone-700 dark:bg-stone-900 sm:rounded-md">
 								<div class="flex flex-col">
-									<div class="border-b border-[#ece6dc]">
+									<div class="border-b border-[#ece6dc] dark:border-stone-700">
 										<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2.5">
 											<div>
-												<p class="text-sm font-semibold text-stone-950">กำหนดอัตราแลกเปลี่ยน</p>
-												<p class="mt-1 hidden text-xs text-stone-500 lg:block">ระบบจะใช้เรทนี้ตอนรับเงินต่างสกุล แล้วบันทึกยอดเป็น Base currency</p>
+												<p class="text-sm font-semibold text-stone-950">{{ t('storeFinancePage.rates.configure') }}</p>
+												<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('storeFinancePage.rates.configureDescription') }}</p>
 											</div>
-											<div class="flex flex-wrap items-center justify-end gap-2">
-												<UBadge color="neutral" variant="soft" :label="`${rateFields.length} สกุล`" />
+											<div class="hidden flex-wrap items-center justify-end gap-2 md:flex">
+											<UBadge color="neutral" variant="soft" :label="t('storeFinancePage.rates.currencyCount', { count: rateFields.length })" />
 												<AppButton
 													color="neutral"
 													variant="soft"
@@ -471,7 +485,7 @@ onMounted(async () => {
 													:disabled="saving || !hasChanges"
 													@click="hydrateFromStore"
 												>
-													รีเซ็ต
+													{{ t('storeFinancePage.rates.reset') }}
 												</AppButton>
 												<AppButton
 													color="primary"
@@ -483,7 +497,7 @@ onMounted(async () => {
 													:disabled="!canSave"
 													@click="saveRates"
 												>
-													บันทึก
+													{{ t('storeFinancePage.rates.save') }}
 												</AppButton>
 											</div>
 										</div>
@@ -495,10 +509,10 @@ onMounted(async () => {
 									</div>
 
 									<div class="space-y-3 px-4 py-4">
-										<div v-if="!rateFields.length && !(storePending || storesPending)" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-600">
-											ยังไม่มีสกุลเงินอื่นที่เปิดใช้งาน (นอกจาก {{ baseCurrency }}) — ไปเปิดสกุลเงินได้ที่ Store Finance
+										<div v-if="!rateFields.length && !(storePending || storesPending)" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-600 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300">
+											{{ t('storeFinancePage.rates.noCurrencies', { currency: baseCurrency }) }}
 										</div>
-										<div v-else-if="!(storePending || storesPending)" class="divide-y divide-neutral-200 overflow-hidden rounded-md border border-neutral-200 bg-white">
+										<div v-else-if="!(storePending || storesPending)" class="divide-y divide-neutral-200 overflow-hidden rounded-md border border-neutral-200 bg-white dark:divide-stone-700 dark:border-stone-700 dark:bg-stone-900">
 											<div
 												v-for="row in rateRows"
 												:key="row.code"
@@ -521,8 +535,8 @@ onMounted(async () => {
 													pattern="[0-9.,]*"
 													size="md"
 													color="neutral"
-													placeholder="เช่น 25,000"
-													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2 [&_input]:text-right [&_input]:tabular-nums"
+													:placeholder="t('storeFinancePage.rates.ratePlaceholder')"
+													class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2 [&_input]:text-right [&_input]:tabular-nums dark:[&_input]:border-stone-600 dark:[&_input]:bg-stone-800 dark:[&_input]:text-stone-100"
 													:disabled="!canUpdateStoreFinance"
 													@update:model-value="(value) => updateRate(row.code, String(value || ''))"
 													@input="(event) => onRateInput(row.code, event)"
@@ -532,21 +546,21 @@ onMounted(async () => {
 									</div>
 
 										<p class="text-xs leading-5 text-stone-500">
-											หมายเหตุ: ระบบจะบันทึกยอดเป็น {{ baseCurrency }} เสมอ โดยใช้เรทนี้ตอนรับเงินต่างสกุลใน POS
+											{{ t('storeFinancePage.rates.note', { currency: baseCurrency }) }}
 										</p>
 									</div>
 								</div>
 							</div>
 
-							<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] sm:rounded-md">
+							<div class="rounded-none border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] dark:border-stone-700 dark:bg-stone-900 sm:rounded-md">
 								<div class="flex flex-col">
-									<div class="border-b border-[#ece6dc]">
+									<div class="border-b border-[#ece6dc] dark:border-stone-700">
 										<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2.5">
 											<div>
-												<p class="text-sm font-semibold text-stone-950">ประวัติการอัปเดตเรท</p>
-												<p class="mt-1 hidden text-xs text-stone-500 lg:block">เก็บไว้สำหรับตรวจสอบย้อนหลัง (ล่าสุดก่อน)</p>
+												<p class="text-sm font-semibold text-stone-950">{{ t('storeFinancePage.rates.history') }}</p>
+												<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('storeFinancePage.rates.historyDescription') }}</p>
 											</div>
-											<UBadge color="neutral" variant="soft" :label="`${historyItems.length} รายการ`" />
+											<UBadge color="neutral" variant="soft" :label="t('storeFinancePage.rates.itemCount', { count: historyItems.length })" />
 										</div>
 										<AppInlineLoadingBar
 											v-if="historyPending"
@@ -556,35 +570,35 @@ onMounted(async () => {
 									</div>
 
 									<div class="px-4 py-4">
-										<div v-if="historyItems.length === 0 && !historyPending" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-600">
-											ยังไม่มีประวัติการอัปเดตเรท
+										<div v-if="historyItems.length === 0 && !historyPending" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-600 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300">
+											{{ t('storeFinancePage.rates.noHistory') }}
 										</div>
 										<div v-else-if="!historyPending" class="overflow-x-auto">
 											<table class="min-w-full table-fixed border-separate border-spacing-0 text-sm">
-												<thead class="sticky top-0 z-10 bg-white">
+												<thead class="sticky top-0 z-10 bg-white dark:bg-stone-900">
 													<tr class="text-xs font-semibold text-stone-500">
-													<th class="w-[34%] border-b border-neutral-200 px-3 py-2 text-left">เวลา</th>
-													<th class="w-[16%] border-b border-neutral-200 px-3 py-2 text-left">สกุล</th>
-													<th class="w-[30%] border-b border-neutral-200 px-3 py-2 text-right">เรท</th>
-													<th class="w-[20%] border-b border-neutral-200 px-3 py-2 text-right">ผู้แก้ไข</th>
+													<th class="w-[34%] border-b border-neutral-200 px-3 py-2 text-left dark:border-stone-700">{{ t('storeFinancePage.rates.time') }}</th>
+													<th class="w-[16%] border-b border-neutral-200 px-3 py-2 text-left dark:border-stone-700">{{ t('storeFinancePage.rates.currencyLabel') }}</th>
+													<th class="w-[30%] border-b border-neutral-200 px-3 py-2 text-right dark:border-stone-700">{{ t('storeFinancePage.rates.rate') }}</th>
+													<th class="w-[20%] border-b border-neutral-200 px-3 py-2 text-right dark:border-stone-700">{{ t('storeFinancePage.rates.updatedBy') }}</th>
 												</tr>
 											</thead>
 											<tbody>
 												<tr
 													v-for="item in historyItems"
 													:key="item.id"
-													class="odd:bg-white even:bg-neutral-50/40"
+													class="odd:bg-white even:bg-neutral-50/40 dark:odd:bg-stone-900 dark:even:bg-stone-800/60"
 												>
-													<td class="border-b border-neutral-200 px-3 py-2 text-stone-700 tabular-nums">
+													<td class="border-b border-neutral-200 px-3 py-2 text-stone-700 tabular-nums dark:border-stone-700 dark:text-stone-300">
 														{{ item.occurred_at }}
 													</td>
-													<td class="border-b border-neutral-200 px-3 py-2 font-semibold text-stone-900">
+													<td class="border-b border-neutral-200 px-3 py-2 font-semibold text-stone-900 dark:border-stone-700 dark:text-stone-100">
 														{{ item.currency }}
 													</td>
-													<td class="border-b border-neutral-200 px-3 py-2 text-right text-stone-700 tabular-nums">
+													<td class="border-b border-neutral-200 px-3 py-2 text-right text-stone-700 tabular-nums dark:border-stone-700 dark:text-stone-300">
 														1{{ getCurrencySymbol(item.currency) }} = {{ formatMoneyWithSymbol(item.rate_to_base, item.base_currency, { maximumFractionDigits: 6 }) }}
 													</td>
-													<td class="border-b border-neutral-200 px-3 py-2 text-right text-xs text-stone-500 tabular-nums">
+													<td class="border-b border-neutral-200 px-3 py-2 text-right text-xs text-stone-500 tabular-nums dark:border-stone-700 dark:text-stone-400">
 														{{ item.actor_user_id || "-" }}
 													</td>
 												</tr>
@@ -594,6 +608,51 @@ onMounted(async () => {
 								</div>
 							</div>
 						</div>
+					</div>
+				</div>
+
+				<div class="fixed inset-x-0 bottom-0 z-[70] border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm md:hidden">
+					<div class="mx-auto grid max-w-3xl grid-cols-3 gap-2">
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-path-20-solid"
+							class="justify-center"
+							:loading="reloading"
+							:spin-icon-on-loading="true"
+							:disabled="saving || reloading"
+							:block="true"
+							@click="hydrateFromStore"
+						>
+							{{ reloading ? t('storeFinancePage.rates.loading') : t('storeFinancePage.rates.reload') }}
+						</AppButton>
+						<AppButton
+							color="neutral"
+							variant="soft"
+							size="md"
+							icon="i-heroicons-arrow-uturn-left-20-solid"
+							class="justify-center"
+							:disabled="saving || !hasChanges"
+							:block="true"
+							@click="hydrateFromStore"
+						>
+							{{ t('storeFinancePage.rates.reset') }}
+						</AppButton>
+						<AppButton
+							color="primary"
+							variant="solid"
+							size="md"
+							icon="i-heroicons-check-20-solid"
+							class="justify-center"
+							:loading="saving"
+							:spin-icon-on-loading="true"
+							:disabled="!canSave"
+							:block="true"
+							@click="saveRates"
+						>
+							{{ t('storeFinancePage.rates.save') }}
+						</AppButton>
 					</div>
 				</div>
 			</template>

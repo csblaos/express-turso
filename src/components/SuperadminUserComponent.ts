@@ -3,9 +3,8 @@ import {
 	SuperadminScopedUserListResult,
 	SuperadminUserInterface,
 } from "@interfaces/SuperadminUserInterface";
-import { SuperadminStoreInterface } from "@interfaces/SuperadminStoreInterface";
+import { SuperadminStoreInterface, SuperadminStoreRecord } from "@interfaces/SuperadminStoreInterface";
 import { ApiError } from "@middlewares/ApiError";
-import { Store } from "@models/Store";
 
 type Actor = {
 	userId: string;
@@ -34,7 +33,7 @@ export class SuperadminUserComponent {
 		return SuperadminUserInterface.listByOwner(actor.userId, params);
 	}
 
-	static async listStores(requestId: string, actor: Actor): Promise<Store[]> {
+	static async listStores(requestId: string, actor: Actor): Promise<SuperadminStoreRecord[]> {
 		void requestId;
 		SuperadminUserComponent.assertActor(actor);
 		return SuperadminStoreInterface.listByOwner(actor.userId);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{
 	open: boolean;
+	pending?: boolean;
 }>();
 
 defineEmits<{
@@ -21,7 +22,7 @@ defineEmits<{
 	>
 		<div
 			v-if="open"
-			class="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+			class="fixed inset-0 z-[190] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
 			@click.self="$emit('close')"
 		>
 			<Transition
@@ -43,9 +44,9 @@ defineEmits<{
 							<UIcon name="i-heroicons-arrow-left-on-rectangle" class="h-6 w-6" />
 						</div>
 						<div class="min-w-0 flex-1">
-							<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Logout</p>
-							<h3 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-950">ออกจากระบบตอนนี้หรือไม่</h3>
-							<p class="mt-2 text-sm leading-6 text-stone-500">หากยืนยัน ระบบจะพาคุณกลับไปหน้าเข้าสู่ระบบทันที โดยรอบนี้ยังเป็น UI preview เท่านั้น</p>
+							<p class="text-xs uppercase tracking-[0.18em] text-stone-400">{{ $t('shell.signOut') }}</p>
+							<h3 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-950">{{ $t('shell.signOutTitle') }}</h3>
+							<p class="mt-2 text-sm leading-6 text-stone-500">{{ $t('shell.signOutDescription') }}</p>
 						</div>
 					</div>
 
@@ -55,14 +56,17 @@ defineEmits<{
 							variant="soft"
 							size="lg"
 							class="justify-center"
-							label="ยกเลิก"
+							:label="$t('common.cancel')"
+							:disabled="pending"
 							@click="$emit('close')"
 						/>
 						<AppButton
 							color="primary"
 							size="lg"
 							class="justify-center"
-							label="ออกจากระบบ"
+							:label="$t('shell.signOut')"
+							:loading="pending"
+							:disabled="pending"
 							@click="$emit('confirm')"
 						/>
 					</div>

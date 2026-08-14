@@ -13,9 +13,13 @@ export class AuditEventComponent {
 		return AuditEventInterface.findMany(filters);
 	}
 
-	static async getEventById(requestId: string, id: string): Promise<AuditEventRecord> {
+	static async getEventById(
+		requestId: string,
+		id: string,
+		options: { storeId?: string; excludePrivilegedActors?: boolean } = {},
+	): Promise<AuditEventRecord> {
 		void requestId;
-		const event = await AuditEventInterface.findById(id);
+		const event = await AuditEventInterface.findById(id, options);
 		if (!event) {
 			throw ApiError.NotFoundError("Audit event not found");
 		}
@@ -52,6 +56,8 @@ export class AuditEventComponent {
 			const persistedActor = await AuthInterface.findPersistedUserById(normalized.actor_user_id);
 			if (!persistedActor) {
 				normalized.actor_user_id = null;
+			} else if (!normalized.actor_name) {
+				normalized.actor_name = persistedActor.name;
 			}
 		}
 

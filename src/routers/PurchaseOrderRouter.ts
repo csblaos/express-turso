@@ -12,11 +12,14 @@ export class PurchaseOrderRouter {
 
 	private constructor() {
 		this.router.use(AuthGuardMiddleware.requireAuth(), RoleScopeMiddleware.requireStoreWorkspace());
-		this.router.get("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.list, PurchaseOrderController.getAll);
-		this.router.get("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
-		this.router.post("/", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.create"), PurchaseOrderValidator.create, PurchaseOrderController.create);
-		this.router.patch("/:id", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.update, PurchaseOrderController.update);
-		this.router.post("/:id/receive", AuthGuardMiddleware.requireAuth(), PermissionMiddleware.require("purchase_orders.receive"), PurchaseOrderValidator.receive, PurchaseOrderController.receive);
+		this.router.get("/", PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.list, PurchaseOrderController.getAll);
+		this.router.get("/:id", PermissionMiddleware.require("purchase_orders.view"), PurchaseOrderValidator.getById, PurchaseOrderController.getById);
+		this.router.post("/", PermissionMiddleware.require("purchase_orders.create"), PurchaseOrderValidator.create, PurchaseOrderController.create);
+		this.router.patch("/:id", PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.update, PurchaseOrderController.update);
+		this.router.post("/:id/ordered", PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.markOrdered, PurchaseOrderController.markOrdered);
+		this.router.post("/:id/arrived", PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.markArrived, PurchaseOrderController.markArrived);
+		this.router.post("/:id/receive", PermissionMiddleware.require("purchase_orders.receive"), PurchaseOrderValidator.receive, PurchaseOrderController.receive);
+		this.router.post("/:id/settle", PermissionMiddleware.require("purchase_orders.update"), PurchaseOrderValidator.settle, PurchaseOrderController.settle);
 	}
 
 	static getInstance(): PurchaseOrderRouter {

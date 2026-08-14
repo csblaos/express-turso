@@ -1,0 +1,6 @@
+config.json
+# Local dependencies for the standalone database setup UI/CLI.
+node_modules/
+*.db
+*.db-shm
+*.db-wal

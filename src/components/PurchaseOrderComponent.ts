@@ -1,5 +1,4 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
-import { InventoryComponent } from "@components/InventoryComponent";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import {
 	PurchaseOrderCreatePayload,
@@ -8,9 +7,11 @@ import {
 	PurchaseOrderListFilters,
 	PurchaseOrderListItem,
 	PurchaseOrderReceiveLineInput,
+	PurchaseOrderSettlementInput,
 	PurchaseOrderUpdatePayload,
 } from "@interfaces/PurchaseOrderInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 
 function normalizeOptionalString(value?: string | null): string | null {
 	const trimmed = value?.trim();
@@ -123,6 +124,9 @@ export class PurchaseOrderComponent {
 			if (!product || product.store_id !== payload.store_id) {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.PRODUCT_NOT_FOUND);
 			}
+			if (product.inventory_mode === "untracked") {
+				throw ApiError.BadRequestError(`${product.name} is a non-stock menu and cannot be purchased as inventory`);
+			}
 		}
 
 		const normalized = normalizePurchaseOrderPayload(payload, payload.status?.trim() || "draft");
@@ -184,6 +188,51 @@ export class PurchaseOrderComponent {
 		return updated;
 	}
 
+	static async markOrdered(requestId: string, id: string, orderedBy: string | null): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const existing = await PurchaseOrderInterface.findById(id);
+		if (!existing) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+		if (existing.order.status !== "draft") {
+			throw ApiError.BadRequestError("only draft purchase order can be marked as ordered");
+		}
+
+		const updated = await PurchaseOrderInterface.markOrdered(id, orderedBy);
+		if (!updated) {
+			throw new Error("Failed to mark purchase order as ordered");
+		}
+
+		return updated;
+	}
+
+	static async markArrived(requestId: string, id: string, arrivedBy: string | null): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const existing = await PurchaseOrderInterface.findById(id);
+		if (!existing) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+		if (existing.order.status === "received" || existing.order.status === "partial") {
+			throw ApiError.BadRequestError("purchase order that already received cannot be marked as arrived");
+		}
+		if (existing.order.status === "cancelled") {
+			throw ApiError.BadRequestError("cancelled purchase order cannot be marked as arrived");
+		}
+		if (existing.order.status === "draft") {
+			throw ApiError.BadRequestError("draft purchase order cannot be marked as arrived");
+		}
+		if (existing.order.status === "arrived") {
+			return existing;
+		}
+
+		const updated = await PurchaseOrderInterface.markArrived(id, arrivedBy);
+		if (!updated) {
+			throw new Error("Failed to mark purchase order as arrived");
+		}
+
+		return updated;
+	}
+
 	static async receive(
 		requestId: string,
 		id: string,
@@ -234,25 +283,37 @@ export class PurchaseOrderComponent {
 		}
 
 		const receivedAt = new Date().toISOString();
-		for (const line of normalizedReceipts) {
-			const item = detail.items.find((entry) => entry.id === line.item_id);
-			if (!item) continue;
-			await InventoryComponent.adjust(requestId, {
-				store_id: detail.order.store_id,
-				product_id: item.product_id,
-				mode: "increment",
-				qty_base: Number(line.qty_received || 0) * Number(item.multiplier_to_base || 1),
-				note: `รับสินค้า PO ${detail.order.po_number}`,
-				created_by: receivedBy,
-			}, {
-				refType: "purchase_order",
-				refId: detail.order.id,
-			});
-		}
-
 		const updated = await PurchaseOrderInterface.markReceived(detail.order.id, receivedAt, receivedBy, normalizedReceipts);
 		if (!updated) {
 			throw new Error("Failed to mark purchase order as received");
+		}
+
+		NotificationInterface.queueStockRefresh(String(detail.order.store_id));
+		return updated;
+	}
+
+	static async settle(
+		requestId: string,
+		id: string,
+		payload: PurchaseOrderSettlementInput,
+	): Promise<PurchaseOrderDetail> {
+		void requestId;
+		const detail = await PurchaseOrderInterface.findById(id);
+		if (!detail) {
+			throw ApiError.NotFoundError("Purchase order not found");
+		}
+
+		if (detail.order.status === "draft" || detail.order.status === "ordered" || detail.order.status === "arrived") {
+			throw ApiError.BadRequestError("purchase order must be received before payment can be settled");
+		}
+
+		if (detail.order.status === "cancelled") {
+			throw ApiError.BadRequestError("cancelled purchase order cannot be settled");
+		}
+
+		const updated = await PurchaseOrderInterface.settle(id, payload);
+		if (!updated) {
+			throw new Error("Failed to settle purchase order payment");
 		}
 
 		return updated;

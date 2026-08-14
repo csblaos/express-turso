@@ -1,0 +1,273 @@
+import { ApiError } from "@middlewares/ApiError";
+import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
+import { PrintQueueInterface } from "@interfaces/PrintQueueInterface";
+import { ProductInterface } from "@interfaces/ProductInterface";
+import { RestaurantInterface } from "@interfaces/RestaurantInterface";
+import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
+import { StoreInterface } from "@interfaces/StoreInterface";
+import { UnitInterface } from "@interfaces/UnitInterface";
+import { InventoryComponent } from "@components/InventoryComponent";
+import { normalizeKitchenDeliveryMode } from "@utils/KitchenDelivery";
+
+type PosCatalogStore = {
+	id: string;
+	name: string;
+	logo_url: string | null;
+	address: string | null;
+	phone_number: string | null;
+	receipt_show_store_name: number;
+	pdf_show_logo: number;
+	receipt_show_store_address: number;
+	receipt_show_store_phone: number;
+	receipt_show_tendered: number;
+	receipt_show_change: number;
+	receipt_show_payment_method: number;
+	receipt_show_queue: number;
+	receipt_language: string;
+	receipt_show_powered_by: number;
+	kitchen_delivery_mode: string;
+	kitchen_server_printing: number;
+	pickup_queue_enabled: number;
+	customer_display_enabled: number;
+	customer_display_ads: string | null;
+	customer_display_ad_interval: number;
+	customer_display_banner_enabled: number;
+	customer_display_ad_url: string | null;
+	currency: string | null;
+	supported_currencies: string;
+	currency_rates: Array<{ currency: string; rate_to_base: number }>;
+	vat_enabled: number;
+	vat_rate: number;
+	vat_mode: string;
+	store_type: string;
+};
+
+type PosCatalogCategory = {
+	id: string;
+	name: string;
+	count: number;
+};
+
+export type PosCatalogItem = {
+	id: string;
+	store_id: string;
+	sku: string;
+	name: string;
+	barcode: string | null;
+	location: string | null;
+	category_id: string | null;
+	category_name: string | null;
+	station_id: string | null;
+	station_name: string | null;
+	send_to_kitchen: number;
+	base_unit_id: string;
+	unit_name: string | null;
+	price_base: number;
+	cost_base: number;
+	active: number;
+	low_stock_threshold: number | null;
+	out_stock_threshold: number | null;
+	on_hand_base: number;
+	reserved_base: number;
+	available_base: number;
+	image_url: string | null;
+	updated_at: string;
+	stock_state: "ready" | "low" | "out" | "negative" | "inactive";
+	inventory_mode: "tracked" | "untracked";
+	cost_source: "purchase" | "manual" | "unknown";
+	manual_sold_out: number;
+};
+
+export type PosCatalogResponse = {
+	store: PosCatalogStore;
+	categories: PosCatalogCategory[];
+	items: PosCatalogItem[];
+};
+
+function resolvePublicProductImageUrl(imageUrl: string | null): string | null {
+	if (!imageUrl) return null;
+	const normalized = imageUrl.trim();
+	if (!normalized) return null;
+	if (/^(https?:\/\/|data:|blob:)/i.test(normalized) || normalized.startsWith("//")) return normalized;
+	const base = String(process.env.R2_PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
+	if (!base) return normalized;
+	const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
+	return `${base}${path}`;
+}
+
+function resolveStockState(active: number, available: number, lowStockThreshold: number | null): PosCatalogItem["stock_state"] {
+	if (!active) return "inactive";
+	if (available < 0) return "negative";
+	if (available <= 0) return "out";
+	if (lowStockThreshold !== null && lowStockThreshold > 0 && available <= lowStockThreshold) return "low";
+	return "ready";
+}
+
+export class PosComponent {
+	static async getCatalog(requestId: string, storeId: string | undefined | null): Promise<PosCatalogResponse> {
+		void requestId;
+		const normalizedStoreId = String(storeId || "").trim();
+		if (!normalizedStoreId) {
+			throw ApiError.BadRequestError("store_id is required");
+		}
+
+		const [products, balances, categories, units, store, currencyRates, stations, serverPrinting] = await Promise.all([
+			ProductInterface.findAll(normalizedStoreId),
+			InventoryComponent.getBalances(requestId, { storeId: normalizedStoreId }),
+			ProductCategoryInterface.findAll(normalizedStoreId),
+			UnitInterface.findAll({ storeId: normalizedStoreId }),
+			StoreInterface.findById(normalizedStoreId),
+			// The till quotes the rate to the customer before taking their money, so
+			// it needs the table itself, not just the list of currencies.
+			StoreCurrencyRateInterface.findByStoreId(normalizedStoreId),
+			// Which kitchen cooks what. Resolved here so the till can split a round
+			// into station slips without a second lookup per line.
+			RestaurantInterface.listKitchenStations(normalizedStoreId),
+			// Once a kitchen printer exists the queue owns the slips, and the till
+			// must stop opening its own print dialog for them.
+			PrintQueueInterface.hasActivePrinters(normalizedStoreId),
+		]);
+
+		const balanceMap = new Map(balances.map((balance) => [balance.product_id, balance]));
+		const categoryMap = new Map(categories.map((category) => [category.id, category.name]));
+		const categoryStationMap = new Map(categories.map((category) => [category.id, category.station_id || null]));
+		const categoryKitchenMap = new Map(categories.map((category) => [category.id, Number(category.send_to_kitchen ?? 1) !== 0]));
+		const stationMap = new Map(stations.map((station: any) => [String(station.id), String(station.name)]));
+		const unitMap = new Map(units.map((unit) => [unit.id, unit.name_th || unit.code]));
+
+		const items = products
+			.map((product) => {
+				const balance = balanceMap.get(product.id);
+				const categoryId = product.category_id || balance?.category_id || null;
+				const categoryName = balance?.category_name
+					|| (categoryId ? categoryMap.get(categoryId) : null)
+					|| null;
+				const unitName = balance?.unit_name
+					|| unitMap.get(product.base_unit_id)
+					|| null;
+				const stationId = (categoryId ? categoryStationMap.get(categoryId) : null) || null;
+				// The product's own answer wins; unset means it follows its category,
+				// and a product with no category at all goes to the kitchen.
+				const sendToKitchen = product.send_to_kitchen === null || product.send_to_kitchen === undefined
+					? (categoryId ? categoryKitchenMap.get(categoryId) !== false : true)
+					: Number(product.send_to_kitchen) !== 0;
+				const availableBase = Number(balance?.available_base ?? 0);
+				const lowStockThreshold = product.low_stock_threshold ?? balance?.low_stock_threshold ?? null;
+				const inventoryMode: PosCatalogItem["inventory_mode"] = product.inventory_mode === "untracked" ? "untracked" : "tracked";
+				const stockState = inventoryMode === "untracked"
+					? (!Number(product.active ?? 1) || Number(product.manual_sold_out ?? 0) ? "inactive" : "ready")
+					: resolveStockState(Number(product.active ?? 1), availableBase, lowStockThreshold);
+
+				return {
+					id: product.id,
+					store_id: product.store_id,
+					sku: product.sku,
+					name: product.name,
+					barcode: product.barcode,
+					location: product.location,
+					category_id: categoryId,
+					category_name: categoryName,
+					station_id: stationId,
+					station_name: stationId ? stationMap.get(stationId) || null : null,
+					send_to_kitchen: sendToKitchen ? 1 : 0,
+					base_unit_id: product.base_unit_id,
+					unit_name: unitName,
+					price_base: Number(product.price_base ?? 0),
+					cost_base: Number(product.cost_base ?? 0),
+					active: Number(product.active ?? 1),
+					low_stock_threshold: lowStockThreshold,
+					out_stock_threshold: product.out_stock_threshold ?? balance?.out_stock_threshold ?? null,
+					on_hand_base: Number(balance?.on_hand_base ?? 0),
+					reserved_base: Number(balance?.reserved_base ?? 0),
+					available_base: availableBase,
+					image_url: resolvePublicProductImageUrl(product.image_url || balance?.image_url || null),
+					updated_at: balance?.updated_at || product.created_at,
+					stock_state: stockState,
+					inventory_mode: inventoryMode,
+					cost_source: (product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase") as PosCatalogItem["cost_source"],
+					manual_sold_out: Number(product.manual_sold_out ?? 0),
+				};
+			})
+			.sort((left, right) => {
+				const stockOrder: Record<PosCatalogItem["stock_state"], number> = {
+					ready: 0,
+					low: 1,
+					out: 2,
+					negative: 3,
+					inactive: 4,
+				};
+				const activeDiff = Number(right.active ?? 1) - Number(left.active ?? 1);
+				if (activeDiff !== 0) return activeDiff;
+				const stockDiff = stockOrder[left.stock_state] - stockOrder[right.stock_state];
+				if (stockDiff !== 0) return stockDiff;
+				return left.name.localeCompare(right.name, "th");
+			});
+
+		const categoryCounts = new Map<string, number>();
+		for (const item of items) {
+			const categoryId = item.category_id || "uncategorized";
+			categoryCounts.set(categoryId, (categoryCounts.get(categoryId) || 0) + 1);
+		}
+
+		const responseCategories = categories
+			.map((category) => ({
+				id: category.id,
+				name: category.name,
+				count: categoryCounts.get(category.id) || 0,
+			}))
+			.filter((category) => category.count > 0);
+
+		const uncategorizedCount = categoryCounts.get("uncategorized") || 0;
+		if (uncategorizedCount > 0) {
+			responseCategories.push({
+				id: "uncategorized",
+				name: "ไม่ระบุหมวด",
+				count: uncategorizedCount,
+			});
+		}
+
+		return {
+			store: {
+				id: store?.id || normalizedStoreId,
+				name: store?.name || "ร้านค้า",
+				logo_url: store?.logo_url || null,
+				address: store?.address || null,
+				phone_number: store?.phone_number || null,
+				receipt_show_store_name: Number(store?.receipt_show_store_name ?? 1),
+				pdf_show_logo: Number(store?.pdf_show_logo ?? 0),
+				receipt_show_store_address: Number(store?.receipt_show_store_address ?? 1),
+				receipt_show_store_phone: Number(store?.receipt_show_store_phone ?? 1),
+				receipt_show_tendered: Number(store?.receipt_show_tendered ?? 1),
+				receipt_show_change: Number(store?.receipt_show_change ?? 1),
+				receipt_show_payment_method: Number(store?.receipt_show_payment_method ?? 1),
+				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
+				receipt_language: String(store?.receipt_language || ""),
+				receipt_show_powered_by: Number(store?.receipt_show_powered_by ?? 1),
+				// The till decides on its own whether a kitchen slip follows a round
+				// and whether to offer the kitchen queue at all, so the mode has to
+				// travel with the catalogue it already loads.
+				kitchen_delivery_mode: normalizeKitchenDeliveryMode(store?.kitchen_delivery_mode),
+				kitchen_server_printing: serverPrinting ? 1 : 0,
+				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
+				// The POS drives the customer screen, so it needs these here too;
+				// this payload is a whitelist and silently drops anything missing.
+				customer_display_enabled: Number(store?.customer_display_enabled ?? 0),
+				customer_display_ads: store?.customer_display_ads || null,
+				customer_display_ad_interval: Number(store?.customer_display_ad_interval ?? 5),
+				customer_display_banner_enabled: Number(store?.customer_display_banner_enabled ?? 1),
+				customer_display_ad_url: store?.customer_display_ad_url || null,
+				currency: store?.currency || null,
+				// Multi-currency payment. This payload is a whitelist, so a currency
+				// the till never receives is a currency the customer cannot pay in.
+				supported_currencies: String(store?.supported_currencies || ""),
+				currency_rates: currencyRates.map((rate) => ({ currency: rate.currency, rate_to_base: rate.rate_to_base })),
+				vat_enabled: Number(store?.vat_enabled ?? 0),
+				vat_rate: Number(store?.vat_rate ?? 0),
+				vat_mode: String(store?.vat_mode || "EXCLUSIVE"),
+				store_type: String(store?.store_type || "OTHER"),
+			},
+			categories: responseCategories,
+			items,
+		};
+	}
+}

@@ -49,43 +49,57 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 		{ label: "Settings", to: "/settings" },
 		{ label: "Units" },
 	],
+	"/settings/store-finance": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Store Finance" },
+	],
+	"/settings/store-finance/rates": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Store Finance", to: "/settings/store-finance" },
+		{ label: "Rates" },
+	],
+	"/settings/store-payments": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Store Payments" },
+	],
+	"/settings/printing/sales-receipt": [
+		{ label: "Settings", to: "/settings" },
+		{ label: "Printing" },
+		{ label: "Sales Receipt" },
+	],
 	"/superadmin": [
-		{ label: "Superadmin" },
+		{ label: "Super Admin" },
 	],
 	"/superadmin/overview": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Overview" },
 	],
 	"/superadmin/global-config": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Global Config" },
 	],
 	"/superadmin/users": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Users" },
 	],
 	"/superadmin/stores": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Stores" },
 	],
 	"/superadmin/roles": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Role Settings" },
 	],
 	"/superadmin/security": [
-		{ label: "Superadmin", to: "/superadmin" },
-		{ label: "Security" },
+		{ label: "Super Admin", to: "/superadmin" },
+		{ label: "Account Overview" },
 	],
 	"/superadmin/quotas": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Quotas" },
 	],
-	"/superadmin/branch": [
-		{ label: "Superadmin", to: "/superadmin" },
-		{ label: "Branch Config" },
-	],
 	"/superadmin/integrations": [
-		{ label: "Superadmin", to: "/superadmin" },
+		{ label: "Super Admin", to: "/superadmin" },
 		{ label: "Integrations" },
 	],
 	"/system-admin": [
@@ -105,6 +119,9 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 	],
 	"/system-admin/security": [
 		{ label: "Security" },
+	],
+"/system-admin/reports": [
+		{ label: "ລາຍງານ" },
 	],
 	"/system-admin/thirdparty-usage": [
 		{ label: "Third-party Usage" },
@@ -128,7 +145,7 @@ const exactBreadcrumbMap: Record<string, BreadcrumbItem[]> = {
 const segmentLabelMap: Record<string, string> = {
 	settings: "Settings",
 	access: "Access",
-	superadmin: "Superadmin",
+	superadmin: "Super Admin",
 	"system-admin": "System Admin",
 	products: "สินค้า",
 	orders: "ออเดอร์",
@@ -147,13 +164,16 @@ const segmentLabelMap: Record<string, string> = {
 	security: "Security",
 	"thirdparty-usage": "Third-party Usage",
 	quotas: "Quotas",
-	branch: "Branch Config",
 	integrations: "Integrations",
 	config: "Config",
 	roles: "Roles",
 	users: "Users",
 	categories: "Categories",
 	units: "Units",
+	language: "Language",
+	stock: "Stock",
+	printing: "Printing",
+	"sales-receipt": "Sales Receipt",
 };
 
 function formatSegmentLabel(segment: string): string {

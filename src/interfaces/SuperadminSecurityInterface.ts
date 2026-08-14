@@ -22,6 +22,11 @@ export type SuperadminSecuritySnapshot = {
 		cashier: number;
 		other: number;
 	};
+	issues: Array<{
+		kind: "store_without_team" | "suspended_user" | "password_change";
+		label: string;
+		detail: string;
+	}>;
 	warnings: string[];
 };
 
@@ -60,6 +65,9 @@ export class SuperadminSecurityInterface {
 			storeMembersTotal,
 			usersSummaryResult,
 			roleBreakdownResult,
+			storesWithoutMembersResult,
+			suspendedUsersResult,
+			passwordChangeUsersResult,
 		] = await Promise.all([
 			SuperadminSecurityInterface.count(
 				"SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
@@ -102,6 +110,31 @@ export class SuperadminSecurityInterface {
 				GROUP BY LOWER(COALESCE(u.system_role, ''))`,
 				args: scopedUserArgs,
 			}),
+			DbConn.getClient().execute({
+				sql: `SELECT s.name
+					FROM stores s
+					WHERE s.owner_user_id = ?
+						AND NOT EXISTS (SELECT 1 FROM store_members sm WHERE sm.store_id = s.id)
+					ORDER BY s.name
+					LIMIT 10`,
+				args: [ ownerUserId ],
+			}),
+			DbConn.getClient().execute({
+				sql: `SELECT u.name, u.email
+					FROM users u
+					WHERE ${scopedUserWhere} AND COALESCE(u.client_suspended, 0) = 1
+					ORDER BY u.name
+					LIMIT 10`,
+				args: scopedUserArgs,
+			}),
+			DbConn.getClient().execute({
+				sql: `SELECT u.name, u.email
+					FROM users u
+					WHERE ${scopedUserWhere} AND COALESCE(u.must_change_password, 0) = 1
+					ORDER BY u.name
+					LIMIT 10`,
+				args: scopedUserArgs,
+			}),
 		]);
 
 		const usersSummaryRow = usersSummaryResult.rows[0] || {};
@@ -135,6 +168,23 @@ export class SuperadminSecurityInterface {
 				users_must_change_password: Number(usersSummaryRow.users_must_change_password || 0),
 			},
 			role_breakdown: roleBreakdown,
+			issues: [
+				...storesWithoutMembersResult.rows.map((row) => ({
+					kind: "store_without_team" as const,
+					label: String(row.name || "-"),
+					detail: "store_without_team",
+				})),
+				...suspendedUsersResult.rows.map((row) => ({
+					kind: "suspended_user" as const,
+					label: String(row.name || row.email || "-"),
+					detail: String(row.email || ""),
+				})),
+				...passwordChangeUsersResult.rows.map((row) => ({
+					kind: "password_change" as const,
+					label: String(row.name || row.email || "-"),
+					detail: String(row.email || ""),
+				})),
+			],
 			warnings: [],
 		};
 

@@ -3,6 +3,7 @@ import { NextFunction, Request, Response } from "express";
 import { Config } from "@configs/Config";
 import { Log } from "@utils/Log";
 import { SystemRuntimeTelemetry } from "@utils/SystemRuntimeTelemetry";
+import { appendServerTiming } from "@utils/ServerTiming";
 import { uuid } from "@utils/UUID";
 
 function toLowerSet(values: string[]): Set<string> {
@@ -84,6 +85,11 @@ export class RequestMiddleware {
 
 		const originalJson = res.json.bind(res) as (body?: unknown) => Response;
 		res.json = ((body: unknown) => {
+			appendServerTiming(
+				res,
+				"total",
+				Number(process.hrtime.bigint() - requestStartedAt) / 1_000_000,
+			);
 			const logEntry = Log.logs[requestId];
 			if (logEntry) {
 				logEntry.response = minimizeResponseBody(body);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -15,8 +16,6 @@ type QuotaRecord = {
 	status: "active" | "suspended";
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	owned_stores_count: number;
 	remaining_store_capacity: number | null;
 	created_at: string;
@@ -31,18 +30,29 @@ type QuotaListResponse = {
 	summary: {
 		accounts_total: number;
 		store_quota_enabled: number;
-		branch_quota_enabled: number;
 		limited_store_capacity_total: number;
 		remaining_store_capacity_total: number;
 		unlimited_store_accounts: number;
-		unlimited_branch_accounts: number;
 		attention_accounts: number;
 		stores_total: number;
+		store_user_limit: number | null;
 	};
 	warnings: string[];
 };
 
 const { apiFetch } = useApiClient();
+const { locale } = useI18n();
+
+const copy = computed(() => locale.value === "lo" ? {
+	description: "ຈັດການໂຄຕາບັນຊີ ຮ້ານ ແລະ ການຂະຫຍາຍຮ້ານພາຍໃຕ້ Super Admin ນີ້", reload: "ໂຫຼດໃໝ່", title: "ໂຄຕາ Super Admin", hint: "ເບິ່ງຄວາມຈຸຈິງ ແລະ ບັນຊີທີ່ໃກ້ຮອດຂີດຈຳກັດ", search: "ຄົ້ນຫາຊື່ ຫຼື ອີເມວ", all: "ໂຄຕາທັງໝົດ", storeEnabled: "ສ້າງຮ້ານໄດ້", limited: "ຈຳກັດ", unlimited: "ບໍ່ຈຳກັດ", attention: "ໃກ້ຮອດຂີດຈຳກັດ", apply: "ໃຊ້ຕົວກອງ", noData: "ຍັງບໍ່ມີຂໍ້ມູນ", accounts: "ບັນຊີ", noQuota: "ບໍ່ມີຂໍ້ມູນໂຄຕາໃນຂອບເຂດນີ້", active: "ໃຊ້ງານ", suspended: "ລະງັບ", disabled: "ປິດສິດ", stores: "ຮ້ານ", createdAt: "ສ້າງເມື່ອ", used: "ໃຊ້ໄປ", storeQuota: "ໂຄຕາຮ້ານ", remaining: "ເຫຼືອ", perPage: "ຕໍ່ໜ້າ", previous: "ກ່ອນໜ້າ", next: "ໜ້າຖັດໄປ", page: "ໜ້າ", of: "ຈາກ", staff: "ພະນັກງານ",
+	stats: [["ເປີດໂຄຕາຮ້ານ", "ບັນຊີທີ່ເລີ່ມສ້າງຮ້ານໄດ້"], ["ໃຊ້ຮ້ານແລ້ວ", "ຮ້ານໃນຂອບເຂດ Super Admin ນີ້"], ["ເຫຼືອແບບຈຳກັດ", "ຄວາມຈຸທີ່ເຫຼືອຂອງບັນຊີແບບຈຳກັດ"], ["ຕ້ອງກວດເບິ່ງ", "ບັນຊີທີ່ໃຊ້ໂຄຕາເຕັມ ຫຼື ເກີນ"], ["ຮ້ານບໍ່ຈຳກັດ", "ບັນຊີທີ່ບໍ່ມີເພດານຈຳນວນຮ້ານ"], ["ຄວາມຈຸຈຳກັດ", "ໂຄຕາຮ້ານແບບຈຳກັດລວມທັງໝົດ"]]
+} : locale.value === "en" ? {
+	description: "Manage account, store, and expansion quotas within this Super Admin scope.", reload: "Reload", title: "Super Admin quotas", hint: "Review real capacity and accounts close to their limit.", search: "Search name or email", all: "All quotas", storeEnabled: "Can create stores", limited: "Limited", unlimited: "Unlimited", attention: "At limit", apply: "Apply filter", noData: "No data yet", accounts: "accounts", noQuota: "No quota data in this scope", active: "Active", suspended: "Suspended", disabled: "Disabled", stores: "stores", createdAt: "Created", used: "Used", storeQuota: "Store quota", remaining: "Remaining", perPage: "Per page", previous: "Previous", next: "Next", page: "Page", of: "of", staff: "Staff",
+	stats: [["Store quota enabled", "Accounts that can create stores"], ["Stores used", "Stores in this Super Admin scope"], ["Remaining limited", "Remaining capacity from limited accounts"], ["Attention", "Accounts at or over quota"], ["Unlimited stores", "Accounts without a store limit"], ["Limited capacity", "Total limited store capacity"]]
+} : {
+	description: "จัดการ quota ของบัญชี ร้าน และการขยายร้าน ภายใต้ Super Admin นี้", reload: "รีโหลด", title: "Super Admin quotas", hint: "มุมมอง quota เพื่อดู capacity จริงและบัญชีที่ใกล้ชน limit", search: "ค้นหาชื่อหรืออีเมล", all: "ทุก quota", storeEnabled: "สร้างร้านได้", limited: "แบบจำกัด", unlimited: "ไม่จำกัด", attention: "ชน limit", apply: "ใช้ตัวกรอง", noData: "ยังไม่มีข้อมูล", accounts: "บัญชี", noQuota: "ยังไม่มีข้อมูล quota ใน scope นี้", active: "ใช้งาน", suspended: "ระงับ", disabled: "ปิดสิทธิ์", stores: "ร้าน", createdAt: "สร้างเมื่อ", used: "ใช้ไป", storeQuota: "Store quota", remaining: "Remaining", perPage: "ต่อหน้า", previous: "ก่อนหน้า", next: "ถัดไป", page: "หน้า", of: "จาก", staff: "พนักงาน",
+	stats: [["Store quota enabled", "บัญชีที่เริ่มสร้างร้านได้"], ["Stores used", "ร้านใน scope ของ Super Admin นี้"], ["Remaining limited", "capacity ที่ยังเหลือจากบัญชีแบบจำกัด"], ["Attention", "บัญชีที่ใช้ quota เต็มหรือเกินแล้ว"], ["Unlimited stores", "บัญชีที่ไม่มีเพดานจำนวนร้าน"], ["Limited capacity", "โควต้าร้านรวมแบบจำกัดทั้งหมด"]]
+});
 
 const searchQuery = ref("");
 const activeMode = ref<"all" | "store-enabled" | "limited" | "unlimited" | "attention">("all");
@@ -56,19 +66,17 @@ const totalItems = ref(0);
 const summary = ref<QuotaListResponse["summary"]>({
 	accounts_total: 0,
 	store_quota_enabled: 0,
-	branch_quota_enabled: 0,
 	limited_store_capacity_total: 0,
 	remaining_store_capacity_total: 0,
 	unlimited_store_accounts: 0,
-	unlimited_branch_accounts: 0,
 	attention_accounts: 0,
 	stores_total: 0,
+	store_user_limit: 0,
 });
-const warnings = ref<string[]>([]);
 const listScrollRef = ref<HTMLElement | null>(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)));
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => `${copy.value.page} ${currentPage.value} / ${totalPages.value}`);
 const pageStart = computed(() => (
 	totalItems.value === 0
 		? 0
@@ -77,22 +85,45 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalItems.value));
 const pageSummaryText = computed(() => (
 	totalItems.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalItems.value} บัญชี`
+		? copy.value.noData
+		: `${pageStart.value}-${pageEnd.value} ${copy.value.of} ${totalItems.value} ${copy.value.accounts}`
 ));
+const superAdminLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ດູແລລະບົບ"
+	: locale.value === "th" ? "ผู้ดูแลระบบ" : "Super Admin");
+const pageTitle = computed(() => copy.value.title.replace("Super Admin", superAdminLabel.value));
+const pageDescription = computed(() => copy.value.description.replace("Super Admin", superAdminLabel.value));
+const pageHint = computed(() => copy.value.hint.replace("Super Admin", superAdminLabel.value));
+const userQuotaTitle = computed(() => locale.value === "lo"
+	? "ໂຄຕາຜູ້ໃຊ້/ຮ້ານ"
+	: locale.value === "th" ? "โควต้าผู้ใช้/ร้าน" : "User quota/store");
+const usersPerStoreLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ໃຊ້/ຮ້ານ"
+	: locale.value === "th" ? "ผู้ใช้/ร้าน" : "users/store");
 
-const overviewStats = computed(() => ([
-	{ label: "Store quota enabled", value: summary.value.store_quota_enabled, note: "บัญชีที่เริ่มสร้างร้านได้" },
-	{ label: "Stores used", value: summary.value.stores_total, note: "ร้านใน scope ของ superadmin นี้" },
-	{ label: "Remaining limited", value: summary.value.remaining_store_capacity_total, note: "capacity ที่ยังเหลือจากบัญชีแบบจำกัด" },
-	{ label: "Attention", value: summary.value.attention_accounts, note: "บัญชีที่ใช้ quota เต็มหรือเกินแล้ว" },
-	{ label: "Unlimited stores", value: summary.value.unlimited_store_accounts, note: "บัญชีที่ไม่มีเพดานจำนวนร้าน" },
-	{ label: "Branch enabled", value: summary.value.branch_quota_enabled, note: "บัญชีที่เพิ่มสาขาได้" },
-	{ label: "Unlimited branches", value: summary.value.unlimited_branch_accounts, note: "บัญชีที่ไม่จำกัดสาขาต่อร้าน" },
-	{ label: "Limited capacity", value: summary.value.limited_store_capacity_total, note: "โควต้าร้านรวมแบบจำกัดทั้งหมด" },
-]));
+const overviewStats = computed(() => {
+	if (locale.value === "lo") {
+		return [
+			{ label: "ບັນຊີທັງໝົດ", value: summary.value.accounts_total, note: "ບັນຊີຜູ້ໃຊ້ໃນລະບົບ" },
+			{ label: "ຮ້ານທີ່ສ້າງແລ້ວ", value: summary.value.stores_total, note: "ຈຳນວນຮ້ານທັງໝົດ" },
+			{ label: "ຍັງສ້າງໄດ້", value: summary.value.remaining_store_capacity_total, note: "ຈຳນວນຮ້ານທີ່ຍັງສາມາດສ້າງເພີ່ມ" },
+		];
+	}
+	if (locale.value === "th") {
+		return [
+			{ label: "บัญชีทั้งหมด", value: summary.value.accounts_total, note: "บัญชีผู้ใช้ในระบบ" },
+			{ label: "ร้านที่สร้างแล้ว", value: summary.value.stores_total, note: "จำนวนร้านทั้งหมด" },
+			{ label: "ยังสร้างได้", value: summary.value.remaining_store_capacity_total, note: "จำนวนร้านที่ยังสามารถสร้างเพิ่ม" },
+		];
+	}
+	return [
+		{ label: "Total accounts", value: summary.value.accounts_total, note: "User accounts in the system" },
+		{ label: "Stores created", value: summary.value.stores_total, note: "Total number of stores" },
+		{ label: "Available capacity", value: summary.value.remaining_store_capacity_total, note: "Additional stores that can be created" },
+	];
+});
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โหลด quota ไม่สำเร็จ") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = copy.value.noQuota) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -114,14 +145,16 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = "โหลด qu
 }
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat("th-TH", {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function roleLabel(role: string) {
-	return role || "staff";
+	const normalizedRole = role?.trim().toLowerCase();
+	if (normalizedRole === "superadmin") {
+		return superAdminLabel.value;
+	}
+	if (normalizedRole === "staff") return copy.value.staff;
+	return role || copy.value.staff;
 }
 
 function statusTone(status: QuotaRecord["status"]) {
@@ -129,32 +162,31 @@ function statusTone(status: QuotaRecord["status"]) {
 }
 
 function statusLabel(status: QuotaRecord["status"]) {
-	return status === "active" ? "ใช้งาน" : "ระงับ";
+	return status === "active" ? copy.value.active : copy.value.suspended;
 }
 
 function storeQuotaLabel(item: QuotaRecord) {
-	if (!item.can_create_stores) return "ปิดสิทธิ์";
-	if (item.max_stores === null) return "ไม่จำกัด";
-	return `${item.max_stores} ร้าน`;
-}
-
-function branchQuotaLabel(item: QuotaRecord) {
-	if (!item.can_create_branches || !item.can_create_stores) return "ปิดสิทธิ์";
-	if (item.max_branches_per_store === null) return "ไม่จำกัด";
-	return `${item.max_branches_per_store} สาขา/ร้าน`;
+	if (!item.can_create_stores) return copy.value.disabled;
+	if (item.max_stores === null) return copy.value.unlimited;
+	return `${item.max_stores} ${copy.value.stores}`;
 }
 
 function remainingCapacityLabel(item: QuotaRecord) {
-	if (!item.can_create_stores) return "ปิดสิทธิ์";
-	if (item.remaining_store_capacity === null) return "ไม่จำกัด";
-	return `${item.remaining_store_capacity} ร้าน`;
+	if (!item.can_create_stores) return copy.value.disabled;
+	if (item.remaining_store_capacity === null) return copy.value.unlimited;
+	return `${item.remaining_store_capacity} ${copy.value.stores}`;
 }
 
-function rowToneClass(item: QuotaRecord) {
-	if (item.can_create_stores && item.max_stores !== null && item.owned_stores_count >= item.max_stores) {
-		return "bg-amber-50";
-	}
-	return "";
+function storeUsageLabel(item: QuotaRecord) {
+	if (!item.can_create_stores) return `${copy.value.used} ${item.owned_stores_count} ${copy.value.stores}`;
+	if (item.max_stores === null) return `${copy.value.used} ${item.owned_stores_count} ${copy.value.stores}`;
+	return `${copy.value.used} ${item.owned_stores_count} / ${item.max_stores} ${copy.value.stores}`;
+}
+
+function storeUserQuotaLabel() {
+	return summary.value.store_user_limit === null
+		? copy.value.unlimited
+		: `${summary.value.store_user_limit} ${usersPerStoreLabel.value}`;
 }
 
 function scrollListToTop() {
@@ -183,7 +215,6 @@ async function loadQuotas() {
 		quotas.value = response.data.items;
 		totalItems.value = response.data.total;
 		summary.value = response.data.summary;
-		warnings.value = response.data.warnings;
 		scrollListToTop();
 	} catch (err) {
 		error.value = resolveApiErrorMessage(err);
@@ -221,32 +252,33 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		:sidebar-eyebrow="superAdminLabel"
+		:sidebar-title="superAdminLabel"
 		sidebar-compact-title="SUP"
-		sidebar-description="quota ของบัญชี ร้าน และการขยายร้าน ภายใต้ superadmin นี้เท่านั้น"
+		:sidebar-description="pageDescription"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
 				<AppPageHeader
-					title="Quotas"
-					description="ดูข้อจำกัดการสร้างร้านและสาขาของบัญชีใน scope ของ superadmin นี้ โดยไม่แตะ quota กลางของทั้งระบบ"
-					:tablet-layout="true"
+					class="hidden md:block"
+					:title-badge="false"
+					compact
 					@menu="openSidebar"
 				>
 					<template #actions>
-						<div class="ml-auto flex w-full flex-wrap justify-end gap-2 md:w-auto">
+						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 pt-0.5 md:flex md:w-auto">
 							<AppButton
 								color="neutral"
 								variant="soft"
 								size="md"
 								icon="i-heroicons-arrow-path-20-solid"
+								class="rounded-md"
 								:loading="pending"
 								:disabled="pending"
 								:spin-icon-on-loading="true"
 								@click="loadQuotas"
 							>
-								รีโหลด
+								{{ copy.reload }}
 							</AppButton>
 						</div>
 					</template>
@@ -257,8 +289,8 @@ onMounted(async () => {
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin quotas</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">มุมมอง quota แบบ owner scope เพื่อดู capacity จริงและ account ที่ใกล้ชน limit</p>
+									<p class="text-sm font-semibold text-stone-950">{{ pageTitle }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ pageHint }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ pageSummaryText }}
@@ -266,27 +298,28 @@ onMounted(async () => {
 							</div>
 
 							<div class="border-b border-[#ece6dc] px-4 py-3">
-								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
+								<div class="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_180px_auto]">
 									<div class="relative">
 										<UIcon name="i-heroicons-magnifying-glass-20-solid" class="pointer-events-none absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-stone-400" />
 										<input
 											v-model="searchQuery"
 											type="search"
-											placeholder="ค้นหาชื่อหรืออีเมล"
+											:placeholder="copy.search"
 											class="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 											@keydown.enter="applyFilters"
 										>
 									</div>
-									<select v-model="activeMode" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="all">ทุก quota</option>
-										<option value="store-enabled">สร้างร้านได้</option>
-										<option value="limited">แบบจำกัด</option>
-										<option value="unlimited">ไม่จำกัด</option>
-										<option value="attention">ชน limit</option>
-									</select>
-									<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyFilters">
-										ใช้ตัวกรอง
-									</AppButton>
+									<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 md:contents">
+										<select v-model="activeMode" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+											<option value="all">{{ copy.all }}</option>
+											<option value="limited">{{ copy.limited }}</option>
+											<option value="unlimited">{{ copy.unlimited }}</option>
+											<option value="attention">{{ copy.attention }}</option>
+										</select>
+										<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-funnel-20-solid" class="whitespace-nowrap rounded-md" @click="applyFilters">
+											{{ copy.apply }}
+										</AppButton>
+									</div>
 								</div>
 							</div>
 
@@ -296,7 +329,7 @@ onMounted(async () => {
 								</div>
 								<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
 								<div v-else>
-									<div class="grid gap-3 border-b border-[#f1ede6] p-4 md:grid-cols-2 xl:grid-cols-4">
+									<div class="grid grid-cols-1 gap-3 border-b border-[#f1ede6] p-4 sm:grid-cols-3">
 										<div
 											v-for="stat in overviewStats"
 											:key="stat.label"
@@ -308,18 +341,8 @@ onMounted(async () => {
 										</div>
 									</div>
 
-									<div v-if="warnings.length" class="grid gap-2 border-b border-[#f1ede6] p-4">
-										<div
-											v-for="warning in warnings"
-											:key="warning"
-											class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
-										>
-											{{ warning }}
-										</div>
-									</div>
-
 									<div v-if="!quotas.length" class="p-5 text-center text-sm text-stone-500">
-										ยังไม่มีข้อมูล quota ใน scope นี้
+										{{ copy.noQuota }}
 									</div>
 
 									<template v-else>
@@ -327,35 +350,39 @@ onMounted(async () => {
 											v-for="item in quotas"
 											:key="item.id"
 											type="button"
-											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50"
-											:class="rowToneClass(item)"
+											class="w-full border-b border-[#f1ede6] px-4 py-3 text-left transition hover:bg-primary-50 dark:border-[#3a332a] dark:hover:bg-primary-950/20"
 										>
 											<div class="flex items-start justify-between gap-3">
-												<div class="min-w-0">
-													<div class="flex flex-wrap items-center gap-2">
-														<p class="truncate text-sm font-semibold text-stone-900">{{ item.name }}</p>
-														<UBadge :color="statusTone(item.status)" variant="soft" :label="statusLabel(item.status)" />
+												<div class="flex min-w-0 items-start gap-3">
+													<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-sm font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
+														{{ item.name.slice(0, 1).toUpperCase() }}
 													</div>
-													<p class="mt-1 truncate text-xs text-stone-500">{{ item.email }}</p>
-													<p class="mt-2 text-xs text-stone-500">{{ roleLabel(item.system_role) }} · สร้างเมื่อ {{ formatDateTime(item.created_at) }}</p>
+													<div class="min-w-0">
+														<div class="flex flex-wrap items-center gap-2">
+															<p class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ item.name }}</p>
+															<UBadge :color="statusTone(item.status)" variant="soft" :label="statusLabel(item.status)" />
+														</div>
+														<p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{{ item.email }}</p>
+														<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ roleLabel(item.system_role) }} · {{ copy.createdAt }} {{ formatDateTime(item.created_at) }}</p>
+													</div>
 												</div>
-												<div class="shrink-0 rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-stone-600">
-													ใช้ไป {{ item.owned_stores_count }} ร้าน
+												<div class="shrink-0 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-right text-[11px] font-medium text-stone-600 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-300">
+													{{ storeUsageLabel(item) }}
 												</div>
 											</div>
 
-											<div class="mt-3 grid gap-2 sm:grid-cols-3">
-												<div class="rounded-md bg-neutral-50 px-3 py-2.5">
-													<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">Store quota</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ storeQuotaLabel(item) }}</p>
+											<div class="mt-3 grid grid-cols-3 divide-x divide-[#ece6dc] overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 dark:divide-[#3a332a] dark:border-[#3a332a] dark:bg-[#221d18]">
+												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
+													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.storeQuota }}</p>
+													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ storeQuotaLabel(item) }}</p>
 												</div>
-												<div class="rounded-md bg-neutral-50 px-3 py-2.5">
-													<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">Remaining</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ remainingCapacityLabel(item) }}</p>
+												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
+													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ copy.remaining }}</p>
+													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ remainingCapacityLabel(item) }}</p>
 												</div>
-												<div class="rounded-md bg-neutral-50 px-3 py-2.5">
-													<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">Branch quota</p>
-													<p class="mt-1 text-sm font-semibold text-stone-900">{{ branchQuotaLabel(item) }}</p>
+												<div class="min-w-0 px-2.5 py-2.5 sm:px-3">
+													<p class="truncate text-[10px] uppercase tracking-[0.1em] text-stone-400 sm:text-[11px] sm:tracking-[0.14em]">{{ userQuotaTitle }}</p>
+													<p class="mt-1 truncate text-xs font-semibold text-stone-900 sm:text-sm dark:text-stone-100">{{ storeUserQuotaLabel() }}</p>
 												</div>
 											</div>
 										</button>
@@ -377,7 +404,7 @@ onMounted(async () => {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ copy.perPage }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -397,11 +424,11 @@ onMounted(async () => {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || pending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="copy.previous"
+												:title="copy.previous"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ copy.previous }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -410,11 +437,11 @@ onMounted(async () => {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || pending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="copy.next"
+												:title="copy.next"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ copy.next }}</span>
 											</AppButton>
 										</div>
 									</div>

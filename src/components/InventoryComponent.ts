@@ -1,12 +1,16 @@
 import { ErrorConfig } from "@configs/ErrorConfig";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
 import {
 	InventoryAdjustmentInput,
 	InventoryAdjustmentResult,
 	InventoryBalanceListItem,
 	InventoryFilters,
 	InventoryInterface,
+	InventoryListResult,
 	InventoryMovementListItem,
+	InventoryPageFilters,
 } from "@interfaces/InventoryInterface";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { StoreInterface } from "@interfaces/StoreInterface";
@@ -25,6 +29,7 @@ function normalizeAdjustmentInput(payload: InventoryAdjustmentInput): InventoryA
 	return {
 		...payload,
 		note: payload.note?.trim() || null,
+		adjustment_reason: payload.adjustment_reason?.trim() || null,
 		created_by: payload.created_by?.trim() || null,
 		qty_base: Number(payload.qty_base),
 	};
@@ -34,6 +39,11 @@ export class InventoryComponent {
 	static async getBalances(requestId: string, filters: InventoryFilters): Promise<InventoryBalanceListItem[]> {
 		void requestId;
 		return InventoryInterface.findBalances(filters);
+	}
+
+	static async getBalancePage(requestId: string, filters: InventoryPageFilters): Promise<InventoryListResult> {
+		void requestId;
+		return InventoryInterface.findBalancePage(filters);
 	}
 
 	static async getMovements(requestId: string, filters: InventoryMovementFilters): Promise<InventoryMovementListItem[]> {
@@ -86,9 +96,33 @@ export class InventoryComponent {
 			}
 		}
 
-		return InventoryInterface.adjustStock(input, {
+		const result = await InventoryInterface.adjustStock(input, {
 			refType: options.refType,
 			refId: options.refId,
 		});
+		// Inventory history is the detailed ledger. Activity keeps a safe summary
+		// for staff and never exposes the cost written off.
+		await AuditEventInterface.create({
+			scope: "store",
+			store_id: input.store_id,
+			actor_user_id: input.created_by || null,
+			action: "inventory.adjust",
+			entity_type: "inventory",
+			entity_id: result.movement.id,
+			result: "success",
+			metadata: {
+				product_name: result.movement.product_name,
+				product_sku: result.movement.product_sku,
+				movement_type: result.movement.type,
+				quantity_change: result.movement.qty_base,
+				unit_name: result.movement.unit_name,
+				reason: result.movement.adjustment_reason,
+				note: result.movement.note,
+			},
+			before: { on_hand_base: result.balance.on_hand_base - result.movement.qty_base },
+			after: { on_hand_base: result.balance.on_hand_base },
+		});
+		NotificationInterface.queueStockRefresh(input.store_id);
+		return result;
 	}
 }

@@ -18,10 +18,17 @@ const finiteNumber = z.preprocess((value) => {
 const optionalString = z.string().nullish();
 const optionalNumber = finiteNumber.nullish();
 const optionalLocation = z.string().trim().max(80).nullish();
+const nonNegativeNumber = finiteNumber.refine((value) => value >= 0, "must be greater than or equal to 0");
 
 export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly listQuerySchema = z.object({
 		store_id: z.string().optional(),
+		page: z.coerce.number().int().min(1).optional(),
+		limit: z.coerce.number().int().min(1).max(100).optional(),
+		search: z.string().trim().max(120).optional(),
+		category_id: z.string().trim().max(120).optional(),
+		status: z.enum(["all", "active", "inactive"]).optional(),
+		sort: z.enum(["updated", "name", "price"]).optional(),
 	});
 
 	private static readonly createBodySchema = z.object({
@@ -30,7 +37,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		name: nonEmptyString,
 		base_unit_id: nonEmptyString,
 		price_base: finiteNumber,
-		cost_base: finiteNumber,
+		// Cost is optional at creation: a tracked product usually has no known
+		// cost until its first purchase order is received.
+		cost_base: optionalNumber,
 		barcode: optionalString,
 		active: optionalNumber,
 		image_url: optionalString,
@@ -43,6 +52,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
 		location: optionalLocation,
+		inventory_mode: z.enum(["tracked", "untracked"]).optional(),
+		cost_source: z.enum(["purchase", "manual", "unknown"]).optional(),
+		manual_sold_out: z.coerce.number().int().min(0).max(1).optional(),
 	});
 
 	private static readonly updateBodySchema = z.object({
@@ -64,6 +76,9 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variant_sort_order: optionalNumber,
 		allow_base_unit_sale: optionalNumber,
 		location: optionalLocation,
+		inventory_mode: z.enum(["tracked", "untracked"]).optional(),
+		cost_source: z.enum(["purchase", "manual", "unknown"]).optional(),
+		manual_sold_out: z.coerce.number().int().min(0).max(1).optional(),
 	});
 
 	private static readonly statusBodySchema = z.object({
@@ -73,6 +88,11 @@ export default class ProductValidator extends ValidatorMiddleware {
 	private static readonly costAdjustmentBodySchema = z.object({
 		cost_base: finiteNumber,
 		reason: z.string().trim().max(280).nullish(),
+		// Defaults to pinning the cost; send false to hand the product back to
+		// the purchase-order receive path.
+		lock_cost: z.boolean().optional(),
+		// Opt-in: fills the cost into past sale lines that never had one.
+		apply_to_past_sales: z.boolean().optional(),
 	});
 
 	private static readonly bulkVariantItemSchema = z.object({
@@ -95,12 +115,31 @@ export default class ProductValidator extends ValidatorMiddleware {
 		variants: z.array(ProductValidator.bulkVariantItemSchema).min(1).max(200),
 	});
 
+	private static readonly importBodySchema = z.object({
+		store_id: nonEmptyString,
+		rows: z.array(z.object({
+			name: nonEmptyString.max(160),
+			sku: nonEmptyString.max(32),
+			barcode: z.string().trim().max(64).nullable().optional(),
+			category_id: z.string().trim().max(120).nullable().optional(),
+			base_unit_id: nonEmptyString.max(120),
+			price_base: nonNegativeNumber,
+			cost_base: nonNegativeNumber,
+			location: optionalLocation,
+			low_stock_threshold: nonNegativeNumber.nullable().optional(),
+		})).min(1).max(500),
+	});
+
 	public static readonly list = ProductValidator.init({
 		query: ProductValidator.listQuerySchema,
 	});
 
 	public static readonly create = ProductValidator.init({
 		body: ProductValidator.createBodySchema,
+	});
+
+	public static readonly importRows = ProductValidator.init({
+		body: ProductValidator.importBodySchema,
 	});
 
 	public static readonly update = ProductValidator.init({

@@ -12,7 +12,8 @@ export default class UnitValidator extends ValidatorMiddleware {
 	});
 
 	private static readonly createBodySchema = z.object({
-		code: nonEmptyString,
+		// Derived from the name when omitted; see UnitComponent.create.
+		code: optionalString,
 		name_th: nonEmptyString,
 		scope: optionalString,
 		store_id: optionalString,
