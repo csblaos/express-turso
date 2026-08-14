@@ -1,41 +1,62 @@
 # O KhaiDee+ Database Setup
 
-เครื่องมือนี้ทำงานแยกจาก Backend และ Frontend ใช้เตรียม Turso หรือ SQLite
-ให้พร้อมเชื่อมต่อกับระบบ O KhaiDee+
+เครื่องมือแยกจาก Backend และ Frontend สำหรับสร้าง อัปเดต ตรวจสอบ หรือ reset
+Turso/libSQL และ SQLite ให้พร้อมใช้กับ O KhaiDee+
 
-## ติดตั้งและตั้งค่า
+## Requirements
+
+- Node.js 18 ขึ้นไป
+- npm
+- Turso Database URL และ Auth token ถ้าใช้ฐานข้อมูล remote
+
+## ติดตั้ง
 
 ```bash
 cd database-setup
 npm install
+```
+
+เลือกใช้ได้สองแบบ:
+
+1. CLI: สร้าง `config.json` แล้วรันคำสั่ง npm
+2. Local Setup UI: รัน `npm run ui` แล้วกรอกข้อมูลใน Browser โดยไม่ต้องสร้าง `config.json`
+
+## ตั้งค่า CLI
+
+```bash
 cp config.example.json config.json
 ```
 
-แก้ `config.json` ให้เป็น Database เป้าหมายและบัญชีผู้ดูแลที่ต้องการ
-ไฟล์นี้มี Token และรหัสผ่าน จึงถูก ignore และไม่ถูกบันทึกลง Git
+แก้ `config.json` ให้ชี้ไปที่ Database เป้าหมายและกำหนดบัญชีผู้ดูแล:
 
-## บัญชีผู้ดูแลสองระดับ
+```json
+{
+  "database": {
+    "url": "libsql://your-database-name-your-org.turso.io",
+    "authToken": "your-turso-auth-token"
+  },
+  "systemAdmin": {
+    "name": "Platform Operator",
+    "username": "ops",
+    "email": "ops@example.com",
+    "password": "secret123",
+    "locale": "lo"
+  },
+  "superadmin": {
+    "name": "Store Owner",
+    "username": "owner",
+    "email": "owner@example.com",
+    "password": "secret456",
+    "locale": "lo"
+  }
+}
+```
 
-ระบบแยกสองบทบาทนี้ขาดจากกัน คนละสิทธิ์ คนละหน้าจอ:
+`config.json` มี token และรหัสผ่าน จึงถูก ignore และต้องไม่ commit เข้า Git
 
-| บล็อกใน config | `system_role` | ใช้ทำอะไร |
-| --- | --- | --- |
-| `systemAdmin` | `system_admin` | ผู้ให้บริการ ดูแล `/system-admin` (monitoring, security, จัดการลูกค้า, config) เข้าหน้าร้านไม่ได้ |
-| `superadmin` | `superadmin` | เจ้าของกิจการฝั่งลูกค้า เปิดร้าน จัดการพนักงานและสิทธิ์ เข้า `/system-admin` ไม่ได้ |
+### SQLite local
 
-ระบุบล็อกไหนก็ได้หรือทั้งสองบล็อก แต่ต้องมีอย่างน้อยหนึ่ง และอีเมล/username
-ต้องไม่ซ้ำกันโดยไม่สนตัวพิมพ์เล็ก-ใหญ่ username ใช้ 3–32 ตัวอักษร โดยใช้ได้เฉพาะ
-`a-z`, `0-9`, `.` และ `_` เท่านั้น รหัสผ่านต้องยาวอย่างน้อย 12 ตัวอักษร
-
-ถ้าไม่สร้าง `systemAdmin` ไว้เลย จะไม่มีใครเข้าหน้า `/system-admin` ได้
-เพราะไม่มีช่องทางอื่นสร้างบัญชีระดับนี้ — `npm run check` จะเตือนให้เมื่อยังไม่มี
-
-บทบาทระดับร้านเริ่มต้นจะถูกสร้างอัตโนมัติเมื่อมีการสร้างร้าน ได้แก่ `Owner`,
-`Store Admin`, `Manager`, `Cashier` และ `Inventory Staff` โดย `Store Admin`
-ใช้สำหรับผู้ช่วยที่ต้องจัดการผู้ใช้ภายในร้าน แต่ไม่ควรได้รับสิทธิ์ระดับ `superadmin`
-ของระบบ
-
-Turso ใช้ URL แบบ `libsql://...` พร้อม Token ส่วน SQLite ใช้:
+SQLite ใช้ URL ขึ้นต้นด้วย `file:` และไม่ต้องใช้ Auth token:
 
 ```json
 {
@@ -46,68 +67,158 @@ Turso ใช้ URL แบบ `libsql://...` พร้อม Token ส่วน 
 }
 ```
 
-## Database ใหม่
+## กฎของบัญชีผู้ดูแล
+
+CLI ทุกคำสั่งต้องมีบล็อก `systemAdmin` หรือ `superadmin` อย่างน้อยหนึ่งบล็อกใน `config.json`
+แม้คำสั่ง `check` และ `migrate` จะไม่สร้างบัญชีใหม่ก็ตาม
+
+| Config block | `system_role` | ขอบเขตการใช้งาน |
+| --- | --- | --- |
+| `systemAdmin` | `system_admin` | ผู้ดูแลแพลตฟอร์ม ใช้ `/system-admin` และเข้า workspace ของร้านไม่ได้ |
+| `superadmin` | `superadmin` | เจ้าของกิจการ สร้างร้านและจัดการพนักงาน เข้า `/system-admin` ไม่ได้ |
+
+กฎ validation:
+
+- `name` ห้ามว่าง
+- `username` มี 3–32 ตัว ต้องขึ้นต้นด้วยตัวอักษรหรือตัวเลข และใช้ได้เฉพาะ `a-z`, `0-9`, `.`, `_`
+- username จะถูกแปลงเป็นตัวพิมพ์เล็ก
+- `email` ต้องมี `@`
+- `password` ขั้นต่ำ 6 ตัวอักษร
+- ถ้าระบุทั้งสองบัญชี email และ username ต้องไม่ซ้ำกันโดยไม่สนตัวพิมพ์เล็ก-ใหญ่
+- `locale` ค่าเริ่มต้นคือ `lo`
+
+ถ้าไม่มี System Admin หน้า `/system-admin` จะไม่มีผู้เข้าใช้งาน และ `npm run check` จะแสดงคำเตือน
+
+## คำสั่ง
+
+### `npm run init`
+
+เหมาะกับ Database ใหม่:
+
+- สร้าง schema จาก `schema.sql`
+- ใช้ migration ล่าสุดเพิ่มตาราง/คอลัมน์/ดัชนีที่ยังขาด
+- สร้าง System Admin และ/หรือ Super Admin จาก `config.json`
+- รันซ้ำได้โดยไม่ลบข้อมูล
+- ถ้ามีบัญชี email เดิมอยู่แล้ว จะไม่เปลี่ยน username หรือรหัสผ่าน
+
+```bash
+npm run init
+npm run check
+```
+
+บัญชีที่สร้างใหม่จะถูก hash รหัสผ่านด้วย bcrypt และตั้ง `must_change_password = 1`
+เพื่อบังคับเปลี่ยนรหัสผ่านหลังเข้าระบบครั้งแรก
+
+### `npm run migrate`
+
+อัปเดต Database เดิมแบบ idempotent:
+
+- ไม่ลบข้อมูล
+- ไม่สร้างบัญชีผู้ดูแลใหม่
+- เพิ่ม schema และ migration ที่ยังขาด
+- ถ้าฐานเก่ายังไม่มี `users.username` จะเพิ่มคอลัมน์ สร้าง username จาก email และหลีกเลี่ยงค่าซ้ำก่อนสร้าง unique index
 
 ```bash
 npm run check
-npm run init
+npm run migrate
+npm run check
 ```
 
-`init` สร้าง schema และบัญชีผู้ดูแลตาม `config.json` สามารถรันซ้ำได้โดยไม่ลบข้อมูล
-และจะไม่เปลี่ยน username หรือรหัสผ่านของบัญชีที่มีอยู่แล้ว หากเป็นฐานเก่าที่ยังไม่มี
-คอลัมน์ `username` สคริปต์จะเพิ่มคอลัมน์และสร้าง username จากอีเมลให้ก่อนสร้าง unique
-index เพื่อให้รันต่อได้อย่างปลอดภัย
+### `npm run check`
 
-## Setup UI บนเครื่องผู้ดูแล
+ตรวจการเชื่อมต่อและสถานะโดยไม่แก้ไขข้อมูล:
 
-หากไม่ต้องการกรอก `config.json` หรือรันคำสั่งด้วยตัวเอง สามารถเปิด wizard แบบ responsive
-สำหรับ desktop, tablet และ mobile ได้:
+- Database เป้าหมาย
+- schema version ปัจจุบัน
+- ตารางหรือคอลัมน์ที่ยังขาด
+- จำนวนตาราง
+- จำนวน System Admin และ Super Admin
 
 ```bash
-npm run ui
+npm run check
 ```
 
-จากนั้นเปิด `http://127.0.0.1:4178` บนเครื่องเดียวกัน UI จะให้กรอก URL/token, ข้อมูล
-System Admin และ Super Admin, ตรวจสอบการเชื่อมต่อ, ตั้งค่าฐานใหม่ หรือ reset ฐานทั้งหมด
-ก่อน reset ต้องพิมพ์ `RESET <database URL>` เพื่อยืนยัน
+### `npm run reset`
 
-UI รับฟังเฉพาะ `127.0.0.1` และไม่เขียน token/password ลง disk แต่ยังควรปิดหน้าต่างเมื่อเสร็จ
-และห้าม expose port นี้ผ่าน proxy หรือ public network
+> **อันตราย:** ลบ table, view, trigger, index และข้อมูลทั้งหมดใน Database เป้าหมาย กู้คืนจากเครื่องมือนี้ไม่ได้
 
-## ล้าง Database เดิมแล้วเริ่มใหม่
+CLI แสดง Database เป้าหมายและบังคับพิมพ์ `RESET <database label>` ให้ตรงก่อนลบ
+หลังจากนั้นจะสร้าง schema และบัญชีผู้ดูแลจาก `config.json` ใหม่
 
 ```bash
 npm run reset
 ```
 
-ระบบจะให้พิมพ์ชื่อ Database เพื่อยืนยัน แล้วลบข้อมูลทั้งหมด สร้าง schema ใหม่
-และสร้างบัญชีผู้ดูแลตาม `config.json` การดำเนินการนี้ย้อนกลับไม่ได้
+## Local Setup UI
 
-## เชื่อม Backend
+```bash
+npm run ui
+```
 
-หลัง setup สำเร็จ ให้นำ URL และ Token เดียวกันไปใส่ `.env` ของ Backend:
+เปิด `http://127.0.0.1:4178` ในเครื่องเดียวกัน UI รองรับ desktop, tablet และ mobile
+
+ถ้า port 4178 ถูกใช้อยู่:
+
+```bash
+SETUP_UI_PORT=4179 npm run ui
+```
+
+UI ทำได้ดังนี้:
+
+- เลือก Turso/libSQL หรือ SQLite
+- ตรวจ connection ด้วย Database URL/Auth token
+- กรอก System Admin และ Super Admin
+- รัน `init`, `migrate` หรือ `reset`
+- คัดลอกผลการทำงาน
+
+ปุ่ม **ตรวจสอบการเชื่อมต่อ** ตรวจเฉพาะ URL และ token ด้วย `SELECT 1`
+โดยไม่ตรวจชื่อ username email หรือ password ของบัญชีผู้ดูแล
+ข้อมูลบัญชีจะถูก validate เมื่อรัน action กับ Database
+
+Reset ใน UI ต้องพิมพ์ `RESET <database URL>` ให้ตรงก่อส่ง request และ server จะตรวจซ้ำอีกครั้ง
+
+### ความปลอดภัยของ UI
+
+- รับฟังเฉพาะ `127.0.0.1` โดยค่าเริ่มต้น
+- ไม่เขียน URL, token หรือรหัสผ่านลง disk
+- request body ถูกจำกัดที่ 64 KiB
+- action ที่แก้ไข Database ไม่ถูกรันซ้อนกันผ่าน UI
+- ห้าม expose port นี้ผ่าน public proxy หรือเปิดให้เครือข่ายภายนอกเข้าถึง
+- ปิด process ด้วย `Ctrl+C` เมื่อใช้งานเสร็จ
+
+## เชื่อมต่อ Backend
+
+หลัง `init` หรือ `migrate` สำเร็จ นำ URL และ token เดียวกันไปตั้งค่าใน `.env` ของ Backend:
 
 ```env
 TURSO_DATABASE_URL=libsql://database-name-org.turso.io
 TURSO_AUTH_TOKEN=TURSO_TOKEN
 ```
 
-จากนั้นรัน Backend และ Frontend ตามปกติ ไม่ต้องแก้ source code โดยทุกบัญชีที่สคริปต์สร้าง
-จะถูกบังคับให้เปลี่ยนรหัสผ่านหลังเข้าสู่ระบบครั้งแรก
+สำหรับ SQLite:
 
-## ตัวอย่างบัญชีใน config
-
-```json
-{
-  "systemAdmin": {
-    "name": "Platform Operator",
-    "username": "ops",
-    "email": "ops@example.com",
-    "password": "replace-with-a-strong-password",
-    "locale": "lo"
-  }
-}
+```env
+DATABASE_URL=file:./database.db
 ```
 
-ไฟล์ schema ไม่เก็บบัญชีหรือรหัสผ่านไว้ในตัวเอง บัญชีจะถูกสร้างจาก `config.json` เท่านั้น
-เพื่อไม่ให้ credential หลุดเข้า Git
+จากนั้นเริ่ม Backend และ Frontend ได้ตามปกติ โดยบัญชีที่เครื่องมือสร้างจะถูกบังคับให้เปลี่ยนรหัสผ่าน
+หลังเข้าระบบครั้งแรก
+
+## ไฟล์สำคัญ
+
+| ไฟล์ | หน้าที่ |
+| --- | --- |
+| `config.example.json` | ตัวอย่าง config สำหรับ CLI |
+| `config.json` | config จริงในเครื่อง ถูก ignore จาก Git |
+| `schema.sql` | schema หลักของระบบ |
+| `migrations.mjs` | migration และการตรวจ schema version ล่าสุด |
+| `setup.mjs` | validation, connect, init, migrate, check และ reset |
+| `setup-ui.mjs` | Local Setup UI และ HTTP API บน `127.0.0.1` |
+
+## ข้อควรระวัง Production
+
+- Backup Database ก่อรัน `migrate` หรือ `reset`
+- รัน `npm run check` ก่อนและหลัง migration
+- ตรวจ Database URL/hostname ให้แน่ใจก่อ reset
+- แม้ validation อนุญาตรหัสผ่านขั้นต่ำ 6 ตัว ควรใช้รหัสผ่านที่ยาวและคาดเดายากสำหรับ Production
+- ห้าม commit `config.json`, `.env` หรือ token จริงเข้า Git
