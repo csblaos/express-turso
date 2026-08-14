@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "init": "node setup.mjs init",
+    "migrate": "node setup.mjs migrate",
     "reset": "node setup.mjs reset",
     "check": "node setup.mjs check",
     "ui": "node setup-ui.mjs"
