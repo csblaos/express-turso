@@ -9,7 +9,9 @@ type QuickView = "all" | "ready" | "low-stock" | "out" | "inactive";
 type ProductSort = "best-selling" | "name" | "stock" | "price";
 type StockState = "ready" | "low" | "out" | "negative" | "inactive";
 type CameraPermissionState = "unknown" | "prompt" | "granted" | "denied";
-type PaymentMethod = "cash" | "qr_transfer";
+type PaymentMethod = "cash" | "qr_transfer" | "credit_card";
+
+type PaymentAccount = { id: string; display_name: string; bank_name: string | null; account_number: string | null; qr_id: string | null; is_active: number };
 
 type Category = {
 	id: string;
@@ -54,6 +56,8 @@ type ApiPosCatalogResponse = {
 		vat_enabled: number;
 		vat_rate: number;
 		vat_mode: string;
+		store_type: string;
+		pickup_queue_enabled: number;
 	};
 	categories: Array<{
 		id: string;
@@ -101,21 +105,6 @@ const categories = ref<Category[]>([
 	{ id: "snack", label: "ของทานเล่น" },
 	{ id: "retail", label: "รีเทล" },
 ]);
-
-const quickViews: Array<{ id: QuickView; label: string }> = [
-	{ id: "all", label: "ทั้งหมด" },
-	{ id: "low-stock", label: "สต็อกต่ำ" },
-	{ id: "ready", label: "พร้อมขาย" },
-	{ id: "out", label: "หมดสต็อก" },
-	{ id: "inactive", label: "ปิดขาย" },
-];
-
-const sortOptions: Array<{ value: ProductSort; label: string }> = [
-	{ value: "best-selling", label: "ขายดี" },
-	{ value: "name", label: "ชื่อ" },
-	{ value: "stock", label: "สต็อก" },
-	{ value: "price", label: "ราคา" },
-];
 
 const serviceModes: ServiceMode[] = ["หน้าร้าน", "รับกลับ", "เดลิเวอรี"];
 
@@ -285,6 +274,11 @@ const products = ref<Product[]>([
 	},
 ]);
 
+// Never render fixtures in the POS. The catalog is store-specific and must only
+// appear after the live API response has been received.
+categories.value = [];
+products.value = [];
+
 const searchQuery = ref("");
 const activeCategory = ref("all");
 const activeQuickView = ref<QuickView>("all");
@@ -301,6 +295,13 @@ const cameraPermissionState = ref<CameraPermissionState>("unknown");
 const paymentModalOpen = ref(false);
 const paymentCheckoutStep = ref<1 | 2>(1);
 const selectedPaymentMethod = ref<PaymentMethod | null>(null);
+const checkoutSaving = ref(false);
+const checkoutError = ref<string | null>(null);
+const cashTendered = ref("");
+const paymentAccountId = ref("");
+const paymentReference = ref("");
+const paymentAccounts = ref<PaymentAccount[]>([]);
+const checkoutIdempotencyKey = ref("");
 const paymentModalBodyOverflowSnapshot = ref<string | null>(null);
 const cameraDevices = ref<Array<{ deviceId: string; label: string }>>([]);
 const selectedCameraDeviceId = ref("");
@@ -312,15 +313,24 @@ const catalogCurrency = ref("THB");
 const vatEnabled = ref(false);
 const vatRate = ref(0);
 const vatMode = ref<"EXCLUSIVE" | "INCLUSIVE">("EXCLUSIVE");
-const cart = ref<CartEntry[]>([
-	{ productId: "iced-latte", qty: 2 },
-	{ productId: "croffle", qty: 1 },
-	{ productId: "sparkling-yuzu", qty: 1 },
-]);
+const catalogStoreType = ref("");
+const restaurantInitialCatalog = shallowRef<ApiPosCatalogResponse | null>(null);
+const isRestaurantStore = computed(() => catalogStoreType.value === "RESTAURANT");
+const posExperience = computed<"loading" | "restaurant" | "retail">(() => {
+	if (productsPending.value && !catalogStoreType.value) return "loading";
+	return isRestaurantStore.value ? "restaurant" : "retail";
+});
+const cart = ref<CartEntry[]>([]);
+type AvailablePromotion = { promotion_id: string; name: string; type: "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount"; apply_mode: "automatic" | "manual"; applications: number; gift_product_id: string | null; gift_qty: number; discount_method?: "percent" | "fixed" | null; discount_value?: number; discount_amount: number };
+const availablePromotions = ref<AvailablePromotion[]>([]);
+const selectedPromotionIds = ref<string[]>([]);
+const promotionsPending = ref(false);
 
 const runtimeConfig = useRuntimeConfig();
+const { t } = useI18n();
+const { intlLocale } = useAppLocale();
 const { apiFetch } = useApiClient();
-const { currentStoreId, currentAccess } = useAuthSession();
+const { currentStoreId, currentAccess, can } = useAuthSession();
 const appToast = useAppToast();
 
 let scanIndex = 0;
@@ -329,6 +339,48 @@ let cameraScannerControls: { stop?: () => void } | null = null;
 let lastScannerKeyAt = 0;
 let scannerBuffer = "";
 let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
+let promotionTimer: ReturnType<typeof setTimeout> | null = null;
+
+const quickViewsLocalized = computed<Array<{ id: QuickView; label: string }>>(() => [
+	{ id: "all", label: t("pos.allProducts") },
+	{ id: "low-stock", label: t("pos.lowStock") },
+	{ id: "ready", label: t("pos.readyProducts") },
+	{ id: "out", label: t("pos.outOfStock") },
+	{ id: "inactive", label: t("pos.inactive") },
+]);
+
+const sortOptionsLocalized = computed<Array<{ value: ProductSort; label: string }>>(() => [
+	{ value: "best-selling", label: t("pos.sortBestSelling") },
+	{ value: "name", label: t("pos.sortName") },
+	{ value: "stock", label: t("pos.sortStock") },
+	{ value: "price", label: t("pos.sortPrice") },
+]);
+
+const posCopy = computed(() => ({
+	search: t("pos.searchPlaceholder"),
+	clearSearch: t("pos.clearSearch"),
+	scanBarcode: t("pos.scanBarcode"),
+	loading: t("pos.loadingProducts"),
+	loadError: t("pos.loadProductsFailed"),
+	noProducts: t("pos.noProductsFound"),
+	noProductsHint: t("pos.noProductsFoundHint"),
+	items: t("pos.items"),
+	sortBy: t("pos.sortBy"),
+}));
+const hasCatalogError = computed(() => Boolean(productsError.value && !productsPending.value));
+// An empty catalog needs different wording from a search that matched nothing.
+const hasEmptyCatalog = computed(() => (
+	!productsPending.value && !hasCatalogError.value && products.value.length === 0
+));
+const canCreateProduct = computed(() => can("products.create"));
+
+const activeModeLabel = computed(() => (
+	activeMode.value === "หน้าร้าน"
+		? t("pos.walkIn")
+		: activeMode.value === "รับกลับ"
+			? t("pos.pickup")
+			: t("pos.delivery")
+));
 
 const numberFormatter = new Intl.NumberFormat("th-TH", {
 	maximumFractionDigits: 0,
@@ -356,7 +408,7 @@ const categoryCounts = computed(() =>
 );
 
 const activeProductSortLabel = computed(() => (
-	sortOptions.find((option) => option.value === activeProductSort.value)?.label ?? "ขายดี"
+	sortOptionsLocalized.value.find((option) => option.value === activeProductSort.value)?.label ?? t("pos.sortBestSelling")
 ));
 
 const filteredProducts = computed(() => {
@@ -392,8 +444,8 @@ const filteredProducts = computed(() => {
 				return right.price - left.price;
 			case "best-selling":
 			default: {
-				const leftRank = left.tag === "ขายดี" ? 0 : 1;
-				const rightRank = right.tag === "ขายดี" ? 0 : 1;
+				const leftRank = left.tag === t("pos.sortBestSelling") ? 0 : 1;
+				const rightRank = right.tag === t("pos.sortBestSelling") ? 0 : 1;
 				if (leftRank !== rightRank) {
 					return leftRank - rightRank;
 				}
@@ -438,54 +490,68 @@ const vatPercent = computed(() => {
 	return rawRate > 100 ? rawRate / 100 : rawRate;
 });
 
-const discount = computed(() =>
+const productDiscount = computed(() =>
 	cartItems.value.reduce(
 		(sum, item) => sum + ((item.compareAt ?? item.price) - item.price) * item.qty,
 		0,
 	),
 );
+const promotionDiscount = computed(() => Math.min(subtotal.value, availablePromotions.value
+	.filter((promotion) => selectedPromotionIds.value.includes(promotion.promotion_id))
+	.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0)));
+const appliedPromotions = computed(() => availablePromotions.value.filter(
+	(promotion) => promotion.applications > 0 && selectedPromotionIds.value.includes(promotion.promotion_id),
+));
+const appliedPromotionCount = computed(() => appliedPromotions.value.length);
+const discount = computed(() => productDiscount.value + promotionDiscount.value);
 
 const tax = computed(() => {
 	const rate = vatPercent.value;
 	if (rate <= 0) return 0;
 	if (vatMode.value === "INCLUSIVE") {
-		return Math.round(subtotal.value * (rate / (100 + rate)));
+		return Math.round(Math.max(0, subtotal.value - promotionDiscount.value) * (rate / (100 + rate)));
 	}
-	return Math.round(subtotal.value * (rate / 100));
+	return Math.round(Math.max(0, subtotal.value - promotionDiscount.value) * (rate / 100));
 });
 const serviceCharge = computed(() => 0);
 const total = computed(() => (
 	vatEnabled.value && vatPercent.value > 0 && vatMode.value !== "INCLUSIVE"
-		? subtotal.value + tax.value + serviceCharge.value
-		: subtotal.value + serviceCharge.value
+		? Math.max(0, subtotal.value - promotionDiscount.value) + tax.value + serviceCharge.value
+		: Math.max(0, subtotal.value - promotionDiscount.value) + serviceCharge.value
 ));
 const vatLabel = computed(() => {
 	const rate = vatPercent.value;
 	const formattedRate = Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, "");
-	return `ภาษีมูลค่าเพิ่ม ${rate > 0 ? formattedRate : 0}%`;
+	return t("pos.vat", { rate: rate > 0 ? formattedRate : 0 });
 });
-const paymentMethodOptions: Array<{
+const paymentMethodOptions = computed<Array<{
 	id: PaymentMethod;
 	label: string;
 	hint: string;
 	icon: string;
-}> = [
+}>>(() => [
 	{
 		id: "cash",
-		label: "เงินสด",
-		hint: "รับเงินสดหน้าเคาน์เตอร์และปิดบิลได้ทันที",
+		label: t("pos.cash"),
+		hint: t("pos.cashHint"),
 		icon: "i-heroicons-banknotes-20-solid",
 	},
 	{
 		id: "qr_transfer",
-		label: "QR / โอน",
-		hint: "ใช้สลิปหรือ QR สำหรับรับชำระแบบโอน",
+		label: t("pos.qr"),
+		hint: t("pos.qrHint"),
 		icon: "i-heroicons-qr-code-20-solid",
 	},
-];
+	{
+		id: "credit_card",
+		label: t("pos.card"),
+		hint: t("pos.cardHint"),
+		icon: "i-heroicons-credit-card-20-solid",
+	},
+]);
 const selectedPaymentMethodOption = computed(() => (
 	selectedPaymentMethod.value
-		? paymentMethodOptions.find((option) => option.id === selectedPaymentMethod.value) || null
+		? paymentMethodOptions.value.find((option) => option.id === selectedPaymentMethod.value) || null
 		: null
 ));
 const selectedPaymentMethodLabel = computed(() => selectedPaymentMethodOption.value?.label || "");
@@ -502,7 +568,7 @@ const paymentModalTitle = computed(() => (
 ));
 const paymentModalDescription = computed(() => (
 	paymentCheckoutStep.value === 1
-		? "กรุณาเลือก เงินสด หรือ QR / โอน แล้วค่อยไปต่อ"
+		? "กรุณาเลือก เงินสด, QR / โอน หรือบัตรเครดิต แล้วค่อยไปต่อ"
 		: "ทบทวนรายการสินค้า ยอดรวม และวิธีชำระก่อนยืนยัน"
 ));
 const paymentModalProgressLabel = computed(() => (
@@ -532,7 +598,7 @@ const paymentModalPrimaryAction = computed(() => (
 ));
 
 function formatMoney(value: number) {
-	return formatMoneyWithSymbol(value || 0, catalogCurrency.value, { locale: "th-TH", maximumFractionDigits: 0 });
+	return formatMoneyWithSymbol(value || 0, catalogCurrency.value, { locale: intlLocale.value, maximumFractionDigits: 0 });
 }
 
 function getInitials(name: string) {
@@ -576,16 +642,16 @@ function mapCatalogProduct(item: ApiPosCatalogResponse["items"][number]): Produc
 		barcode: item.barcode || "",
 		price: Number(item.price_base || 0),
 		compareAt: undefined,
-		unitLabel: item.unit_name || "หน่วยหลัก",
+		unitLabel: item.unit_name || t("pos.baseUnit"),
 		stock: Number(item.available_base || 0),
 		stockState: item.stock_state,
 		tag: item.stock_state === "low"
-			? "ใกล้หมด"
+			? t("pos.lowStock")
 			: item.stock_state === "out"
-				? "หมดสต็อก"
+				? t("pos.outOfStock")
 				: item.stock_state === "inactive"
-					? "ปิดขาย"
-					: item.category_name || undefined,
+					? t("pos.inactive")
+					: localizeCategoryLabel(item.category_name) || undefined,
 		hasVariants: false,
 		thumbnail: getInitials(item.name),
 		accent: getAccent(item.id),
@@ -594,14 +660,17 @@ function mapCatalogProduct(item: ApiPosCatalogResponse["items"][number]): Produc
 	};
 }
 
+function localizeCategoryLabel(label: string | null | undefined) {
+	const normalized = String(label || "").trim().toLowerCase();
+	if (normalized === "uncategorized" || normalized === "ไม่ระบุหมวด" || normalized === "ບໍ່ລະບຸໝວດ") {
+		return t("pos.uncategorized");
+	}
+	return label?.trim() || "";
+}
+
 function seedFallbackCategoryOptions() {
 	categories.value = [
-		{ id: "all", label: "ทั้งหมด" },
-		{ id: "coffee", label: "กาแฟ" },
-		{ id: "tea", label: "ชา" },
-		{ id: "bakery", label: "เบเกอรี" },
-		{ id: "snack", label: "ของทานเล่น" },
-		{ id: "retail", label: "รีเทล" },
+		{ id: "all", label: t("pos.allProducts") },
 	];
 }
 
@@ -669,22 +738,22 @@ function getStockTone(state: StockState) {
 
 function getStockLabel(product: Product) {
 	if (product.stockState === "ready") {
-		return `คงเหลือ ${product.stock}`;
+		return t("pos.stockRemaining", { count: product.stock });
 	}
 
 	if (product.stockState === "low") {
-		return `ใกล้หมด ${product.stock}`;
+		return t("pos.nearlyOut", { count: product.stock });
 	}
 
 	if (product.stockState === "out") {
-		return "หมดสต็อก";
+		return t("pos.outOfStock");
 	}
 
 	if (product.stockState === "negative") {
-		return `ติดลบ ${product.stock}`;
+		return t("pos.negativeStock", { count: product.stock });
 	}
 
-	return "ปิดขาย";
+	return t("pos.inactive");
 }
 
 function triggerScanToast(message: string) {
@@ -984,14 +1053,22 @@ function unlockPaymentModalScroll() {
 	paymentModalBodyOverflowSnapshot.value = null;
 }
 
-function openPaymentModal() {
+async function openPaymentModal() {
+	if (!cartItems.value.length) return;
+	await evaluatePromotions();
 	selectedPaymentMethod.value = null;
+	checkoutError.value = null;
+	cashTendered.value = String(total.value);
+	paymentReference.value = "";
+	checkoutIdempotencyKey.value = crypto.randomUUID();
 	paymentCheckoutStep.value = 1;
 	paymentModalOpen.value = true;
 	lockPaymentModalScroll();
+	if (!paymentAccounts.value.length) void loadPaymentAccounts();
 }
 
 function closePaymentModal() {
+	if (checkoutSaving.value) return;
 	paymentModalOpen.value = false;
 	selectedPaymentMethod.value = null;
 	paymentCheckoutStep.value = 1;
@@ -1010,18 +1087,66 @@ function goBackPaymentCheckout() {
 	closePaymentModal();
 }
 
-function continuePaymentCheckout() {
+async function continuePaymentCheckout() {
 	if (!selectedPaymentMethod.value) return;
 	if (paymentCheckoutStep.value === 1) {
 		paymentCheckoutStep.value = 2;
 		return;
 	}
-	appToast.success({
-		title: "ยืนยันการชำระเงินแล้ว",
-		description: `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}`,
-	});
-	mobileTicketOpen.value = false;
-	closePaymentModal();
+	checkoutSaving.value = true;
+	checkoutError.value = null;
+	try {
+		const response = await apiFetch<ApiEnvelope<{ order_no: string; change_amount: number }>>("/pos/checkout", {
+			method: "POST",
+			headers: { "Idempotency-Key": checkoutIdempotencyKey.value },
+			body: {
+				store_id: effectiveStoreId.value,
+				service_mode: activeMode.value === "หน้าร้าน" ? "walk-in" : activeMode.value === "รับกลับ" ? "pickup" : "delivery",
+				payment_method: selectedPaymentMethod.value,
+				items: cart.value.map((item) => ({ product_id: item.productId, qty: item.qty })),
+				promotion_ids: selectedPromotionIds.value,
+				amount_tendered: selectedPaymentMethod.value === "cash" ? Number(cashTendered.value) : null,
+				payment_account_id: selectedPaymentMethod.value === "qr_transfer" ? paymentAccountId.value : null,
+				payment_reference: paymentReference.value || null,
+				note: orderNote.value || null,
+			},
+		});
+		appToast.success({ title: t("toastMessages.paymentSuccessfulWithOrder", { order: response.data.order_no }), description: response.data.change_amount > 0 ? t("toastMessages.changeAmount", { amount: formatMoney(response.data.change_amount) }) : `${selectedPaymentMethodLabel.value} • ${formatMoney(total.value)}` });
+		cart.value = [];
+		selectedPromotionIds.value = [];
+		availablePromotions.value = [];
+		mobileTicketOpen.value = false;
+		checkoutSaving.value = false;
+		closePaymentModal();
+		await loadPosProducts();
+	} catch (error) {
+		checkoutError.value = resolveApiErrorMessage(error, "บันทึกการขายไม่สำเร็จ");
+	} finally {
+		checkoutSaving.value = false;
+	}
+}
+
+async function evaluatePromotions() {
+	if (!effectiveStoreId.value || !cart.value.length) { availablePromotions.value = []; selectedPromotionIds.value = []; return; }
+	promotionsPending.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<AvailablePromotion[]>>("/promotions/evaluate", { method: "POST", body: { store_id: effectiveStoreId.value, items: cart.value.map((item) => ({ product_id: item.productId, qty: item.qty })) } });
+		availablePromotions.value = response.data;
+		selectedPromotionIds.value = [ ...new Set([
+			...selectedPromotionIds.value.filter((id) => response.data.some((promotion) => promotion.promotion_id === id)),
+			...response.data.filter((promotion) => promotion.apply_mode === "automatic" && promotion.applications > 0).map((promotion) => promotion.promotion_id),
+		]) ];
+	} catch { availablePromotions.value = []; selectedPromotionIds.value = []; }
+	finally { promotionsPending.value = false; }
+}
+
+async function loadPaymentAccounts() {
+	if (!effectiveStoreId.value) return;
+	try {
+		const response = await apiFetch<ApiEnvelope<PaymentAccount[]>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}/payment-accounts`);
+		paymentAccounts.value = response.data.filter((account) => Boolean(account.is_active));
+		paymentAccountId.value = paymentAccounts.value[0]?.id || "";
+	} catch { paymentAccounts.value = []; }
 }
 
 function simulateScan() {
@@ -1044,22 +1169,39 @@ async function loadPosProducts() {
 		const response = await apiFetch<ApiEnvelope<ApiPosCatalogResponse>>(
 			`/pos/products?store_id=${encodeURIComponent(effectiveStoreId.value)}`,
 		);
+		restaurantInitialCatalog.value = response.data;
 		catalogCurrency.value = response.data.store.currency || "THB";
+		catalogStoreType.value = String(response.data.store.store_type || "OTHER").toUpperCase();
+		if (import.meta.client) localStorage.setItem(`pos.store-type:${effectiveStoreId.value}`, catalogStoreType.value);
 		vatEnabled.value = Boolean(response.data.store.vat_enabled);
 		vatRate.value = Number(response.data.store.vat_rate || 0);
 		vatMode.value = String(response.data.store.vat_mode || "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
 			? "INCLUSIVE"
 			: "EXCLUSIVE";
 		categories.value = [
-			{ id: "all", label: "ทั้งหมด" },
+			{ id: "all", label: t("pos.allProducts") },
 			...response.data.categories.map((category) => ({
 				id: category.id,
-				label: category.name,
+			label: localizeCategoryLabel(category.name),
 			})),
 		];
 		products.value = response.data.items.map(mapCatalogProduct);
 	} catch (error) {
-		productsError.value = resolveApiErrorMessage(error, "โหลดรายการสินค้า POS ไม่สำเร็จ");
+		productsError.value = resolveApiErrorMessage(error, t("pos.loadProductsFailed"));
+		const cachedStoreType = import.meta.client
+			? localStorage.getItem(`pos.store-type:${effectiveStoreId.value}`)
+			: null;
+		if (cachedStoreType) {
+			catalogStoreType.value = cachedStoreType;
+		} else {
+			try {
+				const storeResponse = await apiFetch<ApiEnvelope<{ store_type?: string }>>(`/stores/${encodeURIComponent(effectiveStoreId.value)}`);
+				catalogStoreType.value = String(storeResponse.data.store_type || "OTHER").toUpperCase();
+				if (import.meta.client) localStorage.setItem(`pos.store-type:${effectiveStoreId.value}`, catalogStoreType.value);
+			} catch {
+				catalogStoreType.value = "OTHER";
+			}
+		}
 		seedFallbackCategoryOptions();
 	} finally {
 		productsPending.value = false;
@@ -1067,8 +1209,21 @@ async function loadPosProducts() {
 }
 
 watch(effectiveStoreId, () => {
+	catalogStoreType.value = "";
+	restaurantInitialCatalog.value = null;
+	products.value = [];
+	// The catalog request needs the token and store id that only exist in client
+	// storage. Running it during SSR always failed, which rendered the retail
+	// fallback on the server and left the POS blank after hydration.
+	if (!import.meta.client) return;
 	void loadPosProducts();
+	void evaluatePromotions();
 }, { immediate: true });
+
+watch(cart, () => {
+	if (promotionTimer) clearTimeout(promotionTimer);
+	promotionTimer = setTimeout(() => void evaluatePromotions(), 180);
+}, { deep: true });
 
 watch(cameraScannerOpen, (isOpen, wasOpen) => {
 	if (!isOpen && wasOpen) {
@@ -1105,12 +1260,37 @@ onBeforeUnmount(() => {
 
 <template>
 	<AppSidebarShell
+		key="pos-loading"
+		v-if="posExperience === 'loading'"
 		:nav-items="appNavItems"
 		:active-ids="['pos']"
 		sidebar-eyebrow="POS"
-		sidebar-title="ขายหน้าร้าน"
+		:sidebar-title="$t('pos.title')"
 		sidebar-compact-title="POS"
-		sidebar-description="จุดขายหลักและบิลปัจจุบัน"
+		:sidebar-description="$t('pos.productList')"
+	>
+		<template #default>
+			<div class="grid min-h-0 gap-2 lg:h-full lg:grid-cols-[minmax(0,1fr)_400px]">
+				<section class="rounded-md border border-neutral-200 bg-white p-3"><USkeleton class="h-10 w-full rounded-md" /><div class="mt-3 grid content-start grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"><div v-for="index in 10" :key="index" class="min-h-[118px] rounded-md border border-neutral-100 p-2"><div class="flex gap-2"><USkeleton class="size-10 shrink-0 rounded-md" /><div class="flex-1 space-y-2"><USkeleton class="h-3.5 w-4/5" /><USkeleton class="h-2.5 w-2/5" /></div></div><USkeleton class="mt-5 h-3.5 w-2/5" /><USkeleton class="mt-1.5 h-3.5 w-3/5" /></div></div></section>
+				<aside class="hidden rounded-md border border-neutral-200 bg-white p-4 lg:block"><USkeleton class="h-5 w-32" /><USkeleton class="mt-2 h-3 w-52" /><USkeleton class="mt-6 h-16 w-full rounded-md" /><USkeleton class="mt-3 h-16 w-full rounded-md" /><USkeleton class="mt-6 h-11 w-full rounded-md" /></aside>
+			</div>
+		</template>
+	</AppSidebarShell>
+	<RestaurantPos
+		key="pos-restaurant"
+		v-else-if="posExperience === 'restaurant' && effectiveStoreId"
+		:store-id="effectiveStoreId"
+		:initial-catalog="restaurantInitialCatalog"
+	/>
+	<AppSidebarShell
+		key="pos-retail"
+		v-else
+		:nav-items="appNavItems"
+		:active-ids="['pos']"
+		sidebar-eyebrow="POS"
+		:sidebar-title="$t('pos.title')"
+		sidebar-compact-title="POS"
+		:sidebar-description="$t('pos.productList')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-1.5 pb-1.5 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-stretch lg:gap-2 lg:overflow-hidden">
@@ -1125,7 +1305,7 @@ onBeforeUnmount(() => {
 															variant="soft"
 															size="md"
 															class="justify-center rounded-md lg:hidden"
-															label="เมนู"
+									:label="$t('pos.menu')"
 															@click="openSidebar"
 														/>
 
@@ -1134,7 +1314,7 @@ onBeforeUnmount(() => {
 																v-model="searchQuery"
 																size="lg"
 																icon="i-heroicons-magnifying-glass-20-solid"
-																placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+										:placeholder="posCopy.search"
 																color="neutral"
 																class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 															/>
@@ -1145,8 +1325,8 @@ onBeforeUnmount(() => {
 																size="xs"
 																icon="i-heroicons-x-mark-20-solid"
 																class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-																aria-label="ล้างคำค้น"
-																title="ล้างคำค้น"
+										:aria-label="posCopy.clearSearch"
+										:title="posCopy.clearSearch"
 																@click="searchQuery = ''"
 															/>
 														</div>
@@ -1157,16 +1337,16 @@ onBeforeUnmount(() => {
 														variant="solid"
 														size="md"
 														icon="i-heroicons-qr-code-20-solid"
-														label="สแกนบาร์โค้ด"
+								:label="posCopy.scanBarcode"
 														class="justify-center rounded-md px-4"
-														aria-label="สแกนบาร์โค้ด"
-														title="สแกนบาร์โค้ด"
+								:aria-label="posCopy.scanBarcode"
+								:title="posCopy.scanBarcode"
 														@click="openCameraScanner"
 													/>
 
 													<div class="grid grid-cols-2 gap-2">
-														<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
-														<AppButton color="neutral" variant="outline" size="md" class="rounded-md" label="บิลที่พัก 4" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" :label="$t('pos.holdBill')" />
+								<AppButton color="neutral" variant="outline" size="md" class="rounded-md" :label="$t('pos.heldBills', { count: 4 })" />
 													</div>
 												</div>
 
@@ -1191,7 +1371,7 @@ onBeforeUnmount(() => {
 
 														<div class="scrollbar-hidden md:scrollbar-soft flex gap-2 overflow-x-auto pb-1">
 															<AppButton
-																v-for="view in quickViews"
+									v-for="view in quickViewsLocalized"
 																:key="view.id"
 																:color="activeQuickView === view.id ? 'neutral' : 'neutral'"
 																:variant="activeQuickView === view.id ? 'solid' : 'soft'"
@@ -1212,15 +1392,15 @@ onBeforeUnmount(() => {
 									<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 										<div>
 											<p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-												Product list
+											{{ $t('pos.productList') }}
 											</p>
 											<h2 class="mt-2 text-xl font-semibold tracking-[-0.03em] text-stone-900">
-												รายการสินค้าพร้อมขาย
+											{{ $t('pos.readyProducts') }}
 											</h2>
 										</div>
 
 										<div class="flex items-center gap-2">
-											<UBadge color="success" variant="soft" class="whitespace-nowrap" :label="`พร้อมขาย ${filteredProducts.length} รายการ`" />
+											<UBadge color="success" variant="soft" class="whitespace-nowrap" :label="`${$t('pos.readyProducts')} ${filteredProducts.length} ${posCopy.items}`" />
 
 											<UPopover
 												v-model:open="sortMenuOpen"
@@ -1231,11 +1411,11 @@ onBeforeUnmount(() => {
 													variant="soft"
 													size="md"
 													class="min-w-[11rem] justify-between rounded-md px-3"
-													aria-label="เรียงตาม"
-													title="เรียงตาม"
+												:aria-label="posCopy.sortBy"
+												:title="posCopy.sortBy"
 												>
 													<span class="flex min-w-0 items-center gap-2">
-														<span class="shrink-0 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">เรียงตาม</span>
+														<span class="shrink-0 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">{{ posCopy.sortBy }}</span>
 														<span class="truncate text-sm font-semibold text-stone-800">{{ activeProductSortLabel }}</span>
 													</span>
 													<SlidersHorizontal class="h-4 w-4 shrink-0 text-stone-400" />
@@ -1244,7 +1424,7 @@ onBeforeUnmount(() => {
 												<template #content>
 													<div class="w-[220px] overflow-hidden rounded-md border border-[#e7e4dd] bg-white p-1.5 shadow-2xl dark:border-[#3b342c] dark:bg-[#1d1a16]">
 														<button
-															v-for="option in sortOptions"
+									v-for="option in sortOptionsLocalized"
 															:key="option.value"
 															type="button"
 															class="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 dark:text-stone-300 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
@@ -1265,12 +1445,45 @@ onBeforeUnmount(() => {
 
 									</div>
 
-									<div v-if="productsError" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-										{{ productsError }}
-									</div>
+									<AppInlineLoadingBar
+										v-if="productsPending && products.length"
+										minimal
+										container-class="h-0.5 bg-neutral-100 dark:bg-[#2a241d]"
+									/>
 
 									<div class="scrollbar-soft min-h-0 overflow-y-auto pb-2 xl:pr-1">
-									<div class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
+									<div v-if="productsPending && !products.length" class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5" aria-live="polite" :aria-label="posCopy.loading">
+										<div v-for="index in 10" :key="index" class="min-h-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white p-2.5 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+											<div class="flex items-center gap-2">
+												<USkeleton class="h-12 w-12 shrink-0 rounded-md" />
+												<div class="min-w-0 flex-1 space-y-2"><USkeleton class="h-4 w-4/5" /><USkeleton class="h-3 w-2/5" /></div>
+											</div>
+											<div class="mt-6 space-y-2"><USkeleton class="h-4 w-2/5" /><USkeleton class="h-4 w-3/5" /></div>
+										</div>
+									</div>
+									<AppCard
+										v-else-if="hasCatalogError"
+										variant="empty"
+									>
+										<div class="flex min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
+											<div class="flex h-12 w-12 items-center justify-center rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+												<UIcon name="i-heroicons-wifi" class="h-6 w-6" />
+											</div>
+											<p class="mt-4 text-lg font-semibold text-stone-900">{{ posCopy.loadError }}</p>
+											<p class="mt-2 max-w-md text-sm leading-6 text-stone-500">
+												{{ productsError }}
+											</p>
+											<div class="mt-5 flex flex-wrap justify-center gap-2">
+												<AppButton color="primary" icon="i-heroicons-arrow-path" @click="loadPosProducts">
+													{{ $t('restaurantPos.retry') }}
+												</AppButton>
+												<AppButton color="neutral" variant="soft" icon="i-heroicons-shopping-cart" @click="searchQuery = ''">
+													{{ activeModeLabel }}
+												</AppButton>
+											</div>
+										</div>
+									</AppCard>
+									<div v-else class="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
 										<article
 											v-for="product in filteredProducts"
 											:key="product.id"
@@ -1337,12 +1550,38 @@ onBeforeUnmount(() => {
 
 									<AppCard
 										variant="empty"
-										v-if="filteredProducts.length === 0"
+										v-if="hasEmptyCatalog"
+										class="h-full"
+										body-class="h-full p-0 sm:p-0"
+									>
+										<div class="flex h-full min-h-[320px] flex-col items-center justify-center px-4 py-10 text-center">
+											<div class="flex h-12 w-12 items-center justify-center rounded-md bg-primary-50 text-primary-600 ring-1 ring-primary-200">
+												<UIcon name="i-heroicons-cube" class="h-6 w-6" />
+											</div>
+											<p class="mt-4 text-lg font-semibold text-stone-900">{{ $t('pos.emptyCatalog') }}</p>
+											<p class="mt-2 max-w-md text-sm leading-6 text-stone-500">
+												{{ canCreateProduct ? $t('pos.emptyCatalogHint') : $t('pos.emptyCatalogHintReadOnly') }}
+											</p>
+											<AppButton
+												v-if="canCreateProduct"
+												color="primary"
+												icon="i-heroicons-plus-20-solid"
+												class="mt-5"
+												@click="navigateTo('/products')"
+											>
+												{{ $t('pos.emptyCatalogAction') }}
+											</AppButton>
+										</div>
+									</AppCard>
+
+									<AppCard
+										variant="empty"
+										v-else-if="!productsPending && !hasCatalogError && filteredProducts.length === 0"
 									>
 										<div class="py-8 text-center">
-											<p class="text-lg font-semibold text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
+											<p class="text-lg font-semibold text-stone-900">{{ posCopy.noProducts }}</p>
 											<p class="mt-2 text-sm text-stone-500">
-												ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยน quick filter ด้านบน
+												{{ posCopy.noProductsHint }}
 											</p>
 										</div>
 									</AppCard>
@@ -1356,15 +1595,15 @@ onBeforeUnmount(() => {
 								<div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-md border border-neutral-200 bg-[#fbfbf8] p-4 text-stone-900 shadow-[0_8px_24px_rgba(31,28,24,0.06)] dark:border-[#3b342c] dark:bg-[#15120f] dark:text-stone-100">
 										<div class="flex items-start justify-between gap-3 border-b border-[#ece6dc] pb-3 dark:border-[#3b342c]">
 											<div class="min-w-0">
-												<p class="truncate text-xs text-stone-500">{{ activeMode }} · {{ itemCount }} รายการ</p>
+										<p class="truncate text-xs text-stone-500">{{ activeModeLabel }} · {{ $t('pos.itemCount', { count: itemCount }) }}</p>
 											</div>
 											<AppButton
 												color="neutral"
 												variant="soft"
 												size="md"
 												class="rounded-md"
-												aria-label="ล้างบิล"
-												title="ล้างบิล"
+										:aria-label="$t('pos.clearBill')"
+										:title="$t('pos.clearBill')"
 												@click="clearCart"
 											>
 												<span class="inline-flex items-center justify-center">
@@ -1391,7 +1630,7 @@ onBeforeUnmount(() => {
 														<div class="mt-2 flex flex-wrap items-center gap-1 justify-start">
 															<UBadge :color="getStockTone(item.stockState)" variant="soft" :label="getStockLabel(item)" />
 															<UBadge color="neutral" variant="soft" :label="item.unitLabel" />
-															<UBadge v-if="item.hasVariants" color="neutral" variant="soft" label="ตัวเลือก" />
+														<UBadge v-if="item.hasVariants" color="neutral" variant="soft" :label="$t('products.variants')" />
 														</div>
 													</div>
 													<div class="shrink-0 text-right">
@@ -1434,23 +1673,51 @@ onBeforeUnmount(() => {
 												v-if="cartItems.length === 0"
 											>
 												<div class="px-3 py-3 text-xs leading-6 text-stone-500 dark:text-stone-400 sm:px-4 sm:py-4 sm:text-sm">
-													ยังไม่มีสินค้าในบิลนี้ ลองสแกนบาร์โค้ดหรือกดเพิ่มจากรายการสินค้าทางซ้าย
+											{{ $t('pos.cartEmpty') }} {{ $t('pos.addToBillHint') }}
 												</div>
 											</AppCard>
 													</div>
 												</div>
 											</div>
 
+					<div v-if="availablePromotions.length" class="mx-1 mb-2 rounded-md border border-emerald-200 bg-emerald-50 p-2.5 dark:border-emerald-900/70 dark:bg-emerald-950/30">
+						<div class="mb-2 flex items-center justify-between gap-2">
+							<div>
+								<p class="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{{ $t('pos.availablePromotions') }}</p>
+								<p class="mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">{{ $t('pos.appliedPromotionCount', { count: appliedPromotionCount }) }}</p>
+							</div>
+							<UIcon v-if="promotionsPending" name="i-heroicons-arrow-path" class="h-4 w-4 animate-spin text-emerald-700" />
+						</div>
+						<label
+							v-for="promotion in availablePromotions"
+							:key="promotion.promotion_id"
+							class="mb-1 flex items-center gap-2 rounded bg-white/70 px-2 py-1.5 text-xs dark:bg-black/10"
+							:class="promotion.applications > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-55'"
+						>
+							<input
+								v-model="selectedPromotionIds"
+								type="checkbox"
+								:value="promotion.promotion_id"
+								:disabled="promotion.apply_mode === 'automatic' || promotion.applications <= 0"
+								class="accent-emerald-600"
+							>
+							<span class="min-w-0 flex-1 truncate">
+								{{ promotion.name }}
+								<span v-if="promotion.apply_mode === 'automatic'" class="ml-1 text-[9px] text-emerald-600">({{ $t('pos.automaticPromotion') }})</span>
+							</span>
+							<span class="font-medium">{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}</span>
+						</label>
+					</div>
 					<div class="sticky bottom-0 z-10 border-t border-[#ece6dc] bg-[rgba(251,251,248,0.96)] px-1 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-[#3b342c] dark:bg-[rgba(21,18,15,0.96)]">
 						<div class="space-y-1.5">
 							<div class="rounded-md border border-neutral-200 bg-white px-2.5 py-2.5 shadow-sm dark:border-[#3b342c] dark:bg-[#1d1a16]">
 								<div class="space-y-1.5">
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">Subtotal</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.subtotal') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(subtotal) }}</p>
 									</div>
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">ส่วนลด</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.discount') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">
 											{{ discount > 0 ? `-${formatMoney(discount)}` : formatMoney(discount) }}
 										</p>
@@ -1460,7 +1727,7 @@ onBeforeUnmount(() => {
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(tax) }}</p>
 									</div>
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">Service</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.service') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(serviceCharge) }}</p>
 									</div>
 
@@ -1469,8 +1736,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md bg-stone-50 px-2.5 py-2.5 ring-1 ring-neutral-200 dark:bg-[#171410] dark:ring-[#3b342c]">
 										<div class="flex items-start justify-between gap-2">
 											<div>
-												<p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">ยอดชำระ</p>
-												<p class="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">{{ itemCount }} รายการ . {{ activeMode }}</p>
+											<p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">{{ $t('pos.amountDue') }}</p>
+											<p class="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">{{ $t('pos.itemCount', { count: itemCount }) }} · {{ activeModeLabel }}</p>
 											</div>
 											<p class="text-[1.45rem] font-semibold tracking-[-0.04em] text-stone-950 tabular-nums dark:text-stone-50">
 												{{ formatMoney(total) }}
@@ -1490,7 +1757,7 @@ onBeforeUnmount(() => {
 									@click="openPaymentModal"
 								>
 									<BadgeCheck class="h-4 w-4 shrink-0" />
-									<span>รับชำระเงิน</span>
+										<span>{{ $t('pos.checkout') }}</span>
 								</AppButton>
 							</div>
 						</div>
@@ -1501,21 +1768,21 @@ onBeforeUnmount(() => {
 		</template>
 	</AppSidebarShell>
 
-		<div class="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6dc] bg-[rgba(255,255,253,0.96)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:hidden">
+		<div v-if="posExperience !== 'restaurant'" class="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6dc] bg-[rgba(255,255,253,0.96)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:hidden">
 			<div class="flex items-center justify-between gap-4">
 				<div>
-					<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">บิลปัจจุบัน</p>
-					<p class="mt-1 text-sm font-medium text-stone-600">{{ itemCount }} รายการ</p>
+					<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">{{ $t('pos.currentBill') }}</p>
+					<p class="mt-1 text-sm font-medium text-stone-600">{{ $t('pos.itemCount', { count: itemCount }) }}</p>
 				</div>
 				<div class="flex items-center gap-3">
 					<p class="text-right text-lg font-semibold text-stone-950 tabular-nums">{{ formatMoney(total) }}</p>
-						<AppButton color="primary" variant="solid" size="md" class="rounded-md" label="ดูบิล" @click="mobileTicketOpen = true" />
+						<AppButton color="primary" variant="solid" size="md" class="rounded-md" :label="$t('pos.viewBill')" @click="mobileTicketOpen = true" />
 				</div>
 			</div>
 		</div>
 
 		<div
-			v-if="mobileTicketOpen"
+			v-if="posExperience !== 'restaurant' && mobileTicketOpen"
 			class="fixed inset-0 z-50 flex items-end bg-black/45 p-3 xl:hidden"
 			@click.self="mobileTicketOpen = false"
 		>
@@ -1523,10 +1790,10 @@ onBeforeUnmount(() => {
 				<template #header>
 					<div class="flex items-center justify-between">
 						<div>
-							<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400 dark:text-stone-500">บิลปัจจุบัน</p>
-							<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ itemCount }} รายการ</p>
+							<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400 dark:text-stone-500">{{ $t('pos.currentBill') }}</p>
+							<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ $t('pos.itemCount', { count: itemCount }) }}</p>
 						</div>
-							<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="ปิด" @click="mobileTicketOpen = false" />
+							<AppButton color="neutral" variant="soft" size="md" class="rounded-md" :label="$t('common.close')" @click="mobileTicketOpen = false" />
 					</div>
 				</template>
 
@@ -1594,7 +1861,7 @@ onBeforeUnmount(() => {
 						class="border border-dashed border-neutral-200 bg-[#f3f2ee] text-center text-stone-500 shadow-none dark:border-[#3b342c] dark:bg-[#1d1a16] dark:text-stone-400"
 					>
 						<div class="px-3 py-3 text-xs leading-6 sm:px-4 sm:py-4 sm:text-sm">
-							ยังไม่มีสินค้าในบิลนี้ ลองสแกนบาร์โค้ดหรือกดเพิ่มจากรายการสินค้าทางซ้าย
+							{{ $t('pos.cartEmpty') }} {{ $t('pos.addToBillHint') }}
 						</div>
 					</UCard>
 				</div>
@@ -1604,11 +1871,11 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-white px-2.5 py-2.5 shadow-sm dark:border-[#3b342c] dark:bg-[#1d1a16]">
 								<div class="space-y-1.5">
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">Subtotal</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.subtotal') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(subtotal) }}</p>
 									</div>
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">ส่วนลด</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.discount') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">
 											{{ discount > 0 ? `-${formatMoney(discount)}` : formatMoney(discount) }}
 										</p>
@@ -1618,7 +1885,7 @@ onBeforeUnmount(() => {
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(tax) }}</p>
 									</div>
 									<div class="flex items-center justify-between gap-3 text-[11px]">
-										<p class="text-stone-500 dark:text-stone-400">Service</p>
+										<p class="text-stone-500 dark:text-stone-400">{{ $t('pos.service') }}</p>
 										<p class="font-semibold text-stone-900 tabular-nums dark:text-stone-50">{{ formatMoney(serviceCharge) }}</p>
 									</div>
 
@@ -1627,8 +1894,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md bg-[#fbfbf8] px-2.5 py-2.5 ring-1 ring-neutral-200 dark:bg-[#171410] dark:ring-[#3b342c]">
 										<div class="flex items-start justify-between gap-2">
 											<div>
-												<p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">ยอดชำระ</p>
-												<p class="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">{{ itemCount }} รายการ . {{ activeMode }}</p>
+											<p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">{{ $t('pos.amountDue') }}</p>
+											<p class="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">{{ $t('pos.itemCount', { count: itemCount }) }} · {{ activeModeLabel }}</p>
 											</div>
 											<p class="text-[1.45rem] font-semibold tracking-[-0.04em] text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(total) }}</p>
 										</div>
@@ -1646,9 +1913,9 @@ onBeforeUnmount(() => {
 									@click="openPaymentModal"
 								>
 									<BadgeCheck class="h-4 w-4 shrink-0" />
-									<span>รับชำระเงิน</span>
+										<span>{{ $t('pos.checkout') }}</span>
 								</AppButton>
-								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" label="พักบิล" />
+								<AppButton color="neutral" variant="soft" size="md" class="rounded-md" :label="$t('pos.holdBill')" />
 							</div>
 						</div>
 				</template>
@@ -1689,8 +1956,8 @@ onBeforeUnmount(() => {
 									<h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-stone-950 dark:text-stone-50">
 										{{ paymentModalTitle }}
 									</h2>
-									<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
-										{{ paymentModalDescription }}
+											<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
+													{{ paymentCheckoutStep === 1 ? $t('pos.selectPaymentHint') : paymentModalDescription }}
 									</p>
 									<div class="mt-3 flex flex-wrap items-center gap-2">
 										<UBadge color="neutral" variant="soft" :label="paymentModalProgressLabel" />
@@ -1786,9 +2053,11 @@ onBeforeUnmount(() => {
 												<div class="min-w-0">
 													<p class="text-base font-semibold text-stone-950 dark:text-stone-50">{{ selectedPaymentMethodOption.label }}</p>
 													<p class="mt-1 text-sm leading-6 text-stone-500 dark:text-stone-400">
-														{{ selectedPaymentMethodOption.id === "cash"
-															? "รับเงินสดแล้วกดยืนยันเพื่อปิดขั้นตอนนี้"
-															: "ใช้ QR / โอน เป็นช่องทางรับเงินของบิลนี้" }}
+												{{ selectedPaymentMethodOption.id === "cash"
+													? "รับเงินสดแล้วกดยืนยันเพื่อปิดขั้นตอนนี้"
+													: selectedPaymentMethodOption.id === "qr_transfer"
+														? "เลือกบัญชีร้านและบันทึกหลักฐานการโอนของบิลนี้"
+														: "รับชำระผ่านเครื่องรูดภายนอก โดยไม่เก็บข้อมูลบัตร" }}
 													</p>
 												</div>
 												<div class="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700 dark:bg-emerald-500/20 dark:text-emerald-200">
@@ -1814,6 +2083,27 @@ onBeforeUnmount(() => {
 								</template>
 
 								<template v-else>
+									<div v-if="checkoutError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+										{{ checkoutError }}
+									</div>
+									<div v-if="selectedPaymentMethod === 'cash'" class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16]">
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.amountReceived') }}</label>
+										<input v-model="cashTendered" type="number" min="0" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" :placeholder="String(total)">
+												<p class="mt-2 text-xs text-stone-500">{{ $t('pos.change') }} {{ formatMoney(Math.max(0, Number(cashTendered || 0) - total)) }}</p>
+									</div>
+									<div v-else-if="selectedPaymentMethod === 'qr_transfer'" class="grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-[#3b342c] dark:bg-[#1d1a16] sm:grid-cols-2">
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.paymentAccount') }}
+											<select v-model="paymentAccountId" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+												<option value="">เลือกบัญชี</option><option v-for="account in paymentAccounts" :key="account.id" :value="account.id">{{ account.display_name }}</option>
+											</select>
+										</label>
+												<label class="text-sm font-semibold text-stone-900 dark:text-stone-50">{{ $t('pos.reference') }}
+											<input v-model="paymentReference" class="mt-2 w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm" placeholder="Transaction reference">
+										</label>
+									</div>
+									<div v-else class="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-sm text-stone-600 dark:border-[#3b342c] dark:bg-[#1d1a16] dark:text-stone-300">
+										ยืนยันว่าได้รับชำระผ่านเครื่องรูดภายนอกแล้ว ระบบจะไม่จัดเก็บเลขบัตรหรือ CVV
+									</div>
 									<div class="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
 										<div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-[#3b342c] dark:bg-[#1d1a16]">
 											<div class="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-[#3b342c]">
@@ -1880,6 +2170,16 @@ onBeforeUnmount(() => {
 															{{ discount > 0 ? `-${formatMoney(discount)}` : formatMoney(discount) }}
 														</span>
 													</div>
+													<div
+														v-for="promotion in appliedPromotions"
+														:key="promotion.promotion_id"
+														class="flex items-center justify-between gap-3 rounded-md bg-emerald-50 px-2.5 py-2 text-xs dark:bg-emerald-950/30"
+													>
+														<span class="min-w-0 truncate font-medium text-emerald-800 dark:text-emerald-200">{{ promotion.name }}</span>
+														<span class="shrink-0 font-semibold text-emerald-700 tabular-nums dark:text-emerald-300">
+															{{ promotion.discount_amount > 0 ? `-${formatMoney(promotion.discount_amount)}` : $t('pos.giftQuantity', { count: promotion.gift_qty }) }}
+														</span>
+													</div>
 													<div class="flex items-center justify-between gap-3 text-sm">
 														<span class="text-stone-500 dark:text-stone-400">{{ vatLabel }}</span>
 														<span class="font-semibold text-stone-950 tabular-nums dark:text-stone-50">{{ formatMoney(tax) }}</span>
@@ -1930,7 +2230,8 @@ onBeforeUnmount(() => {
 										class="justify-center gap-2 rounded-md"
 										:block="true"
 										:icon="paymentModalPrimaryAction.icon"
-										:disabled="paymentCheckoutStep === 1 ? !selectedPaymentMethod : false"
+										:loading="checkoutSaving"
+										:disabled="checkoutSaving || (paymentCheckoutStep === 1 ? !selectedPaymentMethod : selectedPaymentMethod === 'cash' ? Number(cashTendered || 0) < total : selectedPaymentMethod === 'qr_transfer' ? !paymentAccountId : false)"
 										@click="continuePaymentCheckout"
 									>
 										{{ paymentModalPrimaryAction.label }}

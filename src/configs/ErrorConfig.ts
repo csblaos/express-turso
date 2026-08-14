@@ -165,6 +165,11 @@ export const ErrorConfig = {
 			message: "Store member not found",
 			httpStatusCode: 404,
 		},
+		STORE_MEMBER_USERNAME_TAKEN: {
+			code: 409_004,
+			message: "This username is already in use. Choose another username.",
+			httpStatusCode: 409,
+		},
 		STORE_PAYMENT_ACCOUNT_NOT_FOUND: {
 			code: 404_010,
 			message: "Store payment account not found",

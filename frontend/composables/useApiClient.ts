@@ -1,11 +1,10 @@
-import { resolveApiErrorMessage } from "~/utils/api-errors";
-
 type ApiFetchOptions = Parameters<typeof $fetch>[1] & {
 	auth?: boolean;
 };
 
 export function useApiClient() {
 	const runtimeConfig = useRuntimeConfig();
+	const { t } = useI18n();
 	const { authHeaders, hydrateAuthState, handleAuthFailure, refreshAccessToken, currentStoreId } = useAuthSession();
 
 	const STORE_SCOPED_PREFIXES = [
@@ -69,11 +68,8 @@ export function useApiClient() {
 				// Normalize network errors so pages won't display raw fetch messages like:
 				// `[GET] "http://...": <no response> Failed to fetch`
 				if (statusCode === undefined || statusCode === null) {
-					const message = resolveApiErrorMessage(error, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง");
-					if (message.includes("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) {
-						const normalized = Object.assign(new Error(message), { cause: error });
-						throw normalized;
-					}
+					const normalized = Object.assign(new Error(t("validation.network")), { cause: error });
+					throw normalized;
 				}
 
 				throw error;

@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import { StorePaymentAccountController } from "@controllers/StorePaymentAccountController";
-import { AuthGuardMiddleware } from "@middlewares/AuthGuardMiddleware";
 import { PermissionMiddleware } from "@middlewares/PermissionMiddleware";
 import CommonValidator from "@validators/CommonValidator";
 import StorePaymentAccountValidator from "@validators/StorePaymentAccountValidator";
@@ -13,29 +12,25 @@ export class StorePaymentAccountRouter {
 	private constructor() {
 		this.router.get(
 			"/",
-			AuthGuardMiddleware.requireAuth(),
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.view"),
 			StorePaymentAccountController.getAll,
 		);
 		this.router.post(
 			"/",
-			AuthGuardMiddleware.requireAuth(),
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			StorePaymentAccountValidator.create,
 			StorePaymentAccountController.create,
 		);
 		this.router.put(
 			"/:id",
-			AuthGuardMiddleware.requireAuth(),
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			CommonValidator.resourceId,
 			StorePaymentAccountValidator.update,
 			StorePaymentAccountController.update,
 		);
 		this.router.delete(
 			"/:id",
-			AuthGuardMiddleware.requireAuth(),
-			PermissionMiddleware.require("settings.store.update"),
+			PermissionMiddleware.require("settings.payments.update"),
 			CommonValidator.resourceId,
 			StorePaymentAccountController.delete,
 		);

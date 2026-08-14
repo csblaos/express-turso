@@ -3,23 +3,29 @@ import { appNavItems } from "~/utils/app-nav";
 
 type SettingsEntry = {
 	id: string;
-	title: string;
-	description: string;
+	titleKey: string;
+	descriptionKey: string;
 	icon: string;
 	to?: string;
-	badge?: string;
+	permission?: string;
+	availability: "ready" | "soon";
 };
 
 type SettingsSection = {
 	id: string;
-	eyebrow: string;
-	title: string;
-	description: string;
+	eyebrowKey: string;
+	titleKey: string;
+	descriptionKey: string;
 	entries: SettingsEntry[];
 };
 
 const route = useRoute();
+const { currentUser, can } = useAuthSession();
 const isSettingsHub = computed(() => route.path === "/settings");
+const canViewNotifications = computed(() => (
+	currentUser.value?.systemRole === "superadmin"
+	|| can("settings.users.view")
+));
 
 const readyTone = {
 	card: "border-neutral-200 bg-white transition-all hover:border-emerald-200 hover:bg-emerald-50/40 dark:border-[#3c3429] dark:bg-[#1c1814] dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/10",
@@ -31,41 +37,40 @@ const plannedTone = {
 	icon: "bg-primary-50 text-primary-700 ring-primary-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20",
 };
 
+const hiddenSettingEntryIds = new Set([ "security", "stores", "shipping" ]);
+
 function linkedEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => Boolean(entry.to));
+	return section.entries.filter((entry) => Boolean(entry.to) && canViewEntry(entry));
 }
 
 function staticEntries(section: SettingsSection) {
-	return section.entries.filter((entry) => !entry.to);
+	return section.entries.filter((entry) => !entry.to && canViewEntry(entry));
+}
+
+function canViewEntry(entry: SettingsEntry) {
+	if (entry.id === "notifications") return canViewNotifications.value;
+	if (!entry.permission) return true;
+	return currentUser.value?.systemRole === "superadmin" || currentUser.value?.systemRole === "system_admin" || can(entry.permission);
 }
 
 function entryTone(entry: SettingsEntry) {
-	return entry.badge === "พร้อมใช้งาน" ? readyTone : plannedTone;
+	return entry.availability === "ready" ? readyTone : plannedTone;
 }
 
 const settingsSections: SettingsSection[] = [
 	{
 		id: "main",
-		eyebrow: "Settings",
-		title: "ตั้งค่าผู้ใช้และร้าน",
-		description: "รวมการตั้งค่าของผู้ใช้และร้านที่กำลังใช้งานไว้ในพื้นที่เดียว",
+		eyebrowKey: "nav.settings",
+		titleKey: "settings.title",
+		descriptionKey: "settings.description",
 		entries: [
-			{ id: "profile", title: "Profile", description: "จัดการข้อมูลบัญชีและเปลี่ยนรหัสผ่าน", icon: "i-heroicons-user-circle", to: "/profile", badge: "พร้อมใช้งาน" },
-			{ id: "language", title: "Language", description: "ตั้งค่าภาษา UI และรูปแบบการแสดงผล", icon: "i-heroicons-language", to: "/settings/language", badge: "พร้อมใช้งาน" },
-			{ id: "security", title: "Security", description: "ดูข้อมูลความปลอดภัยของบัญชีและ session", icon: "i-heroicons-shield-check", badge: "เร็ว ๆ นี้" },
-			{ id: "users", title: "Users", description: "จัดการสมาชิกในร้าน, เปลี่ยนบทบาท และดู permission summary", icon: "i-heroicons-users", to: "/settings/users", badge: "พร้อมใช้งาน" },
-			{ id: "categories", title: "Categories", description: "จัดการหมวดหมู่สินค้า", icon: "i-heroicons-tag", to: "/settings/categories", badge: "พร้อมใช้งาน" },
-			{ id: "units", title: "Units", description: "จัดการหน่วยสินค้าและหน่วยขาย", icon: "i-heroicons-scale", to: "/settings/units", badge: "พร้อมใช้งาน" },
-			{ id: "notifications", title: "Notifications", description: "กล่องแจ้งเตือนและกฎการ mute/snooze", icon: "i-heroicons-bell", badge: "เร็ว ๆ นี้" },
-			{ id: "pdf", title: "PDF", description: "ตั้งค่าเอกสาร PDF และ template", icon: "i-heroicons-document-text", badge: "เร็ว ๆ นี้" },
-			{ id: "stores", title: "Stores", description: "สลับร้าน/สาขา และสร้างร้าน/สาขา", icon: "i-heroicons-building-storefront", badge: "เร็ว ๆ นี้" },
-			{ id: "store-profile", title: "Store Profile", description: "ชื่อร้าน โลโก้ ที่อยู่ และช่องทางติดต่อ", icon: "i-heroicons-building-storefront", badge: "เร็ว ๆ นี้" },
-			{ id: "store-finance", title: "Store Finance", description: "base currency และสกุลเงินที่รองรับ", icon: "i-heroicons-banknotes", to: "/settings/store-finance", badge: "พร้อมใช้งาน" },
-			{ id: "stock-policy", title: "Stock Policy", description: "กำหนดนโยบายสต็อก เช่น อนุญาตสต็อกติดลบ", icon: "i-heroicons-adjustments-horizontal", to: "/settings/stock", badge: "พร้อมใช้งาน" },
-			{ id: "store-payments", title: "Store Payments", description: "บัญชีรับเงินของร้าน เช่น ธนาคาร, QR ID และสกุลเงิน", icon: "i-heroicons-credit-card", to: "/settings/store-payments", badge: "พร้อมใช้งาน" },
-			{ id: "shipping", title: "Shipping Providers", description: "รายชื่อขนส่งหลักของร้านเพื่อใช้กับออเดอร์ออนไลน์", icon: "i-heroicons-truck", badge: "เร็ว ๆ นี้" },
-			{ id: "branch-switch", title: "Store / Branch Switch", description: "เปลี่ยนร้านหรือเปลี่ยนสาขาที่ active อยู่", icon: "i-heroicons-arrows-right-left", badge: "เร็ว ๆ นี้" },
-			{ id: "branch-config", title: "Store / Branch Config", description: "ตั้งค่าระดับร้านหรือสาขาใน flow การจัดการหลายร้าน", icon: "i-heroicons-adjustments-horizontal", badge: "เร็ว ๆ นี้" },
+			...([ "profile", "language", "security", "users", "categories", "units", "restaurant", "notifications", "printing", "stores", "storeProfile", "storeFinance", "stockPolicy", "storePayments", "customerDisplay", "shipping" ] as const).map((key, index) => ({
+				id: key, titleKey: `settings.entries.${key}.title`, descriptionKey: `settings.entries.${key}.description`,
+				icon: [ "i-heroicons-user-circle", "i-heroicons-language", "i-heroicons-shield-check", "i-heroicons-users", "i-heroicons-tag", "i-heroicons-scale", "i-heroicons-squares-2x2", "i-heroicons-bell", "i-heroicons-printer", "i-heroicons-building-storefront", "i-heroicons-building-storefront", "i-heroicons-banknotes", "i-heroicons-adjustments-horizontal", "i-heroicons-credit-card", "i-heroicons-computer-desktop", "i-heroicons-truck" ][index]!,
+				to: [ "/profile", "/settings/language", undefined, "/settings/users", "/settings/categories", "/settings/units", "/settings/restaurant", "/notifications", "/settings/printing/sales-receipt", undefined, "/settings/store-profile", "/settings/store-finance", "/settings/stock", "/settings/store-payments", "/settings/customer-display", undefined ][index],
+				permission: [ undefined, undefined, undefined, "settings.users.view", "products.view", "products.view", "settings.restaurant.view", undefined, "settings.printing.view", undefined, "settings.store.view", "settings.finance.view", "settings.stock_policy.view", "settings.payments.view", "settings.customer_display.view", undefined ][index],
+				availability: ([ 2, 9, 15 ].includes(index) ? "soon" : "ready") as "ready" | "soon",
+			})).filter((entry) => !hiddenSettingEntryIds.has(entry.id)),
 		],
 	},
 ];
@@ -77,9 +82,9 @@ const settingsSections: SettingsSection[] = [
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
 		sidebar-eyebrow="Settings"
-		sidebar-title="ศูนย์รวมการตั้งค่า"
+		:sidebar-title="$t('settings.title')"
 		sidebar-compact-title="CFG"
-		sidebar-description="รวมการตั้งค่าของผู้ใช้และร้านที่กำลังใช้งานไว้ในพื้นที่เดียว"
+		:sidebar-description="$t('settings.description')"
 	>
 		<template #default>
 			<div class="min-w-0 space-y-3 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:space-y-0 lg:gap-4">
@@ -91,9 +96,9 @@ const settingsSections: SettingsSection[] = [
 					>
 						<div class="space-y-3 sm:space-y-4">
 							<div>
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">{{ section.eyebrow }}</p>
-								<h2 class="mt-2 text-lg font-semibold text-stone-950 dark:text-stone-100 sm:text-xl">{{ section.title }}</h2>
-								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500 dark:text-stone-400 lg:hidden">{{ section.description }}</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">{{ $t(section.eyebrowKey) }}</p>
+								<h2 class="mt-2 text-lg font-semibold text-stone-950 dark:text-stone-100 sm:text-xl">{{ $t(section.titleKey) }}</h2>
+								<p class="mt-2 max-w-3xl text-sm leading-6 text-stone-500 dark:text-stone-400 lg:hidden">{{ $t(section.descriptionKey) }}</p>
 							</div>
 
 							<div class="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -110,16 +115,15 @@ const settingsSections: SettingsSection[] = [
 										</div>
 										<div class="min-w-0 flex-1">
 											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-												<h3 class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ entry.title }}</h3>
+												<h3 class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ $t(entry.titleKey) }}</h3>
 												<UBadge
-													v-if="entry.badge"
-													:color="entry.badge === 'พร้อมใช้งาน' ? 'success' : 'neutral'"
+													:color="entry.availability === 'ready' ? 'success' : 'neutral'"
 													variant="soft"
-													:label="entry.badge"
+													:label="$t(`settings.${entry.availability}`)"
 													class="shrink-0"
 												/>
 											</div>
-											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 dark:text-stone-400 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
+											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 dark:text-stone-400 sm:mt-2 sm:text-sm sm:leading-6">{{ $t(entry.descriptionKey) }}</p>
 										</div>
 									</div>
 								</NuxtLink>
@@ -136,16 +140,15 @@ const settingsSections: SettingsSection[] = [
 										</div>
 										<div class="min-w-0 flex-1">
 											<div class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-												<h3 class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ entry.title }}</h3>
+												<h3 class="truncate text-sm font-semibold text-stone-900 dark:text-stone-100">{{ $t(entry.titleKey) }}</h3>
 												<UBadge
-													v-if="entry.badge"
-													:color="entry.badge === 'พร้อมใช้งาน' ? 'success' : 'neutral'"
+													:color="entry.availability === 'ready' ? 'success' : 'neutral'"
 													variant="soft"
-													:label="entry.badge"
+													:label="$t(`settings.${entry.availability}`)"
 													class="shrink-0"
 												/>
 											</div>
-											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 dark:text-stone-400 sm:mt-2 sm:text-sm sm:leading-6">{{ entry.description }}</p>
+											<p class="mt-1 block w-full truncate text-xs leading-5 text-stone-500 dark:text-stone-400 sm:mt-2 sm:text-sm sm:leading-6">{{ $t(entry.descriptionKey) }}</p>
 										</div>
 									</div>
 								</div>

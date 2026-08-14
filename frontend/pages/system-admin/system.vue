@@ -5,10 +5,9 @@ import { resolveApiErrorMessage } from "~/utils/api-errors";
 type ApiEnvelope<T> = { success: true; requestId: string; data: T };
 type ApiSystemConfig = {
 	id: string;
-	default_can_create_branches: number;
-	default_max_branches_per_store: number | null;
 	created_at: string;
 	updated_at: string;
+	default_max_users_per_store: number | null;
 	default_session_limit: number;
 	store_logo_max_size_mb: number;
 	store_logo_auto_resize: number;
@@ -28,17 +27,13 @@ const toast = ref("");
 const canManageSystem = computed(() => can("system_admin.config.update"));
 const initialState = ref("");
 const form = reactive({
-	defaultCanCreateBranches: true,
-	defaultMaxBranchesPerStore: "5",
+	defaultMaxUsersPerStore: "20",
 	defaultSessionLimit: 3,
 	storeLogoMaxSizeMb: 5,
 	storeLogoAutoResize: true,
 	storeLogoResizeMaxWidth: 1200,
-	appLatestBuild: 1,
-	appMinRequiredBuild: 1,
-	appUpdateMessage: "",
 });
-const sectionCount = 3;
+const sectionCount = 1;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function setToast(message: string) {
 	toast.value = message;
@@ -46,27 +41,19 @@ function setToast(message: string) {
 	toastTimer = setTimeout(() => { toast.value = ""; }, 2200);
 }
 function apply(data: ApiSystemConfig) {
-	form.defaultCanCreateBranches = Boolean(data.default_can_create_branches);
-	form.defaultMaxBranchesPerStore = data.default_max_branches_per_store === null ? "" : String(data.default_max_branches_per_store);
+	form.defaultMaxUsersPerStore = data.default_max_users_per_store === null ? "" : String(data.default_max_users_per_store);
 	form.defaultSessionLimit = data.default_session_limit;
 	form.storeLogoMaxSizeMb = data.store_logo_max_size_mb;
 	form.storeLogoAutoResize = Boolean(data.store_logo_auto_resize);
 	form.storeLogoResizeMaxWidth = data.store_logo_resize_max_width;
-	form.appLatestBuild = data.app_latest_build;
-	form.appMinRequiredBuild = data.app_min_required_build;
-	form.appUpdateMessage = data.app_update_message || "";
 	initialState.value = currentState.value;
 }
 const currentState = computed(() => JSON.stringify({
-	defaultCanCreateBranches: form.defaultCanCreateBranches,
-	defaultMaxBranchesPerStore: form.defaultMaxBranchesPerStore,
+	defaultMaxUsersPerStore: form.defaultMaxUsersPerStore,
 	defaultSessionLimit: form.defaultSessionLimit,
 	storeLogoMaxSizeMb: form.storeLogoMaxSizeMb,
 	storeLogoAutoResize: form.storeLogoAutoResize,
 	storeLogoResizeMaxWidth: form.storeLogoResizeMaxWidth,
-	appLatestBuild: form.appLatestBuild,
-	appMinRequiredBuild: form.appMinRequiredBuild,
-	appUpdateMessage: form.appUpdateMessage,
 }));
 const hasChanges = computed(() => initialState.value !== "" && currentState.value !== initialState.value);
 async function loadConfig() {
@@ -76,8 +63,8 @@ async function loadConfig() {
 		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config");
 		apply(response.data);
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลด policy ไม่สำเร็จ", {
-			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์ดู System Policy",
+		error.value = resolveApiErrorMessage(err, "ໂຫຼດນະໂຍບາຍລະບົບບໍ່ສຳເລັດ", {
+			forbiddenMessage: "ບັນຊີນີ້ບໍ່ມີສິດເບິ່ງນະໂຍບາຍລະບົບ",
 		});
 	} finally {
 		pending.value = false;
@@ -86,25 +73,22 @@ async function loadConfig() {
 async function saveConfig() {
 	saving.value = true;
 	try {
+		const maxUsersPerStore = String(form.defaultMaxUsersPerStore ?? "").trim();
 		await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config", {
-			method: "PUT",
-			body: {
-				default_can_create_branches: form.defaultCanCreateBranches ? 1 : 0,
-				default_max_branches_per_store: form.defaultMaxBranchesPerStore.trim() === "" ? null : Number(form.defaultMaxBranchesPerStore),
-				default_session_limit: Number(form.defaultSessionLimit),
+		method: "PUT",
+		body: {
+			default_max_users_per_store: maxUsersPerStore === "" ? null : Number(maxUsersPerStore),
+			default_session_limit: Number(form.defaultSessionLimit),
 				store_logo_max_size_mb: Number(form.storeLogoMaxSizeMb),
 				store_logo_auto_resize: form.storeLogoAutoResize ? 1 : 0,
 				store_logo_resize_max_width: Number(form.storeLogoResizeMaxWidth),
-				app_latest_build: Number(form.appLatestBuild),
-				app_min_required_build: Number(form.appMinRequiredBuild),
-				app_update_message: form.appUpdateMessage.trim() || null,
 			},
 		});
 		initialState.value = currentState.value;
-		setToast("บันทึก System policy แล้ว");
+		setToast("ບັນທຶກນະໂຍບາຍລະບົບແລ້ວ");
 	} catch (err) {
-		setToast(resolveApiErrorMessage(err, "บันทึกไม่สำเร็จ", {
-			forbiddenMessage: "บัญชีนี้ไม่มีสิทธิ์บันทึก System Policy",
+		setToast(resolveApiErrorMessage(err, "ບັນທຶກບໍ່ສຳເລັດ", {
+			forbiddenMessage: "ບັນຊີນີ້ບໍ່ມີສິດບັນທຶກນະໂຍບາຍລະບົບ",
 		}));
 	} finally {
 		saving.value = false;
@@ -118,24 +102,27 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 		<AppSidebarShell
 			:nav-items="appNavItems"
 			:active-ids="['system-policy']"
-			sidebar-eyebrow="System"
-			sidebar-title="System Admin"
+			sidebar-eyebrow="ລະບົບ"
+			sidebar-title="ຜູ້ດູແລລະບົບ"
 		sidebar-compact-title="SYS"
-		sidebar-description="branch policy, session policy และ store logo policy ของแพลตฟอร์ม"
+		sidebar-description="ນະໂຍບາຍ session ແລະ ໂລໂກ້ຮ້ານຂອງແພລດຟອມ"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid min-h-[calc(100dvh-4.25rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 lg:h-full lg:min-h-0">
-				<AppPageHeader
-					title="System Policy"
-					description="หน้าตั้งค่านโยบายระบบกลาง เช่น branch policy, session policy และ logo policy"
-					:tablet-layout="true"
+					<AppPageHeader
+						title="ນະໂຍບາຍລະບົບ"
+						description="ກຳນົດຄ່າກາງສຳລັບຮ້ານໃໝ່ໃນແພລດຟອມ"
+						:title-badge="false"
+						compact
+						body-class="px-3 py-2.5 sm:px-4 sm:py-3"
+						:tablet-layout="true"
 					@menu="openSidebar"
 				>
 
 					<template #actions>
 						<div class="ml-auto hidden w-full flex-wrap justify-end gap-2 lg:flex lg:w-auto">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">รีโหลด</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" :spin-icon-on-loading="true" @click="saveConfig">บันทึก</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" @click="loadConfig">ໂຫຼດໃໝ່</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" :spin-icon-on-loading="true" @click="saveConfig">ບັນທຶກ</AppButton>
 						</div>
 					</template>
 				</AppPageHeader>
@@ -144,11 +131,11 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">System policy</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ตั้งค่า branch policy, session policy, logo policy และ build requirement ของแพลตฟอร์มจากมุมมองเดียว</p>
+									<p class="text-sm font-semibold text-stone-950">ນະໂຍບາຍສຳລັບຮ້ານໃໝ່</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ຄວບຄຸມ session ແລະ ມາດຕະຖານໂລໂກ້ຈາກບ່ອນດຽວ</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-									{{ sectionCount }} sections
+									{{ sectionCount }} ສ່ວນຕັ້ງຄ່າ
 								</div>
 							</div>
 
@@ -161,76 +148,43 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 								<div v-else-if="error" class="flex h-full min-h-[320px] items-center justify-center px-4 text-center text-stone-500">
 									{{ error }}
 								</div>
-								<div v-else class="grid gap-4 p-4 xl:grid-cols-2">
+								<div v-else class="grid gap-4 p-4">
 									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
 										<div class="space-y-4">
-											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Branch policy</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">กำหนด default permission และ branch quota สำหรับร้านที่ถูกสร้างใหม่บนแพลตฟอร์ม</p>
-											</div>
-											<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-												<input v-model="form.defaultCanCreateBranches" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-												<div>
-													<p class="text-sm font-medium text-stone-900">อนุญาตให้ร้านใหม่สร้างสาขาได้</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น policy กลางของ platform</p>
+											<div class="flex items-start gap-3">
+												<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-700 ring-1 ring-sky-100">
+													<UIcon name="i-heroicons-identification-20-solid" class="h-5 w-5" />
 												</div>
-											</label>
-											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวนสาขาสูงสุดต่อร้าน</label>
-												<input v-model="form.defaultMaxBranchesPerStore" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-											</div>
-										</div>
-									</UCard>
-
-									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200">
-										<div class="space-y-4">
-											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Session & logo policy</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ควบคุม session เริ่มต้นและข้อกำหนดของ store logo เพื่อให้ onboarding ร้านใหม่คงมาตรฐาน</p>
+												<div>
+													<h2 class="text-lg font-semibold text-stone-950">Session ແລະ ໂລໂກ້ຮ້ານ</h2>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ກຳນົດ session ເລີ່ມຕົ້ນ ແລະ ມາດຕະຖານໂລໂກ້ໃຫ້ຮ້ານໃໝ່</p>
+												</div>
 											</div>
 											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">จำนวน session เริ่มต้น</label>
+												<label class="mb-2 block text-xs font-medium text-stone-500">ຈຳນວນຜູ້ໃຊ້ສູງສຸດຕໍ່ຮ້ານ</label>
+												<input v-model="form.defaultMaxUsersPerStore" type="number" min="1" placeholder="20" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+												<p class="mt-1.5 text-xs text-stone-500">ປ່ອຍວ່າງເພື່ອບໍ່ຈຳກັດ</p>
+											</div>
+											<div>
+												<label class="mb-2 block text-xs font-medium text-stone-500">ຈຳນວນ session ເລີ່ມຕົ້ນ</label>
 												<input v-model.number="form.defaultSessionLimit" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 											</div>
-											<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+											<label class="flex items-start gap-3 rounded-md border border-sky-100 bg-sky-50/40 p-4">
 												<input v-model="form.storeLogoAutoResize" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
 												<div>
-													<p class="text-sm font-medium text-stone-900">ปรับขนาดโลโก้อัตโนมัติ</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ใช้เป็น store logo policy กลาง</p>
+													<p class="text-sm font-medium text-stone-900">ປັບຂະໜາດໂລໂກ້ອັດຕະໂນມັດ</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">ໃຊ້ເປັນນະໂຍບາຍກາງຂອງໂລໂກ້ຮ້ານ</p>
 												</div>
 											</label>
 											<div class="grid gap-4 sm:grid-cols-2">
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ขนาดไฟล์สูงสุด (MB)</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ຂະໜາດໄຟລ໌ສູງສຸດ (MB)</label>
 													<input v-model.number="form.storeLogoMaxSizeMb" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 												</div>
 												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">ความกว้างสูงสุดหลัง resize</label>
+													<label class="mb-2 block text-xs font-medium text-stone-500">ຄວາມກວ້າງສູງສຸດຫຼັງປັບຂະໜາດ</label>
 													<input v-model.number="form.storeLogoResizeMaxWidth" type="number" min="320" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 												</div>
-											</div>
-										</div>
-									</UCard>
-
-									<UCard class="rounded-md border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 xl:col-span-2">
-										<div class="space-y-4">
-											<div>
-												<h2 class="text-lg font-semibold text-stone-950">Build policy</h2>
-												<p class="mt-1 text-xs leading-5 text-stone-500">ตั้ง latest build, minimum build ที่ต้องใช้ และข้อความแจ้งเตือนเมื่อบังคับให้อัปเดตแอป</p>
-											</div>
-											<div class="grid gap-4 sm:grid-cols-2">
-												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Latest build</label>
-													<input v-model.number="form.appLatestBuild" type="number" min="0" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-												</div>
-												<div>
-													<label class="mb-2 block text-xs font-medium text-stone-500">Min required build</label>
-													<input v-model.number="form.appMinRequiredBuild" type="number" min="0" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-												</div>
-											</div>
-											<div>
-												<label class="mb-2 block text-xs font-medium text-stone-500">ข้อความแจ้งเตือนการอัปเดต</label>
-												<textarea v-model="form.appUpdateMessage" rows="4" class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200" />
 											</div>
 										</div>
 									</UCard>
@@ -240,17 +194,17 @@ onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer); });
 								<div class="fixed inset-x-0 bottom-0 z-[70] shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.08)] backdrop-blur-sm lg:hidden">
 									<div class="mx-auto flex w-full max-w-[1100px] flex-col gap-2.5 sm:gap-3 md:flex-row md:items-center md:justify-between">
 										<div class="min-w-0 text-xs text-stone-500 sm:text-sm">
-											<span v-if="pending">กำลังโหลด System policy…</span>
-											<span v-else-if="hasChanges">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
-											<span v-else>นโยบายระบบเป็นเวอร์ชันล่าสุดแล้ว</span>
+											<span v-if="pending">ກຳລັງໂຫຼດນະໂຍບາຍລະບົບ…</span>
+											<span v-else-if="hasChanges">ມີການປ່ຽນແປງທີ່ຍັງບໍ່ບັນທຶກ</span>
+											<span v-else>ນະໂຍບາຍລະບົບເປັນຄ່າລ່າສຸດແລ້ວ</span>
 										</div>
 
 											<div class="grid w-full grid-cols-2 gap-2">
 												<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-arrow-path-20-solid" :loading="pending" :disabled="pending" :spin-icon-on-loading="true" :block="true" @click="loadConfig">
-													รีโหลด
+													ໂຫຼດໃໝ່
 												</AppButton>
 												<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :loading="saving" :disabled="!canManageSystem || !hasChanges" :spin-icon-on-loading="true" :block="true" @click="saveConfig">
-													บันทึก
+													ບັນທຶກ
 												</AppButton>
 											</div>
 									</div>

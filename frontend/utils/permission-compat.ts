@@ -22,6 +22,7 @@ export const PERMISSION_COMPAT_ALIASES: Record<string, string[]> = {
 		"settings.users.suspend",
 		"settings.users.assign_role",
 		"settings.users.reset_password",
+		"settings.users.remove_member",
 	],
 	"settings.users.view": [ "settings.manage_users" ],
 	"settings.users.create": [ "settings.manage_users" ],
@@ -29,6 +30,7 @@ export const PERMISSION_COMPAT_ALIASES: Record<string, string[]> = {
 	"settings.users.suspend": [ "settings.manage_users" ],
 	"settings.users.assign_role": [ "settings.manage_users" ],
 	"settings.users.reset_password": [ "settings.manage_users" ],
+	"settings.users.remove_member": [ "settings.manage_users" ],
 
 	"settings.manage_roles": [
 		"settings.roles.create",
@@ -49,6 +51,19 @@ export const PERMISSION_COMPAT_ALIASES: Record<string, string[]> = {
 	"settings.store.create": [ "settings.manage_store" ],
 	"settings.store.update": [ "settings.manage_store" ],
 	"settings.store.archive": [ "settings.manage_store" ],
+
+	"settings.printing.view": [ "settings.store.view", "settings.store.update", "settings.manage_store" ],
+	"settings.printing.update": [ "settings.store.update", "settings.manage_store" ],
+	"settings.finance.view": [ "settings.store.view", "settings.store.update", "settings.manage_store" ],
+	"settings.finance.update": [ "settings.store.update", "settings.manage_store" ],
+	"settings.stock_policy.view": [ "settings.store.view", "settings.store.update", "settings.manage_store" ],
+	"settings.stock_policy.update": [ "settings.store.update", "settings.manage_store" ],
+	// Payment accounts contain bank/QR receiving details and require explicit
+	// payment permissions; store-profile access must not imply payment access.
+	"settings.payments.view": [],
+	"settings.payments.update": [],
+	"settings.customer_display.view": [ "settings.store.view", "settings.store.update", "settings.manage_store" ],
+	"settings.customer_display.update": [ "settings.store.update", "settings.manage_store" ],
 
 	"superadmin.manage": [
 		"superadmin.view",
@@ -74,6 +89,7 @@ export const PERMISSION_COMPAT_ALIASES: Record<string, string[]> = {
 		"system_admin.dashboard.view",
 		"system_admin.monitoring.view",
 		"system_admin.security.view",
+		"system_admin.reports.view",
 		"system_admin.clients.view",
 		"system_admin.clients.create",
 		"system_admin.clients.update",
@@ -83,6 +99,7 @@ export const PERMISSION_COMPAT_ALIASES: Record<string, string[]> = {
 	"system_admin.dashboard.view": [ "system_admin.manage" ],
 	"system_admin.monitoring.view": [ "system_admin.manage" ],
 	"system_admin.security.view": [ "system_admin.manage" ],
+	"system_admin.reports.view": [ "system_admin.manage" ],
 	"system_admin.clients.view": [ "system_admin.manage" ],
 	"system_admin.clients.create": [ "system_admin.manage" ],
 	"system_admin.clients.update": [ "system_admin.manage" ],

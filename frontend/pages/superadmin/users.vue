@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { appNavItems } from "~/utils/app-nav";
+import { formatAppDateTime } from "~/utils/date-format";
+
+// Shared starter credential for accounts created here. Every flow on this page
+// sends must_change_password, so the staff member replaces it on first sign-in.
+const QUICK_FILL_PASSWORD = "123456";
 
 type ApiEnvelope<T> = {
 	success: true;
@@ -9,14 +14,13 @@ type ApiEnvelope<T> = {
 
 type ClientRecord = {
 	id: string;
+	username: string;
 	email: string;
 	name: string;
 	system_role: string;
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
@@ -54,6 +58,7 @@ type RoleRecord = {
 };
 
 const { apiFetch } = useApiClient();
+const { t, locale } = useI18n();
 const { currentUser, can } = useAuthSession();
 const appToast = useAppToast();
 
@@ -72,6 +77,7 @@ const selectedUserId = ref("");
 const createOpen = ref(false);
 const detailOpen = ref(false);
 const memberDetailOpen = ref(false);
+const deleteOpen = ref(false);
 const createStores = ref<StoreRecord[]>([]);
 const createRoles = ref<RoleRecord[]>([]);
 const createMetaPending = ref(false);
@@ -81,6 +87,7 @@ const showCreatePassword = ref(false);
 const showMemberResetPassword = ref(false);
 const createSuccess = ref<{
 	name: string;
+	username: string;
 	email: string;
 	password: string;
 } | null>(null);
@@ -93,6 +100,7 @@ const summaryData = ref({
 
 const createForm = reactive({
 	name: "",
+	username: "",
 	email: "",
 	password: "",
 	store_id: "",
@@ -103,13 +111,12 @@ const createForm = reactive({
 
 const detailForm = reactive({
 	name: "",
+	username: "",
 	email: "",
 	system_role: "",
 	ui_locale: "th",
 	can_create_stores: true,
 	max_stores: "1",
-	can_create_branches: true,
-	max_branches_per_store: "1",
 	must_change_password: false,
 	status: "active" as "active" | "suspended",
 	suspend_reason: "",
@@ -131,9 +138,28 @@ const canManageSystem = computed(() => (
 	|| can("settings.users.update")
 	|| can("settings.users.suspend")
 	|| can("settings.users.assign_role")
+	|| can("settings.users.remove_member")
 	|| can("system_admin.clients.update")
 ));
 const canEditClientAccounts = computed(() => can("system_admin.clients.update"));
+const canDeleteSelectedUser = computed(() => Boolean(
+	selectedUser.value
+	&& selectedUser.value.id !== currentUser.value?.id
+	&& selectedUser.value.system_role !== "superadmin"
+	&& selectedUser.value.membership_count === 1
+	&& selectedUser.value.primary_store_id
+	&& (can("settings.users.remove_member") || can("superadmin.users.archive")),
+));
+const deleteCopy = computed(() => locale.value === "lo" ? {
+	title: "ນຳອອກຈາກຮ້ານ", description: "ນຳຜູ້ໃຊ້ນີ້ອອກຈາກຮ້ານ", warning: "ຜູ້ໃຊ້ຈະບໍ່ສາມາດເຂົ້າໃຊ້ຮ້ານນີ້ໄດ້ອີກ ແຕ່ບັນຊີ ແລະ ປະຫວັດເກົ່າຈະຍັງຢູ່", confirm: "ຢືນຢັນການນຳອອກ", success: "ນຳຜູ້ໃຊ້ອອກຈາກຮ້ານແລ້ວ", failed: "ນຳຜູ້ໃຊ້ອອກບໍ່ສຳເລັດ",
+} : locale.value === "th" ? {
+	title: "นำออกจากร้าน", description: "นำผู้ใช้นี้ออกจากร้าน", warning: "ผู้ใช้จะไม่สามารถเข้าถึงร้านนี้ได้อีก แต่บัญชีและประวัติเดิมจะยังอยู่", confirm: "ยืนยันการนำออก", success: "นำผู้ใช้ออกจากร้านแล้ว", failed: "นำผู้ใช้ออกจากร้านไม่สำเร็จ",
+} : {
+	title: "Remove from store", description: "Remove this user from the store", warning: "This user will no longer be able to access this store.", confirm: "Confirm removal", success: "User removed from store", failed: "Unable to remove user from store",
+});
+const removedUsersLabel = computed(() => locale.value === "lo"
+	? "ຜູ້ໃຊ້ທີ່ນຳອອກແລ້ວ"
+	: locale.value === "th" ? "ผู้ใช้ที่นำออกแล้ว" : "Removed users");
 const canManageMemberDetail = computed(() => (
 	Boolean(selectedUser.value)
 	&& selectedUser.value?.system_role !== "superadmin"
@@ -142,9 +168,13 @@ const canManageMemberDetail = computed(() => (
 ));
 
 const selectedUser = computed(() => users.value.find((user) => user.id === selectedUserId.value) || null);
+const isSystemAdminReadOnly = computed(() => (
+	selectedUser.value?.system_role === "superadmin" && !canEditClientAccounts.value
+));
 
 const canCreateUser = computed(() => (
 	createForm.name.trim().length > 0
+	&& /^[a-zA-Z0-9][a-zA-Z0-9._]{2,31}$/.test(createForm.username.trim())
 	&& createForm.email.trim().length > 0
 	&& createForm.password.trim().length >= 6
 	&& createForm.store_id.trim().length > 0
@@ -156,7 +186,7 @@ const canSaveDetail = computed(() => (
 	&& detailForm.name.trim().length > 0
 ));
 const totalPages = computed(() => Math.max(1, Math.ceil(totalUsers.value / pageSize.value)));
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const pageLabel = computed(() => t("superadminUsersPage.pageLabel", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	totalUsers.value === 0
 		? 0
@@ -165,15 +195,15 @@ const pageStart = computed(() => (
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalUsers.value));
 const pageSummaryText = computed(() => (
 	totalUsers.value === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${totalUsers.value} บัญชี`
+		? t("superadminUsersPage.noData")
+		: t("superadminUsersPage.pageSummary", { start: pageStart.value, end: pageEnd.value, count: totalUsers.value })
 ));
 
 const overviewStats = computed(() => ([
-	{ label: "ผู้ใช้ทั้งหมด", value: summaryData.value.total },
-	{ label: "กำลังใช้งาน", value: summaryData.value.active },
-	{ label: "ถูกระงับ", value: summaryData.value.suspended },
-	{ label: "โหลดล่าสุด", value: users.value.length },
+	{ label: t("superadminUsersPage.totalUsers"), value: summaryData.value.total },
+	{ label: t("superadminUsersPage.active"), value: summaryData.value.active },
+	{ label: t("superadminUsersPage.suspended"), value: summaryData.value.suspended },
+	{ label: t("superadminUsersPage.loaded"), value: users.value.length },
 ]));
 
 function resolveDefaultRoleId(roleList: RoleRecord[]): string {
@@ -187,7 +217,7 @@ function statusTone(status: ClientRecord["status"]) {
 }
 
 function statusLabel(status: ClientRecord["status"]) {
-	return status === "active" ? "ใช้งาน" : "ระงับ";
+	return status === "active" ? t("superadminUsersPage.active") : t("superadminUsersPage.suspended");
 }
 
 function roleLabel(role: string) {
@@ -195,8 +225,7 @@ function roleLabel(role: string) {
 }
 
 function canOpenDetail(user: ClientRecord) {
-	if (user.system_role !== "superadmin") return false;
-	return canEditClientAccounts.value;
+	return user.system_role === "superadmin";
 }
 
 function canOpenMemberDetail(user: ClientRecord) {
@@ -207,15 +236,15 @@ function canOpenMemberDetail(user: ClientRecord) {
 
 function rowActionLabel(user: ClientRecord) {
 	if (user.system_role === "superadmin") {
-		return canOpenDetail(user) ? "จัดการ" : "System Admin";
+		return canOpenDetail(user) ? t("superadminUsersPage.manage") : t("superadminUsersPage.systemAdmin");
 	}
 	if (canOpenMemberDetail(user)) {
-		return "จัดการ";
+		return t("superadminUsersPage.manage");
 	}
 	if (user.membership_count > 1) {
-		return `${user.membership_count} stores`;
+		return t("superadminUsersPage.storesCount", { count: user.membership_count });
 	}
-	return "Store Member";
+	return t("superadminUsersPage.storeMember");
 }
 
 function rowActionDisabled(user: ClientRecord) {
@@ -223,10 +252,7 @@ function rowActionDisabled(user: ClientRecord) {
 }
 
 function formatDateTime(value: string) {
-	return new Intl.DateTimeFormat("th-TH", {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(new Date(value));
+	return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 }
 
 function toOptionalNumber(value: string | number) {
@@ -237,7 +263,7 @@ function toOptionalNumber(value: string | number) {
 	return trimmed === "" ? null : Number(trimmed);
 }
 
-function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดลองอีกครั้ง") {
+function resolveApiErrorMessage(errorValue: unknown, fallback = t("superadminUsersPage.tryAgain")) {
 	if (typeof errorValue === "object" && errorValue) {
 		const response = Reflect.get(errorValue, "response");
 		if (typeof response === "object" && response) {
@@ -260,6 +286,7 @@ function resolveApiErrorMessage(errorValue: unknown, fallback = "โปรดล
 
 function resetCreateForm() {
 	createForm.name = "";
+	createForm.username = "";
 	createForm.email = "";
 	createForm.password = "";
 	createForm.store_id = "";
@@ -272,7 +299,7 @@ function resetCreateForm() {
 }
 
 function quickFillCreatePassword() {
-	createForm.password = "123456";
+	createForm.password = QUICK_FILL_PASSWORD;
 }
 
 function closeCreateModal() {
@@ -284,20 +311,20 @@ async function copyCreatedCredential() {
 	if (!createSuccess.value || !import.meta.client) return;
 
 	const text = [
-		`Username: ${createSuccess.value.email}`,
+		`Username: ${createSuccess.value.username}`,
 		`Password: ${createSuccess.value.password}`,
 	].join("\n");
 
 	try {
 		await navigator.clipboard.writeText(text);
 		appToast.success({
-			title: "คัดลอก credential แล้ว",
-			description: "นำไปส่งต่อให้พนักงานได้ทันที",
+			title: t("superadminUsersPage.credentialCopied"),
+			description: t("superadminUsersPage.credentialCopiedDescription"),
 		});
 	} catch {
 		appToast.error({
-			title: "คัดลอกไม่สำเร็จ",
-			description: "โปรดลองคัดลอกอีกครั้ง",
+			title: t("superadminUsersPage.copyFailed"),
+			description: t("superadminUsersPage.copyFailedDescription"),
 		});
 	}
 }
@@ -306,14 +333,14 @@ async function shareCreatedCredential() {
 	if (!createSuccess.value || !import.meta.client) return;
 
 	const text = [
-		`Username: ${createSuccess.value.email}`,
+		`Username: ${createSuccess.value.username}`,
 		`Password: ${createSuccess.value.password}`,
 	].join("\n");
 
 	if (typeof navigator.share === "function") {
 		try {
 			await navigator.share({
-				title: "Store staff credential",
+			title: t("superadminUsersPage.staffCredential"),
 				text,
 			});
 			return;
@@ -325,8 +352,8 @@ async function shareCreatedCredential() {
 
 	await copyCreatedCredential();
 	appToast.success({
-		title: "อุปกรณ์นี้ไม่รองรับ share โดยตรง",
-		description: "ระบบคัดลอก credential ให้แล้ว เพื่อนำไปวางส่งต่อได้ทันที",
+		title: t("superadminUsersPage.shareUnavailable"),
+		description: t("superadminUsersPage.shareUnavailableDescription"),
 	});
 }
 
@@ -393,8 +420,8 @@ async function loadMemberRoles(storeId: string) {
 async function openCreateModal() {
 	if (!canManageSystem.value) {
 		appToast.error({
-			title: "ไม่มีสิทธิ์ใช้งาน",
-			description: "บัญชีนี้ไม่สามารถจัดการผู้ใช้ได้",
+			title: t("superadminUsersPage.noPermission"),
+			description: t("superadminUsersPage.noPermissionDescription"),
 		});
 		return;
 	}
@@ -412,7 +439,7 @@ async function openCreateModal() {
 		}
 	} catch (err) {
 		appToast.error({
-			title: "โหลดข้อมูลสำหรับสร้างผู้ใช้ไม่สำเร็จ",
+			title: t("superadminUsersPage.loadCreateMetaFailed"),
 			description: resolveApiErrorMessage(err),
 		});
 	} finally {
@@ -426,10 +453,10 @@ function openDetailModal(userId: string) {
 	if (user.system_role !== "superadmin") {
 		if (!canOpenMemberDetail(user)) {
 			appToast.info({
-				title: "จัดการผู้ใช้นี้จากหน้าร้าน",
+				title: t("superadminUsersPage.manageFromStore"),
 				description: user.membership_count > 1
-					? "ผู้ใช้นี้อยู่หลายร้าน จึงควรจัดการจากหน้าผู้ใช้ของร้านที่เกี่ยวข้อง"
-					: "ผู้ใช้นี้ยังไม่มี membership ร้านที่จัดการต่อจากหน้านี้ได้",
+					? t("superadminUsersPage.multipleStoresHint")
+					: t("superadminUsersPage.noMembershipHint"),
 			});
 			return;
 		}
@@ -447,7 +474,7 @@ function openDetailModal(userId: string) {
 		void loadMemberRoles(memberForm.store_id)
 			.catch((err) => {
 				appToast.error({
-					title: "โหลดข้อมูลสมาชิกไม่สำเร็จ",
+					title: t("superadminUsersPage.loadMemberFailed"),
 					description: resolveApiErrorMessage(err),
 				});
 			})
@@ -456,22 +483,14 @@ function openDetailModal(userId: string) {
 			});
 		return;
 	}
-	if (!canEditClientAccounts.value) {
-		appToast.info({
-			title: "ดูได้เฉพาะ System Admin",
-			description: "การแก้ไขบัญชี Superadmin ต้องทำจากหน้าฝั่ง System Admin",
-		});
-		return;
-	}
 	selectedUserId.value = user.id;
 	detailForm.name = user.name;
+	detailForm.username = user.username;
 	detailForm.email = user.email;
 	detailForm.system_role = user.system_role;
 	detailForm.ui_locale = user.ui_locale || "th";
 	detailForm.can_create_stores = Boolean(user.can_create_stores);
 	detailForm.max_stores = user.max_stores === null ? "" : String(user.max_stores);
-	detailForm.can_create_branches = Boolean(user.can_create_branches);
-	detailForm.max_branches_per_store = user.max_branches_per_store === null ? "" : String(user.max_branches_per_store);
 	detailForm.must_change_password = Boolean(user.must_change_password);
 	detailForm.status = user.status;
 	detailForm.suspend_reason = user.client_suspended_reason || "";
@@ -507,7 +526,7 @@ async function loadUsers() {
 			return;
 		}
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลดผู้ใช้ไม่สำเร็จ");
+		error.value = resolveApiErrorMessage(err, t("superadminUsersPage.loadFailed"));
 	} finally {
 		pending.value = false;
 	}
@@ -526,6 +545,7 @@ async function createUser() {
 			method: "POST",
 			body: {
 				name: createForm.name.trim(),
+				username: createForm.username.trim(),
 				email: createForm.email.trim(),
 				password: createForm.password,
 				store_id: createForm.store_id,
@@ -539,11 +559,12 @@ async function createUser() {
 		});
 
 		appToast.success({
-			title: "สร้างผู้ใช้แล้ว",
-			description: "เพิ่มพนักงานเข้าร้านเรียบร้อยแล้ว",
+			title: t("superadminUsersPage.created"),
+			description: t("superadminUsersPage.createdDescription"),
 		});
 		createSuccess.value = {
 			name: createForm.name.trim(),
+			username: createForm.username.trim(),
 			email: createForm.email.trim(),
 			password: plainPassword,
 		};
@@ -551,7 +572,7 @@ async function createUser() {
 		await loadUsers();
 	} catch (err) {
 		appToast.error({
-			title: "สร้างผู้ใช้ไม่สำเร็จ",
+			title: t("superadminUsersPage.createFailed"),
 			description: resolveApiErrorMessage(err),
 		});
 	} finally {
@@ -570,8 +591,6 @@ async function saveDetail() {
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
 				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
-				can_create_branches: detailForm.can_create_stores && detailForm.can_create_branches ? 1 : 0,
-				max_branches_per_store: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_branches_per_store) : null,
 				must_change_password: detailForm.must_change_password,
 				actor_user_id: currentUser.value?.id || null,
 			},
@@ -589,14 +608,14 @@ async function saveDetail() {
 		}
 
 		appToast.success({
-			title: "อัปเดตผู้ใช้แล้ว",
-			description: "ข้อมูลถูกบันทึกลงฐานข้อมูลแล้ว",
+			title: t("superadminUsersPage.updated"),
+			description: t("superadminUsersPage.updatedDescription"),
 		});
 		detailOpen.value = false;
 		await loadUsers();
 	} catch (err) {
 		appToast.error({
-			title: "บันทึกไม่สำเร็จ",
+			title: t("superadminUsersPage.saveFailed"),
 			description: resolveApiErrorMessage(err),
 		});
 	} finally {
@@ -640,16 +659,32 @@ async function saveMemberDetail() {
 		}
 
 		appToast.success({
-			title: "อัปเดตผู้ใช้แล้ว",
-			description: "บทบาท สถานะ และรหัสผ่านของพนักงานถูกบันทึกแล้ว",
+			title: t("superadminUsersPage.updated"),
+			description: t("superadminUsersPage.memberUpdatedDescription"),
 		});
 		memberDetailOpen.value = false;
 		await loadUsers();
 	} catch (err) {
 		appToast.error({
-			title: "บันทึกไม่สำเร็จ",
+			title: t("superadminUsersPage.saveFailed"),
 			description: resolveApiErrorMessage(err),
 		});
+	} finally {
+		saving.value = false;
+	}
+}
+
+async function deleteSelectedUser() {
+	if (!selectedUser.value || !selectedUser.value.primary_store_id || !canDeleteSelectedUser.value) return;
+	saving.value = true;
+	try {
+		await apiFetch(`/rbac/store-members/${encodeURIComponent(selectedUser.value.primary_store_id)}/${encodeURIComponent(selectedUser.value.id)}`, { method: "DELETE" });
+		deleteOpen.value = false;
+		memberDetailOpen.value = false;
+		appToast.success({ title: deleteCopy.value.success });
+		await loadUsers();
+	} catch (err) {
+		appToast.error({ title: deleteCopy.value.failed, description: resolveApiErrorMessage(err) });
 	} finally {
 		saving.value = false;
 	}
@@ -663,8 +698,6 @@ watch(() => createForm.store_id, async (storeId) => {
 watch(() => detailForm.can_create_stores, (enabled) => {
 	if (enabled) return;
 	detailForm.max_stores = "";
-	detailForm.max_branches_per_store = "";
-	detailForm.can_create_branches = false;
 });
 
 onMounted(loadUsers);
@@ -674,17 +707,17 @@ onMounted(loadUsers);
 		<AppSidebarShell
 			:nav-items="appNavItems"
 		:active-ids="['superadmin']"
-		sidebar-eyebrow="Superadmin"
-		sidebar-title="Superadmin"
+		sidebar-eyebrow="Super Admin"
+		:sidebar-title="t('superadminUsersPage.title')"
 		sidebar-compact-title="SUP"
-		sidebar-description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
+		:sidebar-description="t('superadminUsersPage.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
 				<AppPageHeader
 					title=""
 					compact
-					description="จัดการผู้ใช้ระดับ superadmin และติดตามสถานะการเข้าถึงร้าน"
+					:description="t('superadminUsersPage.description')"
 					@menu="openSidebar"
 				>
 					<template #default>
@@ -694,7 +727,7 @@ onMounted(loadUsers);
 								icon="i-heroicons-magnifying-glass-20-solid"
 								size="lg"
 								color="neutral"
-								placeholder="ค้นหาชื่อผู้ใช้หรืออีเมล"
+								:placeholder="t('superadminUsersPage.searchPlaceholder')"
 								class="min-w-0 flex-1 [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								@keydown.enter="applyFilters"
 							/>
@@ -708,11 +741,14 @@ onMounted(loadUsers);
 									:loading="pending"
 									:disabled="pending"
 									:spin-icon-on-loading="true"
-									aria-label="รีโหลด"
-									title="รีโหลด"
+									:aria-label="t('superadminUsersPage.reload')"
+									:title="t('superadminUsersPage.reload')"
 									@click="reloadUsers"
 								>
-									<span class="hidden sm:inline">รีโหลด</span>
+									<span class="hidden sm:inline">{{ t('superadminUsersPage.reload') }}</span>
+								</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clock-20-solid" to="/superadmin/removed-users" class="h-9 shrink-0 rounded-md px-2 sm:h-auto sm:px-3" :title="removedUsersLabel" :aria-label="removedUsersLabel">
+									<span class="hidden sm:inline">{{ removedUsersLabel }}</span>
 								</AppButton>
 								<AppButton
 									color="primary"
@@ -720,11 +756,11 @@ onMounted(loadUsers);
 									size="md"
 									icon="i-heroicons-user-plus-20-solid"
 									class="h-9 w-9 shrink-0 justify-center rounded-md px-0 sm:h-auto sm:w-auto sm:px-3"
-									aria-label="เพิ่มผู้ใช้"
-									title="เพิ่มผู้ใช้"
+									:aria-label="t('superadminUsersPage.addUser')"
+									:title="t('superadminUsersPage.addUser')"
 									@click="openCreateModal"
 								>
-									<span class="hidden sm:inline">เพิ่มผู้ใช้</span>
+									<span class="hidden sm:inline">{{ t('superadminUsersPage.addUser') }}</span>
 								</AppButton>
 							</div>
 						</div>
@@ -749,8 +785,8 @@ onMounted(loadUsers);
 						<div class="flex h-full min-h-0 flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">Superadmin users</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">ข้อมูลดึงตรงจาก API พร้อมแบ่งหน้าแบบเดียวกับหน้า clients</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('superadminUsersPage.usersTitle') }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('superadminUsersPage.usersDescription') }}</p>
 								</div>
 								<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
 									{{ pageSummaryText }}
@@ -760,12 +796,12 @@ onMounted(loadUsers);
 							<div class="border-b border-[#ece6dc] px-4 py-3">
 								<div class="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
 									<select v-model="activeStatus" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="all">ทุกสถานะ</option>
-										<option value="active">ใช้งาน</option>
-										<option value="suspended">ระงับ</option>
+										<option value="all">{{ t('superadminUsersPage.allStatuses') }}</option>
+										<option value="active">{{ t('superadminUsersPage.active') }}</option>
+										<option value="suspended">{{ t('superadminUsersPage.suspended') }}</option>
 									</select>
 									<AppButton color="primary" variant="soft" size="md" class="sm:self-stretch" @click="applyFilters">
-										ใช้ตัวกรอง
+										{{ t('superadminUsersPage.applyFilters') }}
 									</AppButton>
 								</div>
 							</div>
@@ -776,18 +812,18 @@ onMounted(loadUsers);
 										<AppInlineLoadingBar container-class="bg-neutral-100" />
 									</div>
 									<div v-else-if="error" class="p-5 text-center text-sm text-error">{{ error }}</div>
-									<div v-else-if="!users.length" class="p-5 text-center text-sm text-stone-500">ยังไม่มีผู้ใช้</div>
+									<div v-else-if="!users.length" class="p-5 text-center text-sm text-stone-500">{{ t('superadminUsersPage.empty') }}</div>
 									<div v-else class="overflow-x-auto">
 										<table class="min-w-[1080px] w-full border-separate border-spacing-0">
 											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ผู้ใช้</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">บทบาท</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สถานะ</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">System role</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ร้าน</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">เพิ่มเมื่อ</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.user') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.role') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.status') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.systemRole') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.store') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.createdAt') }}</th>
+													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">{{ t('superadminUsersPage.action') }}</th>
 												</tr>
 											</thead>
 											<tbody>
@@ -801,12 +837,7 @@ onMounted(loadUsers);
 													<td class="border-b border-[#f1ede6] px-4 py-4">
 														<div class="min-w-0">
 															<p class="truncate font-semibold text-stone-950">{{ user.name }}</p>
-															<p class="mt-1 truncate text-xs text-stone-500">{{ user.email }}</p>
-															<p class="mt-2 text-xs text-stone-500">
-																{{ roleLabel(user.system_role) }}
-																<span v-if="user.primary_store_name"> · {{ user.primary_store_name }}</span>
-																<span v-if="user.primary_role_name"> · {{ user.primary_role_name }}</span>
-															</p>
+															<p class="mt-1 truncate text-xs text-stone-500">{{ user.username }} · {{ user.email }}</p>
 														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4">
@@ -818,8 +849,18 @@ onMounted(loadUsers);
 													<td class="border-b border-[#f1ede6] px-4 py-4">
 														<UBadge color="neutral" variant="soft" :label="roleLabel(user.system_role)" />
 													</td>
-													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-														{{ user.membership_count }}
+													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
+														<div class="flex min-w-0 items-center gap-2">
+															<span class="max-w-40 truncate font-medium text-stone-800" :title="user.primary_store_name || ''">
+																{{ user.primary_store_name || '-' }}
+															</span>
+															<UBadge
+																v-if="user.membership_count > 1"
+																color="neutral"
+																variant="soft"
+																:label="`+${user.membership_count - 1}`"
+															/>
+														</div>
 													</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 whitespace-nowrap text-stone-600">
 														{{ formatDateTime(user.created_at) }}
@@ -858,7 +899,7 @@ onMounted(loadUsers);
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('superadminUsersPage.perPage') }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -878,11 +919,11 @@ onMounted(loadUsers);
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || pending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="t('superadminUsersPage.previousPage')"
+												:title="t('superadminUsersPage.previousPage')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ t('superadminUsersPage.previous') }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -891,11 +932,11 @@ onMounted(loadUsers);
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || pending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="t('superadminUsersPage.nextPage')"
+												:title="t('superadminUsersPage.nextPage')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ t('superadminUsersPage.next') }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -908,8 +949,8 @@ onMounted(loadUsers);
 
 			<AppResponsivePanel
 				v-model="createOpen"
-				title="Create Employee"
-				description="เพิ่มพนักงานใหม่และกำหนดสิทธิ์เข้าถึงร้านทันที"
+				:title="t('superadminUsersPage.createTitle')"
+				:description="t('superadminUsersPage.createDescription')"
 				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
@@ -921,77 +962,82 @@ onMounted(loadUsers);
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div v-if="!createSuccess" class="space-y-4 pb-6">
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
-								<input v-model="createForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</label>
+								<input v-model="createForm.name" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ສົມໄຊ ໄຊຍະວົງ' : locale === 'th' ? 'ตัวอย่าง: สมชาย ใจดี' : 'Example: Somchai Jaidee'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
-								<input v-model="createForm.email" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input v-model="createForm.username" autocomplete="username" placeholder="somchai" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<p class="mt-2 text-xs leading-5 text-stone-500">a-z, 0-9, . ແລະ _ · 3–32 ຕົວອັກສອນ</p>
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">รหัสผ่าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</label>
+								<input v-model="createForm.email" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: somchai@example.com' : locale === 'th' ? 'ตัวอย่าง: somchai@example.com' : 'Example: somchai@example.com'" type="email" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+							</div>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.password') }}</label>
 								<div class="relative">
 									<input
 										v-model="createForm.password"
 										:type="showCreatePassword ? 'text' : 'password'"
-										placeholder="ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร"
+										:placeholder="t('superadminUsersPage.passwordPlaceholder')"
 										class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
 									<button
 										type="button"
 										class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
-										:aria-label="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-										:title="showCreatePassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:aria-label="showCreatePassword ? t('superadminUsersPage.hidePassword') : t('superadminUsersPage.showPassword')"
+										:title="showCreatePassword ? t('superadminUsersPage.hidePassword') : t('superadminUsersPage.showPassword')"
 										@click="showCreatePassword = !showCreatePassword"
 									>
 										<UIcon :name="showCreatePassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
 									</button>
 								</div>
-								<p class="mt-2 text-xs leading-5 text-stone-500">ใช้รหัสชั่วคราวสำหรับส่งให้พนักงานก่อนเปลี่ยนเองครั้งแรก</p>
+								<p class="mt-2 text-xs leading-5 text-stone-500">{{ t('superadminUsersPage.passwordHint') }}</p>
 								<button
 									type="button"
 									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
 									@click="quickFillCreatePassword"
 								>
 									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
-									ใช้รหัส 123456
+									{{ t('superadminUsersPage.usePassword') }}
 								</button>
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">เลือกร้าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.selectStore') }}</label>
 								<select
 									v-model="createForm.store_id"
 									:disabled="createMetaPending || saving || !createStores.length"
 									class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50"
 								>
-									<option value="" disabled>เลือกร้านที่พนักงานจะเข้าถึง</option>
+									<option value="" disabled>{{ t('superadminUsersPage.selectStorePlaceholder') }}</option>
 									<option v-for="store in createStores" :key="store.id" :value="store.id">
 										{{ store.name }}
 									</option>
 								</select>
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">บทบาทในร้าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.storeRole') }}</label>
 								<select
 									v-model="createForm.role_id"
 									:disabled="createMetaPending || saving || !createForm.store_id || !createRoles.length"
 									class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50"
 								>
-									<option value="" disabled>เลือกบทบาทของพนักงาน</option>
+									<option value="" disabled>{{ t('superadminUsersPage.selectRolePlaceholder') }}</option>
 									<option v-for="role in createRoles" :key="role.id" :value="role.id">
 										{{ role.name }}
 									</option>
 								</select>
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">สถานะ</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</label>
 								<select v-model="createForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="active">ใช้งาน</option>
-									<option value="inactive">ไม่ใช้งาน</option>
+									<option value="active">{{ t('superadminUsersPage.active') }}</option>
+									<option value="inactive">{{ t('superadminUsersPage.inactive') }}</option>
 								</select>
 							</div>
 							<div v-if="!createStores.length" class="rounded-md border border-warning/40 bg-warning/5 px-4 py-3 text-sm text-warning">
-								ยังไม่มีร้านในบัญชีนี้ กรุณาสร้างร้านก่อนเพิ่มพนักงาน
+								{{ t('superadminUsersPage.noStoresHint') }}
 							</div>
 						</div>
 						<div v-else class="space-y-4 pb-6">
@@ -1001,23 +1047,23 @@ onMounted(loadUsers);
 										<UIcon name="i-heroicons-check-circle-20-solid" class="h-5 w-5" />
 									</div>
 									<div>
-										<p class="text-sm font-semibold text-stone-950">สร้างผู้ใช้สำเร็จแล้ว</p>
-										<p class="mt-1 text-sm leading-6 text-stone-600">คัดลอก username และ password ชุดนี้ไปส่งต่อให้พนักงานได้ทันที ก่อนกด done เพื่อปิด modal</p>
+										<p class="text-sm font-semibold text-stone-950">{{ t('superadminUsersPage.created') }}</p>
+										<p class="mt-1 text-sm leading-6 text-stone-600">{{ t('superadminUsersPage.createdCredentialHint') }}</p>
 									</div>
 								</div>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">Credential</p>
+								<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ t('superadminUsersPage.credential') }}</p>
 								<div class="mt-4 space-y-3">
 									<div>
 										<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
-											{{ createSuccess.email }}
+											{{ createSuccess.username }}
 										</div>
 									</div>
 									<div>
-										<label class="mb-2 block text-xs font-medium text-stone-500">Password</label>
+										<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.password') }}</label>
 										<div class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900">
 											{{ createSuccess.password }}
 										</div>
@@ -1027,19 +1073,19 @@ onMounted(loadUsers);
 
 							<div class="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3">
 								<p class="text-sm font-medium text-stone-900">{{ createSuccess.name }}</p>
-								<p class="mt-1 text-xs leading-5 text-stone-500">credential นี้แสดงชั่วคราวใน modal นี้เท่านั้น หลังปิด modal แล้วจะไม่แสดง password เดิมอีก</p>
+								<p class="mt-1 text-xs leading-5 text-stone-500">{{ t('superadminUsersPage.credentialTemporaryHint') }}</p>
 							</div>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 						<div v-if="!createSuccess" class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateModal">ยกเลิก</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :loading="saving" :disabled="!canCreateUser" :spin-icon-on-loading="true" :block="true" @click="createUser">สร้างผู้ใช้</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="closeCreateModal">{{ t('superadminUsersPage.cancel') }}</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-plus-20-solid" :loading="saving" :disabled="!canCreateUser" :spin-icon-on-loading="true" :block="true" @click="createUser">{{ t('superadminUsersPage.createUser') }}</AppButton>
 						</div>
 						<div v-else class="grid w-full gap-2 sm:grid-cols-3">
-							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clipboard-document-20-solid" :block="true" @click="copyCreatedCredential">Copy</AppButton>
-							<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-share-20-solid" :block="true" @click="shareCreatedCredential">Share</AppButton>
-							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" @click="closeCreateModal">Done</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" icon="i-heroicons-clipboard-document-20-solid" :block="true" @click="copyCreatedCredential">{{ t('superadminUsersPage.copy') }}</AppButton>
+							<AppButton color="primary" variant="soft" size="md" icon="i-heroicons-share-20-solid" :block="true" @click="shareCreatedCredential">{{ t('superadminUsersPage.share') }}</AppButton>
+							<AppButton color="primary" variant="solid" size="md" icon="i-heroicons-check-20-solid" :block="true" @click="closeCreateModal">{{ t('superadminUsersPage.done') }}</AppButton>
 						</div>
 					</div>
 				</div>
@@ -1047,8 +1093,8 @@ onMounted(loadUsers);
 
 			<AppResponsivePanel
 				v-model="detailOpen"
-				title="User Detail"
-				description="แก้ไขข้อมูลผู้ใช้บนฐานข้อมูลจริง"
+				:title="t('superadminUsersPage.userDetailTitle')"
+				:description="t('superadminUsersPage.userDetailDescription')"
 				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
@@ -1059,61 +1105,91 @@ onMounted(loadUsers);
 				<div v-if="selectedUser" class="flex h-full min-h-0 flex-col">
 					<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-5 py-5">
 						<div class="space-y-4 pb-6">
-							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-sm font-semibold text-stone-950">{{ selectedUser.id }}</p>
-								<p class="mt-1 text-xs text-stone-500">{{ roleLabel(selectedUser.system_role) }} · สร้างเมื่อ {{ formatDateTime(selectedUser.created_at) }}</p>
+							<div v-if="isSystemAdminReadOnly" class="rounded-md border border-primary-200 bg-primary-50 px-4 py-3">
+								<div class="flex items-start gap-2.5">
+									<UIcon name="i-heroicons-information-circle-20-solid" class="mt-0.5 h-5 w-5 shrink-0 text-primary-600" />
+									<div>
+										<p class="text-sm font-semibold text-primary-900">{{ t('superadminUsersPage.systemAdminOnly') }}</p>
+										<p class="mt-1 text-xs leading-5 text-primary-800">{{ t('superadminUsersPage.systemAdminOnlyDescription') }}</p>
+									</div>
+								</div>
+							</div>
+							<p class="text-xs text-stone-500">{{ roleLabel(selectedUser.system_role) }} · {{ t('superadminUsersPage.createdAt') }} {{ formatDateTime(selectedUser.created_at) }}</p>
+							<div v-if="isSystemAdminReadOnly" class="grid gap-3 sm:grid-cols-2">
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.name }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">Username</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.username || '—' }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4 sm:col-span-2">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</p>
+									<p class="mt-1 break-all text-sm font-semibold text-stone-900">{{ detailForm.email }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxStores') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.max_stores }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.allowCreateStores') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ detailForm.can_create_stores ? 'ອະນຸຍາດ' : 'ບໍ່ອະນຸຍາດ' }}</p>
+								</div>
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</p>
+									<p class="mt-1 text-sm font-semibold text-stone-900">{{ statusLabel(detailForm.status) }}</p>
+								</div>
+							</div>
+							<template v-else>
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.name') }}</label>
+								<input v-model="detailForm.name" :disabled="isSystemAdminReadOnly" :placeholder="locale === 'lo' ? 'ຕົວຢ່າງ: ສົມໄຊ ໄຊຍະວົງ' : locale === 'th' ? 'ตัวอย่าง: สมชาย ใจดี' : 'Example: Somchai Jaidee'" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50 disabled:text-stone-700">
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">ชื่อ</label>
-								<input v-model="detailForm.name" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input v-model="detailForm.username" disabled type="text" class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700 shadow-sm outline-none">
 							</div>
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">อีเมล</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.email') }}</label>
 								<input v-model="detailForm.email" disabled type="email" class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700 shadow-sm outline-none">
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">max stores</label>
-									<input v-model="detailForm.max_stores" :disabled="!detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
-								</div>
-								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">max branches/store</label>
-									<input v-model="detailForm.max_branches_per_store" :disabled="!detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
+									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.maxStores') }}</label>
+									<input v-model="detailForm.max_stores" :disabled="isSystemAdminReadOnly || !detailForm.can_create_stores" type="number" min="1" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
 							</div>
 							<div class="grid gap-3">
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-									<div><p class="text-sm font-medium text-stone-900">อนุญาตสร้างร้าน</p></div>
+									<input v-model="detailForm.can_create_stores" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.allowCreateStores') }}</p></div>
 								</label>
 								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.can_create_branches" :disabled="!detailForm.can_create_stores" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-									<div><p class="text-sm font-medium text-stone-900">อนุญาตสร้างสาขา</p></div>
-								</label>
-								<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-									<input v-model="detailForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-									<div><p class="text-sm font-medium text-stone-900">บังคับเปลี่ยนรหัสผ่านครั้งถัดไป</p></div>
+									<input v-model="detailForm.must_change_password" :disabled="isSystemAdminReadOnly" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
+									<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.requirePasswordChange') }}</p></div>
 								</label>
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div>
-									<label class="mb-2 block text-xs font-medium text-stone-500">สถานะ</label>
-									<select v-model="detailForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-										<option value="active">ใช้งาน</option>
-										<option value="suspended">ระงับ</option>
+									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.status') }}</label>
+									<select v-model="detailForm.status" :disabled="isSystemAdminReadOnly" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
+										<option value="active">{{ t('superadminUsersPage.active') }}</option>
+										<option value="suspended">{{ t('superadminUsersPage.suspended') }}</option>
 									</select>
 								</div>
 								<div v-if="detailForm.status === 'suspended'">
-									<label class="mb-2 block text-xs font-medium text-stone-500">เหตุผลระงับ</label>
-									<input v-model="detailForm.suspend_reason" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
+									<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.suspensionReason') }}</label>
+									<input v-model="detailForm.suspend_reason" :disabled="isSystemAdminReadOnly" type="text" class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50">
 								</div>
 							</div>
+							</template>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">ปิด</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="!canSaveDetail" :spin-icon-on-loading="true" :block="true" @click="saveDetail">บันทึก</AppButton>
+						<div class="grid w-full gap-2" :class="isSystemAdminReadOnly ? 'grid-cols-1' : 'grid-cols-2'">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="detailOpen = false">{{ t('superadminUsersPage.close') }}</AppButton>
+							<AppButton v-if="!isSystemAdminReadOnly" color="primary" variant="solid" size="md" :loading="saving" :disabled="!canSaveDetail" :spin-icon-on-loading="true" :block="true" @click="saveDetail">{{ t('superadminUsersPage.save') }}</AppButton>
 						</div>
 					</div>
 				</div>
@@ -1121,8 +1197,8 @@ onMounted(loadUsers);
 
 			<AppResponsivePanel
 				v-model="memberDetailOpen"
-				title="Member Detail"
-				description="จัดการบทบาท สถานะ และรีเซ็ตรหัสผ่านของพนักงานในร้าน"
+				:title="t('superadminUsersPage.memberDetailTitle')"
+				:description="t('superadminUsersPage.memberDetailDescription')"
 				desktop-width="680px"
 				mobile-max-height="88dvh"
 				:fill-mobile-height="true"
@@ -1140,13 +1216,18 @@ onMounted(loadUsers);
 							</div>
 
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">บทบาทในร้าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">Username</label>
+								<input :value="selectedUser.username" disabled type="text" class="w-full rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700 shadow-sm outline-none">
+							</div>
+
+							<div>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.storeRole') }}</label>
 								<select
 									v-model="memberForm.role_id"
 									:disabled="memberMetaPending || saving || !memberRoles.length"
 									class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:bg-neutral-50"
 								>
-									<option value="" disabled>เลือกบทบาทของพนักงาน</option>
+									<option value="" disabled>{{ t('superadminUsersPage.selectRolePlaceholder') }}</option>
 									<option v-for="role in memberRoles" :key="role.id" :value="role.id">
 										{{ role.name }}
 									</option>
@@ -1154,53 +1235,72 @@ onMounted(loadUsers);
 							</div>
 
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">สถานะสมาชิกในร้าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.memberStatus') }}</label>
 								<select v-model="memberForm.status" class="w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200">
-									<option value="active">ใช้งาน</option>
-									<option value="inactive">ไม่ใช้งาน</option>
+									<option value="active">{{ t('superadminUsersPage.active') }}</option>
+									<option value="inactive">{{ t('superadminUsersPage.inactive') }}</option>
 								</select>
 							</div>
 
 							<div>
-								<label class="mb-2 block text-xs font-medium text-stone-500">รีเซ็ตรหัสผ่าน</label>
+								<label class="mb-2 block text-xs font-medium text-stone-500">{{ t('superadminUsersPage.resetPassword') }}</label>
 								<div class="relative">
 									<input
 										v-model="memberForm.reset_password"
 										:type="showMemberResetPassword ? 'text' : 'password'"
-										placeholder="เว้นว่างได้ ถ้ายังไม่ต้องเปลี่ยนรหัส"
+										:placeholder="t('superadminUsersPage.resetPasswordPlaceholder')"
 										class="w-full rounded-md border border-neutral-200 bg-white py-3 pl-4 pr-12 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
 									<button
 										type="button"
 										class="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-400 transition hover:bg-primary-50 hover:text-primary-700"
-										:aria-label="showMemberResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
-										:title="showMemberResetPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
+										:aria-label="showMemberResetPassword ? t('superadminUsersPage.hidePassword') : t('superadminUsersPage.showPassword')"
+										:title="showMemberResetPassword ? t('superadminUsersPage.hidePassword') : t('superadminUsersPage.showPassword')"
 										@click="showMemberResetPassword = !showMemberResetPassword"
 									>
 										<UIcon :name="showMemberResetPassword ? 'i-heroicons-eye-slash-20-solid' : 'i-heroicons-eye-20-solid'" class="h-4 w-4" />
 									</button>
 								</div>
-								<p class="mt-2 text-xs leading-5 text-stone-500">ถ้ากรอกรหัสใหม่ ระบบจะบังคับให้พนักงานเปลี่ยนรหัสผ่านเองหลัง login ครั้งถัดไป</p>
+								<p class="mt-2 text-xs leading-5 text-stone-500">{{ t('superadminUsersPage.resetPasswordHint') }}</p>
 								<button
 									type="button"
 									class="mt-2 inline-flex items-center gap-1 rounded-md bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100"
-									@click="memberForm.reset_password = '123456'"
+									@click="memberForm.reset_password = QUICK_FILL_PASSWORD"
 								>
 									<UIcon name="i-heroicons-bolt-20-solid" class="h-3.5 w-3.5" />
-									ใช้รหัส 123456
+									{{ t('superadminUsersPage.usePassword') }}
 								</button>
 							</div>
 
 							<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<input v-model="memberForm.must_change_password" type="checkbox" class="mt-1 h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary-200">
-								<div><p class="text-sm font-medium text-stone-900">บังคับเปลี่ยนรหัสผ่านหลัง login</p></div>
+								<div><p class="text-sm font-medium text-stone-900">{{ t('superadminUsersPage.requirePasswordChangeAfterLogin') }}</p></div>
 							</label>
 						</div>
 					</div>
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+						<div class="grid w-full grid-cols-3 gap-2">
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="memberDetailOpen = false">{{ t('superadminUsersPage.close') }}</AppButton>
+							<AppButton color="error" variant="soft" size="md" icon="i-heroicons-trash-20-solid" :block="true" :disabled="!canDeleteSelectedUser" @click="deleteOpen = true">{{ deleteCopy.title }}</AppButton>
+							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="memberMetaPending || !memberForm.role_id" :spin-icon-on-loading="true" :block="true" @click="saveMemberDetail">{{ t('superadminUsersPage.save') }}</AppButton>
+						</div>
+					</div>
+				</div>
+			</AppResponsivePanel>
+
+			<AppResponsivePanel v-model="deleteOpen" :title="deleteCopy.title" :description="deleteCopy.description" desktop-width="680px" compact-header>
+				<div v-if="selectedUser" class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+					<div class="scrollbar-soft min-h-0 overflow-y-auto px-5 py-4">
+						<div class="rounded-md border border-red-200 bg-red-50 p-4">
+							<p class="font-semibold text-red-900">{{ selectedUser.name }}</p>
+							<p class="mt-1 text-sm font-medium text-red-800">{{ selectedUser.primary_store_name || memberForm.store_name || '-' }}</p>
+							<p class="mt-1 text-sm text-red-700">{{ deleteCopy.warning }}</p>
+						</div>
+					</div>
+					<div class="sticky bottom-0 z-10 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="memberDetailOpen = false">ปิด</AppButton>
-							<AppButton color="primary" variant="solid" size="md" :loading="saving" :disabled="memberMetaPending || !memberForm.role_id" :spin-icon-on-loading="true" :block="true" @click="saveMemberDetail">บันทึก</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="deleteOpen = false">{{ t('superadminUsersPage.cancel') }}</AppButton>
+							<AppButton color="error" variant="solid" size="md" icon="i-heroicons-trash-20-solid" :block="true" :loading="saving" @click="deleteSelectedUser">{{ deleteCopy.confirm }}</AppButton>
 						</div>
 					</div>
 				</div>

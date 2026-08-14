@@ -175,6 +175,17 @@ export class R2Storage {
 		};
 	}
 
+	static async uploadStoreLogo(input: {
+		storeId: string;
+		dataUrl: string;
+	}): Promise<{ key: string; bytes: number; mime: string }> {
+		return R2Storage.uploadProductImage({
+			storeId: input.storeId,
+			productId: "store-logo",
+			dataUrl: input.dataUrl,
+		});
+	}
+
 	static async uploadStorePaymentQrImage(input: {
 		storeId: string;
 		dataUrl: string;
@@ -265,5 +276,60 @@ export class R2Storage {
 			bytes: parsed.bytes.length,
 			mime: parsed.mime,
 		};
+	}
+
+	static async deleteObject(rawKey: string): Promise<boolean> {
+		const config = getR2Config();
+		let key = rawKey.trim();
+		if (!key) return false;
+		if (config.publicBaseUrl && key.startsWith(config.publicBaseUrl.replace(/\/$/, ""))) {
+			key = key.slice(config.publicBaseUrl.replace(/\/$/, "").length).replace(/^\/+/, "");
+		}
+		if (!key.startsWith(`${config.productImagePrefix}/`) && !key.startsWith(`${config.paymentAccountImagePrefix}/`)) {
+			return false;
+		}
+
+		const host = `${config.accountId}.r2.cloudflarestorage.com`;
+		const pathname = `/${config.bucket}/${key}`;
+		const url = `https://${host}${pathname}`;
+		const now = new Date();
+		const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+		const dateStamp = amzDate.slice(0, 8);
+		const payloadHash = sha256Hex("");
+		const headers: Record<string, string> = {
+			host,
+			"x-amz-content-sha256": payloadHash,
+			"x-amz-date": amzDate,
+		};
+		const signedHeaderKeys = Object.keys(headers).map((header) => header.toLowerCase()).sort();
+		const canonicalHeaders = signedHeaderKeys.map((header) => `${header}:${headers[header]}\n`).join("");
+		const signedHeaders = signedHeaderKeys.join(";");
+		const canonicalRequest = [
+			"DELETE",
+			buildCanonicalUri(pathname),
+			"",
+			canonicalHeaders,
+			signedHeaders,
+			payloadHash,
+		].join("\n");
+		const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
+		const stringToSign = [
+			"AWS4-HMAC-SHA256",
+			amzDate,
+			credentialScope,
+			sha256Hex(canonicalRequest),
+		].join("\n");
+		const signingKey = getAwsSignatureKey(config.secretAccessKey, dateStamp, config.region, "s3");
+		const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+		const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+		const response = await fetch(url, {
+			method: "DELETE",
+			headers: { ...headers, authorization },
+		});
+		if (!response.ok && response.status !== 404) {
+			const text = await response.text().catch(() => "");
+			throw ApiError.InternalError(`R2 delete failed (${response.status}): ${text || response.statusText}`);
+		}
+		return response.ok;
 	}
 }

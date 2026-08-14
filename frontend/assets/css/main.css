@@ -2,6 +2,15 @@
 @import "@nuxt/ui";
 @config "../../tailwind.config.ts";
 
+@font-face {
+	font-family: "Google Sans Lao";
+	src: url("/fonts/GoogleSans-Lao-Variable.ttf") format("truetype");
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	unicode-range: U+0E80-0EFF;
+}
+
 @layer base {
 	:root {
 		color-scheme: light;
@@ -47,12 +56,18 @@
 		margin: 0;
 		background: var(--pos-page);
 		color: var(--pos-text);
-		font-family: "Avenir Next", "Segoe UI", sans-serif;
+		font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif;
 	}
 
 	button,
 	input {
 		font: inherit;
+	}
+
+	[data-sonner-toaster],
+	[data-sonner-toast],
+	[data-sonner-toast] * {
+		font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif !important;
 	}
 
 	:is(html.dark, html.dark-mode) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),

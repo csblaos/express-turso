@@ -2,48 +2,97 @@ import { Request, Response } from "express";
 
 import { StoreComponent } from "@components/StoreComponent";
 import { StoreCostMethodHistoryInterface } from "@interfaces/StoreCostMethodHistoryInterface";
+import { StoreSetupStatusInterface } from "@interfaces/StoreSetupStatusInterface";
 import { StoreCurrencyRateComponent } from "@components/StoreCurrencyRateComponent";
+import { AuditEventInterface } from "@interfaces/AuditEventInterface";
+import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateStoreInput } from "@models/Store";
+import { appendServerTiming } from "@utils/ServerTiming";
 import { SuccessHandler } from "@utils/SuccessHandler";
+
+async function withStoreTiming<T>(res: Response, action: () => Promise<T>): Promise<T> {
+	const startedAt = process.hrtime.bigint();
+	try {
+		return await action();
+	} finally {
+		appendServerTiming(
+			res,
+			"stores-db",
+			Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+		);
+	}
+}
 
 export class StoreController {
 	static getAll = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.getAll(req.requestId, {
+		const data = await withStoreTiming(res, () => StoreComponent.getAll(req.requestId, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static getById = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.getById(req.requestId, req.params.id as string, {
+		const data = await withStoreTiming(res, () => StoreComponent.getById(req.requestId, req.params.id as string, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static create = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.create(req.requestId, req.body as CreateStoreInput, {
+		const data = await withStoreTiming(res, () => StoreComponent.create(req.requestId, req.body as CreateStoreInput, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.created(res, req.requestId, { data });
 	});
 
 	static update = SyncFunction.handler(async (req: Request, res: Response) => {
-		const data = await StoreComponent.update(req.requestId, req.params.id as string, req.body || {}, {
+		const data = await withStoreTiming(res, () => StoreComponent.update(req.requestId, req.params.id as string, req.body || {}, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
-		});
+		}));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static delete = SyncFunction.handler(async (req: Request, res: Response) => {
-		await StoreComponent.delete(req.requestId, req.params.id as string, {
+		const confirmation = String((req.body as Record<string, unknown> | undefined)?.confirmation || "");
+		if (confirmation !== "confirm") {
+			throw ApiError.BadRequestError("Type confirm to permanently delete this store");
+		}
+		await withStoreTiming(res, () => StoreComponent.delete(req.requestId, req.params.id as string, {
 			userId: req.auth?.userId || "",
 			systemRole: req.auth?.systemRole || "",
+		}));
+		SuccessHandler.send(res, req.requestId);
+	});
+
+	// Read on every page load by the top-bar button, so it stays a single batched
+	// query and returns no localized text — the client owns the wording.
+	static getSetupStatus = SyncFunction.handler(async (req: Request, res: Response) => {
+		if (!req.auth) throw ApiError.UnauthorizedError();
+		const storeId = String(req.params.id || "").trim();
+		if (req.auth.storeId && req.auth.storeId !== storeId) throw ApiError.ForbiddenError("store scope mismatch");
+		const data = await StoreSetupStatusInterface.get(storeId);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static confirmBusinessDayDefault = SyncFunction.handler(async (req: Request, res: Response) => {
+		if (!req.auth) throw ApiError.UnauthorizedError();
+		const storeId = String(req.params.id || "").trim();
+		if (req.auth.storeId && req.auth.storeId !== storeId) throw ApiError.ForbiddenError("store scope mismatch");
+		await StoreSetupStatusInterface.confirmBusinessDayDefault(storeId);
+		await AuditEventInterface.create({
+			scope: "settings",
+			store_id: storeId,
+			actor_user_id: req.auth.userId || null,
+			actor_role: req.auth.systemRole || null,
+			action: "store.business_day_default_confirmed",
+			entity_type: "store",
+			entity_id: storeId,
+			metadata: { business_day_start_minutes: 0 },
 		});
 		SuccessHandler.send(res, req.requestId);
 	});

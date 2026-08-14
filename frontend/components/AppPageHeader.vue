@@ -7,6 +7,7 @@ const props = withDefaults(defineProps<{
 	compact?: boolean;
 	titleBadge?: boolean;
 	titleTone?: "primary" | "success";
+	actionsAlign?: "end" | "center";
 	bodyClass?: string;
 }>(), {
 	description: "",
@@ -15,6 +16,7 @@ const props = withDefaults(defineProps<{
 	compact: false,
 	titleBadge: true,
 	titleTone: "primary",
+	actionsAlign: "end",
 	bodyClass: "",
 });
 
@@ -26,8 +28,13 @@ const hasBadges = computed(() => Boolean(slots.badges));
 const hasHeaderRow = computed(() => Boolean(props.title) || hasActions.value || hasBadges.value);
 const headerLayoutClass = computed(() => {
 	if (!hasActions.value) return "";
-	return props.tabletLayout
-		? "md:flex-row md:items-end md:justify-between"
+	if (props.tabletLayout) {
+		return props.actionsAlign === "center"
+			? "md:flex-row md:items-center md:justify-between"
+			: "md:flex-row md:items-end md:justify-between";
+	}
+	return props.actionsAlign === "center"
+		? "lg:flex-row lg:items-center lg:justify-between"
 		: "lg:flex-row lg:items-end lg:justify-between";
 });
 const actionsLayoutClass = computed(() => (

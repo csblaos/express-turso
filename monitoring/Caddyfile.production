@@ -1,0 +1,10 @@
+api.okhaidee.codesabai.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3005
+}
+
+# Do not enable response compression here. Beszel uses server-sent events for
+# real-time updates and its documentation recommends leaving SSE uncompressed.
+monitor.okhaidee.codesabai.com {
+	reverse_proxy 127.0.0.1:8090
+}

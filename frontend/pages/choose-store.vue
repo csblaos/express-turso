@@ -15,12 +15,15 @@ const { currentUser, currentAccess, currentStoreId, switchStore, logout, fetchMe
 const { apiFetch } = useApiClient();
 const appToast = useAppToast();
 const route = useRoute();
+const { t } = useI18n();
 
 const storesPending = ref(true);
 const confirmPending = ref(false);
 const stores = ref<StoreOption[]>([]);
 const selectedStoreId = ref("");
 const pageError = ref<string | null>(null);
+const logoutConfirmOpen = ref(false);
+const logoutPending = ref(false);
 
 const redirectPath = computed(() => (
 	typeof route.query.redirect === "string" && route.query.redirect.startsWith("/")
@@ -78,7 +81,7 @@ async function loadStores() {
 			|| ""
 		);
 	} catch (error) {
-		pageError.value = error instanceof Error ? error.message : "โหลดรายการร้านไม่สำเร็จ";
+		pageError.value = t("chooseStorePage.loadFailed");
 	} finally {
 		storesPending.value = false;
 	}
@@ -94,15 +97,15 @@ async function confirmStore() {
 			await switchStore(selectedStoreId.value);
 		}
 		appToast.success({
-			title: "เลือกร้านแล้ว",
+			title: t("chooseStorePage.storeSelected"),
 			description: availableStores.value.find((store) => store.id === selectedStoreId.value)?.name || selectedStoreId.value,
 			timeout: 1800,
 		});
 		await continueToWorkspace();
 	} catch (error) {
-		pageError.value = error instanceof Error ? error.message : "เลือกร้านไม่สำเร็จ";
+		pageError.value = t("chooseStorePage.selectFailed");
 		appToast.error({
-			title: "เลือกร้านไม่สำเร็จ",
+			title: t("chooseStorePage.selectFailed"),
 			description: pageError.value,
 			timeout: 3200,
 		});
@@ -112,8 +115,25 @@ async function confirmStore() {
 }
 
 async function handleLogout() {
-	await logout();
-	return navigateTo("/login", { replace: true });
+	if (logoutPending.value) return;
+	logoutPending.value = true;
+	try {
+		await logout();
+		logoutConfirmOpen.value = false;
+		return navigateTo("/login", { replace: true });
+	} finally {
+		logoutPending.value = false;
+	}
+}
+
+function roleLabel(role: string) {
+	const normalizedRole = role.trim().toLowerCase() || "member";
+	const knownRoles = new Set([ "owner", "manager", "cashier", "inventory_staff", "store_member", "member" ]);
+	return knownRoles.has(normalizedRole) ? t(`chooseStorePage.roles.${normalizedRole}`) : role;
+}
+
+function statusLabel(status: string) {
+	return status === "active" ? t("chooseStorePage.active") : status;
 }
 
 onMounted(() => {
@@ -134,79 +154,67 @@ onMounted(() => {
 							<img src="/icons/icon-192.png" alt="App icon" class="h-full w-full object-cover" />
 						</div>
 						<div class="min-w-0">
-							<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">Workspace Selection</p>
-							<h1 class="truncate text-lg font-semibold tracking-[-0.03em] text-stone-950 sm:text-xl">Choose your store</h1>
-							<p class="mt-1 hidden text-sm text-stone-500 sm:block">{{ currentUser?.name || currentUser?.email || "บัญชีนี้" }}</p>
+							<p class="text-[11px] uppercase tracking-[0.22em] text-stone-400">{{ t('chooseStorePage.eyebrow') }}</p>
+							<h1 class="truncate text-lg font-semibold tracking-[-0.03em] text-stone-950 sm:text-xl">{{ t('chooseStorePage.title') }}</h1>
+							<p class="mt-1 hidden text-sm text-stone-500 sm:block">{{ currentUser?.name || currentUser?.email || t('chooseStorePage.thisAccount') }}</p>
 						</div>
 					</div>
 					<AppButton
-						color="neutral"
-						variant="soft"
+					color="error"
+					variant="soft"
 						size="sm"
 						icon="i-heroicons-arrow-left-on-rectangle-20-solid"
-						class="shrink-0 whitespace-nowrap rounded-2xl border border-[#e7e4dd] bg-[#fbfbf8] px-4 text-stone-600 shadow-sm transition-colors hover:border-[#d8d2c6] hover:bg-white hover:text-stone-900"
-						@click="handleLogout"
-					>
-						ออกจากระบบ
+					class="shrink-0 whitespace-nowrap rounded-md border border-red-200 bg-red-50 px-3 text-red-700 shadow-sm transition-colors hover:border-red-300 hover:bg-red-100"
+					@click="logoutConfirmOpen = true"
+				>
+					{{ t('shell.signOut') }}
 					</AppButton>
 				</header>
 
 				<div class="grid flex-1 items-start gap-6 py-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-8 lg:py-8">
-					<section class="hidden lg:flex lg:min-h-full lg:flex-col lg:justify-between">
-						<div class="space-y-5">
-							<UBadge color="primary" variant="soft" label="Multi-store access" />
-							<div class="space-y-4">
-								<h2 class="max-w-xl text-4xl leading-tight font-semibold tracking-[-0.05em] text-stone-950">
-									เลือกร้านที่จะใช้เป็น workspace ของรอบนี้
-								</h2>
-								<p class="max-w-xl text-base leading-7 text-stone-500">
-									หน้าแรกหลัง login ควรชัดและตรงจุดที่สุด จึงให้เลือกร้านก่อนเข้าแอปจริง เพื่อให้สินค้า สต็อก รายงาน และสิทธิ์ทั้งหมดอยู่ใน context ที่ถูกต้องตั้งแต่ต้น
-								</p>
-							</div>
-
-							<div class="grid gap-4 sm:grid-cols-2">
-								<div class="rounded-md border border-[#e7e4dd] bg-[#fffefd] p-5">
-									<p class="text-xs uppercase tracking-[0.18em] text-stone-400">Store scope</p>
-									<p class="mt-3 text-2xl font-semibold text-stone-950">ตรงร้านตั้งแต่แรก</p>
-									<p class="mt-2 text-sm leading-6 text-stone-500">ลดโอกาสเปิดร้านผิด, ลดการสลับ context ซ้ำ และทำให้ข้อมูลหน้าถัดไปพร้อมใช้งานทันที</p>
+					<section class="hidden lg:block">
+						<div class="overflow-hidden rounded-md border border-[#e7e4dd] bg-[#fffefd]">
+							<div class="flex items-start gap-4 p-6">
+								<div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200/80">
+									<UIcon name="i-heroicons-building-storefront-20-solid" class="h-6 w-6" />
 								</div>
-								<div class="rounded-md border border-[#e7e4dd] bg-[#fffefd] p-5">
-									<p class="text-xs uppercase tracking-[0.18em] text-stone-400">After login</p>
-									<p class="mt-3 text-2xl font-semibold text-stone-950">ยังเปลี่ยนได้ภายหลัง</p>
-									<p class="mt-2 text-sm leading-6 text-stone-500">หลังเข้าแอปแล้ว คุณยังเปลี่ยนร้านได้จากเมนูโปรไฟล์ จึงไม่ต้องกังวลว่าจะถูกล็อกไว้ร้านเดียว</p>
+								<div class="min-w-0 pt-0.5">
+									<h2 class="text-2xl leading-tight font-semibold tracking-[-0.04em] text-stone-950">
+										{{ t('chooseStorePage.heroTitle') }}
+									</h2>
+									<p class="mt-2 text-sm leading-6 text-stone-500">
+										{{ t('chooseStorePage.heroDescription') }}
+									</p>
 								</div>
 							</div>
-						</div>
-
-						<div class="rounded-md border border-dashed border-[#ddd7cb] bg-[#f9f7f2] px-5 py-4 text-sm text-stone-500 dark:border-[#3a332a] dark:bg-[#221d18] dark:text-stone-400">
-							<div class="flex items-center justify-between gap-3">
-								<span>Available stores</span>
-								<span class="font-semibold text-stone-700 dark:text-stone-300">{{ availableStoreCount }}</span>
+							<div class="flex items-start gap-2.5 border-t border-[#efece4] px-6 py-4 text-sm leading-6 text-stone-500">
+								<UIcon name="i-heroicons-arrows-right-left-20-solid" class="mt-0.5 h-5 w-5 shrink-0 text-stone-400" />
+								<span>{{ t('chooseStorePage.changeStoreHint') }}</span>
 							</div>
 						</div>
 					</section>
 
 					<section class="space-y-4">
 						<div class="rounded-md border border-[#e7e4dd] bg-[#fffefd] p-4 sm:hidden">
-							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Available stores</p>
-							<h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">เลือกร้านก่อนเข้าใช้งาน</h2>
+							<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ t('chooseStorePage.availableStores') }}</p>
+							<h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{{ t('chooseStorePage.mobileTitle') }}</h2>
 							<p class="mt-2 text-sm leading-6 text-stone-500">
-								เลือกหนึ่งร้านเพื่อเข้าแอปก่อน และยังเปลี่ยนร้านได้ภายหลังจากเมนูโปรไฟล์
+								{{ t('chooseStorePage.mobileDescription') }}
 							</p>
 						</div>
 
 						<div class="rounded-md border border-[#e7e4dd] bg-[#fffefd]">
 							<div class="flex items-start justify-between gap-4 border-b border-[#efece4] px-4 py-4 sm:px-5">
 								<div class="min-w-0">
-									<p class="hidden text-xs font-semibold uppercase tracking-[0.18em] text-stone-400 sm:block">Available stores</p>
+									<p class="hidden text-xs font-semibold uppercase tracking-[0.18em] text-stone-400 sm:block">{{ t('chooseStorePage.availableStores') }}</p>
 									<h3 class="text-lg font-semibold tracking-[-0.03em] text-stone-950 sm:mt-2 sm:text-2xl">
-										{{ currentUser?.name || currentUser?.email || "บัญชีนี้" }}
+										{{ currentUser?.name || currentUser?.email || t('chooseStorePage.thisAccount') }}
 									</h3>
 									<p class="mt-1 text-sm leading-6 text-stone-500">
-										{{ availableStoreCount }} ร้านที่เข้าถึงได้ในบัญชีนี้
+										{{ t('chooseStorePage.accessibleCount', { count: availableStoreCount }) }}
 									</p>
 								</div>
-								<UBadge color="neutral" variant="soft" :label="`${availableStoreCount} stores`" />
+								<UBadge color="neutral" variant="soft" :label="t('chooseStorePage.storeCount', { count: availableStoreCount })" />
 							</div>
 
 							<div class="space-y-3 px-4 py-4 sm:px-5">
@@ -235,15 +243,15 @@ onMounted(() => {
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-center gap-2">
 												<p class="truncate text-base font-semibold">{{ store.name }}</p>
-												<UBadge color="neutral" variant="soft" :label="store.role_name || 'Member'" />
+												<UBadge color="neutral" variant="soft" :label="roleLabel(store.role_name)" />
 											</div>
 											<div class="mt-3 flex flex-wrap items-center gap-2">
-												<UBadge color="neutral" variant="soft" :label="store.status || 'active'" />
+												<UBadge color="neutral" variant="soft" :label="statusLabel(store.status || 'active')" />
 												<UBadge v-if="store.currency" color="primary" variant="soft" :label="store.currency" />
 											</div>
 										</div>
 										<div class="flex shrink-0 items-center gap-2">
-											<span v-if="store.id === selectedStoreId" class="hidden text-xs font-semibold text-emerald-700 sm:inline dark:text-emerald-300">Selected</span>
+										<span v-if="store.id === selectedStoreId" class="hidden text-xs font-semibold text-emerald-700 sm:inline dark:text-emerald-300">{{ t('chooseStorePage.selected') }}</span>
 											<UIcon
 												:name="store.id === selectedStoreId ? 'i-heroicons-check-circle-20-solid' : 'i-heroicons-building-storefront-20-solid'"
 												class="mt-1 h-5 w-5"
@@ -267,7 +275,7 @@ onMounted(() => {
 									class="min-h-12 rounded-md font-semibold"
 									@click="confirmStore"
 								>
-									{{ confirmPending ? "กำลังเข้าสู่ร้าน" : "เข้าร้านนี้" }}
+									{{ confirmPending ? t('chooseStorePage.entering') : t('chooseStorePage.enterStore') }}
 								</AppButton>
 							</div>
 						</div>
@@ -288,11 +296,19 @@ onMounted(() => {
 							class="min-h-12 rounded-md font-semibold"
 							@click="confirmStore"
 						>
-							{{ confirmPending ? "กำลังเข้าสู่ร้าน" : "เข้าร้านนี้" }}
+							{{ confirmPending ? t('chooseStorePage.entering') : t('chooseStorePage.enterStore') }}
 						</AppButton>
 					</div>
 				</div>
 			</div>
 		</div>
+		<Teleport to="body">
+			<LogoutConfirmModal
+				:open="logoutConfirmOpen"
+				:pending="logoutPending"
+				@close="logoutConfirmOpen = false"
+				@confirm="handleLogout"
+			/>
+		</Teleport>
 	</main>
 </template>

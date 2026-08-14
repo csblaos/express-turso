@@ -3,6 +3,12 @@ import "vue-sonner/style.css";
 import { Toaster } from "vue-sonner";
 
 const colorMode = useColorMode();
+const { locale, t } = useI18n();
+
+useHead(() => ({
+	htmlAttrs: { lang: locale.value === "lo" ? "lo-LA" : locale.value === "en" ? "en-US" : "th-TH" },
+	title: t("app.title"),
+}));
 
 if (import.meta.client) {
 	watchEffect(() => {

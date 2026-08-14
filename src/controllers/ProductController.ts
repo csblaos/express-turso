@@ -3,12 +3,39 @@ import { Request, Response } from "express";
 import { ProductComponent } from "@components/ProductComponent";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { CreateProductInput } from "@models/Product";
+import { appendServerTiming } from "@utils/ServerTiming";
 import { SuccessHandler } from "@utils/SuccessHandler";
+
+async function withProductTiming<T>(res: Response, action: () => Promise<T>): Promise<T> {
+	const startedAt = process.hrtime.bigint();
+	try {
+		return await action();
+	} finally {
+		appendServerTiming(
+			res,
+			"products-db",
+			Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+		);
+	}
+}
 
 export class ProductController {
 	static getAll = SyncFunction.handler(async (req: Request, res: Response) => {
 		const storeId = typeof req.query.store_id === "string" ? req.query.store_id : undefined;
-		const data = await ProductComponent.getAll(req.requestId, storeId);
+		if (req.query.page !== undefined || req.query.limit !== undefined) {
+			const data = await withProductTiming(res, () => ProductComponent.getPage(req.requestId, {
+				storeId,
+				page: Number(req.query.page || 1),
+				limit: Number(req.query.limit || 20),
+				search: typeof req.query.search === "string" ? req.query.search : undefined,
+				categoryId: typeof req.query.category_id === "string" ? req.query.category_id : undefined,
+				status: typeof req.query.status === "string" ? req.query.status as "all" | "active" | "inactive" : undefined,
+				sort: typeof req.query.sort === "string" ? req.query.sort as "updated" | "name" | "price" : undefined,
+			}));
+			SuccessHandler.send(res, req.requestId, { data });
+			return;
+		}
+		const data = await withProductTiming(res, () => ProductComponent.getAll(req.requestId, storeId));
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
@@ -20,6 +47,28 @@ export class ProductController {
 	static create = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await ProductComponent.create(req.requestId, req.body as CreateProductInput);
 		SuccessHandler.created(res, req.requestId, { data });
+	});
+
+	static importRows = SyncFunction.handler(async (req: Request, res: Response) => {
+		const body = req.body as {
+			store_id: string;
+			rows: Array<{
+				name: string;
+				sku: string;
+				barcode?: string | null;
+				category_id?: string | null;
+				base_unit_id: string;
+				price_base: number;
+				cost_base: number;
+				location?: string | null;
+				low_stock_threshold?: number | null;
+			}>;
+		};
+		const data = await withProductTiming(res, () => ProductComponent.importRows(req.requestId, {
+			storeId: body.store_id,
+			rows: body.rows,
+		}));
+		SuccessHandler.send(res, req.requestId, { data });
 	});
 
 	static update = SyncFunction.handler(async (req: Request, res: Response) => {
@@ -40,9 +89,19 @@ export class ProductController {
 		SuccessHandler.send(res, req.requestId);
 	});
 
+	static getBaseUnitCheck = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await ProductComponent.getBaseUnitCheck(req.requestId, req.params.id as string);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static listCostAdjustments = SyncFunction.handler(async (req: Request, res: Response) => {
 		const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
 		const data = await ProductComponent.getCostAdjustments(req.requestId, req.params.id as string, limit);
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
+	static uncostedSales = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await ProductComponent.getUncostedSales(req.requestId, req.params.id as string);
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
@@ -54,6 +113,8 @@ export class ProductController {
 			reason: typeof (req.body as Record<string, unknown>)?.reason === "string"
 				? String((req.body as Record<string, unknown>).reason)
 				: null,
+			lockCost: (req.body as Record<string, unknown>)?.lock_cost !== false,
+			applyToPastSales: (req.body as Record<string, unknown>)?.apply_to_past_sales === true,
 			actor: auth ? { userId: auth.userId, role: auth.systemRole, storeId: auth.storeId } : null,
 			ipAddress: req.ip || null,
 			userAgent: req.header("user-agent") || null,

@@ -1,0 +1,15 @@
+{
+  "name": "okhaidee-database-setup",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "init": "node setup.mjs init",
+    "reset": "node setup.mjs reset",
+    "check": "node setup.mjs check",
+    "ui": "node setup-ui.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.15",
+    "bcryptjs": "^3.0.3"
+  }
+}

@@ -4,6 +4,10 @@ import { User } from "@models/User";
 
 const USER_AUTH_COLUMNS = [
 	{
+		name: "username",
+		sql: "ALTER TABLE users ADD COLUMN username TEXT",
+	},
+	{
 		name: "password_hash",
 		sql: "ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''",
 	},
@@ -44,6 +48,26 @@ const USER_AUTH_COLUMNS = [
 		sql: "ALTER TABLE users ADD COLUMN client_suspended_by TEXT",
 	},
 ] as const;
+
+const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._]{2,31}$/;
+
+export function normalizeUsername(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+export function assertUsername(value: string): string {
+	const username = normalizeUsername(value);
+	if (!USERNAME_PATTERN.test(username)) throw new Error("USERNAME_INVALID");
+	return username;
+}
+
+function usernameBaseFromEmail(email: string): string {
+	const base = (email.split("@")[0] || "user").toLowerCase()
+		.replace(/[^a-z0-9._]/g, ".")
+		.replace(/[._]+/g, ".")
+		.replace(/^\.|\.$/g, "");
+	return (base.length >= 3 ? base : "user").slice(0, 26);
+}
 
 type DevelopmentAuthAccount = {
 	id: string;
@@ -125,14 +149,13 @@ function createDevelopmentUser(account: DevelopmentAuthAccount): User {
 		id: account.id,
 		email: account.email,
 		name: account.name,
+		username: usernameBaseFromEmail(account.email),
 		password_hash: `plain:${account.password}`,
 		created_at: new Date(0).toISOString(),
 		session_limit: null,
 		system_role: account.system_role,
 		can_create_stores: 1,
 		max_stores: null,
-		can_create_branches: 1,
-		max_branches_per_store: null,
 		created_by: null,
 		must_change_password: 0,
 		password_updated_at: new Date(0).toISOString(),
@@ -173,11 +196,11 @@ export class AuthInterface {
 					sql: `
 						INSERT INTO users (
 							id, email, name, password_hash, created_at, session_limit, system_role,
-							can_create_stores, max_stores, can_create_branches, max_branches_per_store,
+							can_create_stores, max_stores,
 							created_by, must_change_password, password_updated_at, ui_locale,
 							client_suspended, client_suspended_at, client_suspended_reason, client_suspended_by
 						)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					`,
 					args: [
 						account.id,
@@ -243,6 +266,20 @@ export class AuthInterface {
 				await db.execute(column.sql);
 			}
 
+			const usersWithoutUsername = await db.execute("SELECT id, email FROM users WHERE username IS NULL OR TRIM(username) = ''");
+			for (const row of usersWithoutUsername.rows) {
+				const base = usernameBaseFromEmail(String(row.email || ""));
+				let candidate = base;
+				let sequence = 1;
+				while (true) {
+					const collision = await db.execute({ sql: "SELECT 1 FROM users WHERE LOWER(username) = ? AND id <> ? LIMIT 1", args: [ candidate, String(row.id) ] });
+					if (!collision.rows.length) break;
+					candidate = `${base.slice(0, 26)}.${sequence++}`;
+				}
+				await db.execute({ sql: "UPDATE users SET username = ? WHERE id = ?", args: [ candidate, String(row.id) ] });
+			}
+			await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users(username COLLATE NOCASE)");
+
 			AuthInterface.userAuthColumnsEnsured = true;
 		})().catch((error) => {
 			AuthInterface.ensureUserAuthColumnsPromise = null;
@@ -261,7 +298,7 @@ export class AuthInterface {
 			sql: `
 				SELECT *
 				FROM users
-				WHERE LOWER(email) = ? OR LOWER(name) = ?
+				WHERE LOWER(email) = ? OR LOWER(username) = ?
 				LIMIT 1
 			`,
 			args: [ normalized, normalized ],
@@ -319,6 +356,19 @@ export class AuthInterface {
 			args: [ name, id ],
 		});
 
+		return AuthInterface.findUserById(id);
+	}
+
+	static async updateUsername(id: string, value: string): Promise<User | null> {
+		const username = assertUsername(value);
+		await AuthInterface.ensureUserAuthColumns();
+		const db = DbConn.getClient();
+		try {
+			await db.execute({ sql: "UPDATE users SET username = ? WHERE id = ?", args: [ username, id ] });
+		} catch (error) {
+			if (String(error).toLowerCase().includes("unique")) throw new Error("USERNAME_TAKEN");
+			throw error;
+		}
 		return AuthInterface.findUserById(id);
 	}
 

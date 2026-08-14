@@ -1,0 +1,23 @@
+services:
+  api:
+    image: ${API_IMAGE:?Set API_IMAGE to the GHCR image tag}
+    container_name: pos-okhaidee-api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NODE_OPTIONS: --max-old-space-size=256
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-3005}:3000"
+    mem_limit: 512m
+    cpus: 0.80
+    pids_limit: 150
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

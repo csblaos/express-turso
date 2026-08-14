@@ -7,14 +7,13 @@ import { StoreInterface } from "@interfaces/StoreInterface";
 
 export type SuperadminScopedUserRecord = {
 	id: string;
+	username: string;
 	email: string;
 	name: string;
 	system_role: string;
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	status: "active" | "suspended";
 	client_suspended_reason: string | null;
@@ -51,14 +50,13 @@ function mapRow(row: Record<string, unknown>): SuperadminScopedUserRecord {
 	const suspended = Number(row.client_suspended || 0) === 1;
 	return {
 		id: String(row.id),
+		username: String(row.username || ""),
 		email: String(row.email || ""),
 		name: String(row.name || ""),
 		system_role: String(row.system_role || "staff"),
 		ui_locale: String(row.ui_locale || "th"),
 		can_create_stores: Number(row.can_create_stores || 0),
 		max_stores: row.max_stores === null || row.max_stores === undefined ? null : Number(row.max_stores),
-		can_create_branches: Number(row.can_create_branches || 0),
-		max_branches_per_store: row.max_branches_per_store === null || row.max_branches_per_store === undefined ? null : Number(row.max_branches_per_store),
 		must_change_password: Number(row.must_change_password || 0),
 		status: suspended ? "suspended" : "active",
 		client_suspended_reason: row.client_suspended_reason ? String(row.client_suspended_reason) : null,
@@ -98,6 +96,10 @@ export class SuperadminUserInterface {
 						AND s.owner_user_id = ?
 				)
 			)`,
+			`(
+				u.system_role IN ('superadmin', 'system_admin')
+				OR EXISTS (SELECT 1 FROM store_members visible_membership WHERE visible_membership.user_id = u.id)
+			)`,
 		];
 		const args: InValue[] = [ ownerUserId, ownerUserId, ownerUserId ];
 
@@ -111,8 +113,8 @@ export class SuperadminUserInterface {
 
 		if (params.search?.trim()) {
 			const keyword = `%${params.search.trim().toLowerCase()}%`;
-			where.push("(LOWER(COALESCE(u.name, '')) LIKE ? OR LOWER(COALESCE(u.email, '')) LIKE ?)");
-			args.push(keyword, keyword);
+			where.push("(LOWER(COALESCE(u.name, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(u.email, '')) LIKE ?)");
+			args.push(keyword, keyword, keyword);
 		}
 
 		const whereClause = where.join(" AND ");
@@ -136,14 +138,13 @@ export class SuperadminUserInterface {
 			sql: `
 				SELECT
 					u.id,
+					u.username,
 					u.email,
 					u.name,
 					u.system_role,
 					u.ui_locale,
 					u.can_create_stores,
 					u.max_stores,
-					u.can_create_branches,
-					u.max_branches_per_store,
 					u.must_change_password,
 					u.client_suspended,
 					u.client_suspended_reason,

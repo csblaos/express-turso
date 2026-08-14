@@ -14,8 +14,6 @@ export type SystemAdminClientRecord = {
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	client_suspended: number;
 	client_suspended_at: string | null;
@@ -59,8 +57,6 @@ export type SystemAdminClientCreateInput = {
 	ui_locale?: string | null;
 	max_stores?: number | null;
 	can_create_stores?: number | null;
-	max_branches_per_store?: number | null;
-	can_create_branches?: number | null;
 	must_change_password?: boolean;
 	created_by?: string | null;
 };
@@ -71,8 +67,6 @@ export type SystemAdminClientUpdateInput = {
 	ui_locale?: string | null;
 	max_stores?: number | null;
 	can_create_stores?: number | null;
-	max_branches_per_store?: number | null;
-	can_create_branches?: number | null;
 	must_change_password?: boolean;
 };
 
@@ -93,7 +87,6 @@ export type SystemAdminClientDeleteCheck = {
 	can_delete: boolean;
 	counts: {
 		stores: number;
-		branches: number;
 		store_memberships: number;
 		orders: number;
 		purchase_orders: number;
@@ -116,14 +109,6 @@ const CLIENT_ADMIN_COLUMNS = [
 		sql: "ALTER TABLE users ADD COLUMN max_stores INTEGER",
 	},
 	{
-		name: "can_create_branches",
-		sql: "ALTER TABLE users ADD COLUMN can_create_branches INTEGER",
-	},
-	{
-		name: "max_branches_per_store",
-		sql: "ALTER TABLE users ADD COLUMN max_branches_per_store INTEGER",
-	},
-	{
 		name: "created_by",
 		sql: "ALTER TABLE users ADD COLUMN created_by TEXT",
 	},
@@ -137,8 +122,6 @@ const CLIENT_SELECT_COLUMNS = `
 	ui_locale,
 	can_create_stores,
 	max_stores,
-	can_create_branches,
-	max_branches_per_store,
 	must_change_password,
 	client_suspended,
 	client_suspended_at,
@@ -159,8 +142,6 @@ function mapRow(row: Record<string, unknown>): SystemAdminClientRecord {
 		ui_locale: String(row.ui_locale || "th"),
 		can_create_stores: Number(row.can_create_stores || 0),
 		max_stores: row.max_stores === null || row.max_stores === undefined ? null : Number(row.max_stores),
-		can_create_branches: Number(row.can_create_branches || 0),
-		max_branches_per_store: row.max_branches_per_store === null || row.max_branches_per_store === undefined ? null : Number(row.max_branches_per_store),
 		must_change_password: Number(row.must_change_password || 0),
 		client_suspended: suspended ? 1 : 0,
 		client_suspended_at: row.client_suspended_at ? String(row.client_suspended_at) : null,
@@ -328,11 +309,11 @@ export class SystemAdminClientInterface {
 			sql: `
 				INSERT INTO users (
 					id, email, name, password_hash, created_at, session_limit, system_role,
-					can_create_stores, max_stores, can_create_branches, max_branches_per_store,
+					can_create_stores, max_stores,
 					created_by, must_change_password, password_updated_at, ui_locale,
 					client_suspended, client_suspended_at, client_suspended_reason, client_suspended_by
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 			args: [
 				id,
@@ -344,8 +325,6 @@ export class SystemAdminClientInterface {
 				"superadmin",
 				input.can_create_stores ?? 1,
 				input.max_stores ?? 1,
-				input.can_create_branches ?? 1,
-				input.max_branches_per_store ?? null,
 				input.created_by ?? null,
 				input.must_change_password ? 1 : 0,
 				now,
@@ -387,8 +366,6 @@ export class SystemAdminClientInterface {
 		if (input.ui_locale !== undefined) updatePayload.ui_locale = input.ui_locale?.trim() || "th";
 		if (input.max_stores !== undefined) updatePayload.max_stores = input.max_stores;
 		if (input.can_create_stores !== undefined) updatePayload.can_create_stores = input.can_create_stores;
-		if (input.max_branches_per_store !== undefined) updatePayload.max_branches_per_store = input.max_branches_per_store;
-		if (input.can_create_branches !== undefined) updatePayload.can_create_branches = input.can_create_branches;
 		if (input.must_change_password !== undefined) updatePayload.must_change_password = input.must_change_password ? 1 : 0;
 
 		const keys = Object.keys(updatePayload);
@@ -491,10 +468,6 @@ export class SystemAdminClientInterface {
 				"SELECT COUNT(*) AS total FROM stores WHERE owner_user_id = ?",
 				[ id ],
 			),
-			branches: await SystemAdminClientInterface.safeCount(
-				"SELECT COUNT(*) AS total FROM store_branches WHERE store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
-				[ id ],
-			),
 			store_memberships: await SystemAdminClientInterface.safeCount(
 				"SELECT COUNT(*) AS total FROM store_members WHERE user_id = ? OR store_id IN (SELECT id FROM stores WHERE owner_user_id = ?)",
 				[ id, id ],
@@ -531,7 +504,6 @@ export class SystemAdminClientInterface {
 
 		const reasons: string[] = [];
 		if (counts.stores > 0) reasons.push(`ยังมีร้านที่ผูกกับ client นี้ ${counts.stores} รายการ`);
-		if (counts.branches > 0) reasons.push(`ยังมีสาขาที่อยู่ใต้ร้านของ client นี้ ${counts.branches} รายการ`);
 		if (counts.store_memberships > 0) reasons.push(`ยังมี membership หรือบทบาทที่ผูกกับ client นี้ ${counts.store_memberships} รายการ`);
 		if (counts.orders > 0) reasons.push(`ยังมีออเดอร์ของร้านใน client นี้ ${counts.orders} รายการ`);
 		if (counts.purchase_orders > 0) reasons.push(`ยังมีใบสั่งซื้อของร้านใน client นี้ ${counts.purchase_orders} รายการ`);

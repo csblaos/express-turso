@@ -1,0 +1,94 @@
+name: pos-okhaidee-monitoring
+
+services:
+  beszel:
+    image: henrygd/beszel:0.18.7
+    container_name: beszel-hub
+    restart: unless-stopped
+    environment:
+      APP_URL: ${BESZEL_APP_URL:-http://localhost:8090}
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ./data:/beszel_data
+      - ./socket:/beszel_socket
+    mem_limit: 192m
+    cpus: 0.25
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 120s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: &monitoring-logging
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - monitoring
+
+  docker-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
+    container_name: beszel-docker-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+      LOG_LEVEL: warning
+    ports:
+      - "127.0.0.1:2375:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 32m
+    cpus: 0.10
+    pids_limit: 50
+    security_opt:
+      - no-new-privileges:true
+    logging: *monitoring-logging
+    networks:
+      - monitoring
+    profiles:
+      - agent
+
+  beszel-agent:
+    image: henrygd/beszel-agent:0.18.7
+    container_name: beszel-agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - docker-proxy
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: http://127.0.0.1:8090
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      KEY_FILE: /run/secrets/beszel_agent_key
+      TOKEN_FILE: /run/secrets/beszel_agent_token
+    volumes:
+      - ./agent-data:/var/lib/beszel-agent
+      - ./socket:/beszel_socket
+      - ./secrets/agent-key:/run/secrets/beszel_agent_key:ro
+      - ./secrets/agent-token:/run/secrets/beszel_agent_token:ro
+    mem_limit: 64m
+    cpus: 0.15
+    pids_limit: 80
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 120s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *monitoring-logging
+    profiles:
+      - agent
+
+networks:
+  monitoring:
+    name: pos-okhaidee-monitoring
+    driver: bridge
+

@@ -5,26 +5,30 @@
 	"scripts": {
 		"build": "nuxt build",
 		"dev": "nuxt dev --port 3001",
-		"generate": "nuxt generate",
+		"generate": "nuxt generate && node scripts/prepare-pages-output.mjs",
 		"preview": "nuxt preview --port 3001",
-		"postinstall": "nuxt prepare"
+		"postinstall": "nuxt prepare",
+		"i18n:check": "node scripts/check-i18n.mjs"
 	},
 	"engines": {
-		"node": ">=20.19.0"
+		"node": ">=24.0.0"
 	},
 	"dependencies": {
+		"@iconify-json/heroicons": "^1.2.3",
 		"@lucide/vue": "^1.20.0",
 		"@nuxt/icon": "^2.1.0",
 		"@nuxt/ui": "^4.7.1",
+		"@nuxtjs/i18n": "^10.4.1",
+		"@vite-pwa/nuxt": "^1.1.1",
 		"@zxing/browser": "^0.2.0",
 		"@zxing/library": "^0.22.0",
+		"echarts": "^6.1.0",
 		"nuxt": "^4.4.4",
+		"socket.io-client": "^4.8.3",
 		"tailwindcss": "^4.1.16",
 		"vue-sonner": "^2.0.9"
 	},
 	"devDependencies": {
-		"@iconify-json/heroicons": "^1.2.3",
-		"@vite-pwa/nuxt": "^1.1.1",
 		"vite": "^7.3.3"
 	}
 }

@@ -1,17 +1,45 @@
 import { ApiError } from "@middlewares/ApiError";
 import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
+import { PrintQueueInterface } from "@interfaces/PrintQueueInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
+import { RestaurantInterface } from "@interfaces/RestaurantInterface";
+import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { InventoryComponent } from "@components/InventoryComponent";
+import { normalizeKitchenDeliveryMode } from "@utils/KitchenDelivery";
 
 type PosCatalogStore = {
 	id: string;
 	name: string;
+	logo_url: string | null;
+	address: string | null;
+	phone_number: string | null;
+	receipt_show_store_name: number;
+	pdf_show_logo: number;
+	receipt_show_store_address: number;
+	receipt_show_store_phone: number;
+	receipt_show_tendered: number;
+	receipt_show_change: number;
+	receipt_show_payment_method: number;
+	receipt_show_queue: number;
+	receipt_language: string;
+	receipt_show_powered_by: number;
+	kitchen_delivery_mode: string;
+	kitchen_server_printing: number;
+	pickup_queue_enabled: number;
+	customer_display_enabled: number;
+	customer_display_ads: string | null;
+	customer_display_ad_interval: number;
+	customer_display_banner_enabled: number;
+	customer_display_ad_url: string | null;
 	currency: string | null;
+	supported_currencies: string;
+	currency_rates: Array<{ currency: string; rate_to_base: number }>;
 	vat_enabled: number;
 	vat_rate: number;
 	vat_mode: string;
+	store_type: string;
 };
 
 type PosCatalogCategory = {
@@ -29,6 +57,9 @@ export type PosCatalogItem = {
 	location: string | null;
 	category_id: string | null;
 	category_name: string | null;
+	station_id: string | null;
+	station_name: string | null;
+	send_to_kitchen: number;
 	base_unit_id: string;
 	unit_name: string | null;
 	price_base: number;
@@ -42,6 +73,9 @@ export type PosCatalogItem = {
 	image_url: string | null;
 	updated_at: string;
 	stock_state: "ready" | "low" | "out" | "negative" | "inactive";
+	inventory_mode: "tracked" | "untracked";
+	cost_source: "purchase" | "manual" | "unknown";
+	manual_sold_out: number;
 };
 
 export type PosCatalogResponse = {
@@ -77,16 +111,28 @@ export class PosComponent {
 			throw ApiError.BadRequestError("store_id is required");
 		}
 
-		const [products, balances, categories, units, store] = await Promise.all([
+		const [products, balances, categories, units, store, currencyRates, stations, serverPrinting] = await Promise.all([
 			ProductInterface.findAll(normalizedStoreId),
 			InventoryComponent.getBalances(requestId, { storeId: normalizedStoreId }),
 			ProductCategoryInterface.findAll(normalizedStoreId),
 			UnitInterface.findAll({ storeId: normalizedStoreId }),
 			StoreInterface.findById(normalizedStoreId),
+			// The till quotes the rate to the customer before taking their money, so
+			// it needs the table itself, not just the list of currencies.
+			StoreCurrencyRateInterface.findByStoreId(normalizedStoreId),
+			// Which kitchen cooks what. Resolved here so the till can split a round
+			// into station slips without a second lookup per line.
+			RestaurantInterface.listKitchenStations(normalizedStoreId),
+			// Once a kitchen printer exists the queue owns the slips, and the till
+			// must stop opening its own print dialog for them.
+			PrintQueueInterface.hasActivePrinters(normalizedStoreId),
 		]);
 
 		const balanceMap = new Map(balances.map((balance) => [balance.product_id, balance]));
 		const categoryMap = new Map(categories.map((category) => [category.id, category.name]));
+		const categoryStationMap = new Map(categories.map((category) => [category.id, category.station_id || null]));
+		const categoryKitchenMap = new Map(categories.map((category) => [category.id, Number(category.send_to_kitchen ?? 1) !== 0]));
+		const stationMap = new Map(stations.map((station: any) => [String(station.id), String(station.name)]));
 		const unitMap = new Map(units.map((unit) => [unit.id, unit.name_th || unit.code]));
 
 		const items = products
@@ -99,9 +145,18 @@ export class PosComponent {
 				const unitName = balance?.unit_name
 					|| unitMap.get(product.base_unit_id)
 					|| null;
+				const stationId = (categoryId ? categoryStationMap.get(categoryId) : null) || null;
+				// The product's own answer wins; unset means it follows its category,
+				// and a product with no category at all goes to the kitchen.
+				const sendToKitchen = product.send_to_kitchen === null || product.send_to_kitchen === undefined
+					? (categoryId ? categoryKitchenMap.get(categoryId) !== false : true)
+					: Number(product.send_to_kitchen) !== 0;
 				const availableBase = Number(balance?.available_base ?? 0);
 				const lowStockThreshold = product.low_stock_threshold ?? balance?.low_stock_threshold ?? null;
-				const stockState = resolveStockState(Number(product.active ?? 1), availableBase, lowStockThreshold);
+				const inventoryMode: PosCatalogItem["inventory_mode"] = product.inventory_mode === "untracked" ? "untracked" : "tracked";
+				const stockState = inventoryMode === "untracked"
+					? (!Number(product.active ?? 1) || Number(product.manual_sold_out ?? 0) ? "inactive" : "ready")
+					: resolveStockState(Number(product.active ?? 1), availableBase, lowStockThreshold);
 
 				return {
 					id: product.id,
@@ -112,6 +167,9 @@ export class PosComponent {
 					location: product.location,
 					category_id: categoryId,
 					category_name: categoryName,
+					station_id: stationId,
+					station_name: stationId ? stationMap.get(stationId) || null : null,
+					send_to_kitchen: sendToKitchen ? 1 : 0,
 					base_unit_id: product.base_unit_id,
 					unit_name: unitName,
 					price_base: Number(product.price_base ?? 0),
@@ -125,6 +183,9 @@ export class PosComponent {
 					image_url: resolvePublicProductImageUrl(product.image_url || balance?.image_url || null),
 					updated_at: balance?.updated_at || product.created_at,
 					stock_state: stockState,
+					inventory_mode: inventoryMode,
+					cost_source: (product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase") as PosCatalogItem["cost_source"],
+					manual_sold_out: Number(product.manual_sold_out ?? 0),
 				};
 			})
 			.sort((left, right) => {
@@ -169,10 +230,41 @@ export class PosComponent {
 			store: {
 				id: store?.id || normalizedStoreId,
 				name: store?.name || "ร้านค้า",
+				logo_url: store?.logo_url || null,
+				address: store?.address || null,
+				phone_number: store?.phone_number || null,
+				receipt_show_store_name: Number(store?.receipt_show_store_name ?? 1),
+				pdf_show_logo: Number(store?.pdf_show_logo ?? 0),
+				receipt_show_store_address: Number(store?.receipt_show_store_address ?? 1),
+				receipt_show_store_phone: Number(store?.receipt_show_store_phone ?? 1),
+				receipt_show_tendered: Number(store?.receipt_show_tendered ?? 1),
+				receipt_show_change: Number(store?.receipt_show_change ?? 1),
+				receipt_show_payment_method: Number(store?.receipt_show_payment_method ?? 1),
+				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
+				receipt_language: String(store?.receipt_language || ""),
+				receipt_show_powered_by: Number(store?.receipt_show_powered_by ?? 1),
+				// The till decides on its own whether a kitchen slip follows a round
+				// and whether to offer the kitchen queue at all, so the mode has to
+				// travel with the catalogue it already loads.
+				kitchen_delivery_mode: normalizeKitchenDeliveryMode(store?.kitchen_delivery_mode),
+				kitchen_server_printing: serverPrinting ? 1 : 0,
+				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
+				// The POS drives the customer screen, so it needs these here too;
+				// this payload is a whitelist and silently drops anything missing.
+				customer_display_enabled: Number(store?.customer_display_enabled ?? 0),
+				customer_display_ads: store?.customer_display_ads || null,
+				customer_display_ad_interval: Number(store?.customer_display_ad_interval ?? 5),
+				customer_display_banner_enabled: Number(store?.customer_display_banner_enabled ?? 1),
+				customer_display_ad_url: store?.customer_display_ad_url || null,
 				currency: store?.currency || null,
+				// Multi-currency payment. This payload is a whitelist, so a currency
+				// the till never receives is a currency the customer cannot pay in.
+				supported_currencies: String(store?.supported_currencies || ""),
+				currency_rates: currencyRates.map((rate) => ({ currency: rate.currency, rate_to_base: rate.rate_to_base })),
 				vat_enabled: Number(store?.vat_enabled ?? 0),
 				vat_rate: Number(store?.vat_rate ?? 0),
 				vat_mode: String(store?.vat_mode || "EXCLUSIVE"),
+				store_type: String(store?.store_type || "OTHER"),
 			},
 			categories: responseCategories,
 			items,

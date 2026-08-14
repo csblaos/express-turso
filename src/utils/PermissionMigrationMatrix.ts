@@ -14,6 +14,7 @@ export const LEGACY_TO_ACTION_PERMISSION_MAP: Record<string, string[]> = {
 		"settings.users.suspend",
 		"settings.users.assign_role",
 		"settings.users.reset_password",
+		"settings.users.remove_member",
 	],
 	"settings.manage_roles": [
 		"settings.roles.view",
@@ -26,6 +27,13 @@ export const LEGACY_TO_ACTION_PERMISSION_MAP: Record<string, string[]> = {
 		"settings.store.create",
 		"settings.store.update",
 		"settings.store.archive",
+	],
+	"settings.store.update": [
+		"settings.printing.view", "settings.printing.update",
+		"settings.finance.view", "settings.finance.update",
+		"settings.stock_policy.view", "settings.stock_policy.update",
+		"settings.payments.view", "settings.payments.update",
+		"settings.customer_display.view", "settings.customer_display.update",
 	],
 	"superadmin.manage": [
 		"superadmin.view",
@@ -46,6 +54,7 @@ export const LEGACY_TO_ACTION_PERMISSION_MAP: Record<string, string[]> = {
 		"system_admin.dashboard.view",
 		"system_admin.monitoring.view",
 		"system_admin.security.view",
+		"system_admin.reports.view",
 		"system_admin.clients.view",
 		"system_admin.clients.create",
 		"system_admin.clients.update",

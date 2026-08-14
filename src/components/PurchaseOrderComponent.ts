@@ -11,6 +11,7 @@ import {
 	PurchaseOrderUpdatePayload,
 } from "@interfaces/PurchaseOrderInterface";
 import { ApiError } from "@middlewares/ApiError";
+import { NotificationInterface } from "@interfaces/NotificationInterface";
 
 function normalizeOptionalString(value?: string | null): string | null {
 	const trimmed = value?.trim();
@@ -122,6 +123,9 @@ export class PurchaseOrderComponent {
 			const product = await ProductInterface.findById(item.product_id);
 			if (!product || product.store_id !== payload.store_id) {
 				throw ApiError.CustomError(ErrorConfig.DOMAIN.PRODUCT_NOT_FOUND);
+			}
+			if (product.inventory_mode === "untracked") {
+				throw ApiError.BadRequestError(`${product.name} is a non-stock menu and cannot be purchased as inventory`);
 			}
 		}
 
@@ -284,6 +288,7 @@ export class PurchaseOrderComponent {
 			throw new Error("Failed to mark purchase order as received");
 		}
 
+		NotificationInterface.queueStockRefresh(String(detail.order.store_id));
 		return updated;
 	}
 

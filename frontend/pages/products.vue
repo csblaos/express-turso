@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { normalizeMoneyTyping } from "~/utils/currency";
 import { getCurrencySymbol, normalizeCurrencyCode } from "~/utils/currency";
 import { appNavItems } from "~/utils/app-nav";
+import { downloadCsv } from "~/utils/csv";
+import { formatAppDateTime } from "~/utils/date-format";
 
 type StockState = "ready" | "low" | "inactive";
 type ProductStatus = "all" | "active" | "inactive";
@@ -24,6 +27,7 @@ type ApiProduct = {
 	cost_base: number;
 	active: number;
 	created_at: string;
+	updated_at?: string | null;
 	image_url: string | null;
 	category_id: string | null;
 	out_stock_threshold: number | null;
@@ -33,6 +37,23 @@ type ApiProduct = {
 	variant_options_json: string | null;
 	variant_sort_order: number;
 	allow_base_unit_sale: number;
+	category_name?: string | null;
+	base_unit_name?: string | null;
+	extra_sale_unit_count?: number;
+	has_purchase_cost?: number;
+	inventory_mode?: "tracked" | "untracked";
+	cost_source?: "purchase" | "manual" | "unknown";
+	manual_sold_out?: number;
+};
+
+type ApiProductList = {
+	items: ApiProduct[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+	stats: { total: number; active: number; inactive: number; lowStock: number };
+	categoryCounts: Record<string, number>;
 };
 
 type ApiProductCategory = {
@@ -72,6 +93,12 @@ type ApiProductCostAdjustment = {
 	delta: number;
 };
 
+type BaseUnitCheck = {
+	product_id: string;
+	can_change: boolean;
+	reasons: string[];
+};
+
 type ApiAdjustProductCostResult = {
 	product: ApiProduct;
 	adjustment: ApiProductCostAdjustment;
@@ -80,6 +107,24 @@ type ApiAdjustProductCostResult = {
 type ApiBulkCreateVariantsResult = {
 	base_product: ApiProduct;
 	created: ApiProduct[];
+};
+
+type ProductCsvImportRow = {
+	name: string;
+	sku: string;
+	barcode: string | null;
+	category_id: string | null;
+	base_unit_id: string;
+	price_base: number;
+	cost_base: number;
+	location: string | null;
+	low_stock_threshold: number | null;
+};
+
+type ProductImportResult = {
+	created: number;
+	updated: number;
+	total: number;
 };
 
 type ProductUnitRecord = {
@@ -138,6 +183,10 @@ type ProductRecord = {
 	updatedAt: string;
 	updatedBy: string;
 	lowStockThreshold: number | null;
+	inventoryMode: "tracked" | "untracked";
+	costSource: "purchase" | "manual" | "unknown";
+	hasPurchaseCost: boolean;
+	manualSoldOut: boolean;
 	tag?: string;
 };
 
@@ -147,18 +196,26 @@ type ProductRecord = {
 	const appToast = useAppToast();
 	const route = useRoute();
 	const router = useRouter();
+	const { t, locale } = useI18n();
+	const { intlLocale } = useAppLocale();
 
-const statusOptions: Array<{ id: ProductStatus; label: string }> = [
-	{ id: "all", label: "ทุกสถานะ" },
-	{ id: "active", label: "พร้อมขาย" },
-	{ id: "inactive", label: "ปิดขาย" },
-];
+	// Unit names are store data, so they render exactly as the store saved them
+	// in settings/units instead of going through a per-locale name map.
+	function getUnitDisplayName(unit: ApiUnit) {
+		return unit.name_th || unit.code;
+	}
 
-const sortOptions: Array<{ id: SortKey; label: string }> = [
-	{ id: "updated", label: "ล่าสุด" },
-	{ id: "name", label: "ชื่อสินค้า" },
-	{ id: "price", label: "ราคาขาย" },
-];
+const statusOptions = computed<Array<{ id: ProductStatus; label: string }>>(() => [
+	{ id: "all", label: t("products.allStatuses") },
+	{ id: "active", label: t("products.readyForSale") },
+	{ id: "inactive", label: t("products.inactive") },
+]);
+
+const sortOptions = computed<Array<{ id: SortKey; label: string }>>(() => [
+	{ id: "updated", label: t("products.latest") },
+	{ id: "name", label: t("products.productName") },
+	{ id: "price", label: t("products.salePrice") },
+]);
 
 const accentPalette = [
 	"linear-gradient(135deg, #fed7aa 0%, #ea580c 100%)",
@@ -187,6 +244,9 @@ const productSkuAutogenPaused = ref(false);
 	const searchInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 	const productEditLocationInputRef = ref<{ input?: HTMLInputElement } | null>(null);
 const products = ref<ProductRecord[]>([]);
+const productsTotal = ref(0);
+const productStats = ref({ total: 0, active: 0, inactive: 0, lowStock: 0 });
+const serverCategoryCounts = ref<Record<string, number>>({});
 const categories = ref<ApiProductCategory[]>([]);
 const stores = ref<StoreRecord[]>([]);
 const units = ref<ApiUnit[]>([]);
@@ -213,18 +273,23 @@ const productUnitsPending = ref(false);
 	const productCostAdjustForm = reactive({
 		costBase: "",
 		reason: "",
+		// Pinning is the default: an adjustment is a deliberate override, so it
+		// should survive the next receive unless the user says otherwise.
+		lockCost: true,
 	});
 	const productVariantMatrixOpen = ref(false);
 	const productVariantMatrixSaving = ref(false);
 	const productVariantMatrixError = ref<string | null>(null);
 	const variantIncludeBaseProductSale = ref(false);
 	const variantAxis1 = reactive({
-		label: "สี",
+		// Set from the active locale in openVariantMatrix; these values are saved
+		// as the variant axis labels, so they must follow the store's language.
+		label: "",
 		valuesRaw: "",
 	});
 	const variantAxis2Enabled = ref(false);
 	const variantAxis2 = reactive({
-		label: "ไซซ์",
+		label: "",
 		valuesRaw: "",
 	});
 	const variantMatrixRows = ref<VariantMatrixRow[]>([]);
@@ -238,6 +303,13 @@ const productUnitsPending = ref(false);
 	const cameraUserSelected = ref(false);
 	const scannerVideoRef = ref<HTMLVideoElement | null>(null);
 const productImageInputRef = ref<HTMLInputElement | null>(null);
+const productImportInputRef = ref<HTMLInputElement | null>(null);
+const productImportOpen = ref(false);
+const productImportSaving = ref(false);
+const productExportSaving = ref(false);
+const productImportFileName = ref("");
+const productImportRows = ref<ProductCsvImportRow[]>([]);
+const productImportErrors = ref<string[]>([]);
 const currentPage = ref(1);
 const pageSize = ref(20);
 const pageSizeOptions = [10, 20, 50];
@@ -263,6 +335,9 @@ const productUnitForm = reactive({
 		lowStockThreshold: "",
 		active: true,
 		allowBaseUnitSale: true,
+		inventoryMode: "tracked" as "tracked" | "untracked",
+		costSource: "purchase" as "purchase" | "manual" | "unknown",
+		manualSoldOut: false,
 	});
 
 	const productEditForm = reactive({
@@ -276,6 +351,9 @@ const productUnitForm = reactive({
 		priceBase: "",
 		lowStockThreshold: "",
 		allowBaseUnitSale: true,
+		inventoryMode: "tracked" as "tracked" | "untracked",
+		costSource: "purchase" as "purchase" | "manual" | "unknown",
+		manualSoldOut: false,
 	});
 	const draftUnitForm = reactive({
 		unitId: "",
@@ -284,17 +362,32 @@ const productUnitForm = reactive({
 		enabledForSale: true,
 	});
 	const draftUnitPriceManualOverride = ref(false);
+	const baseUnitCheck = ref<BaseUnitCheck | null>(null);
+	const baseUnitCheckPending = ref(false);
+	const canChangeBaseUnit = computed(() => Boolean(baseUnitCheck.value?.can_change));
+	watch(() => productForm.inventoryMode, (mode) => {
+		if (mode === "tracked") productForm.costSource = "purchase";
+		else if (productForm.costSource === "purchase") productForm.costSource = "manual";
+	});
+	watch(() => productEditForm.inventoryMode, (mode) => {
+		if (mode === "tracked") productEditForm.costSource = "purchase";
+		else if (productEditForm.costSource === "purchase") productEditForm.costSource = "manual";
+	});
 
 let scanToastTimer: ReturnType<typeof setTimeout> | null = null;
 	let cameraScannerControls: { stop?: () => void } | null = null;
 	let scannerBuffer = "";
 let scannerBufferTimer: ReturnType<typeof setTimeout> | null = null;
 let lastScannerKeyAt = 0;
+let productSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let productLoadSequence = 0;
+let initialProductLoadPromise: Promise<void> | null = null;
 let cameraScannerMode: "search" | "create-barcode" | "variant-barcode" = "search";
 const variantBarcodeScanTargetRowId = ref("");
 
 const canCreateProduct = computed(() => can("products.create"));
 const canUpdateProduct = computed(() => can("products.update"));
+const canImportProducts = computed(() => canCreateProduct.value && canUpdateProduct.value);
 const canUpdateProductCost = computed(() => can("products.update_cost"));
 const canDeactivateProduct = computed(() => can("products.archive"));
 const canManageProductUnits = computed(() => canUpdateProduct.value || canCreateProduct.value);
@@ -313,10 +406,10 @@ const currentStoreName = computed(() => (
 	|| "ยังไม่พบร้านที่กำลังใช้งาน"
 ));
 
-const numberFormatter = new Intl.NumberFormat("th-TH", {
+const numberFormatter = computed(() => new Intl.NumberFormat(intlLocale.value, {
 	style: "decimal",
 	maximumFractionDigits: 0,
-});
+}));
 
 	const storeCurrency = computed(() => (
 		normalizeCurrencyCode(stores.value.find((store) => store.id === effectiveStoreId.value)?.currency)
@@ -363,17 +456,12 @@ const canSaveProductEdit = computed(() => {
 	return true;
 });
 
-const dateFormatter = new Intl.DateTimeFormat("th-TH", {
-	dateStyle: "medium",
-	timeStyle: "short",
-});
-
 const unitLabelMap = computed(() => (
-	Object.fromEntries(units.value.map((unit) => [ unit.id, unit.name_th || unit.code ]))
+	Object.fromEntries(units.value.map((unit) => [ unit.id, getUnitDisplayName(unit) ]))
 ));
 
 const categoryOptions = computed(() => [
-	{ id: "all", label: "ทั้งหมด" },
+	{ id: "all", label: t("common.all") },
 	...Array.from(
 		new Map(
 			[
@@ -391,30 +479,25 @@ const categoryFormOptions = computed(() => categories.value.map((category) => ({
 })));
 
 const filteredProducts = computed(() => {
-	const query = searchQuery.value.trim().toLowerCase();
-	let result = products.value.filter((product) => {
-		const matchesQuery = !query || [product.name, product.sku, product.barcode].some((value) => value.toLowerCase().includes(query));
-		const matchesCategory = activeCategory.value === "all" || product.categoryId === activeCategory.value;
-		const matchesStatus = activeStatus.value === "all" || product.status === activeStatus.value;
-		return matchesQuery && matchesCategory && matchesStatus;
-	});
-
-	if (activeSort.value === "name") {
-		result = [...result].sort((a, b) => a.name.localeCompare(b.name, "th"));
-	} else if (activeSort.value === "price") {
-		result = [...result].sort((a, b) => b.price - a.price);
-	} else {
-		result = [...result].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, "th"));
-	}
-
-	return result;
+	return products.value;
 });
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / pageSize.value)));
-const paginatedProducts = computed(() => {
-	const startIndex = (currentPage.value - 1) * pageSize.value;
-	return filteredProducts.value.slice(startIndex, startIndex + pageSize.value);
-});
+// The list is filtered on the server, so an empty result means either "no
+// products exist yet" or "the filters matched nothing".
+const hasActiveProductFilters = computed(() => (
+	Boolean(searchQuery.value.trim())
+	|| activeCategory.value !== "all"
+	|| activeStatus.value !== "all"
+));
+
+function clearProductFilters() {
+	searchQuery.value = "";
+	activeCategory.value = "all";
+	activeStatus.value = "all";
+}
+
+const totalPages = computed(() => Math.max(1, Math.ceil(productsTotal.value / pageSize.value)));
+const paginatedProducts = computed(() => products.value);
 
 	const selectedProduct = computed(() => {
 		return paginatedProducts.value.find((product) => product.id === selectedProductId.value)
@@ -428,13 +511,50 @@ const paginatedProducts = computed(() => {
 		return Number.isFinite(parsed) ? parsed : costAdjustBeforeCost.value;
 	});
 	const costAdjustDelta = computed(() => costAdjustAfterCost.value - costAdjustBeforeCost.value);
+	// Pinning or unpinning is a saveable change on its own: the cost can stay
+	// exactly the same while handing it back to the purchase-order receive path.
+	const costAdjustLockChanged = computed(() => (
+		selectedProduct.value
+			? (selectedProduct.value.costSource === "manual") !== productCostAdjustForm.lockCost
+			: false
+	));
+	// Zero is a legitimate cost for a giveaway, but it is also what someone types
+	// when they mean "I do not know". The two look identical afterwards and only
+	// one of them is honest, so this asks before storing it.
+	const costAdjustNeedsZeroConfirm = computed(() => (
+		Boolean(selectedProduct.value) && costAdjustAfterCost.value === 0 && selectedProduct.value?.costSource !== "manual"
+	));
+	const costAdjustZeroConfirmed = ref(false);
+	// Past sale lines keep the cost that was known when they were rung up, so
+	// setting a cost now leaves them alone. This is what is still uncosted, so the
+	// dialog can offer to fill it in instead of the owner wondering why the report
+	// did not move.
+	const costAdjustPastSales = ref<{ line_count: number; bill_count: number; revenue: number } | null>(null);
+	const costAdjustApplyToPast = ref(false);
+	const costAdjustHasPastSales = computed(() => (costAdjustPastSales.value?.line_count ?? 0) > 0);
+	const costAdjustHasChange = computed(() => {
+		if (costAdjustDelta.value !== 0) return true;
+		// Filling the existing cost into past sales is an action in its own right,
+		// even when the cost itself is not moving.
+		if (costAdjustApplyToPast.value && costAdjustHasPastSales.value) return true;
+		// A product with no cost is worth saving at an unchanged zero only when the
+		// user has deliberately confirmed that zero: that turns "we do not know"
+		// into "it really is free", which is a real change. The lock switch alone
+		// must not do it, or opening the dialog and clicking once would store a
+		// zero cost nobody meant.
+		if (selectedProduct.value?.costSource === "unknown") return costAdjustZeroConfirmed.value;
+		return costAdjustLockChanged.value;
+	});
+	// A menu item can never be received against a purchase order, so asking whether
+	// a purchase order may overwrite its cost is a question with no meaning.
+	const costAdjustShowsLock = computed(() => selectedProduct.value?.inventoryMode !== "untracked");
 	const costAdjustDeltaTone = computed(() => (
 		costAdjustDelta.value > 0 ? "warning" : costAdjustDelta.value < 0 ? "success" : "neutral"
 	));
 	const costAdjustDeltaLabel = computed(() => (
 		costAdjustDelta.value === 0
-			? "ไม่เปลี่ยน"
-			: `${costAdjustDelta.value > 0 ? "ทุนเพิ่ม" : "ทุนลด"} ${costAdjustDelta.value > 0 ? "+" : ""}${formatMoney(costAdjustDelta.value)}`
+			? t("products.costAdjust.deltaNoChange")
+			: `${costAdjustDelta.value > 0 ? t("products.costAdjust.deltaUp") : t("products.costAdjust.deltaDown")} ${costAdjustDelta.value > 0 ? "+" : ""}${formatMoney(costAdjustDelta.value)}`
 	));
 
 	const draftUnitMultiplierNumber = computed(() => {
@@ -454,25 +574,29 @@ const paginatedProducts = computed(() => {
 		return Number.isFinite(manual) ? manual : null;
 	});
 	const draftUnitPriceNote = computed(() => {
-		const unitLabel = unitLabelMap.value[draftUnitForm.unitId] || draftUnitForm.unitId || "หน่วย";
+		const unitLabel = unitLabelMap.value[draftUnitForm.unitId] || draftUnitForm.unitId || t("products.unit");
 		const multiplier = draftUnitMultiplierNumber.value;
 		const formula = draftUnitFormulaPrice.value;
 		if (!multiplier || formula === null) return "";
 
 		if (!draftUnitPriceManualOverride.value) {
-			return `ราคาขาย 1 ${unitLabel} = ${formatMoney(formula)} (สูตรอัตโนมัติ)`;
+			return t("products.create.automaticPrice", { unit: unitLabel, price: formatMoney(formula) });
 		}
 
 		const manual = draftUnitManualPriceNumber.value;
 		if (manual === null) {
-			return `สูตรเดิม 1 ${unitLabel} = ${formatMoney(formula)} (กำหนดเอง: ยังไม่กรอกราคา)`;
+			return t("products.create.manualPriceEmpty", { unit: unitLabel, price: formatMoney(formula) });
 		}
 
 		if (Math.abs(manual - formula) < 0.000001) {
-			return `ราคาขาย 1 ${unitLabel} = ${formatMoney(manual)} (กำหนดเอง)`;
+			return t("products.create.manualPrice", { unit: unitLabel, price: formatMoney(manual) });
 		}
 
-		return `ราคาขาย 1 ${unitLabel} = ${formatMoney(manual)} (กำหนดเอง, สูตรเดิม ${formatMoney(formula)})`;
+		return t("products.create.manualPriceWithFormula", {
+			unit: unitLabel,
+			price: formatMoney(manual),
+			formula: formatMoney(formula),
+		});
 	});
 	const selectedProductUnit = computed(() => (
 		productUnits.value.find((item) => item.id === editingProductUnitId.value) || null
@@ -483,14 +607,14 @@ const paginatedProducts = computed(() => {
 });
 const productUnitSummary = computed(() => {
 	if (!selectedProduct.value) return "";
-	return `เช่น 1 แพ็ค = 12 ${selectedProduct.value.unitLabel}`;
+	return t("products.costAdjust.unitExample", { unit: selectedProduct.value.unitLabel });
 });
 
 const categoryCounts = computed(() =>
 	categoryOptions.value.reduce<Record<string, number>>((result, category) => {
 		result[category.id] = category.id === "all"
-			? products.value.length
-			: products.value.filter((product) => product.categoryId === category.id).length;
+			? productStats.value.total
+			: (serverCategoryCounts.value[category.id] || 0);
 		return result;
 	}, {}),
 );
@@ -501,27 +625,27 @@ const namedCategoryCount = computed(() =>
 
 const hasManyCategories = computed(() => categoryOptions.value.length > 5);
 
-const totalProducts = computed(() => products.value.length);
-const activeProductsCount = computed(() => products.value.filter((product) => product.status === "active").length);
-const lowStockCount = computed(() => products.value.filter((product) => product.stockState === "low").length);
-const inactiveCount = computed(() => products.value.filter((product) => product.status === "inactive").length);
-const pageLabel = computed(() => `หน้า ${currentPage.value} / ${totalPages.value}`);
+const totalProducts = computed(() => productStats.value.total);
+const activeProductsCount = computed(() => productStats.value.active);
+const lowStockCount = computed(() => productStats.value.lowStock);
+const inactiveCount = computed(() => productStats.value.inactive);
+const pageLabel = computed(() => t("products.pageOf", { page: currentPage.value, total: totalPages.value }));
 const pageStart = computed(() => (
 	filteredProducts.value.length === 0
 		? 0
 		: ((currentPage.value - 1) * pageSize.value) + 1
 ));
-const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredProducts.value.length));
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, productsTotal.value));
 const pageSummaryText = computed(() => (
-	filteredProducts.value.length === 0
-		? "ยังไม่มีข้อมูล"
-		: `${pageStart.value}-${pageEnd.value} จาก ${filteredProducts.value.length} สินค้า`
+	productsTotal.value === 0
+		? t("common.noData")
+		: t("products.rangeSummary", { start: pageStart.value, end: pageEnd.value, total: productsTotal.value })
 ));
 const overviewStats = computed(() => ([
-	{ label: "สินค้าทั้งหมด", value: totalProducts.value },
-	{ label: "พร้อมขาย", value: activeProductsCount.value },
-	{ label: "สต็อกต่ำ", value: lowStockCount.value },
-	{ label: "หมวดสินค้า", value: namedCategoryCount.value },
+	{ label: t("products.allProducts"), value: totalProducts.value },
+	{ label: t("products.readyForSale"), value: activeProductsCount.value },
+	{ label: t("products.lowStock"), value: lowStockCount.value },
+	{ label: t("products.productCategory"), value: namedCategoryCount.value },
 ]));
 const canOpenCreateProduct = computed(() => (
 	!authPermissionReady.value || canCreateProduct.value
@@ -559,7 +683,7 @@ const canSaveProductUnit = computed(() => {
 });
 
 watch(filteredProducts, (value) => {
-	const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value));
+	const maxPage = totalPages.value;
 	if (currentPage.value > maxPage) {
 		currentPage.value = maxPage;
 	}
@@ -570,11 +694,20 @@ watch(filteredProducts, (value) => {
 }, { immediate: true });
 
 watch([searchQuery, activeCategory, activeStatus, activeSort], () => {
-	currentPage.value = 1;
+	if (productSearchTimer) clearTimeout(productSearchTimer);
+	productSearchTimer = setTimeout(() => {
+		if (currentPage.value !== 1) currentPage.value = 1;
+		else void loadProducts();
+	}, 280);
 });
 
 watch(pageSize, () => {
-	currentPage.value = 1;
+	if (currentPage.value !== 1) currentPage.value = 1;
+	else void loadProducts();
+});
+
+watch(currentPage, () => {
+	void loadProducts();
 });
 
 	watch(
@@ -619,6 +752,17 @@ watch(pageSize, () => {
 		}
 	});
 
+	async function loadProductUncostedSales(productId: string) {
+		try {
+			const response = await apiFetch<ApiEnvelope<{ line_count: number; bill_count: number; revenue: number }>>(`/products/${productId}/uncosted-sales`);
+			costAdjustPastSales.value = response.data;
+		}
+		catch {
+			// Not being able to offer the backfill must never block setting a cost.
+			costAdjustPastSales.value = null;
+		}
+	}
+
 	async function loadProductCostAdjustments(productId: string) {
 		if (!canUpdateProductCost.value) return;
 		productCostAdjustmentsPending.value = true;
@@ -629,7 +773,7 @@ watch(pageSize, () => {
 			});
 			productCostAdjustments.value = response.data || [];
 		} catch (error) {
-			productCostAdjustmentsError.value = error instanceof Error ? error.message : "โหลดประวัติการปรับต้นทุนไม่สำเร็จ";
+			productCostAdjustmentsError.value = error instanceof Error ? error.message : t("products.costAdjust.historyLoadFailed");
 			productCostAdjustments.value = [];
 		} finally {
 			productCostAdjustmentsPending.value = false;
@@ -640,8 +784,15 @@ watch(pageSize, () => {
 		if (!selectedProduct.value) return;
 		productCostAdjustForm.costBase = normalizeMoneyTyping(String(selectedProduct.value.cost ?? 0), { maxDecimals: 2 });
 		productCostAdjustForm.reason = "";
+		productCostAdjustForm.lockCost = true;
+		costAdjustZeroConfirmed.value = false;
+		// Off by default: a cost change is normally a new purchase price, and that
+		// must not reach back and restate a period already reported on.
+		costAdjustApplyToPast.value = false;
+		costAdjustPastSales.value = null;
 		productCostAdjustOpen.value = true;
 		void loadProductCostAdjustments(selectedProduct.value.id);
+		void loadProductUncostedSales(selectedProduct.value.id);
 	}
 
 		async function saveProductCostAdjust() {
@@ -649,19 +800,21 @@ watch(pageSize, () => {
 			if (!selectedProduct.value) return;
 			if (!canUpdateProductCost.value) return;
 
+			if (costAdjustNeedsZeroConfirm.value && !costAdjustZeroConfirmed.value) return;
+
 			const nextCost = parseLocaleNumber(productCostAdjustForm.costBase);
 			if (!Number.isFinite(nextCost) || nextCost < 0) {
 				appToast.error({
-					title: "ปรับต้นทุนไม่ได้",
-					description: "กรุณากรอกต้นทุนให้ถูกต้อง",
+					title: t("products.costAdjust.invalidTitle"),
+					description: t("products.costAdjust.invalidBody"),
 					timeout: 3200,
 				});
 				return;
 			}
-			if (Math.abs(nextCost - costAdjustBeforeCost.value) < 0.000001) {
+			if (!costAdjustHasChange.value) {
 				appToast.info({
-					title: "ยังไม่เปลี่ยนต้นทุน",
-					description: "กรุณาแก้ไขต้นทุนก่อนกดบันทึก",
+					title: t("products.costAdjust.noChangeTitle"),
+					description: t("products.costAdjust.noChangeBody"),
 					timeout: 2400,
 				});
 				return;
@@ -674,32 +827,41 @@ watch(pageSize, () => {
 				body: {
 					cost_base: nextCost,
 					reason: productCostAdjustForm.reason.trim() || null,
+					lock_cost: productCostAdjustForm.lockCost,
+					apply_to_past_sales: costAdjustApplyToPast.value,
 				},
 			});
 
 			const updatedProduct = response.data.product;
 			const updatedCost = Number(updatedProduct.cost_base ?? 0);
+			const updatedCostSource = (updatedProduct.cost_source ?? "manual") as ProductRecord["costSource"];
 			selectedProduct.value.cost = updatedCost;
+			selectedProduct.value.costSource = updatedCostSource;
 			const productIndex = products.value.findIndex((item) => item.id === selectedProduct.value?.id);
 			if (productIndex !== -1) {
 				products.value[productIndex] = {
 					...products.value[productIndex],
 					cost: updatedCost,
+					costSource: updatedCostSource,
 				};
 			}
 
 			const adjustment = response.data.adjustment;
+			const appliedBills = Number((adjustment as { applied_to_past_bills?: number }).applied_to_past_bills || 0);
 			productCostAdjustments.value = [ adjustment, ...productCostAdjustments.value ].slice(0, 10);
 			appToast.success({
-				title: "ปรับต้นทุนแล้ว",
-				description: `ต้นทุนใหม่ ${formatMoney(updatedCost)}`,
+				title: t("products.costAdjust.savedTitle"),
+				// Say how much history moved, so a backfill is not a silent side effect.
+				description: appliedBills > 0
+					? t("products.costAdjust.savedWithPast", { amount: formatMoney(updatedCost), bills: appliedBills })
+					: t("products.costAdjust.savedBody", { amount: formatMoney(updatedCost) }),
 				timeout: 2400,
 			});
 			productCostAdjustOpen.value = false;
 		} catch (error) {
 			appToast.error({
-				title: "ปรับต้นทุนไม่ได้",
-				description: error instanceof Error ? error.message : "เกิดข้อผิดพลาด",
+				title: t("products.costAdjust.saveFailedTitle"),
+				description: error instanceof Error ? error.message : t("products.costAdjust.saveFailedBody"),
 				timeout: 3200,
 			});
 		} finally {
@@ -767,98 +929,345 @@ watch(() => productForm.sku, (value) => {
 	});
 
 function formatMoney(value: number) {
-	return `${numberFormatter.format(value)}${getCurrencySymbol(storeCurrency.value)}`;
+	return `${numberFormatter.value.format(value)}${getCurrencySymbol(storeCurrency.value)}`;
 }
 
-function escapeCsvValue(value: unknown) {
-	if (value === null || value === undefined) return "";
-	const stringValue = String(value);
-	const escaped = stringValue.replace(/"/g, '""');
-	return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+const productCsvHeaders = [
+	"name",
+	"sku",
+	"barcode",
+	"category",
+	"price",
+	"cost",
+	"base_unit",
+	"location",
+	"low_stock_threshold",
+] as const;
+
+type ProductCsvColumn = typeof productCsvHeaders[number];
+
+const productCsvHeaderAliases: Record<ProductCsvColumn, string[]> = {
+	name: [ "name", "product_name", "ชื่อสินค้า", "ຊື່ສິນຄ້າ" ],
+	sku: [ "sku" ],
+	barcode: [ "barcode", "บาร์โค้ด", "บาโคด", "ບາໂຄດ" ],
+	category: [ "category", "category_name", "หมวดสินค้า", "ໝວດສິນຄ້າ" ],
+	price: [ "price", "sale_price", "ราคาขาย", "ລາຄາຂາຍ" ],
+	cost: [ "cost", "ต้นทุน", "ຕົ້ນທຶນ" ],
+	base_unit: [ "base_unit", "unit", "หน่วยหลัก", "ຫົວໜ່ວຍຫຼັກ" ],
+	location: [ "location", "ตำแหน่งสินค้า", "ຕຳແໜ່ງສິນຄ້າ" ],
+	low_stock_threshold: [ "low_stock_threshold", "low_stock", "สต็อกต่ำ", "ສະຕັອກຕ່ຳ" ],
+};
+
+function normalizeCsvHeader(value: string) {
+	return value.replace(/^\ufeff/, "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-function downloadTextFile(filename: string, content: string, mimeType: string) {
-	if (!import.meta.client) return;
-	const blob = new Blob([content], { type: mimeType });
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = filename;
-	document.body.appendChild(link);
-	link.click();
-	link.remove();
-	URL.revokeObjectURL(url);
-}
+function parseCsv(content: string): string[][] {
+	const rows: string[][] = [];
+	let row: string[] = [];
+	let field = "";
+	let quoted = false;
 
-function exportFilteredProductsCsv() {
-	if (!filteredProducts.value.length) {
-		appToast.info({
-			title: "ยังไม่มีสินค้าให้ส่งออก",
-			description: "ลองเปลี่ยนตัวกรองหรือค้นหาใหม่",
-		});
-		return;
+	for (let index = 0; index < content.length; index += 1) {
+		const character = content[index];
+		if (quoted) {
+			if (character === '"' && content[index + 1] === '"') {
+				field += '"';
+				index += 1;
+			} else if (character === '"') {
+				quoted = false;
+			} else {
+				field += character;
+			}
+			continue;
+		}
+
+		if (character === '"') {
+			quoted = true;
+		} else if (character === ",") {
+			row.push(field);
+			field = "";
+		} else if (character === "\n" || character === "\r") {
+			if (character === "\r" && content[index + 1] === "\n") index += 1;
+			row.push(field);
+			if (row.some((value) => value.trim() !== "")) rows.push(row);
+			row = [];
+			field = "";
+		} else {
+			field += character;
+		}
 	}
 
-	const now = new Date();
-	const fileStamp = [
-		now.getFullYear(),
-		String(now.getMonth() + 1).padStart(2, "0"),
-		String(now.getDate()).padStart(2, "0"),
-		"-",
-		String(now.getHours()).padStart(2, "0"),
-		String(now.getMinutes()).padStart(2, "0"),
-	].join("");
-	const filename = `products-${fileStamp}.csv`;
+	row.push(field);
+	if (row.some((value) => value.trim() !== "")) rows.push(row);
+	return rows;
+}
 
-	const headers = [
-		"ชื่อสินค้า",
-		"SKU",
-		"Barcode",
-		"หมวดสินค้า",
-		"ราคาขาย",
-		"ต้นทุน",
-		"หน่วยหลัก",
-		"สถานะขาย",
-		"อัปเดตล่าสุด",
-	] as const;
+function resolveCsvColumns(headers: string[]) {
+	const normalizedHeaders = headers.map(normalizeCsvHeader);
+	return Object.fromEntries(productCsvHeaders.map((column) => {
+		const aliases = productCsvHeaderAliases[column].map(normalizeCsvHeader);
+		return [ column, normalizedHeaders.findIndex((header) => aliases.includes(header)) ];
+	})) as Record<ProductCsvColumn, number>;
+}
 
-	const rows = filteredProducts.value.map((product) => ([
-		product.name,
-		product.sku,
-		product.barcode,
-		getCategoryLabel(product.categoryId),
-		product.price,
-		product.cost,
-		product.unitLabel,
-		product.status === "active" ? "พร้อมขาย" : "ปิดขาย",
-		product.updatedAt,
-	]));
+function csvCell(row: string[], columnIndexes: Record<ProductCsvColumn, number>, column: ProductCsvColumn) {
+	const index = columnIndexes[column];
+	return index >= 0 ? String(row[index] || "").trim() : "";
+}
 
-	const csv = [
-		headers.map(escapeCsvValue).join(","),
-		...rows.map((row) => row.map(escapeCsvValue).join(",")),
-	].join("\r\n");
+// The importer only accepts units and categories that already exist in this
+// store, so the sample rows are built from real ones. Falling back to a blank
+// cell keeps the file importable when the store has none set up yet.
+function productCsvSampleRows() {
+	const unitCode = units.value[0]?.code?.trim() || "";
+	const categoryName = categories.value[0]?.name?.trim() || "";
+	return [
+		[ t("products.csv.sampleNameA"), "SKU-001", "8850000000017", categoryName, "25000", "18000", unitCode, "A-01", "10" ],
+		[ t("products.csv.sampleNameB"), "SKU-002", "", categoryName, "45000", "32000", unitCode, "A-02", "5" ],
+	];
+}
 
-	downloadTextFile(filename, `\ufeff${csv}`, "text/csv;charset=utf-8");
-	appToast.success({ title: "ส่งออกสินค้าแล้ว", description: filename });
+function downloadProductCsvTemplate() {
+	downloadCsv("products-import-template.csv", [ ...productCsvHeaders ], productCsvSampleRows());
+	appToast.success({
+		title: t("products.csv.templateDownloaded"),
+		description: t("products.csv.templateDownloadedHint"),
+	});
+}
+
+async function exportFilteredProductsCsv() {
+	if (productExportSaving.value) return;
+	productExportSaving.value = true;
+	try {
+		const baseQuery = {
+			limit: 100,
+			search: searchQuery.value.trim() || undefined,
+			category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+			status: activeStatus.value,
+			sort: activeSort.value,
+		};
+		const firstResponse = await apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+			query: { ...baseQuery, page: 1 },
+		});
+		const remainingResponses = firstResponse.data.totalPages > 1
+			? await Promise.all(Array.from({ length: firstResponse.data.totalPages - 1 }, (_, index) => (
+				apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+					query: { ...baseQuery, page: index + 2 },
+				})
+			)))
+			: [];
+		const exportProducts = [
+			...firstResponse.data.items,
+			...remainingResponses.flatMap((response) => response.data.items),
+		];
+
+		const rows = exportProducts.map((product) => {
+			const category = categories.value.find((item) => item.id === product.category_id);
+			const unit = units.value.find((item) => item.id === product.base_unit_id);
+			return [
+				product.name,
+				product.sku,
+				product.barcode || "",
+				category?.name || "",
+				product.price_base,
+				product.cost_base,
+				unit?.code || product.base_unit_id,
+				product.location || "",
+				product.low_stock_threshold ?? "",
+			];
+		});
+		const now = new Date();
+		const fileStamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+		const filename = `products-${fileStamp}.csv`;
+		downloadCsv(filename, [ ...productCsvHeaders ], rows);
+		appToast.success({ title: t("products.csv.exported"), description: filename });
+	} catch (error) {
+		appToast.error({
+			title: t("products.csv.exportFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
+		});
+	} finally {
+		productExportSaving.value = false;
+	}
+}
+
+function openProductImportPicker() {
+	if (!canImportProducts.value) return;
+	productImportInputRef.value?.click();
+}
+
+async function handleProductImportFileChange(event: Event) {
+	const input = event.target as HTMLInputElement | null;
+	const file = input?.files?.[0];
+	if (!file) return;
+	productImportFileName.value = file.name;
+	productImportRows.value = [];
+	productImportErrors.value = [];
+
+	try {
+		const parsedRows = parseCsv(await file.text());
+		if (parsedRows.length < 2) throw new Error(t("products.csv.noRows"));
+		if (parsedRows.length - 1 > 500) throw new Error(t("products.csv.tooManyRows"));
+		const columnIndexes = resolveCsvColumns(parsedRows[0]);
+		const missingColumns = ([ "name", "sku", "price", "cost", "base_unit" ] as ProductCsvColumn[])
+			.filter((column) => columnIndexes[column] < 0);
+		if (missingColumns.length > 0) {
+			throw new Error(t("products.csv.missingColumns", { columns: missingColumns.join(", ") }));
+		}
+
+		const categoryLookup = new Map<string, string>();
+		for (const category of categories.value) {
+			categoryLookup.set(category.id.trim().toLowerCase(), category.id);
+			categoryLookup.set(category.name.trim().toLowerCase(), category.id);
+		}
+		const unitLookup = new Map<string, string>();
+		for (const unit of units.value) {
+			unitLookup.set(unit.id.trim().toLowerCase(), unit.id);
+			unitLookup.set(unit.code.trim().toLowerCase(), unit.id);
+			unitLookup.set(unit.name_th.trim().toLowerCase(), unit.id);
+			unitLookup.set(getUnitDisplayName(unit).trim().toLowerCase(), unit.id);
+		}
+
+		const seenSkus = new Set<string>();
+		const nextRows: ProductCsvImportRow[] = [];
+		for (let index = 1; index < parsedRows.length; index += 1) {
+			const source = parsedRows[index];
+			const rowNumber = index + 1;
+			const name = csvCell(source, columnIndexes, "name");
+			const sku = csvCell(source, columnIndexes, "sku").toUpperCase();
+			const categoryText = csvCell(source, columnIndexes, "category");
+			const unitText = csvCell(source, columnIndexes, "base_unit");
+			const priceText = csvCell(source, columnIndexes, "price");
+			const costText = csvCell(source, columnIndexes, "cost");
+			const price = parseLocaleNumber(priceText);
+			const cost = parseLocaleNumber(costText);
+			const lowStockText = csvCell(source, columnIndexes, "low_stock_threshold");
+			const lowStock = lowStockText === "" ? null : parseLocaleNumber(lowStockText);
+			const categoryId = categoryText === "" || [ "uncategorized", "ไม่ระบุหมวด", "ບໍ່ລະບຸໝວດ" ].includes(categoryText.toLowerCase())
+				? null
+				: categoryLookup.get(categoryText.toLowerCase());
+			const unitId = unitLookup.get(unitText.toLowerCase());
+
+			if (!name || !sku) productImportErrors.value.push(t("products.csv.rowMissingNameSku", { row: rowNumber }));
+			else if (seenSkus.has(sku)) productImportErrors.value.push(t("products.csv.duplicateSku", { row: rowNumber, sku }));
+			else if (!priceText || !costText || !Number.isFinite(price) || price < 0 || !Number.isFinite(cost) || cost < 0) productImportErrors.value.push(t("products.csv.invalidPriceCost", { row: rowNumber }));
+			else if (lowStock !== null && (!Number.isFinite(lowStock) || lowStock < 0)) productImportErrors.value.push(t("products.csv.invalidLowStock", { row: rowNumber }));
+			else if (categoryText && categoryId === undefined) productImportErrors.value.push(t("products.csv.unknownCategory", { row: rowNumber, category: categoryText }));
+			else if (!unitId) productImportErrors.value.push(t("products.csv.unknownUnit", { row: rowNumber, unit: unitText }));
+			else {
+				seenSkus.add(sku);
+				nextRows.push({
+					name,
+					sku,
+					barcode: csvCell(source, columnIndexes, "barcode") || null,
+					category_id: categoryId || null,
+					base_unit_id: unitId,
+					price_base: price,
+					cost_base: cost,
+					location: csvCell(source, columnIndexes, "location").toUpperCase() || null,
+					low_stock_threshold: lowStock,
+				});
+			}
+		}
+		productImportRows.value = nextRows;
+	} catch (error) {
+		productImportErrors.value = [ error instanceof Error ? error.message : t("products.csv.invalidFile") ];
+	} finally {
+		productImportOpen.value = true;
+		if (input) input.value = "";
+	}
+}
+
+async function confirmProductImport() {
+	if (productImportSaving.value || productImportErrors.value.length > 0 || productImportRows.value.length === 0) return;
+	productImportSaving.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<ProductImportResult>>("/products/import", {
+			method: "POST",
+			body: {
+				store_id: effectiveStoreId.value,
+				rows: productImportRows.value,
+			},
+		});
+		productImportOpen.value = false;
+		currentPage.value = 1;
+		await loadProducts();
+		appToast.success({
+			title: t("products.csv.imported"),
+			description: t("products.csv.importSummary", response.data),
+		});
+	} catch (error) {
+		appToast.error({
+			title: t("products.csv.importFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
+		});
+	} finally {
+		productImportSaving.value = false;
+	}
 }
 
 function getCategoryLabel(categoryId: string) {
-	return categoryOptions.value.find((category) => category.id === categoryId)?.label ?? "ไม่ระบุหมวด";
+	return categoryOptions.value.find((category) => category.id === categoryId)?.label ?? t("products.uncategorized");
 }
 
-function getStockTone(state: StockState) {
-	if (state === "ready") return "success";
-	if (state === "low") return "warning";
+// Untracked products hold no stock at all, so the stock cell reports how they
+// are actually controlled instead of a stock state they do not have.
+// "purchase" describes how the cost is maintained, not where it came from: a
+// cost typed at creation also carries it, and no purchase order may have landed
+// yet. Untracked menu items cannot be received against a purchase order at all
+// (InventoryInterface rejects them), so their wording never mentions one.
+function costSourceLabel(product: ProductRecord) {
+	if (product.costSource === "manual") return t("products.detail.costSourceManual");
+	if (product.costSource === "unknown") return t("products.detail.costSourceUnknown");
+	// hasPurchaseCost comes from the receipt ledger, which is the only proof the
+	// cost really arrived from a purchase order rather than being typed in.
+	return product.hasPurchaseCost
+		? t("products.detail.costSourcePo")
+		: t("products.detail.costSourceTyped");
+}
+
+// Short badge for the table: words rather than symbols, because a POS runs on
+// tablets where nobody can hover a tooltip to find out what a glyph meant.
+function costSourceBadge(product: ProductRecord): { label: string; color: "success" | "warning" | "neutral" } {
+	if (product.costSource === "unknown") return { label: t("products.costBadgeUnknown"), color: "neutral" };
+	if (product.costSource === "manual") return { label: t("products.costBadgeLocked"), color: "neutral" };
+	return product.hasPurchaseCost
+		? { label: t("products.costBadgePo"), color: "success" }
+		: { label: t("products.costBadgeTyped"), color: "warning" };
+}
+
+function costSourceHint(product: ProductRecord) {
+	const untracked = product.inventoryMode === "untracked";
+	if (product.costSource === "manual") {
+		return untracked ? t("products.detail.costSourceManualMenuHint") : t("products.detail.costSourceManualHint");
+	}
+	if (product.costSource === "unknown") {
+		return untracked ? t("products.detail.costSourceUnknownMenuHint") : t("products.detail.costSourceUnknownHint");
+	}
+	if (product.hasPurchaseCost) return t("products.detail.costSourcePoHint");
+	return untracked ? t("products.detail.costSourceManualMenuHint") : t("products.detail.costSourceTypedHint");
+}
+
+function getStockTone(product: ProductRecord) {
+	if (product.status === "inactive") return "neutral";
+	if (product.inventoryMode === "untracked") {
+		return product.manualSoldOut ? "warning" : "neutral";
+	}
+	if (product.stockState === "ready") return "success";
+	if (product.stockState === "low") return "neutral";
 	return "neutral";
 }
 
 function getStockLabel(product: ProductRecord) {
-	if (product.status === "inactive") return "ปิดขาย";
-	if (product.stockState === "low" && product.lowStockThreshold !== null) {
-		return `เตือนต่ำ ${product.lowStockThreshold}`;
+	if (product.status === "inactive") return t("products.inactive");
+	if (product.inventoryMode === "untracked") {
+		return product.manualSoldOut ? t("products.soldOutManual") : t("products.notStockTracked");
 	}
-	return "พร้อมขาย";
+	if (product.stockState === "low" && product.lowStockThreshold !== null) {
+		return t("products.lowStockAlert", { count: product.lowStockThreshold });
+	}
+	return t("products.readyForSale");
 }
 
 function getInitials(name: string) {
@@ -888,11 +1297,7 @@ function getVariantCount(raw: string | null) {
 }
 
 	function formatApiDate(value: string) {
-		try {
-			return dateFormatter.format(new Date(value));
-		} catch {
-			return value;
-		}
+		return formatAppDateTime(value, locale.value as "th" | "lo" | "en");
 	}
 
 	function parseLocaleNumber(raw: string) {
@@ -911,36 +1316,6 @@ function getVariantCount(raw: string | null) {
 		return Number(normalized);
 	}
 
-	function normalizeMoneyTyping(raw: string, options?: { maxDecimals?: number }) {
-		const maxDecimals = options?.maxDecimals ?? 2;
-		const input = String(raw ?? "");
-		let normalized = input.replace(/\s+/g, "");
-		normalized = normalized.replace(/,/g, "");
-		normalized = normalized.replace(/[^0-9.]/g, "");
-
-		// Keep only first dot.
-		const firstDot = normalized.indexOf(".");
-		if (firstDot !== -1) {
-			normalized = normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
-		}
-
-		if (!normalized) return "";
-
-		const hasTrailingDot = normalized.endsWith(".");
-		const [intRaw = "", decRaw = "" ] = normalized.split(".");
-		const intDigitsRaw = intRaw.replace(/\D/g, "");
-		const decDigits = decRaw.replace(/\D/g, "").slice(0, Math.max(0, maxDecimals));
-
-		const needsLeadingZero = normalized.startsWith(".");
-		const intDigits = (intDigitsRaw || needsLeadingZero) ? (intDigitsRaw || "0") : "";
-		const intWithCommas = intDigits
-			? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-			: "";
-
-		if (hasTrailingDot) return `${intWithCommas || "0"}.`;
-		if (decRaw.length > 0) return `${intWithCommas || "0"}.${decDigits}`;
-		return intWithCommas;
-	}
 
 	function handleMoneyInput(field: "priceBase" | "costBase", value: string | number) {
 		const nextValue = normalizeMoneyTyping(String(value ?? ""), { maxDecimals: 2 });
@@ -1044,15 +1419,14 @@ function resolveImageUrl(imageUrl: string | null) {
 
 function mapApiProduct(
 	product: ApiProduct,
-	categoryMap: Record<string, string>,
-	unitMap: Record<string, string>,
-	productUnitsByProductId: Record<string, string[]>,
+	categoryMap: Record<string, string> = {},
+	unitMap: Record<string, string> = {},
 ): ProductRecord {
 	const status = product.active ? "active" : "inactive";
 	const variantCount = getVariantCount(product.variant_options_json);
-	const unitLabel = unitMap[product.base_unit_id] || product.base_unit_id || "หน่วยหลัก";
+	const unitLabel = product.base_unit_name || unitMap[product.base_unit_id] || product.base_unit_id || "หน่วยหลัก";
 	const categoryId = product.category_id || "uncategorized";
-	const categoryLabel = categoryMap[categoryId] || "ไม่ระบุหมวด";
+	const categoryLabel = product.category_name || categoryMap[categoryId] || "ไม่ระบุหมวด";
 	const lowStockThreshold = product.low_stock_threshold ?? null;
 	const stockState: StockState = status === "inactive"
 		? "inactive"
@@ -1060,11 +1434,7 @@ function mapApiProduct(
 			? "low"
 			: "ready";
 
-	const extraUnitIds = productUnitsByProductId[product.id] || [];
-	const extraUnitLabels = extraUnitIds
-		.map((unitId) => unitMap[unitId] || unitId)
-		.filter((label) => Boolean(label) && label !== unitLabel);
-	const uniqueExtraUnitLabels = Array.from(new Set(extraUnitLabels));
+	const extraSaleUnitCount = Number(product.extra_sale_unit_count || 0);
 
 	return {
 		id: product.id,
@@ -1082,70 +1452,78 @@ function mapApiProduct(
 		status,
 		variantCount,
 		allowBaseUnitSale: product.allow_base_unit_sale === 1,
-		saleUnits: [unitLabel, ...uniqueExtraUnitLabels],
-		extraSaleUnitCount: uniqueExtraUnitLabels.length,
+		saleUnits: [unitLabel],
+		extraSaleUnitCount,
 		imageKey: getInitials(product.name),
 		imageUrl: resolveImageUrl(product.image_url),
 		accent: getAccent(product.id),
-		updatedAt: formatApiDate(product.created_at),
+		updatedAt: formatApiDate(product.updated_at || product.created_at),
 		updatedBy: "API",
 		lowStockThreshold,
+		inventoryMode: product.inventory_mode === "untracked" ? "untracked" : "tracked",
+		costSource: product.cost_source === "manual" || product.cost_source === "unknown" ? product.cost_source : "purchase",
+		hasPurchaseCost: Number(product.has_purchase_cost || 0) === 1,
+		manualSoldOut: Boolean(product.manual_sold_out),
 		tag: status === "inactive" ? "ปิดขาย" : variantCount > 0 ? "มีตัวเลือก" : undefined,
 	};
 }
 
 async function loadProducts() {
+	const loadSequence = ++productLoadSequence;
 	productsPending.value = true;
 	productsError.value = null;
 
 	try {
-		const [productsResult, categoriesResult, unitsResult, storesResult, productUnitsResult] = await Promise.allSettled([
-			apiFetch<ApiEnvelope<ApiProduct[]>>("/products"),
-			apiFetch<ApiEnvelope<ApiProductCategory[]>>("/product-categories"),
-			apiFetch<ApiEnvelope<ApiUnit[]>>("/units"),
-			apiFetch<ApiEnvelope<StoreRecord[]>>("/stores"),
-			apiFetch<ApiEnvelope<ApiProductUnit[]>>("/product-units"),
-		]);
-
-		if (productsResult.status !== "fulfilled") {
-			throw productsResult.reason;
-		}
-
-		const categoryMap = categoriesResult.status === "fulfilled"
-			? Object.fromEntries(categoriesResult.value.data.map((category) => [category.id, category.name]))
-			: {};
-		categories.value = categoriesResult.status === "fulfilled" ? categoriesResult.value.data : [];
-
-		const unitMap = unitsResult.status === "fulfilled"
-			? Object.fromEntries(unitsResult.value.data.map((unit) => [unit.id, unit.name_th || unit.code]))
-			: {};
-		units.value = unitsResult.status === "fulfilled" ? unitsResult.value.data : [];
-		stores.value = storesResult.status === "fulfilled" ? storesResult.value.data : [];
-
-		const productUnitsByProductId = (productUnitsResult.status === "fulfilled" ? productUnitsResult.value.data : [])
-			.reduce<Record<string, Set<string>>>((result, row) => {
-				if (!row?.product_id || !row?.unit_id) return result;
-				if (!result[row.product_id]) {
-					result[row.product_id] = new Set<string>();
-				}
-				result[row.product_id].add(row.unit_id);
-				return result;
-			}, {});
-
-		const productUnitsByProductIdArray = Object.fromEntries(
-			Object.entries(productUnitsByProductId).map(([productId, unitIds]) => [productId, Array.from(unitIds)]),
-		) as Record<string, string[]>;
-
-		products.value = productsResult.value.data.map((product) => mapApiProduct(product, categoryMap, unitMap, productUnitsByProductIdArray));
+		const response = await apiFetch<ApiEnvelope<ApiProductList>>("/products", {
+			query: {
+				page: currentPage.value,
+				limit: pageSize.value,
+				search: searchQuery.value.trim() || undefined,
+				category_id: activeCategory.value === "all" ? undefined : activeCategory.value,
+				status: activeStatus.value,
+				sort: activeSort.value,
+			},
+		});
+		if (loadSequence !== productLoadSequence) return;
+		const categoryMap = Object.fromEntries(categories.value.map((category) => [category.id, category.name]));
+		const unitMap = Object.fromEntries(units.value.map((unit) => [unit.id, getUnitDisplayName(unit)]));
+		productsTotal.value = response.data.total;
+		productStats.value = response.data.stats;
+		serverCategoryCounts.value = response.data.categoryCounts;
+		products.value = response.data.items.map((product) => mapApiProduct(product, categoryMap, unitMap));
 		if (products.value.length) {
 			selectedProductId.value = products.value[0].id;
 		}
 	} catch (error) {
+		if (loadSequence !== productLoadSequence) return;
 		productsError.value = error instanceof Error ? error.message : "โหลดรายการสินค้าไม่สำเร็จ";
 		products.value = [];
+		productsTotal.value = 0;
 	} finally {
-		productsPending.value = false;
+		if (loadSequence === productLoadSequence) productsPending.value = false;
 	}
+}
+
+async function loadProductReferenceData() {
+	const [categoriesResult, unitsResult, storesResult] = await Promise.allSettled([
+		apiFetch<ApiEnvelope<ApiProductCategory[]>>("/product-categories"),
+		apiFetch<ApiEnvelope<ApiUnit[]>>("/units"),
+		apiFetch<ApiEnvelope<StoreRecord[]>>("/stores"),
+	]);
+	categories.value = categoriesResult.status === "fulfilled" ? categoriesResult.value.data : [];
+	units.value = unitsResult.status === "fulfilled" ? unitsResult.value.data : [];
+	stores.value = storesResult.status === "fulfilled" ? storesResult.value.data : [];
+}
+
+function loadInitialProductData(): Promise<void> {
+	if (initialProductLoadPromise) return initialProductLoadPromise;
+	initialProductLoadPromise = Promise.all([
+		loadProductReferenceData(),
+		loadProducts(),
+	]).then(() => undefined).finally(() => {
+		initialProductLoadPromise = null;
+	});
+	return initialProductLoadPromise;
 }
 
 	function resetProductForm() {
@@ -1167,6 +1545,9 @@ async function loadProducts() {
 		productForm.lowStockThreshold = "";
 		productForm.active = true;
 		productForm.allowBaseUnitSale = true;
+		productForm.inventoryMode = "tracked";
+		productForm.costSource = "purchase";
+		productForm.manualSoldOut = false;
 		productUnitDrafts.value = [];
 		resetDraftUnitForm();
 	}
@@ -1203,6 +1584,8 @@ async function openCloneProduct() {
 		? ""
 		: normalizeMoneyTyping(String(selectedProduct.value.lowStockThreshold), { maxDecimals: 0 });
 	productForm.allowBaseUnitSale = selectedProduct.value.allowBaseUnitSale;
+	productForm.inventoryMode = selectedProduct.value.inventoryMode;
+	productForm.costSource = selectedProduct.value.costSource;
 	productForm.location = selectedProduct.value.location === "-" ? "" : (selectedProduct.value.location || "");
 
 	// Never clone barcode (should be unique / scanned per item)
@@ -1226,7 +1609,25 @@ function resetProductEditForm() {
 	productEditForm.priceBase = "";
 	productEditForm.lowStockThreshold = "";
 	productEditForm.allowBaseUnitSale = true;
+	productEditForm.inventoryMode = "tracked";
+	productEditForm.costSource = "purchase";
+	productEditForm.manualSoldOut = false;
 	resetProductImageInputValue(productEditImageInputRef.value);
+}
+
+// The base unit can only be swapped while the product has no history, so the
+// form asks the API whether this one still qualifies before offering the field.
+async function loadBaseUnitCheck(productId: string) {
+	baseUnitCheck.value = null;
+	baseUnitCheckPending.value = true;
+	try {
+		const response = await apiFetch<ApiEnvelope<BaseUnitCheck>>(`/products/${encodeURIComponent(productId)}/base-unit-check`);
+		baseUnitCheck.value = response.data;
+	} catch {
+		baseUnitCheck.value = null;
+	} finally {
+		baseUnitCheckPending.value = false;
+	}
 }
 
 function openEditProduct() {
@@ -1238,11 +1639,16 @@ function openEditProduct() {
 	productEditForm.barcode = selectedProduct.value.barcode === "-" ? "" : (selectedProduct.value.barcode || "");
 	productEditForm.location = selectedProduct.value.location === "-" ? "" : (selectedProduct.value.location || "");
 	productEditForm.categoryId = selectedProduct.value.categoryId === "uncategorized" ? "" : (selectedProduct.value.categoryId || "");
+	productEditForm.baseUnitId = selectedProduct.value.baseUnitId || "";
+	loadBaseUnitCheck(selectedProduct.value.id);
 	productEditForm.priceBase = normalizeMoneyTyping(String(selectedProduct.value.price ?? ""), { maxDecimals: 2 });
 	productEditForm.lowStockThreshold = selectedProduct.value.lowStockThreshold === null
 		? ""
 		: normalizeMoneyTyping(String(selectedProduct.value.lowStockThreshold), { maxDecimals: 0 });
 	productEditForm.allowBaseUnitSale = selectedProduct.value.allowBaseUnitSale;
+	productEditForm.inventoryMode = selectedProduct.value.inventoryMode;
+	productEditForm.costSource = selectedProduct.value.costSource;
+	productEditForm.manualSoldOut = selectedProduct.value.manualSoldOut;
 
 	productDetailOpen.value = false;
 	productEditOpen.value = true;
@@ -1687,10 +2093,10 @@ function ean13BitsToBars(bits: string) {
 
 	function openVariantMatrix() {
 		if (!selectedProduct.value) return;
-		variantAxis1.label = "สี";
+		variantAxis1.label = t("products.matrix.axis1Default");
 		variantAxis1.valuesRaw = "";
 		variantAxis2Enabled.value = false;
-		variantAxis2.label = "ไซซ์";
+		variantAxis2.label = t("products.matrix.axis2Default");
 		variantAxis2.valuesRaw = "";
 		variantIncludeBaseProductSale.value = false;
 		variantMatrixRows.value = [];
@@ -1707,7 +2113,7 @@ function ean13BitsToBars(bits: string) {
 
 	function buildVariantLabel(value1: string, value2: string) {
 		if (value1 && value2) return `${value1} / ${value2}`;
-		return value1 || value2 || "ตัวเลือก";
+		return value1 || value2 || t("products.matrix.optionFallback");
 	}
 
 	function generateVariantMatrixRows() {
@@ -1716,7 +2122,7 @@ function ean13BitsToBars(bits: string) {
 		const values2 = variantAxis2Enabled.value ? parseAxisValues(variantAxis2.valuesRaw) : [];
 
 		if (values1.length === 0) {
-			productVariantMatrixError.value = "กรุณากรอกค่าแกนที่ 1 อย่างน้อย 1 ค่า";
+			productVariantMatrixError.value = t("products.matrix.errorAxis1Required");
 			variantMatrixRows.value = [];
 			return;
 		}
@@ -1735,7 +2141,7 @@ function ean13BitsToBars(bits: string) {
 		}
 
 		if (combos.length > 200) {
-			productVariantMatrixError.value = `จำนวนตัวเลือก ${combos.length} รายการเยอะเกินไป (จำกัด 200)`;
+			productVariantMatrixError.value = t("products.matrix.errorTooMany", { count: combos.length, limit: 200 });
 			variantMatrixRows.value = [];
 			return;
 		}
@@ -1832,7 +2238,7 @@ function ean13BitsToBars(bits: string) {
 		productVariantMatrixError.value = null;
 		const rows = variantMatrixRows.value;
 		if (!rows.length) {
-			productVariantMatrixError.value = "กรุณาสร้างตารางตัวเลือกก่อน";
+			productVariantMatrixError.value = t("products.matrix.errorBuildFirst");
 			return;
 		}
 
@@ -1844,11 +2250,11 @@ function ean13BitsToBars(bits: string) {
 		for (const row of rows) {
 			const sku = row.sku.trim().toUpperCase();
 			if (!sku) {
-				productVariantMatrixError.value = "กรุณากรอก SKU ให้ครบทุกแถว";
+				productVariantMatrixError.value = t("products.matrix.errorSkuRequired");
 				return;
 			}
 			if (skuSet.has(sku)) {
-				productVariantMatrixError.value = `SKU ซ้ำในตาราง: ${sku}`;
+				productVariantMatrixError.value = t("products.matrix.errorSkuDuplicate", { sku });
 				return;
 			}
 			skuSet.add(sku);
@@ -1856,7 +2262,7 @@ function ean13BitsToBars(bits: string) {
 			const barcode = row.barcode.trim();
 			if (barcode) {
 				if (barcodeSet.has(barcode)) {
-					productVariantMatrixError.value = `บาร์โค้ดซ้ำในตาราง: ${barcode}`;
+					productVariantMatrixError.value = t("products.matrix.errorBarcodeDuplicate", { barcode });
 					return;
 				}
 				barcodeSet.add(barcode);
@@ -1865,11 +2271,11 @@ function ean13BitsToBars(bits: string) {
 			const price = parseLocaleNumber(row.priceBase);
 			const cost = parseLocaleNumber(row.costBase);
 			if (!Number.isFinite(price) || price < 0) {
-				productVariantMatrixError.value = `ราคาขายไม่ถูกต้อง: ${row.label}`;
+				productVariantMatrixError.value = t("products.matrix.errorPriceInvalid", { label: row.label });
 				return;
 			}
 			if (!Number.isFinite(cost) || cost < 0) {
-				productVariantMatrixError.value = `ต้นทุนไม่ถูกต้อง: ${row.label}`;
+				productVariantMatrixError.value = t("products.matrix.errorCostInvalid", { label: row.label });
 				return;
 			}
 		}
@@ -1902,8 +2308,8 @@ function ean13BitsToBars(bits: string) {
 
 			void response;
 			appToast.success({
-				title: "สร้างตัวเลือกแล้ว",
-				description: `เพิ่ม ${variantMatrixRows.value.length} SKU`,
+				title: t("products.matrix.successTitle"),
+				description: t("products.matrix.successDescription", { count: variantMatrixRows.value.length }),
 				timeout: 2800,
 			});
 
@@ -1911,9 +2317,9 @@ function ean13BitsToBars(bits: string) {
 			variantMatrixRows.value = [];
 			await loadProducts();
 		} catch (error) {
-			productVariantMatrixError.value = error instanceof Error ? error.message : "สร้างตัวเลือกไม่สำเร็จ";
+			productVariantMatrixError.value = error instanceof Error ? error.message : t("products.matrix.errorFallback");
 			appToast.error({
-				title: "สร้างตัวเลือกไม่ได้",
+				title: t("products.matrix.errorTitle"),
 				description: productVariantMatrixError.value,
 				timeout: 3600,
 			});
@@ -1999,7 +2405,7 @@ async function transformProductImage(file: File) {
 	const context = canvas.getContext("2d");
 	if (!context) {
 		bitmap.close();
-		throw new Error("ไม่สามารถเตรียมภาพสำหรับอัปโหลดได้");
+		throw new Error(t("products.create.imagePrepareFailed"));
 	}
 	context.drawImage(bitmap, 0, 0, width, height);
 	bitmap.close();
@@ -2014,11 +2420,11 @@ async function transformProductImage(file: File) {
 	}
 
 	if (!outputBlob) {
-		throw new Error("แปลงรูปสินค้าไม่สำเร็จ");
+		throw new Error(t("products.create.imageConvertFailed"));
 	}
 
 	if (outputBlob.size > 3 * 1024 * 1024) {
-		throw new Error("รูปหลังย่อยังเกิน 3 MB โปรดเลือกรูปที่เล็กลง");
+		throw new Error(t("products.create.imageTooLarge"));
 	}
 
 	return {
@@ -2037,13 +2443,13 @@ async function handleProductImageChange(event: Event) {
 		productForm.imageDataUrl = transformed.dataUrl;
 		productForm.imageName = transformed.fileName;
 		appToast.success({
-			title: "เพิ่มรูปสินค้าแล้ว",
+			title: t("products.create.imageAdded"),
 			description: transformed.fileName,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "เพิ่มรูปสินค้าไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("products.create.imageAddFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
 			timeout: 3200,
 		});
 	} finally {
@@ -2106,33 +2512,41 @@ function removeDraftSaleUnit(draftId: string) {
 	}
 }
 
+	// A blank cost is sent as null so the API can mark the product "unknown cost"
+	// and let the first received purchase order fill it in.
+	function productCreateCostBase() {
+		if (productForm.costSource === "unknown") return null;
+		const raw = productForm.costBase.trim();
+		return raw === "" ? null : parseLocaleNumber(raw);
+	}
+
 	function validateProductCreateForm() {
-		if (!canCreateProduct.value) return "คุณไม่มีสิทธิ์เพิ่มสินค้า";
-		if (!effectiveStoreId.value) return "ยังไม่พบร้านที่กำลังใช้งาน";
-		if (!productForm.name.trim()) return "กรุณากรอกชื่อสินค้า";
-		if (!productForm.sku.trim()) return "กรุณากรอก SKU";
-		if (!productForm.baseUnitId.trim()) return "กรุณาเลือกหน่วยหลัก";
-		if (productForm.location.trim().length > 80) return "ตำแหน่งสินค้า ต้องยาวไม่เกิน 80 ตัวอักษร";
+		if (!canCreateProduct.value) return t("products.create.noCreatePermission");
+		if (!effectiveStoreId.value) return t("products.create.noActiveStore");
+		if (!productForm.name.trim()) return t("products.create.nameRequired");
+		if (!productForm.sku.trim()) return t("products.create.skuRequired");
+		if (!productForm.baseUnitId.trim()) return t("products.create.baseUnitRequired");
+		if (productForm.location.trim().length > 80) return t("products.create.locationTooLong");
 		const priceBase = parseLocaleNumber(productForm.priceBase);
-		if (!Number.isFinite(priceBase) || priceBase < 0) return "กรุณากรอกราคาขายให้ถูกต้อง";
-		const costBase = parseLocaleNumber(productForm.costBase);
-		if (!Number.isFinite(costBase) || costBase < 0) return "กรุณากรอกต้นทุนให้ถูกต้อง";
+		if (!Number.isFinite(priceBase) || priceBase < 0) return t("products.create.invalidSalePrice");
+		const costBase = productCreateCostBase();
+		if (costBase !== null && (!Number.isFinite(costBase) || costBase < 0)) return t("products.create.invalidCost");
 		if (productForm.lowStockThreshold.trim() !== "") {
 			const lowStockThreshold = parseLocaleNumber(productForm.lowStockThreshold);
 			if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
-				return "ค่าเตือนสต็อกต่ำต้องเป็นตัวเลข 0 ขึ้นไป";
+				return t("products.create.invalidLowStock");
 			}
 		}
 			for (const draftUnit of productUnitDrafts.value) {
 				const multiplier = Number(draftUnit.multiplierToBase);
-				if (!draftUnit.unitId.trim()) return "พบหน่วยขายเพิ่มเติมที่ยังไม่สมบูรณ์";
+				if (!draftUnit.unitId.trim()) return t("products.create.incompleteExtraUnit");
 				if (!Number.isFinite(multiplier) || multiplier <= 0) {
-				return "จำนวนแปลงหน่วยขายต้องมากกว่า 0";
+					return t("products.create.invalidMultiplier");
 			}
 			if (draftUnit.pricePerUnit.trim() !== "") {
 				const draftPrice = parseLocaleNumber(draftUnit.pricePerUnit);
 				if (!Number.isFinite(draftPrice) || draftPrice < 0) {
-					return "ราคาของหน่วยขายเพิ่มเติมต้องเป็น 0 ขึ้นไป";
+					return t("products.create.invalidExtraUnitPrice");
 				}
 			}
 		}
@@ -2144,7 +2558,7 @@ function removeDraftSaleUnit(draftId: string) {
 		const validationError = validateProductCreateForm();
 	if (validationError) {
 		appToast.error({
-			title: "บันทึกสินค้าไม่ได้",
+			title: t("products.create.saveFailed"),
 			description: validationError,
 			timeout: 3200,
 		});
@@ -2152,7 +2566,7 @@ function removeDraftSaleUnit(draftId: string) {
 	}
 		productSaving.value = true;
 		const priceBase = parseLocaleNumber(productForm.priceBase);
-		const costBase = parseLocaleNumber(productForm.costBase);
+		const costBase = productCreateCostBase();
 		const lowStockThreshold = productForm.lowStockThreshold.trim() === ""
 			? null
 			: parseLocaleNumber(productForm.lowStockThreshold);
@@ -2171,6 +2585,9 @@ function removeDraftSaleUnit(draftId: string) {
 			low_stock_threshold: lowStockThreshold,
 			active: productForm.active ? 1 : 0,
 			allow_base_unit_sale: productForm.allowBaseUnitSale ? 1 : 0,
+			inventory_mode: productForm.inventoryMode,
+			cost_source: productForm.inventoryMode === "tracked" ? "purchase" : productForm.costSource,
+			manual_sold_out: productForm.manualSoldOut ? 1 : 0,
 		};
 
 	try {
@@ -2195,13 +2612,13 @@ function removeDraftSaleUnit(draftId: string) {
 		selectedProductId.value = response.data.id;
 		productDetailOpen.value = true;
 		appToast.success({
-			title: "สร้างสินค้าแล้ว",
+			title: t("products.create.created"),
 			description: response.data.name,
 		});
 	} catch (error) {
 		appToast.error({
-			title: "สร้างสินค้าไม่สำเร็จ",
-			description: error instanceof Error ? error.message : "โปรดลองอีกครั้ง",
+			title: t("products.create.createFailed"),
+			description: error instanceof Error ? error.message : t("products.create.retry"),
 			timeout: 3200,
 		});
 	} finally {
@@ -2236,7 +2653,24 @@ async function saveProductEdit() {
 		out_stock_threshold: 0,
 		low_stock_threshold: lowStockThreshold,
 		allow_base_unit_sale: productEditForm.allowBaseUnitSale ? 1 : 0,
+		inventory_mode: productEditForm.inventoryMode,
+		manual_sold_out: productEditForm.manualSoldOut ? 1 : 0,
 	};
+
+	// Only untracked menu items own their cost_source here (manual vs unknown is
+	// a choice in this form). A tracked product's cost_source is owned by the
+	// receive path and the cost adjustment, so sending it would let a plain
+	// rename reset a pinned cost back to "purchase" and let the next purchase
+	// order overwrite it.
+	if (productEditForm.inventoryMode !== "tracked") {
+		payload.cost_source = productEditForm.costSource;
+	}
+
+	// Only sent when the product still qualifies, so an untouched form can never
+	// trip the server-side guard.
+	if (canChangeBaseUnit.value && productEditForm.baseUnitId.trim()) {
+		payload.base_unit_id = productEditForm.baseUnitId.trim();
+	}
 
 	if (productEditForm.imageDataUrl) {
 		payload.image_url = productEditForm.imageDataUrl;
@@ -2646,8 +3080,38 @@ async function printSelectedProductBarcode() {
 		clearProductEditDeepLinkQuery();
 	}
 
+	// The report links here to set a missing cost. Opening the edit form instead
+	// dropped the owner into SKU, barcode and price fields that have nothing to do
+	// with the task, with the cost dialog still two clicks away.
+	async function tryHandleCostAdjustDeepLink() {
+		const productId = readQueryString(route.query.adjust_cost_product_id);
+		if (!productId) return;
+		if (productsPending.value) return;
+
+		const product = products.value.find((candidate) => candidate.id === productId);
+		if (!product) {
+			appToast.error({ title: t("products.detail.notFound"), timeout: 2800 });
+			clearCostAdjustDeepLinkQuery();
+			return;
+		}
+
+		selectedProductId.value = productId;
+		if (canUpdateProductCost.value) openProductCostAdjust();
+		else openProductDetail(productId);
+		clearCostAdjustDeepLinkQuery();
+	}
+
+	function clearCostAdjustDeepLinkQuery() {
+		const nextQuery = { ...route.query } as Record<string, unknown>;
+		delete nextQuery.adjust_cost_product_id;
+		router.replace({ query: nextQuery });
+	}
+
 	watch([() => route.query.edit_product_id, productsPending], () => {
 		void tryHandleProductEditDeepLink();
+	}, { immediate: true });
+	watch([() => route.query.adjust_cost_product_id, productsPending], () => {
+		void tryHandleCostAdjustDeepLink();
 	}, { immediate: true });
 
 function scrollProductsListToTop() {
@@ -3007,7 +3471,7 @@ function submitSearchInput() {
 
 	onMounted(() => {
 		void ensureProductAuthPermissionReady();
-		loadProducts();
+		void loadInitialProductData();
 		window.addEventListener("keydown", handleGlobalScannerKeydown);
 	});
 
@@ -3019,6 +3483,9 @@ onBeforeUnmount(() => {
 	if (scanToastTimer) {
 		clearTimeout(scanToastTimer);
 	}
+	if (productSearchTimer) {
+		clearTimeout(productSearchTimer);
+	}
 	window.removeEventListener("keydown", handleGlobalScannerKeydown);
 });
 </script>
@@ -3028,16 +3495,23 @@ onBeforeUnmount(() => {
 		:nav-items="appNavItems"
 		:active-ids="['products']"
 		sidebar-eyebrow="Products"
-		sidebar-title="สินค้า"
+		:sidebar-title="$t('products.title')"
 		sidebar-compact-title="PRD"
-		sidebar-description="จัดการ SKU, barcode, ราคา และสถานะขาย"
+		:sidebar-description="$t('products.description')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-3 lg:gap-4">
+				<input
+					ref="productImportInputRef"
+					type="file"
+					accept=".csv,text/csv"
+					class="hidden"
+					@change="handleProductImportFileChange"
+				>
 				<AppPageHeader
 					title=""
 					compact
-					description="จัดการ SKU, barcode, ราคา และสถานะขายด้วย list view และ panel style เดียวกับหน้าตั้งค่า"
+					:description="$t('products.pageDescription')"
 					@menu="openSidebar"
 					>
 						<div class="ml-auto grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 pt-0.5 sm:pt-1 lg:w-auto lg:grid-cols-[minmax(320px,1fr)_auto_auto_auto] lg:justify-end">
@@ -3047,7 +3521,7 @@ onBeforeUnmount(() => {
 									v-model="searchQuery"
 									size="lg"
 								icon="i-heroicons-magnifying-glass-20-solid"
-								placeholder="ค้นหาชื่อสินค้า, SKU หรือ barcode"
+								:placeholder="$t('products.searchPlaceholder')"
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 [&_input]:pr-12 [&_input]:shadow-sm [&_input]:focus:border-primary-300 [&_input]:focus:ring-2 [&_input]:focus:ring-primary-200"
 								@keydown.enter.prevent="submitSearchInput"
@@ -3059,8 +3533,8 @@ onBeforeUnmount(() => {
 								size="xs"
 								icon="i-heroicons-x-mark-20-solid"
 								class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md"
-								aria-label="ล้างคำค้น"
-								title="ล้างคำค้น"
+								:aria-label="$t('products.clearSearch')"
+								:title="$t('products.clearSearch')"
 									@click="searchQuery = ''"
 								/>
 							</div>
@@ -3070,11 +3544,11 @@ onBeforeUnmount(() => {
 								size="md"
 							icon="i-heroicons-qr-code-20-solid"
 							class="justify-center rounded-md"
-							aria-label="สแกนบาร์โค้ด"
-								title="สแกนบาร์โค้ด"
+							:aria-label="$t('products.scanBarcode')"
+								:title="$t('products.scanBarcode')"
 								@click="openCameraScanner"
 							>
-								<span class="hidden sm:inline">สแกนบาร์โค้ด</span>
+								<span class="hidden sm:inline">{{ $t('products.scanBarcode') }}</span>
 							</AppButton>
 						<AppButton
 							color="neutral"
@@ -3082,14 +3556,14 @@ onBeforeUnmount(() => {
 							size="md"
 							icon="i-heroicons-arrow-path-20-solid"
 							class="justify-center rounded-md"
-							aria-label="รีโหลดสินค้า"
-							title="รีโหลดสินค้า"
+							:aria-label="$t('products.reloadProducts')"
+							:title="$t('products.reloadProducts')"
 							:loading="productsPending"
 							:disabled="productsPending"
 							:spin-icon-on-loading="true"
 							@click="loadProducts"
 						>
-							<span class="hidden sm:inline">รีโหลด</span>
+							<span class="hidden sm:inline">{{ $t('common.reload') }}</span>
 						</AppButton>
 						<AppButton
 							color="primary"
@@ -3097,12 +3571,12 @@ onBeforeUnmount(() => {
 							size="md"
 							icon="i-heroicons-plus-20-solid"
 							class="justify-center rounded-md"
-							aria-label="เพิ่มสินค้า"
-							title="เพิ่มสินค้า"
+							:aria-label="$t('products.addProduct')"
+							:title="$t('products.addProduct')"
 							:disabled="!canOpenCreateProduct"
 							@click="openCreateProduct"
 						>
-							<span class="hidden sm:inline">เพิ่มสินค้า</span>
+							<span class="hidden sm:inline">{{ $t('products.addProduct') }}</span>
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -3114,19 +3588,19 @@ onBeforeUnmount(() => {
 								>
 									<div class="grid grid-cols-4 gap-1.5 p-0">
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ทั้งหมด</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('common.all') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ totalProducts }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ขาย</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.onSale') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ activeProductsCount }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ต่ำ</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.low') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ lowStockCount }}</p>
 										</div>
 										<div class="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center">
-											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">หมวด</p>
+											<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ $t('products.categories') }}</p>
 											<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">{{ namedCategoryCount }}</p>
 										</div>
 									</div>
@@ -3136,10 +3610,10 @@ onBeforeUnmount(() => {
 						<div class="flex h-full min-h-0 flex-col">
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
-										<p class="text-sm font-semibold text-stone-950">ตัวกรองสินค้า</p>
+										<p class="text-sm font-semibold text-stone-950">{{ $t('products.filters') }}</p>
 									</div>
 									<div class="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-stone-500">
-										{{ filteredProducts.length }} รายการ
+										{{ $t('common.itemCount', { count: productsTotal }) }}
 									</div>
 								</div>
 
@@ -3147,7 +3621,7 @@ onBeforeUnmount(() => {
 								<div class="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.6fr)] md:items-end">
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-category-select">
-											หมวดสินค้า
+											{{ $t('products.productCategory') }}
 										</label>
 										<div class="relative">
 											<select
@@ -3172,7 +3646,7 @@ onBeforeUnmount(() => {
 
 									<div class="min-w-0">
 										<label class="mb-1 block text-[11px] font-medium text-stone-500" for="product-sort-select">
-											เรียงลำดับ
+											{{ $t('products.sort') }}
 										</label>
 										<div class="relative">
 											<select
@@ -3214,7 +3688,7 @@ onBeforeUnmount(() => {
 								<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 									<div>
 										<p class="text-sm font-semibold text-stone-950">Products</p>
-										<p class="mt-1 hidden text-xs text-stone-500 lg:block">คลิกสินค้าเพื่อเปิดรายละเอียด ดูราคา ต้นทุน และสถานะขาย</p>
+										<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ $t('products.listHint') }}</p>
 									</div>
 									<div class="flex items-center gap-2">
 										<div class="hidden items-center gap-2 sm:flex">
@@ -3224,12 +3698,12 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-arrow-up-tray-20-solid"
 												class="rounded-md"
-												:disabled="!canCreateProduct"
-												aria-label="นำเข้า"
-												title="นำเข้า"
-												@click="appToast.info({ title: 'นำเข้า (กำลังพัฒนา)', description: 'ตอนนี้ยังไม่มี flow นำเข้าไฟล์ในหน้านี้' })"
+												:disabled="!canImportProducts"
+												:aria-label="$t('products.import')"
+												:title="$t('products.import')"
+												@click="openProductImportPicker"
 											>
-												นำเข้า
+												{{ $t('products.import') }}
 											</AppButton>
 
 											<AppButton
@@ -3238,12 +3712,14 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-arrow-down-tray-20-solid"
 												class="rounded-md"
-												:disabled="productsPending"
-												aria-label="ส่งออก"
-												title="ส่งออก"
+												:disabled="productsPending || productExportSaving"
+												:loading="productExportSaving"
+												:spin-icon-on-loading="true"
+												:aria-label="$t('products.export')"
+												:title="$t('products.export')"
 												@click="exportFilteredProductsCsv"
 											>
-												ส่งออก
+												{{ $t('products.export') }}
 											</AppButton>
 										</div>
 
@@ -3261,8 +3737,8 @@ onBeforeUnmount(() => {
 												size="md"
 												icon="i-heroicons-ellipsis-vertical-20-solid"
 												class="rounded-md sm:hidden"
-												aria-label="เพิ่มเติม"
-												title="เพิ่มเติม"
+												:aria-label="$t('products.more')"
+												:title="$t('products.more')"
 											/>
 
 											<template #content>
@@ -3271,30 +3747,30 @@ onBeforeUnmount(() => {
 														<button
 															type="button"
 															class="group flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-50"
-															:disabled="!canCreateProduct"
-															@click="productActionsMenuOpen = false; appToast.info({ title: 'นำเข้า (กำลังพัฒนา)', description: 'ตอนนี้ยังไม่มี flow นำเข้าไฟล์ในหน้านี้' })"
+																	:disabled="!canImportProducts"
+																	@click="productActionsMenuOpen = false; openProductImportPicker()"
 														>
 															<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
 																<UIcon name="i-heroicons-arrow-up-tray-20-solid" class="h-5 w-5" />
 															</span>
 															<span class="min-w-0 flex-1">
-																<span class="block font-medium">นำเข้า</span>
-																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">เพิ่ม/อัปเดตสินค้าจากไฟล์</span>
+																<span class="block font-medium">{{ $t('products.import') }}</span>
+																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('products.importHint') }}</span>
 															</span>
 														</button>
 
 														<button
 															type="button"
 															class="group mt-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-stone-700 transition hover:bg-primary-50 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-50"
-															:disabled="productsPending"
+																	:disabled="productsPending || productExportSaving"
 															@click="productActionsMenuOpen = false; exportFilteredProductsCsv()"
 														>
 															<span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f4ef] text-stone-700 transition group-hover:bg-primary-100 group-hover:text-primary-700">
 																<UIcon name="i-heroicons-arrow-down-tray-20-solid" class="h-5 w-5" />
 															</span>
 															<span class="min-w-0 flex-1">
-																<span class="block font-medium">ส่งออก</span>
-																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">ดาวน์โหลดสินค้าตามตัวกรอง</span>
+																<span class="block font-medium">{{ $t('products.export') }}</span>
+																<span class="block truncate text-xs text-stone-500 transition group-hover:text-primary-600">{{ $t('products.exportHint') }}</span>
 															</span>
 														</button>
 													</div>
@@ -3311,26 +3787,70 @@ onBeforeUnmount(() => {
 									<div v-else-if="productsError" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
 									<div class="space-y-3">
 										<p class="text-sm text-stone-600">{{ productsError }}</p>
-										<AppButton color="primary" variant="soft" size="md" class="rounded-md" label="ลองใหม่" @click="loadProducts" />
+										<AppButton color="primary" variant="soft" size="md" class="rounded-md" :label="$t('common.retry')" @click="loadProducts" />
 									</div>
 									</div>
-									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[280px] items-center justify-center px-4 text-center">
-										<div class="space-y-3">
-											<p class="text-sm font-medium text-stone-900">ไม่พบสินค้าที่ตรงกับคำค้น</p>
-											<p class="text-sm text-stone-500">ลองค้นหาด้วยชื่อสินค้า, SKU หรือ barcode หรือเปลี่ยนตัวกรองด้านบน</p>
+									<div v-else-if="!filteredProducts.length" class="flex h-full min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+										<span class="flex size-11 items-center justify-center rounded-md border border-neutral-200 bg-white text-primary-600 shadow-sm">
+											<UIcon :name="hasActiveProductFilters ? 'i-heroicons-magnifying-glass' : 'i-heroicons-cube'" class="size-5" />
+										</span>
+										<p class="mt-3 font-semibold text-stone-900">
+											{{ hasActiveProductFilters ? $t('products.empty') : $t('products.emptyCatalog') }}
+										</p>
+										<p class="mt-1 max-w-md text-sm leading-6 text-stone-500">
+											{{ hasActiveProductFilters
+												? $t('products.emptyHint')
+												: (canCreateProduct ? $t('products.emptyCatalogHint') : $t('products.emptyCatalogHintReadOnly')) }}
+										</p>
+										<AppButton
+											v-if="hasActiveProductFilters"
+											class="mt-4 rounded-md"
+											color="neutral"
+											variant="soft"
+											size="md"
+											icon="i-heroicons-x-mark-20-solid"
+											@click="clearProductFilters"
+										>
+											{{ $t('products.clearFilters') }}
+										</AppButton>
+										<div v-else-if="canCreateProduct" class="mt-4 flex flex-wrap items-center justify-center gap-2">
+											<AppButton
+												class="rounded-md"
+												color="primary"
+												variant="solid"
+												size="md"
+												icon="i-heroicons-plus-20-solid"
+												@click="openCreateProduct"
+											>
+												{{ $t('products.createProduct') }}
+											</AppButton>
+											<AppButton
+												v-if="canImportProducts"
+												class="rounded-md"
+												color="neutral"
+												variant="soft"
+												size="md"
+												icon="i-heroicons-arrow-down-tray-20-solid"
+												@click="downloadProductCsvTemplate"
+											>
+												{{ $t('products.csv.downloadTemplate') }}
+											</AppButton>
 										</div>
+										<p v-if="!hasActiveProductFilters && canImportProducts" class="mt-3 max-w-md text-xs leading-5 text-stone-400">
+											{{ $t('products.csv.templateHint') }}
+										</p>
 									</div>
 										<table v-else class="min-w-[980px] w-full border-separate border-spacing-0">
 											<thead class="sticky top-0 z-10 bg-[#fcfbf8] dark:bg-[#221d18]">
 												<tr class="text-left text-xs font-medium uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สินค้า</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หมวด</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ราคาขาย</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">ต้นทุน</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">สต็อก</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">หน่วย</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">หน่วยเพิ่ม</th>
-													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">Variants</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.product') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.category') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.salePrice') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.cost') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.stock') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.unit') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 whitespace-nowrap dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.extraUnits') }}</th>
+											<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 dark:border-[#3a332a] dark:bg-[#221d18]">{{ $t('products.variants') }}</th>
 													<th class="border-b border-[#ece6dc] bg-[#fcfbf8] px-4 py-3 text-right dark:border-[#3a332a] dark:bg-[#221d18]">Action</th>
 												</tr>
 											</thead>
@@ -3347,9 +3867,13 @@ onBeforeUnmount(() => {
 														<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md text-base font-semibold text-white" :style="{ background: product.accent }">
 															<img
 																v-if="product.imageUrl"
-																:src="product.imageUrl"
-																:alt="product.name"
-																class="h-full w-full object-cover"
+														:src="product.imageUrl"
+														:alt="product.name"
+														loading="lazy"
+														decoding="async"
+														width="48"
+														height="48"
+														class="h-full w-full object-cover"
 															>
 															<UIcon v-else name="i-heroicons-cube" class="h-5 w-5 text-white/95" />
 														</div>
@@ -3361,7 +3885,7 @@ onBeforeUnmount(() => {
 																<p class="mt-1 truncate text-xs text-stone-500">
 																	{{ product.sku }} · {{ product.barcode }}<template v-if="product.location !== '-'"> · {{ product.location }}</template>
 																</p>
-															<p class="mt-1 hidden text-[11px] text-stone-400 lg:block">อัปเดต {{ product.updatedAt }}</p>
+															<p class="mt-1 hidden text-[11px] text-stone-400 lg:block">{{ $t('products.updatedAt', { date: product.updatedAt }) }}</p>
 														</div>
 													</div>
 												</td>
@@ -3372,19 +3896,30 @@ onBeforeUnmount(() => {
 													{{ formatMoney(product.price) }}
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-													{{ formatMoney(product.cost) }}
+													<div class="flex flex-wrap items-center gap-1.5">
+														<span :class="product.costSource === 'unknown' ? 'text-stone-400' : ''">
+															{{ product.costSource === 'unknown' ? '—' : formatMoney(product.cost) }}
+														</span>
+														<UBadge
+															:color="costSourceBadge(product).color"
+															variant="soft"
+															class="text-[10px]"
+															:label="costSourceBadge(product).label"
+															:title="costSourceHint(product)"
+														/>
+													</div>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4">
-													<UBadge :color="getStockTone(product.stockState)" variant="soft" :label="getStockLabel(product)" />
+													<UBadge :color="getStockTone(product)" variant="soft" :label="getStockLabel(product)" />
 												</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">
 														{{ product.unitLabel }}
 													</td>
 														<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums whitespace-nowrap">
-															{{ product.extraSaleUnitCount ? `${product.extraSaleUnitCount} แบบ` : "-" }}
+																	{{ product.extraSaleUnitCount ? $t('products.unitTypes', { count: product.extraSaleUnitCount }) : "-" }}
 														</td>
 													<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600 tabular-nums">
-														{{ product.variantCount }}
+														{{ product.variantCount > 0 ? product.variantCount : "-" }}
 													</td>
 												<td class="border-b border-[#f1ede6] px-4 py-4 text-right">
 													<AppButton
@@ -3395,7 +3930,7 @@ onBeforeUnmount(() => {
 														icon="i-heroicons-chevron-right-20-solid"
 														@click.stop="openProductDetail(product.id)"
 													>
-														จัดการ
+														{{ $t('products.manage') }}
 													</AppButton>
 												</td>
 											</tr>
@@ -3417,7 +3952,7 @@ onBeforeUnmount(() => {
 
 									<div class="flex items-center justify-between gap-2 sm:flex-wrap sm:justify-end md:flex-nowrap md:justify-end">
 										<div class="flex items-center gap-2">
-											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">ต่อหน้า</label>
+											<label class="text-[11px] font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t('products.perPage') }}</label>
 											<select
 												:value="pageSize"
 												class="min-w-[68px] rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-sm text-stone-700 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
@@ -3437,11 +3972,11 @@ onBeforeUnmount(() => {
 												class="rounded-md"
 												icon="i-heroicons-chevron-left-20-solid"
 												:disabled="currentPage <= 1 || productsPending"
-												aria-label="หน้าก่อนหน้า"
-												title="หน้าก่อนหน้า"
+												:aria-label="$t('products.previousPage')"
+												:title="$t('products.previousPage')"
 												@click="goToPage(currentPage - 1)"
 											>
-												<span class="hidden sm:inline">ก่อนหน้า</span>
+												<span class="hidden sm:inline">{{ $t('products.previous') }}</span>
 											</AppButton>
 											<AppButton
 												color="neutral"
@@ -3450,11 +3985,11 @@ onBeforeUnmount(() => {
 												class="rounded-md"
 												trailing-icon="i-heroicons-chevron-right-20-solid"
 												:disabled="currentPage >= totalPages || productsPending"
-												aria-label="หน้าถัดไป"
-												title="หน้าถัดไป"
+												:aria-label="$t('products.nextPage')"
+												:title="$t('products.nextPage')"
 												@click="goToPage(currentPage + 1)"
 											>
-												<span class="hidden sm:inline">ถัดไป</span>
+												<span class="hidden sm:inline">{{ $t('products.next') }}</span>
 											</AppButton>
 										</div>
 									</div>
@@ -3462,11 +3997,75 @@ onBeforeUnmount(() => {
 							</div>
 						</div>
 					</div>
-				</div>
 			</div>
+		</div>
+					<AppResponsivePanel
+						v-model="productImportOpen"
+						:title="$t('products.csv.title')"
+						:description="$t('products.csv.description')"
+						desktop-width="680px"
+						close-button-size="md"
+						compact-header
+						full-bleed-header
+						content-class="flex h-full flex-col !overflow-y-hidden overflow-hidden"
+					>
+						<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
+							<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto py-2">
+								<div class="rounded-md border border-neutral-200 bg-white p-4">
+									<div class="flex items-start gap-3">
+										<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+											<UIcon name="i-heroicons-document-text-20-solid" class="h-5 w-5" />
+										</span>
+										<div class="min-w-0 flex-1">
+											<p class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.csv.file") }}</p>
+											<p class="mt-1 truncate text-sm font-semibold text-stone-900">{{ productImportFileName }}</p>
+											<p v-if="!productImportErrors.length" class="mt-1 text-xs text-emerald-700">{{ $t("products.csv.readyRows", { count: productImportRows.length }) }}</p>
+											<p v-else class="mt-1 text-xs text-red-700">{{ $t("products.csv.errors", { count: productImportErrors.length }) }}</p>
+										</div>
+									</div>
+									<div class="mt-4 flex flex-wrap gap-2">
+										<AppButton color="neutral" variant="soft" size="sm" icon="i-heroicons-folder-open-20-solid" :label="$t('products.csv.chooseFile')" @click="openProductImportPicker" />
+										<AppButton color="neutral" variant="ghost" size="sm" icon="i-heroicons-arrow-down-tray-20-solid" :label="$t('products.csv.downloadTemplate')" @click="downloadProductCsvTemplate" />
+									</div>
+								</div>
+
+								<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+									<p class="text-sm font-semibold text-stone-900">{{ $t("products.csv.requiredFormat") }}</p>
+									<code class="mt-2 block overflow-x-auto whitespace-nowrap rounded-md bg-stone-900 px-3 py-2 text-xs text-stone-100">{{ productCsvHeaders.join(", ") }}</code>
+									<p class="mt-3 text-xs leading-5 text-stone-600">{{ $t("products.csv.upsertHint") }}</p>
+									<p class="mt-2 text-xs leading-5 text-stone-600">{{ $t("products.csv.automaticFields") }}</p>
+								</div>
+
+								<div v-if="productImportErrors.length" class="rounded-md border border-red-200 bg-red-50 p-4">
+									<p class="text-sm font-semibold text-red-900">{{ $t("products.csv.errors", { count: productImportErrors.length }) }}</p>
+									<ul class="mt-2 space-y-1 text-xs leading-5 text-red-800">
+										<li v-for="(error, index) in productImportErrors.slice(0, 20)" :key="`${index}-${error}`">• {{ error }}</li>
+									</ul>
+								</div>
+							</div>
+
+							<div class="-mx-5 shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-5 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(31,28,24,0.06)] backdrop-blur-sm">
+								<div class="grid grid-cols-2 gap-2">
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productImportOpen = false">{{ $t("common.cancel") }}</AppButton>
+									<AppButton
+										color="primary"
+										variant="solid"
+										size="md"
+										icon="i-heroicons-arrow-up-tray-20-solid"
+										:block="true"
+										:loading="productImportSaving"
+										:spin-icon-on-loading="true"
+										:disabled="productImportSaving || productImportErrors.length > 0 || productImportRows.length === 0"
+										:label="$t('products.csv.importNow', { count: productImportRows.length })"
+										@click="confirmProductImport"
+									/>
+								</div>
+							</div>
+						</div>
+					</AppResponsivePanel>
 					<AppResponsivePanel
 						v-model="productCreateOpen"
-						title="เพิ่มสินค้า"
+						:title="$t('products.addProduct')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -3485,7 +4084,7 @@ onBeforeUnmount(() => {
 
 						<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700">
 							<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.create.store") }}</span>
 							<UBadge color="neutral" variant="soft" class="max-w-full">
 								<span class="truncate">{{ currentStoreName }}</span>
 							</UBadge>
@@ -3501,29 +4100,29 @@ onBeforeUnmount(() => {
 									<img
 										v-if="productImageSelected"
 										:src="productForm.imageDataUrl"
-										alt="ตัวอย่างรูปสินค้า"
+										:alt="$t('products.create.imagePreviewAlt')"
 										class="h-full w-full object-cover"
 									>
 									<div v-else class="flex flex-col items-center gap-1 text-stone-400">
 										<UIcon name="i-heroicons-photo-20-solid" class="h-5 w-5 transition group-hover:text-primary-500" />
-										<span class="text-[11px] font-medium transition group-hover:text-primary-600">เพิ่มรูป</span>
+										<span class="text-[11px] font-medium transition group-hover:text-primary-600">{{ $t("products.create.addImage") }}</span>
 									</div>
 								</button>
 
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<p class="text-sm font-medium text-stone-900">รูปสินค้า (ไม่บังคับ)</p>
+										<p class="text-sm font-medium text-stone-900">{{ $t("products.create.imageOptional") }}</p>
 										<UBadge color="neutral" variant="soft" label="640px WebP" />
-										<UBadge color="neutral" variant="soft" label="สูงสุด 3 MB" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.create.maxImageSize')" />
 									</div>
-									<p class="mt-1 text-xs leading-5 text-stone-500">กดที่พื้นที่รูปเพื่อใช้ตัวเลือกรูปแบบ native ของอุปกรณ์ ถ้ามีกล้องระบบจะให้เลือกผ่าน OS เอง</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.create.imagePickerHint") }}</p>
 									<div class="mt-3 flex flex-wrap gap-2">
 										<AppButton
 											color="neutral"
 											variant="soft"
 											size="xs"
 											:icon="productImageSelected ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'"
-											:label="productImageSelected ? 'เปลี่ยนรูป' : 'เลือกรูป'"
+											:label="productImageSelected ? $t('products.create.changeImage') : $t('products.create.chooseImage')"
 											@click="openProductImagePicker"
 										/>
 										<AppButton
@@ -3532,7 +4131,7 @@ onBeforeUnmount(() => {
 											variant="ghost"
 											size="xs"
 											icon="i-heroicons-trash-20-solid"
-											label="ลบรูป"
+											:label="$t('products.create.removeImage')"
 											@click="removeProductImage"
 										/>
 									</div>
@@ -3544,25 +4143,25 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4">
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ชื่อสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.productName") }}</label>
 									<UInput
 										v-model="productForm.name"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น น้ำดื่ม 1.5 ลิตร"
+										:placeholder="$t('products.create.namePlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductNameInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">พิมพ์ชื่อสินค้าแล้ว SKU จะสร้างให้อัตโนมัติ และจะหยุดทับเมื่อคุณแก้ SKU เอง</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.nameAutoSkuHint") }}</p>
 								</div>
 
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หมวดสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.productCategory") }}</label>
 									<select
 										v-model="productForm.categoryId"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
-										<option value="">ไม่ระบุหมวด</option>
+										<option value="">{{ $t("products.uncategorized") }}</option>
 										<option
 											v-for="category in categoryFormOptions"
 											:key="category.id"
@@ -3585,7 +4184,7 @@ onBeforeUnmount(() => {
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-arrow-path-20-solid"
-											label="สร้างใหม่"
+											:label="$t('products.create.generateNew')"
 											@click="generateProductSku"
 										/>
 									</div>
@@ -3593,24 +4192,48 @@ onBeforeUnmount(() => {
 											v-model="productForm.sku"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น WATER-1500"
+											:placeholder="$t('products.create.skuPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 											@focus="pauseProductSkuAutogen"
 											@blur="resumeProductSkuAutogen"
 										/>
-										<p class="text-xs leading-5 text-stone-500">แตะช่องนี้เมื่อไร ระบบจะหยุด auto-generate ทันที และเมื่อออกจากช่อง ระบบจะกลับมา auto-generate อีกครั้งถ้าคุณยังไม่ได้แก้ SKU เอง (ปุ่มสร้างใหม่จะบังคับสร้างและเปิด auto-sync กลับมา)</p>
+										<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.skuAutoHint") }}</p>
+									</div>
+
+									<div class="space-y-2 sm:col-span-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t('productRestaurant.productType') }}</label>
+										<select
+											v-model="productForm.inventoryMode"
+											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option value="tracked">{{ $t('productRestaurant.tracked') }}</option>
+											<option value="untracked">{{ $t('productRestaurant.untracked') }}</option>
+										</select>
+										<p class="text-xs text-stone-500">{{ $t('productRestaurant.untrackedHint') }}</p>
+									</div>
+
+									<div v-if="productForm.inventoryMode === 'untracked'" class="space-y-2 sm:col-span-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t('productRestaurant.costTitle') }}</label>
+										<select
+											v-model="productForm.costSource"
+											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+										>
+											<option value="manual">{{ $t('productRestaurant.manualCost') }}</option>
+											<option value="unknown">{{ $t('productRestaurant.unknownCost') }}</option>
+										</select>
+										<p v-if="productForm.costSource === 'unknown'" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">{{ $t('productRestaurant.unknownHint') }}</p>
 									</div>
 
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">Barcode</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.create.barcode") }}</label>
 											<div class="flex items-center gap-2">
 												<AppButton
 													color="neutral"
 													variant="soft"
 													size="xs"
 													icon="i-heroicons-bolt-20-solid"
-													label="สร้าง"
+													:label="$t('products.create.generate')"
 													@click="generateProductBarcode"
 												/>
 												<AppButton
@@ -3618,7 +4241,7 @@ onBeforeUnmount(() => {
 													variant="soft"
 													size="xs"
 													icon="i-heroicons-qr-code-20-solid"
-													label="สแกน"
+													:label="$t('products.create.scan')"
 													@click="openCreateBarcodeScanner"
 												/>
 											</div>
@@ -3627,22 +4250,22 @@ onBeforeUnmount(() => {
 												v-model="productForm.barcode"
 												size="lg"
 											color="neutral"
-											placeholder="เว้นว่างได้"
+											:placeholder="$t('products.create.optional')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ตำแหน่งสินค้า (ชั้น/ช่อง)</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.create.location") }}</label>
 									<UInput
 										v-model="productForm.location"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น A1-03 (เว้นว่างได้)"
+										:placeholder="$t('products.create.locationPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductLocationInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">จะแสดงในหน้าสต็อกเพื่อช่วยหาของจริงได้เร็วขึ้น</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.locationHint") }}</p>
 								</div>
 								</div>
 							</div>
@@ -3650,24 +4273,24 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="grid gap-4 sm:grid-cols-2">
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">หน่วยหลัก</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.create.baseUnit") }}</label>
 										<select
 											v-model="productForm.baseUnitId"
 											class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 										>
-											<option value="">เลือกหน่วยหลัก</option>
+											<option value="">{{ $t("products.create.selectBaseUnit") }}</option>
 											<option
 												v-for="unit in units"
 												:key="unit.id"
 												:value="unit.id"
 											>
-												{{ unit.name_th || unit.code }}
+												{{ getUnitDisplayName(unit) }}
 											</option>
 										</select>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ราคาขาย</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.salePrice") }}</label>
 										<UInput
 											v-model="productForm.priceBase"
 											type="text"
@@ -3681,8 +4304,8 @@ onBeforeUnmount(() => {
 										/>
 									</div>
 
-									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ต้นทุน</label>
+									<div v-if="productForm.costSource !== 'unknown'" class="space-y-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.cost") }} <span class="font-normal text-stone-400">{{ $t('products.create.optionalLabel') }}</span></label>
 										<UInput
 											v-model="productForm.costBase"
 											type="text"
@@ -3690,14 +4313,16 @@ onBeforeUnmount(() => {
 											pattern="[0-9.,-]*"
 											size="lg"
 											color="neutral"
+											:placeholder="$t('products.create.costPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 											@update:model-value="(v) => handleMoneyInput('costBase', v)"
 											@input="(e) => handleMoneyNativeInput('costBase', e)"
 										/>
+										<p class="text-xs leading-5 text-stone-500">{{ $t('products.create.costHint') }}</p>
 									</div>
 
-									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">สต็อกต่ำ (≤)</label>
+									<div v-if="productForm.inventoryMode === 'tracked'" class="space-y-2">
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.create.lowStockThreshold") }}</label>
 										<UInput
 											v-model="productForm.lowStockThreshold"
 											type="text"
@@ -3705,10 +4330,10 @@ onBeforeUnmount(() => {
 											pattern="[0-9.,-]*"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น 10"
+											:placeholder="$t('products.create.lowStockPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
-										<p class="text-xs leading-5 text-stone-500">สต็อก ≤ 0 ถือว่าหมดอัตโนมัติ</p>
+										<p class="text-xs leading-5 text-stone-500">{{ $t("products.create.outOfStockHint") }}</p>
 									</div>
 								</div>
 							</div>
@@ -3718,8 +4343,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 										<div class="flex items-start justify-between gap-4">
 											<span class="min-w-0">
-												<span class="block text-sm font-medium text-stone-900">ขายหน่วยหลักใน POS</span>
-												<span class="mt-1 block text-xs leading-5 text-stone-500">ปิดได้ถ้าต้องการขายเฉพาะแบบแพ็คหรือหน่วยแปลง</span>
+												<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.allowBaseUnitSale") }}</span>
+												<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.allowBaseUnitSaleHint") }}</span>
 											</span>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="productForm.allowBaseUnitSale" type="checkbox" class="peer sr-only">
@@ -3732,8 +4357,8 @@ onBeforeUnmount(() => {
 									<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 										<div class="flex items-start justify-between gap-4">
 											<span class="min-w-0">
-												<span class="block text-sm font-medium text-stone-900">เปิดขายสินค้านี้ทันที</span>
-												<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ สินค้าจะถูกสร้างแต่ยังไม่พร้อมขายใน POS</span>
+												<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.activeImmediately") }}</span>
+												<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.activeImmediatelyHint") }}</span>
 											</span>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="productForm.active" type="checkbox" class="peer sr-only">
@@ -3748,10 +4373,10 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
-									<h3 class="text-sm font-semibold text-stone-950">หน่วยขายเพิ่มเติม</h3>
-									<p class="mt-1 text-xs leading-5 text-stone-500">กำหนด conversion เช่น `1 PACK = 12 {{ unitLabelMap[productForm.baseUnitId] || "หน่วยหลัก" }}`</p>
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.create.extraSaleUnits") }}</h3>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.create.conversionHint", { unit: unitLabelMap[productForm.baseUnitId] || $t("products.create.baseUnit") }) }}</p>
 								</div>
-								<UBadge color="neutral" variant="soft" :label="`${productUnitDrafts.length} หน่วย`" />
+								<UBadge color="neutral" variant="soft" :label="$t('products.create.unitCount', { count: productUnitDrafts.length })" />
 							</div>
 
 								<div class="mt-4 flex flex-wrap gap-2" v-if="productUnitDrafts.length">
@@ -3766,9 +4391,9 @@ onBeforeUnmount(() => {
 											{{ unitLabelMap[draftUnit.unitId] || draftUnit.unitId }}
 											({{ draftUnit.multiplierToBase }})
 											·
-											ราคา {{ draftUnit.pricePerUnit.trim() ? formatMoney(parseLocaleNumber(draftUnit.pricePerUnit)) : "ใช้ราคากลาง" }}
+											{{ $t("products.create.price") }} {{ draftUnit.pricePerUnit.trim() ? formatMoney(parseLocaleNumber(draftUnit.pricePerUnit)) : $t("products.create.useDefaultPrice") }}
 											<span v-if="draftUnit.priceManualOverride && draftUnit.formulaPricePerUnit !== null" class="text-primary-700/80">
-												(กำหนดเอง)
+												({{ $t("products.create.manual") }})
 											</span>
 										</span>
 										<button
@@ -3786,13 +4411,13 @@ onBeforeUnmount(() => {
 									v-model="draftUnitForm.unitId"
 									class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								>
-									<option value="">เลือกหน่วยขาย</option>
+									<option value="">{{ $t("products.create.selectSaleUnit") }}</option>
 									<option
 										v-for="unit in availableDraftSaleUnits"
 										:key="unit.id"
 										:value="unit.id"
 									>
-										{{ unit.name_th || unit.code }}
+										{{ getUnitDisplayName(unit) }}
 									</option>
 								</select>
 									<UInput
@@ -3802,7 +4427,7 @@ onBeforeUnmount(() => {
 										step="1"
 										size="lg"
 										color="neutral"
-										placeholder="จำนวน"
+										:placeholder="$t('products.create.quantity')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="() => syncDraftUnitPriceFromFormula()"
 										@input="() => syncDraftUnitPriceFromFormula()"
@@ -3814,7 +4439,7 @@ onBeforeUnmount(() => {
 										pattern="[0-9.,-]*"
 										size="lg"
 										color="neutral"
-										placeholder="ราคา (optional)"
+										:placeholder="$t('products.create.optionalPrice')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleDraftUnitPriceInput"
 										@input="handleDraftUnitPriceNativeInput"
@@ -3825,7 +4450,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="md"
 									icon="i-heroicons-plus-20-solid"
-									label="เพิ่มหน่วย"
+									:label="$t('products.create.addUnit')"
 									:disabled="!draftUnitForm.unitId"
 										@click="addDraftSaleUnit"
 									/>
@@ -3835,8 +4460,8 @@ onBeforeUnmount(() => {
 								<div class="mt-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 									<div class="flex items-start justify-between gap-4">
 										<span class="min-w-0">
-											<span class="block text-sm font-medium text-stone-900">เปิดขายหน่วยที่กำลังเพิ่ม</span>
-											<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ ระบบจะสร้าง conversion นี้ไว้ก่อน แต่ยังไม่แสดงใน POS</span>
+											<span class="block text-sm font-medium text-stone-900">{{ $t("products.create.enableDraftUnit") }}</span>
+											<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.create.enableDraftUnitHint") }}</span>
 										</span>
 										<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 											<input v-model="draftUnitForm.enabledForSale" type="checkbox" class="peer sr-only">
@@ -3853,7 +4478,7 @@ onBeforeUnmount(() => {
 							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 						>
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCreateOpen = false">ยกเลิก</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCreateOpen = false">{{ $t("common.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 								variant="solid"
@@ -3865,7 +4490,7 @@ onBeforeUnmount(() => {
 								:disabled="productSaving"
 								@click="saveProduct"
 							>
-								บันทึกสินค้า
+								{{ $t("products.create.saveProduct") }}
 							</AppButton>
 						</div>
 					</div>
@@ -3874,8 +4499,8 @@ onBeforeUnmount(() => {
 				<AppResponsivePanel
 					v-if="selectedProduct"
 					v-model="productDetailOpen"
-					title="ข้อมูลสินค้า"
-				description="ดูราคา ต้นทุน หมวดสินค้า และจัดการสถานะการขาย"
+					:title="$t('products.detail.title')"
+					:description="$t('products.detail.description')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -3907,7 +4532,7 @@ onBeforeUnmount(() => {
 														variant="soft"
 														size="xs"
 														icon="i-heroicons-clipboard-document"
-														label="คัดลอก"
+												:label="$t('products.detail.copy')"
 														:disabled="!canCopySelectedProductName"
 														@click="copySelectedProductName"
 														@mousedown.prevent
@@ -3922,7 +4547,7 @@ onBeforeUnmount(() => {
 														variant="soft"
 														size="xs"
 														icon="i-heroicons-clipboard-document"
-														label="คัดลอก"
+												:label="$t('products.detail.copy')"
 														:disabled="!canCopySelectedProductBarcode"
 														@click="copySelectedProductBarcode"
 														@mousedown.prevent
@@ -3930,7 +4555,7 @@ onBeforeUnmount(() => {
 												</div>
 											</div>
 											<UBadge
-												:color="getStockTone(selectedProduct.stockState)"
+												:color="getStockTone(selectedProduct)"
 												variant="soft"
 												:label="getStockLabel(selectedProduct)"
 											/>
@@ -3939,7 +4564,7 @@ onBeforeUnmount(() => {
 										<div class="mt-3 flex flex-wrap gap-2">
 											<UBadge color="neutral" variant="soft" :label="getCategoryLabel(selectedProduct.categoryId)" />
 											<UBadge color="neutral" variant="soft" :label="selectedProduct.unitLabel" />
-											<UBadge color="neutral" variant="soft" :label="`${selectedProduct.variantCount} variants`" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.detail.variantsCount', { count: selectedProduct.variantCount })" />
 										</div>
 									</div>
 								</div>
@@ -3947,29 +4572,29 @@ onBeforeUnmount(() => {
 
 							<div class="grid grid-cols-3 gap-2">
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ราคาขาย</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.salePrice") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ต้นทุน</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.cost") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 								</div>
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">ส่วนต่าง</p>
+									<p class="text-[11px] uppercase tracking-[0.14em] text-stone-400">{{ $t("products.detail.margin") }}</p>
 									<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.price - selectedProduct.cost) }}</p>
 								</div>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-center justify-between gap-2">
-									<h3 class="text-sm font-semibold text-stone-950">สรุปข้อมูลหลัก</h3>
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.summary") }}</h3>
 									<div class="flex items-center gap-2">
 										<AppButton
 											color="secondary"
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-document-duplicate"
-											label="ทำสำเนา"
+											:label="$t('products.detail.duplicate')"
 											:disabled="!canCreateProduct"
 											@click="openCloneProduct"
 										/>
@@ -3978,7 +4603,7 @@ onBeforeUnmount(() => {
 											variant="soft"
 											size="xs"
 											icon="i-heroicons-pencil-square-20-solid"
-											label="แก้ไข"
+											:label="$t('products.detail.edit')"
 											:disabled="!canUpdateProduct"
 											@click="openEditProduct"
 										/>
@@ -3987,23 +4612,39 @@ onBeforeUnmount(() => {
 
 									<dl class="mt-4 space-y-3 text-sm">
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">หมวดสินค้า</dt>
+											<dt class="text-stone-500">{{ $t("products.productCategory") }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ getCategoryLabel(selectedProduct.categoryId) }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">ตำแหน่งสินค้า</dt>
-											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.location === '-' ? "ยังไม่ตั้งค่า" : selectedProduct.location }}</dd>
+											<dt class="text-stone-500">{{ $t("products.detail.location") }}</dt>
+											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.location === '-' ? $t("products.detail.notSet") : selectedProduct.location }}</dd>
 										</div>
 										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-											<dt class="text-stone-500">หน่วยหลัก</dt>
+											<dt class="text-stone-500">{{ $t("products.detail.baseUnit") }}</dt>
 											<dd class="text-right font-medium text-stone-900">{{ selectedProduct.unitLabel }}</dd>
 										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">{{ $t("products.detail.inventoryMode") }}</dt>
+											<dd class="text-right font-medium text-stone-900">
+												{{ selectedProduct.inventoryMode === "untracked" ? $t("products.detail.inventoryModeUntracked") : $t("products.detail.inventoryModeTracked") }}
+											</dd>
+										</div>
+										<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
+											<dt class="text-stone-500">{{ $t("products.detail.costSource") }}</dt>
+											<dd class="text-right">
+												<span class="font-medium text-stone-900">{{ costSourceLabel(selectedProduct) }}</span>
+												<span
+													class="mt-0.5 block text-xs font-normal leading-5"
+													:class="selectedProduct.costSource === 'unknown' ? 'text-amber-700' : 'text-stone-500'"
+												>{{ costSourceHint(selectedProduct) }}</span>
+											</dd>
+										</div>
 									<div class="flex items-start justify-between gap-4 border-b border-[#ece6dc] pb-3">
-										<dt class="text-stone-500">จำนวนหน่วยขาย</dt>
-										<dd class="text-right font-medium text-stone-900">{{ selectedProduct.saleUnits.length }} แบบ</dd>
+										<dt class="text-stone-500">{{ $t("products.detail.saleUnitCount") }}</dt>
+										<dd class="text-right font-medium text-stone-900">{{ $t("products.unitTypes", { count: selectedProduct.saleUnits.length }) }}</dd>
 									</div>
 									<div class="flex items-start justify-between gap-4">
-										<dt class="text-stone-500">อัปเดตล่าสุด</dt>
+										<dt class="text-stone-500">{{ $t("products.detail.updatedAt") }}</dt>
 										<dd class="text-right font-medium text-stone-900">{{ selectedProduct.updatedAt }}</dd>
 									</div>
 								</dl>
@@ -4012,8 +4653,8 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">หน่วยขายและ conversion</h3>
-										<p class="mt-1 text-xs text-stone-500">กำหนดหน่วยขายของสินค้านี้แยกจาก master unit เช่น {{ productUnitSummary }}</p>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.saleUnits") }}</h3>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.detail.saleUnitsHint", { example: productUnitSummary }) }}</p>
 									</div>
 									<AppButton
 										v-if="canManageProductUnits"
@@ -4021,7 +4662,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-plus-20-solid"
-										label="เพิ่มหน่วยขาย"
+										:label="$t('products.detail.addSaleUnit')"
 										@click="openCreateProductUnit"
 									/>
 								</div>
@@ -4035,20 +4676,20 @@ onBeforeUnmount(() => {
 										<UBadge
 											:color="selectedProduct.allowBaseUnitSale ? 'info' : 'neutral'"
 											variant="soft"
-											:label="selectedProduct.allowBaseUnitSale ? 'ขายหน่วยหลักได้' : 'ปิดขายหน่วยหลัก'"
+											:label="selectedProduct.allowBaseUnitSale ? $t('products.detail.baseUnitEnabled') : $t('products.detail.baseUnitDisabled')"
 										/>
 									</div>
 								</div>
 
 								<div class="mt-4 space-y-3">
 									<div v-if="productUnitsPending" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-										กำลังโหลดหน่วยขาย...
+										{{ $t("products.detail.loadingSaleUnits") }}
 									</div>
 									<div v-else-if="productUnitsError" class="rounded-md bg-white px-4 py-4 text-sm text-rose-600 ring-1 ring-neutral-200">
 										{{ productUnitsError }}
 									</div>
 									<div v-else-if="!productUnits.length" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-										ยังไม่มีหน่วยขายเพิ่มเติมสำหรับสินค้านี้ คุณสามารถเพิ่มเช่น `แพ็ค`, `ลัง` หรือ `โหล` ตาม conversion จริงของสินค้าได้
+										{{ $t("products.detail.noSaleUnits") }}
 									</div>
 									<div
 										v-for="productUnit in productUnits"
@@ -4062,17 +4703,17 @@ onBeforeUnmount(() => {
 													<UBadge
 														:color="productUnit.enabledForSale ? 'info' : 'neutral'"
 														variant="soft"
-														:label="productUnit.enabledForSale ? 'เปิดขาย' : 'ปิดขาย'"
+													:label="productUnit.enabledForSale ? $t('products.detail.enabled') : $t('products.detail.disabled')"
 													/>
 												</div>
 												<p class="mt-1 text-sm text-stone-500">1 {{ productUnit.unitLabel }} = {{ productUnit.multiplierToBase }} {{ selectedProduct.unitLabel }}</p>
 												<p class="mt-1 text-xs text-stone-400">
-													{{ productUnit.pricePerUnit === null ? "ใช้ราคากลางของสินค้า" : `ราคาหน่วยนี้ ${formatMoney(productUnit.pricePerUnit)}` }}
+													{{ productUnit.pricePerUnit === null ? $t("products.detail.useBasePrice") : $t("products.detail.unitPrice", { price: formatMoney(productUnit.pricePerUnit) }) }}
 												</p>
 											</div>
 											<div v-if="canManageProductUnits" class="flex flex-wrap gap-2">
-												<AppButton color="neutral" variant="soft" size="xs" label="แก้ไข" @click="openEditProductUnit(productUnit.id)" />
-												<AppButton color="error" variant="soft" size="xs" label="ลบ" @click="openDeleteProductUnit(productUnit.id)" />
+												<AppButton color="neutral" variant="soft" size="xs" :label="$t('products.detail.edit')" @click="openEditProductUnit(productUnit.id)" />
+												<AppButton color="error" variant="soft" size="xs" :label="$t('products.detail.delete')" @click="openDeleteProductUnit(productUnit.id)" />
 											</div>
 										</div>
 									</div>
@@ -4082,9 +4723,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">ตัวเลือกสินค้า (Variant)</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.variants") }}</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">
-											สต็อก/ราคา/ต้นทุน แยกตาม SKU แต่ละตัวเลือก (สูงสุด 2 แกน)
+											{{ $t("products.detail.variantsHint") }}
 										</p>
 									</div>
 									<AppButton
@@ -4092,19 +4733,19 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-squares-plus-20-solid"
-										label="เพิ่มตัวเลือก"
+										:label="$t('products.detail.addVariant')"
 										:disabled="!canCreateProduct"
 										@click="openVariantMatrix"
 									/>
 								</div>
 
 								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">สถานะ Variant</p>
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">{{ $t("products.detail.variantStatus") }}</p>
 									<p class="mt-2 text-sm text-stone-700">
-										{{ selectedProduct.variantCount > 0 ? `มี ${selectedProduct.variantCount} ตัวเลือก` : "ยังไม่มีตัวเลือก" }}
+										{{ selectedProduct.variantCount > 0 ? $t("products.detail.hasVariants", { count: selectedProduct.variantCount }) : $t("products.detail.noVariants") }}
 									</p>
 									<p class="mt-1 text-xs text-stone-500">
-										กด “เพิ่มตัวเลือก” เพื่อสร้างหลาย SKU แบบ Matrix และเลือกสร้างบาร์โค้ดอัตโนมัติได้
+										{{ $t("products.detail.variantHelp") }}
 									</p>
 								</div>
 							</div>
@@ -4112,9 +4753,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">อัปเดตต้นทุน</h3>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.detail.costUpdate") }}</h3>
 										<p class="mt-1 text-xs leading-5 text-stone-500">
-											แยกจากการแก้ข้อมูลทั่วไป เพื่อให้การเปลี่ยนต้นทุนดูย้อนหลังได้ง่าย
+											{{ $t("products.detail.costUpdateHint") }}
 										</p>
 									</div>
 									<AppButton
@@ -4122,26 +4763,28 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="xs"
 										icon="i-heroicons-banknotes-20-solid"
-										label="แก้ต้นทุน"
+										:label="$t('products.detail.editCost')"
 										:disabled="!canUpdateProductCost"
 										@click="openProductCostAdjust"
 									/>
 								</div>
 
 								<div class="mt-4 rounded-md bg-white px-3 py-3 ring-1 ring-neutral-200">
-									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">Latest audit</p>
-									<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">กำลังโหลด...</div>
+									<p class="text-[11px] uppercase tracking-[0.18em] text-stone-400">{{ $t("products.detail.latestAudit") }}</p>
+									<div v-if="productCostAdjustmentsPending" class="mt-2 text-sm text-stone-500">{{ $t("products.detail.loading") }}</div>
 									<div v-else-if="productCostAdjustmentsError" class="mt-2 text-sm text-rose-600">{{ productCostAdjustmentsError }}</div>
 									<div v-else-if="productCostAdjustments.length" class="mt-2 space-y-2">
 										<div class="flex items-start justify-between gap-3">
 											<div>
 												<p class="text-sm font-semibold text-stone-900">{{ formatApiDate(productCostAdjustments[0].occurred_at) }}</p>
 												<p class="mt-1 text-sm text-stone-500">
-													ทุน {{ formatMoney(productCostAdjustments[0].before_cost_base) }}
-													→ {{ formatMoney(productCostAdjustments[0].after_cost_base) }}
-													({{ productCostAdjustments[0].delta >= 0 ? "+" : "" }}{{ formatMoney(productCostAdjustments[0].delta) }})
-												</p>
-												<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ productCostAdjustments[0].reason }}</p>
+															{{ $t("products.detail.costChange", {
+																before: formatMoney(productCostAdjustments[0].before_cost_base),
+																after: formatMoney(productCostAdjustments[0].after_cost_base),
+																delta: `${productCostAdjustments[0].delta >= 0 ? "+" : ""}${formatMoney(productCostAdjustments[0].delta)}`,
+															}) }}
+														</p>
+														<p v-if="productCostAdjustments[0].reason" class="mt-1 text-xs text-stone-400">{{ $t("products.detail.reason", { reason: productCostAdjustments[0].reason }) }}</p>
 											</div>
 											<UBadge color="neutral" variant="soft" :label="productCostAdjustments[0].actor_role || 'user'" />
 										</div>
@@ -4151,11 +4794,11 @@ onBeforeUnmount(() => {
 												:key="adjustment.id"
 												color="neutral"
 												variant="soft"
-												:label="`ทุน ${formatMoney(adjustment.before_cost_base)}→${formatMoney(adjustment.after_cost_base)}`"
+													:label="$t('products.detail.costAudit', { before: formatMoney(adjustment.before_cost_base), after: formatMoney(adjustment.after_cost_base) })"
 											/>
 										</div>
 									</div>
-									<div v-else class="mt-2 text-sm text-stone-500">ยังไม่มีประวัติการปรับต้นทุน</div>
+									<div v-else class="mt-2 text-sm text-stone-500">{{ $t("products.detail.noCostHistory") }}</div>
 								</div>
 							</div>
 						</div>
@@ -4174,14 +4817,14 @@ onBeforeUnmount(() => {
 									:disabled="!canPrintSelectedProductBarcode"
 									@click="printSelectedProductBarcode"
 								>
-									พิมพ์บาร์โค้ด
+									{{ $t("products.detail.printBarcode") }}
 								</AppButton>
 								<AppButton
 									color="neutral"
 									:variant="selectedProduct.status === 'active' ? 'outline' : 'solid'"
 									size="md"
 									:block="true"
-									:label="selectedProduct.status === 'active' ? 'ปิดขาย' : 'เปิดขาย'"
+									:label="selectedProduct.status === 'active' ? $t('products.detail.deactivate') : $t('products.detail.activate')"
 									:disabled="(selectedProduct.status === 'active' ? !canDeactivateProduct : !canUpdateProduct) || productStatusSaving"
 									:loading="productStatusSaving"
 									:spin-icon-on-loading="true"
@@ -4198,7 +4841,7 @@ onBeforeUnmount(() => {
 								:disabled="!canDeactivateProduct"
 								@click="openDeleteProduct"
 							>
-								ลบสินค้า
+								{{ $t("products.detail.deleteProduct") }}
 							</AppButton>
 						</div>
 					</div>
@@ -4208,8 +4851,8 @@ onBeforeUnmount(() => {
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productEditOpen"
-				title="แก้ไขสินค้า"
-				description="แก้ชื่อ SKU บาร์โค้ด ราคา หมวดสินค้า และรูปสินค้า"
+				:title="$t('products.edit.title')"
+				:description="$t('products.edit.description')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -4229,7 +4872,7 @@ onBeforeUnmount(() => {
 
 						<div class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-stone-700">
 							<UIcon name="i-heroicons-building-storefront-20-solid" class="h-4 w-4 shrink-0 text-stone-400" />
-							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">ร้าน</span>
+							<span class="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">{{ $t("products.edit.store") }}</span>
 							<UBadge color="neutral" variant="soft" class="max-w-full">
 								<span class="truncate">{{ currentStoreName }}</span>
 							</UBadge>
@@ -4245,7 +4888,7 @@ onBeforeUnmount(() => {
 									<img
 										v-if="productEditImageSelected"
 										:src="productEditForm.imageDataUrl"
-										alt="ตัวอย่างรูปสินค้า"
+										:alt="$t('products.edit.imagePreviewAlt')"
 										class="h-full w-full object-cover"
 									>
 									<img
@@ -4256,24 +4899,24 @@ onBeforeUnmount(() => {
 									>
 									<div v-else class="flex flex-col items-center gap-1 text-stone-400">
 										<UIcon name="i-heroicons-photo-20-solid" class="h-5 w-5 transition group-hover:text-primary-500" />
-										<span class="text-[11px] font-medium transition group-hover:text-primary-600">เพิ่มรูป</span>
+										<span class="text-[11px] font-medium transition group-hover:text-primary-600">{{ $t("products.edit.addImage") }}</span>
 									</div>
 								</button>
 
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<p class="text-sm font-medium text-stone-900">รูปสินค้า (ไม่บังคับ)</p>
+										<p class="text-sm font-medium text-stone-900">{{ $t("products.edit.imageOptional") }}</p>
 										<UBadge color="neutral" variant="soft" label="640px WebP" />
-										<UBadge color="neutral" variant="soft" label="สูงสุด 3 MB" />
+										<UBadge color="neutral" variant="soft" :label="$t('products.edit.imageMaxSize')" />
 									</div>
-									<p class="mt-1 text-xs leading-5 text-stone-500">ถ้าไม่เลือกรูปใหม่ ระบบจะใช้รูปเดิมของสินค้า</p>
+									<p class="mt-1 text-xs leading-5 text-stone-500">{{ $t("products.edit.imageKeepHint") }}</p>
 									<div class="mt-3 flex flex-wrap gap-2">
 										<AppButton
 											color="neutral"
 											variant="soft"
 											size="xs"
 											:icon="(productEditImageSelected || selectedProduct.imageUrl) ? 'i-heroicons-arrow-path-20-solid' : 'i-heroicons-photo-20-solid'"
-											:label="(productEditImageSelected || selectedProduct.imageUrl) ? 'เปลี่ยนรูป' : 'เลือกรูป'"
+											:label="(productEditImageSelected || selectedProduct.imageUrl) ? $t('products.edit.changeImage') : $t('products.edit.chooseImage')"
 											@click="openProductEditImagePicker"
 										/>
 										<AppButton
@@ -4282,7 +4925,7 @@ onBeforeUnmount(() => {
 											variant="ghost"
 											size="xs"
 											icon="i-heroicons-x-mark-20-solid"
-											label="ยกเลิกเปลี่ยนรูป"
+											:label="$t('products.edit.cancelImageChange')"
 											@click="removeProductEditImage"
 										/>
 									</div>
@@ -4294,23 +4937,23 @@ onBeforeUnmount(() => {
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4">
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ชื่อสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.productName") }}</label>
 									<UInput
 										v-model="productEditForm.name"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น น้ำดื่ม 1.5 ลิตร"
+										:placeholder="$t('products.edit.productNamePlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									/>
 								</div>
 
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หมวดสินค้า</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.category") }}</label>
 									<select
 										v-model="productEditForm.categoryId"
 										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 									>
-										<option value="">ไม่ระบุหมวด</option>
+										<option value="">{{ $t("products.edit.noCategory") }}</option>
 										<option
 											v-for="category in categoryFormOptions"
 											:key="category.id"
@@ -4319,6 +4962,27 @@ onBeforeUnmount(() => {
 											{{ category.label }}
 										</option>
 									</select>
+								</div>
+
+								<div class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.create.baseUnit") }}</label>
+									<select
+										v-model="productEditForm.baseUnitId"
+										:disabled="baseUnitCheckPending || !canChangeBaseUnit"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-stone-500"
+									>
+										<option value="">{{ $t("products.create.selectBaseUnit") }}</option>
+										<option v-for="unit in units" :key="unit.id" :value="unit.id">{{ getUnitDisplayName(unit) }}</option>
+									</select>
+									<p v-if="baseUnitCheckPending" class="text-xs leading-5 text-stone-500">{{ $t("products.edit.baseUnitChecking") }}</p>
+									<div v-else-if="!canChangeBaseUnit" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+										<p class="font-medium">{{ $t("products.edit.baseUnitLocked") }}</p>
+										<ul class="mt-1 list-disc space-y-0.5 pl-4">
+											<li v-for="reason in baseUnitCheck?.reasons || []" :key="reason">{{ reason }}</li>
+										</ul>
+										<p class="mt-2">{{ $t("products.edit.baseUnitLockedHint") }}</p>
+									</div>
+									<p v-else class="text-xs leading-5 text-stone-500">{{ $t("products.edit.baseUnitChangeable") }}</p>
 								</div>
 							</div>
 						</div>
@@ -4331,7 +4995,7 @@ onBeforeUnmount(() => {
 										v-model="productEditForm.sku"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น WATER-1500"
+										:placeholder="$t('products.edit.skuPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									/>
 								</div>
@@ -4342,19 +5006,19 @@ onBeforeUnmount(() => {
 											v-model="productEditForm.barcode"
 											size="lg"
 											color="neutral"
-											placeholder="เว้นว่างได้"
+											:placeholder="$t('products.edit.blankAllowed')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
-										<label class="text-sm font-medium text-stone-700">ตำแหน่งสินค้า (ชั้น/ช่อง)</label>
+										<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.location") }}</label>
 										<UInput
 											ref="productEditLocationInputRef"
 											v-model="productEditForm.location"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น A1-03 (เว้นว่างได้)"
+											:placeholder="$t('products.edit.locationPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleProductEditLocationInput"
 									/>
@@ -4364,16 +5028,29 @@ onBeforeUnmount(() => {
 
 						<div class="rounded-md border border-neutral-200 bg-white p-4">
 							<div class="grid gap-4 sm:grid-cols-2">
-								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">หน่วยหลัก</label>
-									<div class="flex h-12 items-center rounded-md border border-neutral-200 bg-neutral-50 px-4 text-sm text-stone-700">
-										{{ selectedProduct.unitLabel }}
-									</div>
-									<p class="text-xs leading-5 text-stone-500">แก้หน่วยหลักได้ตอนสร้างสินค้าเท่านั้น</p>
+								<div class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.productType") }}</label>
+									<select
+										v-model="productEditForm.inventoryMode"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option value="tracked">{{ $t('productRestaurant.tracked') }}</option>
+										<option value="untracked">{{ $t('productRestaurant.untracked') }}</option>
+									</select>
 								</div>
-
+								<div v-if="productEditForm.inventoryMode === 'untracked'" class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.menuCost") }}</label>
+									<select
+										v-model="productEditForm.costSource"
+										class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
+									>
+										<option value="manual">{{ $t('productRestaurant.manualCost') }}</option>
+										<option value="unknown">{{ $t('productRestaurant.unknownCost') }}</option>
+									</select>
+									<UCheckbox v-model="productEditForm.manualSoldOut" :label="$t('products.edit.manualSoldOut')" />
+								</div>
 								<div class="space-y-2">
-									<label class="text-sm font-medium text-stone-700">ราคาขาย</label>
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.salePrice") }}</label>
 									<UInput
 										v-model="productEditForm.priceBase"
 										type="text"
@@ -4387,8 +5064,8 @@ onBeforeUnmount(() => {
 									/>
 								</div>
 
-								<div class="space-y-2 sm:col-span-2">
-									<label class="text-sm font-medium text-stone-700">สต็อกต่ำ (≤)</label>
+								<div v-if="productEditForm.inventoryMode === 'tracked'" class="space-y-2 sm:col-span-2">
+									<label class="text-sm font-medium text-stone-700">{{ $t("products.edit.lowStock") }}</label>
 									<UInput
 										v-model="productEditForm.lowStockThreshold"
 										type="text"
@@ -4396,12 +5073,12 @@ onBeforeUnmount(() => {
 										pattern="[0-9.,-]*"
 										size="lg"
 										color="neutral"
-										placeholder="เช่น 10"
+										:placeholder="$t('products.edit.lowStockPlaceholder')"
 										class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										@update:model-value="handleEditLowStockInput"
 										@input="handleEditLowStockNativeInput"
 									/>
-									<p class="text-xs leading-5 text-stone-500">สต็อก ≤ 0 ถือว่าหมดอัตโนมัติ</p>
+									<p class="text-xs leading-5 text-stone-500">{{ $t("products.edit.lowStockHint") }}</p>
 								</div>
 							</div>
 						</div>
@@ -4410,8 +5087,8 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 								<div class="flex items-start justify-between gap-4">
 									<span class="min-w-0">
-										<span class="block text-sm font-medium text-stone-900">ขายหน่วยหลักใน POS</span>
-										<span class="mt-1 block text-xs leading-5 text-stone-500">ปิดได้ถ้าต้องการขายเฉพาะแบบแพ็คหรือหน่วยแปลง</span>
+										<span class="block text-sm font-medium text-stone-900">{{ $t("products.edit.sellBaseUnit") }}</span>
+										<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.edit.sellBaseUnitHint") }}</span>
 									</span>
 									<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 										<input v-model="productEditForm.allowBaseUnitSale" type="checkbox" class="peer sr-only">
@@ -4436,7 +5113,7 @@ onBeforeUnmount(() => {
 								:disabled="productEditSaving"
 								@click="closeEditProduct"
 							>
-								ยกเลิก
+								{{ $t("products.edit.cancel") }}
 							</AppButton>
 							<AppButton
 								color="primary"
@@ -4449,7 +5126,7 @@ onBeforeUnmount(() => {
 								:disabled="productEditSaving || !canSaveProductEdit"
 								@click="saveProductEdit"
 							>
-								บันทึก
+								{{ $t("products.edit.save") }}
 							</AppButton>
 						</div>
 					</div>
@@ -4579,8 +5256,8 @@ onBeforeUnmount(() => {
 					<AppResponsivePanel
 						v-if="selectedProduct"
 						v-model="productCostAdjustOpen"
-						title="ปรับต้นทุน"
-						description="บันทึกการเปลี่ยนต้นทุนพร้อมเหตุผลและประวัติย้อนหลัง"
+						:title="$t('products.costAdjust.title')"
+						:description="$t('products.costAdjust.description')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -4590,13 +5267,13 @@ onBeforeUnmount(() => {
 					<div class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] text-stone-900">
 						<div class="scrollbar-soft min-h-0 space-y-4 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">ต้นทุนปัจจุบัน</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.costAdjust.currentCost") }}</p>
 								<p class="mt-2 text-lg font-semibold text-stone-900">{{ formatMoney(selectedProduct.cost) }}</p>
 								<p class="mt-1 text-xs text-stone-500">{{ selectedProduct.sku }} · {{ selectedProduct.name }}</p>
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">ต้นทุนใหม่</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("products.costAdjust.newCost") }}</label>
 								<UInput
 									v-model="productCostAdjustForm.costBase"
 									type="text"
@@ -4604,20 +5281,20 @@ onBeforeUnmount(() => {
 									pattern="[0-9.,-]*"
 									size="lg"
 									color="neutral"
-									placeholder="เช่น 1,000.00"
+									:placeholder="$t('products.costAdjust.newCostPlaceholder')"
 									class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 									@update:model-value="handleCostAdjustMoneyInput"
 									@input="handleCostAdjustMoneyNativeInput"
 								/>
-								<p class="text-xs leading-5 text-stone-500">รองรับตัวเลขและจุดทศนิยมเท่านั้น</p>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("products.costAdjust.newCostHint") }}</p>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
 								<div class="flex items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">สรุปการเปลี่ยน</p>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.costAdjust.changeSummary") }}</p>
 										<p class="mt-2 text-sm text-stone-700">
-											ทุน {{ formatMoney(costAdjustBeforeCost) }}
+											{{ $t("products.costAdjust.costLabel") }} {{ formatMoney(costAdjustBeforeCost) }}
 											→ {{ formatMoney(costAdjustAfterCost) }}
 											({{ costAdjustDelta >= 0 ? "+" : "" }}{{ formatMoney(costAdjustDelta) }})
 										</p>
@@ -4627,31 +5304,52 @@ onBeforeUnmount(() => {
 							</div>
 
 							<div class="space-y-2">
-								<label class="text-sm font-medium text-stone-700">เหตุผล (ไม่บังคับ)</label>
+								<label class="text-sm font-medium text-stone-700">{{ $t("products.costAdjust.reason") }}</label>
 								<textarea
 									v-model="productCostAdjustForm.reason"
 									rows="3"
 									maxlength="280"
-									placeholder="เช่น ปรับตามบิลซื้อจริง, รวมค่าขนส่ง, แก้ไขต้นทุนย้อนหลัง"
+									:placeholder="$t('products.costAdjust.reasonPlaceholder')"
 									class="w-full resize-none rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 								/>
-								<p class="text-xs leading-5 text-stone-500">บันทึกเหตุผลไว้ช่วยตรวจสอบย้อนหลัง</p>
+								<p class="text-xs leading-5 text-stone-500">{{ $t("products.costAdjust.reasonHint") }}</p>
+							</div>
+
+							<div v-if="costAdjustShowsLock" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+								<UCheckbox v-model="productCostAdjustForm.lockCost" :label="$t('products.costAdjust.lockLabel')" />
+								<p class="mt-1.5 text-xs leading-5 text-stone-500">
+									{{ productCostAdjustForm.lockCost ? $t("products.costAdjust.lockHint") : $t("products.costAdjust.unlockHint") }}
+								</p>
+							</div>
+
+							<div v-if="costAdjustHasPastSales" class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+								<UCheckbox v-model="costAdjustApplyToPast" :label="$t('products.costAdjust.applyPastLabel', { bills: costAdjustPastSales?.bill_count ?? 0, amount: formatMoney(costAdjustPastSales?.revenue ?? 0) })" />
+								<p class="mt-1.5 text-xs leading-5" :class="costAdjustApplyToPast ? 'text-amber-700' : 'text-stone-500'">
+									{{ costAdjustApplyToPast ? $t("products.costAdjust.applyPastOn") : $t("products.costAdjust.applyPastOff") }}
+								</p>
+							</div>
+
+							<div v-if="costAdjustNeedsZeroConfirm" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+								<p class="text-sm font-semibold text-amber-900">{{ $t("products.costAdjust.zeroTitle") }}</p>
+								<p class="mt-1 text-xs leading-5 text-amber-800">{{ $t("products.costAdjust.zeroBody", { name: selectedProduct.name }) }}</p>
+								<p class="mt-1 text-xs leading-5 text-amber-800">{{ $t("products.costAdjust.zeroPreferUnknown") }}</p>
+								<UCheckbox v-model="costAdjustZeroConfirmed" class="mt-2.5" :label="$t('products.costAdjust.zeroConfirm')" />
 							</div>
 
 							<div class="space-y-3">
 								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-sm font-semibold text-stone-950">ประวัติล่าสุด</h3>
-									<UBadge color="neutral" variant="soft" :label="`${productCostAdjustments.length} รายการ`" />
+									<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.costAdjust.recentHistory") }}</h3>
+									<UBadge color="neutral" variant="soft" :label="$t('products.costAdjust.itemCount', { count: productCostAdjustments.length })" />
 								</div>
 
 								<div v-if="productCostAdjustmentsPending" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-									กำลังโหลดประวัติ...
+									{{ $t("products.costAdjust.loadingHistory") }}
 								</div>
 								<div v-else-if="productCostAdjustmentsError" class="rounded-md bg-white px-4 py-4 text-sm text-rose-600 ring-1 ring-neutral-200">
 									{{ productCostAdjustmentsError }}
 								</div>
 								<div v-else-if="!productCostAdjustments.length" class="rounded-md bg-white px-4 py-4 text-sm text-stone-500 ring-1 ring-neutral-200">
-									ยังไม่มีประวัติการปรับต้นทุน
+									{{ $t("products.costAdjust.noHistory") }}
 								</div>
 								<div v-else class="space-y-2">
 									<div
@@ -4663,11 +5361,11 @@ onBeforeUnmount(() => {
 											<div class="min-w-0">
 												<p class="truncate text-sm font-semibold text-stone-900">{{ formatApiDate(adjustment.occurred_at) }}</p>
 												<p class="mt-1 text-sm text-stone-500">
-													ทุน {{ formatMoney(adjustment.before_cost_base) }}
+													{{ $t("products.costAdjust.costLabel") }} {{ formatMoney(adjustment.before_cost_base) }}
 													→ {{ formatMoney(adjustment.after_cost_base) }}
 													({{ adjustment.delta >= 0 ? "+" : "" }}{{ formatMoney(adjustment.delta) }})
 												</p>
-												<p v-if="adjustment.reason" class="mt-1 text-xs text-stone-400">เหตุผล: {{ adjustment.reason }}</p>
+												<p v-if="adjustment.reason" class="mt-1 text-xs text-stone-400">{{ $t("products.costAdjust.reasonPrefix") }}: {{ adjustment.reason }}</p>
 											</div>
 											<div class="shrink-0 text-right">
 												<UBadge color="neutral" variant="soft" :label="adjustment.actor_role || 'user'" />
@@ -4683,7 +5381,7 @@ onBeforeUnmount(() => {
 								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 							>
 								<div class="grid w-full grid-cols-2 gap-2">
-									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCostAdjustOpen = false">ยกเลิก</AppButton>
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productCostAdjustOpen = false">{{ $t("products.costAdjust.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -4692,10 +5390,10 @@ onBeforeUnmount(() => {
 									:block="true"
 									:loading="productCostAdjustSaving"
 									:spin-icon-on-loading="true"
-									:disabled="productCostAdjustSaving || !canUpdateProductCost || costAdjustDelta === 0"
+									:disabled="productCostAdjustSaving || !canUpdateProductCost || !costAdjustHasChange || (costAdjustNeedsZeroConfirm && !costAdjustZeroConfirmed)"
 									@click="saveProductCostAdjust"
 								>
-									บันทึกต้นทุน
+									{{ $t("products.costAdjust.submit") }}
 								</AppButton>
 							</div>
 						</div>
@@ -4705,8 +5403,8 @@ onBeforeUnmount(() => {
 					<AppResponsivePanel
 						v-if="selectedProduct"
 						v-model="productVariantMatrixOpen"
-						title="เพิ่มตัวเลือก (Matrix)"
-						description="สร้างหลาย SKU อัตโนมัติ (สูงสุด 2 แกน) และเลือกสร้างบาร์โค้ดแบบกดปุ่มได้"
+						:title="$t('products.matrix.title')"
+						:description="$t('products.matrix.description')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -4718,11 +5416,11 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">รุ่นสินค้า</p>
+										<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{{ $t("products.matrix.productModel") }}</p>
 										<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.name }}</p>
-										<p class="mt-1 text-xs text-stone-500">SKU ฐาน: {{ selectedProduct.sku }}</p>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.matrix.baseSku") }}: {{ selectedProduct.sku }}</p>
 									</div>
-									<UBadge color="neutral" variant="soft" :label="`${variantMatrixRows.length} รายการ`" />
+									<UBadge color="neutral" variant="soft" :label="$t('products.matrix.itemCount', { count: variantMatrixRows.length })" />
 								</div>
 							</div>
 
@@ -4730,28 +5428,28 @@ onBeforeUnmount(() => {
 								<div class="grid gap-4 md:grid-cols-2">
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">แกนที่ 1</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.matrix.axis1") }}</label>
 											<span aria-hidden="true" class="h-6 w-11 opacity-0" />
 										</div>
 										<UInput
 											v-model="variantAxis1.label"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น สี"
+											:placeholder="$t('products.matrix.axis1Placeholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 										<UInput
 											v-model="variantAxis1.valuesRaw"
 											size="lg"
 											color="neutral"
-											placeholder="ค่าคั่นด้วย , เช่น แดง,ขาว,ดำ"
+											:placeholder="$t('products.matrix.axis1ValuesPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 										/>
 									</div>
 
 									<div class="space-y-2">
 										<div class="flex items-center justify-between gap-2">
-											<label class="text-sm font-medium text-stone-700">แกนที่ 2 (ไม่บังคับ)</label>
+											<label class="text-sm font-medium text-stone-700">{{ $t("products.matrix.axis2") }}</label>
 											<label class="relative inline-flex shrink-0 cursor-pointer items-center">
 												<input v-model="variantAxis2Enabled" type="checkbox" class="peer sr-only">
 												<span class="h-6 w-11 rounded-full bg-stone-200 transition peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-200 peer-checked:bg-primary-600" />
@@ -4763,7 +5461,7 @@ onBeforeUnmount(() => {
 											:disabled="!variantAxis2Enabled"
 											size="lg"
 											color="neutral"
-											placeholder="เช่น ไซซ์"
+											:placeholder="$t('products.matrix.axis2Placeholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 disabled:opacity-60 disabled:[&_input]:bg-neutral-50 disabled:[&_input]:cursor-not-allowed"
 										/>
 										<UInput
@@ -4771,7 +5469,7 @@ onBeforeUnmount(() => {
 											:disabled="!variantAxis2Enabled"
 											size="lg"
 											color="neutral"
-											placeholder="ค่าคั่นด้วย , เช่น S,M,L"
+											:placeholder="$t('products.matrix.axis2ValuesPlaceholder')"
 											class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5 disabled:opacity-60 disabled:[&_input]:bg-neutral-50 disabled:[&_input]:cursor-not-allowed"
 										/>
 									</div>
@@ -4783,7 +5481,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-table-cells-20-solid"
-										label="สร้างตาราง"
+										:label="$t('products.matrix.buildTable')"
 										@click="generateVariantMatrixRows"
 									/>
 									<AppButton
@@ -4791,7 +5489,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-trash-20-solid"
-										label="ล้างตาราง"
+										:label="$t('products.matrix.clearTable')"
 										:disabled="!variantMatrixRows.length"
 										@click="variantMatrixRows = []"
 									/>
@@ -4800,7 +5498,7 @@ onBeforeUnmount(() => {
 										variant="soft"
 										size="sm"
 										icon="i-heroicons-barcode-20-solid"
-										label="สร้างบาร์โค้ดทั้งหมด"
+										:label="$t('products.matrix.generateAllBarcodes')"
 										:disabled="!variantMatrixRows.length"
 										@click="generateVariantBarcodesAll"
 									/>
@@ -4812,9 +5510,9 @@ onBeforeUnmount(() => {
 							<div class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="flex items-start justify-between gap-4">
 									<span class="min-w-0">
-										<span class="block text-sm font-medium text-stone-900">ขาย “สินค้าแม่” (ไม่มีตัวเลือก) ด้วย</span>
+										<span class="block text-sm font-medium text-stone-900">{{ $t("products.matrix.sellParent") }}</span>
 										<span class="mt-1 block text-xs leading-5 text-stone-500">
-											ค่าเริ่มต้นจะปิดไว้ เพื่อให้ขายเฉพาะ SKU ตัวเลือก และตั้งสินค้าแม่เป็น “ปิดขาย” อัตโนมัติหลังสร้างเสร็จ
+											{{ $t("products.matrix.sellParentHint") }}
 										</span>
 									</span>
 									<label class="relative inline-flex shrink-0 cursor-pointer items-center">
@@ -4828,22 +5526,22 @@ onBeforeUnmount(() => {
 							<div v-if="variantMatrixRows.length" class="rounded-md border border-neutral-200 bg-white p-4">
 								<div class="flex flex-wrap items-start justify-between gap-3">
 									<div>
-										<h3 class="text-sm font-semibold text-stone-950">รายการที่จะสร้าง</h3>
-										<p class="mt-1 text-xs text-stone-500">แก้ SKU/บาร์โค้ด/ราคา/ต้นทุนได้ก่อนบันทึก</p>
+										<h3 class="text-sm font-semibold text-stone-950">{{ $t("products.matrix.rowsToCreate") }}</h3>
+										<p class="mt-1 text-xs text-stone-500">{{ $t("products.matrix.rowsToCreateHint") }}</p>
 									</div>
-									<UBadge color="neutral" variant="soft" :label="`Prefix บาร์โค้ดออโต้: 21`" />
+									<UBadge color="neutral" variant="soft" :label="$t('products.matrix.barcodePrefix')" />
 								</div>
 
 								<div class="mt-4 overflow-x-auto">
 									<table class="min-w-full text-left text-sm">
 										<thead class="text-xs uppercase tracking-wide text-stone-400">
 											<tr>
-												<th class="py-2 pr-3 whitespace-nowrap">ตัวเลือก</th>
+												<th class="py-2 pr-3 whitespace-nowrap">{{ $t("products.matrix.option") }}</th>
 												<th class="py-2 pr-3">SKU</th>
-												<th class="py-2 pr-3 whitespace-nowrap">บาร์โค้ด</th>
-												<th class="py-2 pr-3">ราคาขาย</th>
-												<th class="py-2 pr-3">ต้นทุน</th>
-												<th class="py-2 whitespace-nowrap">ขาย</th>
+												<th class="py-2 pr-3 whitespace-nowrap">{{ $t("products.matrix.barcode") }}</th>
+												<th class="py-2 pr-3">{{ $t("products.matrix.salePrice") }}</th>
+												<th class="py-2 pr-3">{{ $t("products.matrix.cost") }}</th>
+												<th class="py-2 whitespace-nowrap">{{ $t("products.matrix.sell") }}</th>
 											</tr>
 										</thead>
 										<tbody class="divide-y divide-neutral-200 text-stone-900">
@@ -4861,7 +5559,7 @@ onBeforeUnmount(() => {
 													<div class="flex items-center gap-2">
 														<input
 															v-model="row.barcode"
-															placeholder="เว้นว่างได้"
+															:placeholder="$t('products.matrix.blankAllowed')"
 															class="w-44 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 														>
 														<AppButton
@@ -4869,7 +5567,7 @@ onBeforeUnmount(() => {
 															variant="soft"
 															size="xs"
 															icon="i-heroicons-arrow-path-20-solid"
-															label="ออโต้"
+															:label="$t('products.matrix.auto')"
 															class="shrink-0 whitespace-nowrap"
 															@click="generateVariantBarcodeRow(row.id)"
 														/>
@@ -4878,7 +5576,7 @@ onBeforeUnmount(() => {
 															variant="soft"
 															size="xs"
 															icon="i-heroicons-qr-code-20-solid"
-															label="สแกน"
+															:label="$t('products.matrix.scan')"
 															class="shrink-0 whitespace-nowrap"
 															@click="openVariantBarcodeScanner(row.id)"
 														/>
@@ -4929,7 +5627,7 @@ onBeforeUnmount(() => {
 								:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 							>
 								<div class="grid w-full grid-cols-2 gap-2">
-									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">ยกเลิก</AppButton>
+									<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productVariantMatrixOpen = false">{{ $t("products.matrix.cancel") }}</AppButton>
 								<AppButton
 									color="primary"
 									variant="solid"
@@ -4941,7 +5639,7 @@ onBeforeUnmount(() => {
 									:disabled="productVariantMatrixSaving || !variantMatrixRows.length"
 									@click="saveVariantMatrix"
 								>
-									สร้างตัวเลือก
+									{{ $t("products.matrix.submit") }}
 								</AppButton>
 							</div>
 						</div>
@@ -4950,8 +5648,8 @@ onBeforeUnmount(() => {
 
 					<AppResponsivePanel
 						v-model="productUnitEditorOpen"
-						:title="selectedProductUnit ? 'แก้หน่วยขาย' : 'เพิ่มหน่วยขาย'"
-						:description="selectedProduct ? `กำหนด conversion สำหรับ ${selectedProduct.name}` : 'กำหนดหน่วยขายของสินค้า'"
+						:title="selectedProductUnit ? $t('products.unitEditor.editTitle') : $t('products.unitEditor.addTitle')"
+						:description="selectedProduct ? $t('products.unitEditor.descriptionFor', { name: selectedProduct.name }) : $t('products.unitEditor.descriptionFallback')"
 						desktop-width="680px"
 						close-button-size="md"
 						compact-header
@@ -4963,16 +5661,16 @@ onBeforeUnmount(() => {
 								<div v-if="selectedProduct" class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
 								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Base unit</p>
 								<p class="mt-2 text-sm font-semibold text-stone-900">{{ selectedProduct.unitLabel }}</p>
-								<p class="mt-1 text-xs text-stone-500">ตัวอย่าง conversion: {{ productUnitSummary }}</p>
+								<p class="mt-1 text-xs text-stone-500">{{ $t("products.unitEditor.conversionExample", { summary: productUnitSummary }) }}</p>
 							</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">หน่วยขาย</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.saleUnit") }}</label>
 							<select
 								v-model="productUnitForm.unitId"
 								class="w-full rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm outline-none transition focus:border-primary-300 focus:ring-2 focus:ring-primary-200"
 							>
-								<option value="">เลือกหน่วยขาย</option>
+								<option value="">{{ $t("products.unitEditor.selectSaleUnit") }}</option>
 								<option
 									v-for="unit in availableSaleUnits"
 									:key="unit.id"
@@ -4984,7 +5682,7 @@ onBeforeUnmount(() => {
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">1 หน่วยขาย เท่ากับกี่ {{ selectedProduct?.unitLabel || "หน่วยหลัก" }}</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.multiplierLabel", { unit: selectedProduct?.unitLabel || $t("products.unitEditor.baseUnitFallback") }) }}</label>
 							<UInput
 								v-model="productUnitForm.multiplierToBase"
 								type="number"
@@ -4994,11 +5692,11 @@ onBeforeUnmount(() => {
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 							/>
-							<p class="text-xs leading-5 text-stone-500">เช่น `12` หมายถึง 1 แพ็ค = 12 {{ selectedProduct?.unitLabel || "หน่วยหลัก" }}</p>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.multiplierHint", { unit: selectedProduct?.unitLabel || $t("products.unitEditor.baseUnitFallback") }) }}</p>
 						</div>
 
 						<div class="space-y-2">
-							<label class="text-sm font-medium text-stone-700">ราคาขายของหน่วยนี้ (ไม่บังคับ)</label>
+							<label class="text-sm font-medium text-stone-700">{{ $t("products.unitEditor.unitPrice") }}</label>
 							<UInput
 								v-model="productUnitForm.pricePerUnit"
 								type="number"
@@ -5008,7 +5706,7 @@ onBeforeUnmount(() => {
 								color="neutral"
 								class="w-full [&_input]:rounded-md [&_input]:border-neutral-200 [&_input]:bg-white [&_input]:py-2.5"
 							/>
-							<p class="text-xs leading-5 text-stone-500">ถ้าเว้นว่าง ระบบจะใช้ราคาหลักของสินค้าแทน</p>
+							<p class="text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.unitPriceHint") }}</p>
 						</div>
 
 						<label class="flex items-start gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
@@ -5018,8 +5716,8 @@ onBeforeUnmount(() => {
 								class="mt-0.5 h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-300"
 							>
 							<span class="min-w-0">
-								<span class="block text-sm font-medium text-stone-900">เปิดขายหน่วยนี้ใน POS</span>
-								<span class="mt-1 block text-xs leading-5 text-stone-500">ถ้าปิดไว้ จะเก็บ conversion นี้ได้ แต่ยังไม่ให้เลือกขายในหน้าขาย</span>
+								<span class="block text-sm font-medium text-stone-900">{{ $t("products.unitEditor.enableInPos") }}</span>
+								<span class="mt-1 block text-xs leading-5 text-stone-500">{{ $t("products.unitEditor.enableInPosHint") }}</span>
 							</span>
 							</label>
 							</div>
@@ -5029,7 +5727,7 @@ onBeforeUnmount(() => {
 							:style="{ transform: 'translateY(calc(-1 * var(--app-panel-keyboard-inset)))' }"
 						>
 							<div class="grid w-full grid-cols-2 gap-2">
-								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">ยกเลิก</AppButton>
+								<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productUnitEditorOpen = false">{{ $t("products.unitEditor.cancel") }}</AppButton>
 								<AppButton
 								color="primary"
 								variant="solid"
@@ -5041,7 +5739,7 @@ onBeforeUnmount(() => {
 								:disabled="productUnitSaving || !canSaveProductUnit"
 								@click="saveProductUnit"
 							>
-									{{ selectedProductUnit ? "บันทึกหน่วยขาย" : "เพิ่มหน่วยขาย" }}
+									{{ selectedProductUnit ? $t("products.unitEditor.saveEdit") : $t("products.unitEditor.saveAdd") }}
 								</AppButton>
 							</div>
 						</div>
@@ -5096,8 +5794,8 @@ onBeforeUnmount(() => {
 			<AppResponsivePanel
 				v-if="selectedProduct"
 				v-model="productDeleteOpen"
-				title="ลบสินค้า"
-				description="ยืนยันการลบสินค้าออกจากรายการ"
+				:title="$t('products.detail.deleteTitle')"
+				:description="$t('products.detail.deleteDescription')"
 				desktop-width="680px"
 				close-button-size="md"
 				compact-header
@@ -5107,11 +5805,13 @@ onBeforeUnmount(() => {
 					<div class="flex h-full min-h-0 flex-col">
 						<div class="scrollbar-soft min-h-0 flex-1 overflow-y-auto px-0 py-2 sm:px-0 sm:py-2">
 							<div class="space-y-4 pb-6">
-								<div class="rounded-md border border-error-200 bg-error-50 p-4">
-								<p class="text-sm font-semibold text-stone-950">ลบแบบซ่อน (Soft delete)</p>
-								<p class="mt-1 text-xs leading-5 text-stone-600">
-									สินค้าจะถูกซ่อนจากหน้า “สินค้า” แต่ข้อมูลเก่าที่อ้างอิง (เช่น ประวัติการขาย/เอกสาร) ยังอยู่เพื่อการตรวจสอบย้อนหลัง
-								</p>
+								<div class="rounded-md border border-neutral-200 bg-white p-4">
+								<p class="text-sm font-semibold text-stone-950">{{ $t("products.detail.deleteKeepsTitle") }}</p>
+								<ul class="mt-2 space-y-1.5 text-xs leading-5 text-stone-600">
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsSales") }}</li>
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsReports") }}</li>
+									<li class="flex gap-2"><span class="text-emerald-600">✓</span>{{ $t("products.detail.deleteKeepsPo") }}</li>
+								</ul>
 							</div>
 
 							<div class="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -5125,7 +5825,7 @@ onBeforeUnmount(() => {
 
 					<div class="shrink-0 border-t border-[#ece6dc] bg-[rgba(255,254,253,0.98)] px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
 						<div class="grid w-full grid-cols-2 gap-2">
-							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productDeleteOpen = false">ยกเลิก</AppButton>
+							<AppButton color="neutral" variant="soft" size="md" :block="true" @click="productDeleteOpen = false">{{ $t("products.detail.deleteCancel") }}</AppButton>
 							<AppButton
 								color="error"
 								variant="solid"
@@ -5137,7 +5837,7 @@ onBeforeUnmount(() => {
 								:block="true"
 								@click="deleteSelectedProduct"
 							>
-								ลบสินค้า
+								{{ $t("products.detail.deleteConfirm") }}
 							</AppButton>
 						</div>
 					</div>
@@ -5398,23 +6098,34 @@ onBeforeUnmount(() => {
 	border: none;
 	border-radius: 0;
 	box-sizing: border-box;
-	font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+	/* Matches the app font so Lao product names print the same shapes they are
+	   shown in; a generic system stack falls back to a different Lao face. */
+	font-family: "Google Sans Lao", "Avenir Next", "Segoe UI", sans-serif;
 	color: #0f172a;
 }
 
 .barcode-print-name {
-	font-size: 12pt;
+	font-size: 11pt;
 	font-weight: 700;
-	line-height: 1.2;
-	margin-bottom: 3mm;
-	max-height: 10mm;
+	/* Lao stacks vowel and tone marks above the base glyph, so the ink box is
+	   taller than a 1.2 line box and the marks get cut by overflow: hidden.
+	   Measured: 1.2 clipped 2px off the top, 1.75 clears the tallest stack. */
+	line-height: 1.75;
+	margin-bottom: 1.5mm;
+	max-height: 8mm;
 	overflow: hidden;
 	text-align: center;
+	/* One line only: a wrapped second line would be sliced mid-glyph by the
+	   label's fixed height, so long names end in an ellipsis instead. */
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .barcode-print-svg {
 	width: 100%;
-	height: 20mm;
+	/* Trimmed from 20mm so name + barcode + digits fit the 40mm label without
+	   the last row spilling past overflow: hidden. */
+	height: 18mm;
 	display: flex;
 	align-items: center;
 	justify-content: center;

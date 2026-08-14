@@ -158,6 +158,17 @@ export class RbacController {
 		SuccessHandler.send(res, req.requestId, { data });
 	});
 
+	static deleteStoreMember = SyncFunction.handler(async (req: Request, res: Response) => {
+		const data = await RbacComponent.deleteStoreMember(req.requestId, {
+			store_id: req.params.storeId as string,
+			user_id: req.params.userId as string,
+		}, {
+			userId: req.auth?.userId || "",
+			systemRole: req.auth?.systemRole || "",
+		});
+		SuccessHandler.send(res, req.requestId, { data });
+	});
+
 	static resetStoreMemberPassword = SyncFunction.handler(async (req: Request, res: Response) => {
 		const data = await RbacComponent.resetStoreMemberPassword(req.requestId, {
 			store_id: req.params.storeId as string,

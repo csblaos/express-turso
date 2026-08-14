@@ -2,9 +2,11 @@ import { ErrorConfig } from "@configs/ErrorConfig";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { CreateUnitInput, Unit, UpdateUnitInput } from "@models/Unit";
+import { generateUnitCode } from "@utils/UnitCodeGenerator";
 
+// "code" is deliberately absent: it is the key the preset loader and CSV
+// imports match on, so renaming it after the fact would orphan both.
 const UPDATABLE_FIELDS: Array<keyof UpdateUnitInput> = [
-	"code",
 	"name_th",
 	"scope",
 	"store_id",
@@ -23,7 +25,7 @@ function pickUpdateFields(input: Record<string, unknown>): UpdateUnitInput {
 }
 
 function isMissingCreateField(payload: CreateUnitInput): boolean {
-	return !payload.code || !payload.name_th;
+	return !payload.name_th;
 }
 
 export class UnitComponent {
@@ -41,13 +43,25 @@ export class UnitComponent {
 		return unit;
 	}
 
+	// The code is derived from the name rather than typed: it exists so the
+	// preset loader and CSV imports have a stable key, which is not something a
+	// store should have to think about. Uniqueness is settled here because the
+	// partial unique index only covers uppercase scopes.
 	static async create(requestId: string, payload: CreateUnitInput): Promise<Unit> {
 		void requestId;
 		if (!payload || isMissingCreateField(payload)) {
 			throw ApiError.CustomError(ErrorConfig.DOMAIN.UNIT_REQUIRED_FIELDS);
 		}
 
-		return UnitInterface.create(payload);
+		const storeId = payload.store_id ? String(payload.store_id).trim() : "";
+		const siblings = storeId ? await UnitInterface.findAll({ storeId }) : [];
+		const existingCodes = siblings.map((unit) => String(unit.code || ""));
+		const requestedCode = String(payload.code || "").trim();
+		const code = requestedCode && !existingCodes.some((existing) => existing.trim().toLowerCase() === requestedCode.toLowerCase())
+			? requestedCode
+			: generateUnitCode(String(payload.name_th), existingCodes);
+
+		return UnitInterface.create({ ...payload, code });
 	}
 
 	static async importDefaults(requestId: string, storeId: string): Promise<Unit[]> {

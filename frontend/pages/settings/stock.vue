@@ -15,6 +15,7 @@ type StoreRecord = {
 };
 
 const { apiFetch } = useApiClient();
+const { t } = useI18n();
 const { currentUser, currentAccess, currentStoreId, can } = useAuthSession();
 const appToast = useAppToast();
 
@@ -47,7 +48,7 @@ const isElevatedStoreManager = computed(() => (
 	|| currentUser.value?.systemRole === "system_admin"
 ));
 
-const canUpdateStorePolicy = computed(() => isElevatedStoreManager.value || can("settings.store.update"));
+const canUpdateStorePolicy = computed(() => isElevatedStoreManager.value || can("settings.stock_policy.update"));
 
 const reloading = computed(() => storesPending.value || storePending.value);
 
@@ -95,7 +96,7 @@ async function hydrateFromStore() {
 			allowNegativeStock: allowNegativeStock.value,
 		};
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลดนโยบายสต็อกไม่สำเร็จ");
+		error.value = resolveApiErrorMessage(err, t("stockPolicyPage.loadFailed"));
 	} finally {
 		storePending.value = false;
 	}
@@ -120,14 +121,14 @@ async function savePolicy() {
 		});
 
 		appToast.success({
-			title: "บันทึกนโยบายสต็อกแล้ว",
-			description: allowNegativeStock.value ? "อนุญาตให้สต็อกติดลบได้" : "ห้ามสต็อกติดลบ",
+			title: t("stockPolicyPage.saved"),
+			description: allowNegativeStock.value ? t("stockPolicyPage.allowNegative") : t("stockPolicyPage.preventNegative"),
 		});
 
 		await hydrateFromStore();
 	} catch (err) {
-		const message = resolveApiErrorMessage(err, "บันทึกไม่สำเร็จ");
-		appToast.error({ title: "บันทึกไม่สำเร็จ", description: message, timeout: 3200 });
+		const message = resolveApiErrorMessage(err, t("stockPolicyPage.saveFailed"));
+		appToast.error({ title: t("stockPolicyPage.saveFailed"), description: message, timeout: 3200 });
 		error.value = message;
 	} finally {
 		saving.value = false;
@@ -151,7 +152,7 @@ onMounted(async () => {
 	try {
 		await reloadAll();
 	} catch (err) {
-		error.value = resolveApiErrorMessage(err, "โหลดร้านไม่สำเร็จ");
+			error.value = resolveApiErrorMessage(err, t("stockPolicyPage.loadStoresFailed"));
 	} finally {
 		storesPending.value = false;
 	}
@@ -162,16 +163,16 @@ onMounted(async () => {
 	<AppSidebarShell
 		:nav-items="appNavItems"
 		:active-ids="['settings']"
-		sidebar-eyebrow="Settings"
-		sidebar-title="Stock policy"
+		:sidebar-eyebrow="t('stockPolicyPage.settings')"
+		:sidebar-title="t('stockPolicyPage.title')"
 		sidebar-compact-title="STK"
-		sidebar-description="ตั้งค่านโยบายสต็อกระดับร้าน"
+		:sidebar-description="t('stockPolicyPage.sidebarDescription')"
 	>
 		<template #default="{ openSidebar }">
 			<div class="grid gap-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:gap-4 lg:pb-3">
 				<AppPageHeader
 					class="hidden md:block"
-					description="กำหนดว่าร้านนี้อนุญาตให้สต็อกติดลบได้หรือไม่ (มีผลกับการปรับสต็อก)"
+					:description="t('stockPolicyPage.headerDescription')"
 					:title-badge="false"
 					compact
 					@menu="openSidebar"
@@ -183,14 +184,14 @@ onMounted(async () => {
 							size="md"
 							icon="i-heroicons-arrow-path-20-solid"
 							class="rounded-md"
-							aria-label="รีโหลด"
-							title="รีโหลด"
+							:aria-label="t('stockPolicyPage.reload')"
+							:title="t('stockPolicyPage.reload')"
 							:loading="reloading"
 							:disabled="reloading"
 							:spin-icon-on-loading="true"
 							@click="reloadAll"
 						>
-							{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
+							{{ reloading ? t('stockPolicyPage.loading') : t('stockPolicyPage.reload') }}
 						</AppButton>
 						<AppButton
 							color="primary"
@@ -203,7 +204,7 @@ onMounted(async () => {
 							:spin-icon-on-loading="true"
 							@click="savePolicy"
 						>
-							บันทึก
+							{{ t('stockPolicyPage.save') }}
 						</AppButton>
 					</div>
 				</AppPageHeader>
@@ -212,26 +213,26 @@ onMounted(async () => {
 					<UCard class="rounded-none border-0 bg-white shadow-[0_8px_24px_rgba(31,28,24,0.06)] ring-1 ring-neutral-200 sm:rounded-md">
 						<div class="grid grid-cols-4 gap-2 p-0">
 							<div class="col-span-2 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">ร้าน</p>
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('stockPolicyPage.store') }}</p>
 								<p class="mt-1 truncate text-base font-semibold text-stone-950" :title="storeName || ''">
 									{{ storeName || "-" }}
 								</p>
 							</div>
 							<div class="col-span-2 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
 								<p class="mt-1 text-base font-semibold text-stone-950 tabular-nums">
-									{{ allowNegativeStock ? "อนุญาต" : "ห้าม" }}
+									{{ allowNegativeStock ? t('stockPolicyPage.allow') : t('stockPolicyPage.prevent') }}
 								</p>
 							</div>
 							<div class="col-span-2 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">มีผลกับ</p>
-								<p class="mt-1 truncate text-base font-semibold text-stone-950" title="ปรับสต็อก">
-									ปรับสต็อก
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('stockPolicyPage.affects') }}</p>
+								<p class="mt-1 truncate text-base font-semibold text-stone-950 dark:text-stone-100" :title="t('stockPolicyPage.stockAdjustment')">
+									{{ t('stockPolicyPage.stockAdjustment') }}
 								</p>
 							</div>
 							<div class="col-span-2 min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center sm:col-span-1">
-								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">สถานะ</p>
-								<p class="mt-1 truncate text-base font-semibold text-stone-950" title="พร้อมใช้งาน">
-									พร้อมใช้งาน
+								<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">{{ t('stockPolicyPage.status') }}</p>
+								<p class="mt-1 truncate text-base font-semibold text-stone-950 dark:text-stone-100" :title="t('stockPolicyPage.ready')">
+									{{ t('stockPolicyPage.ready') }}
 								</p>
 							</div>
 						</div>
@@ -245,13 +246,13 @@ onMounted(async () => {
 						<div class="flex flex-col">
 							<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#ece6dc] px-4 py-2.5">
 								<div>
-									<p class="text-sm font-semibold text-stone-950">นโยบายสต็อกติดลบ</p>
-									<p class="mt-1 hidden text-xs text-stone-500 lg:block">เลือกว่าจะอนุญาตให้ “ตัดออก/ตั้งค่าใหม่” จนยอดติดลบได้หรือไม่</p>
+									<p class="text-sm font-semibold text-stone-950">{{ t('stockPolicyPage.negativePolicy') }}</p>
+									<p class="mt-1 hidden text-xs text-stone-500 lg:block">{{ t('stockPolicyPage.negativePolicyDescription') }}</p>
 								</div>
 								<UBadge
 									:color="allowNegativeStock ? 'warning' : 'success'"
 									variant="soft"
-									:label="allowNegativeStock ? 'อนุญาตติดลบ' : 'ห้ามติดลบ'"
+									:label="allowNegativeStock ? t('stockPolicyPage.allowNegative') : t('stockPolicyPage.preventNegative')"
 								/>
 							</div>
 
@@ -261,7 +262,7 @@ onMounted(async () => {
 											type="button"
 											class="group rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
 											:class="[
-												!allowNegativeStock ? 'border-primary-300 bg-primary-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
+												!allowNegativeStock ? 'border-primary-400 bg-primary-50 dark:border-emerald-500/60 dark:bg-emerald-500/15' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700',
 												(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
 											]"
 										:disabled="!canUpdateStorePolicy || storePending"
@@ -269,8 +270,8 @@ onMounted(async () => {
 										>
 											<div class="flex items-start justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">ห้ามสต็อกติดลบ</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">ค่าแนะนำ ระบบจะบล็อกทันทีถ้าปรับแล้วจะติดลบ</p>
+													<p class="text-sm font-semibold text-stone-950">{{ t('stockPolicyPage.preventNegative') }}</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ t('stockPolicyPage.preventNegativeHint') }}</p>
 												</div>
 												<div class="mt-0.5 flex shrink-0 items-center gap-3">
 													<span
@@ -290,7 +291,7 @@ onMounted(async () => {
 											type="button"
 											class="group rounded-md border px-4 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-200"
 											:class="[
-												allowNegativeStock ? 'border-amber-300 bg-amber-50' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70',
+												allowNegativeStock ? 'border-amber-400 bg-amber-50 dark:border-amber-500/60 dark:bg-amber-500/15' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700',
 												(!canUpdateStorePolicy || storePending) ? 'opacity-60' : '',
 											]"
 										:disabled="!canUpdateStorePolicy || storePending"
@@ -298,8 +299,8 @@ onMounted(async () => {
 										>
 											<div class="flex items-start justify-between gap-3">
 												<div>
-													<p class="text-sm font-semibold text-stone-950">อนุญาตให้ติดลบ</p>
-													<p class="mt-1 text-xs leading-5 text-stone-500">เหมาะกับร้านที่ต้องทำงานต่อแม้ยอดยังไม่อัปเดต</p>
+													<p class="text-sm font-semibold text-stone-950">{{ t('stockPolicyPage.allowNegative') }}</p>
+													<p class="mt-1 text-xs leading-5 text-stone-500">{{ t('stockPolicyPage.allowNegativeHint') }}</p>
 												</div>
 												<div class="mt-0.5 flex shrink-0 items-center gap-3">
 													<span
@@ -316,13 +317,13 @@ onMounted(async () => {
 										</button>
 									</div>
 
-								<div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-									<p class="font-semibold">คำแนะนำ</p>
-									<p class="mt-1 text-xs leading-5 text-amber-900/90">ควรปิดเป็นค่าเริ่มต้น และเปิดเฉพาะกรณีที่ร้านต้องขาย/ทำงานต่อแม้ยังไม่ได้รับของเข้าระบบ</p>
+								<div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+									<p class="font-semibold dark:text-amber-100">{{ t('stockPolicyPage.recommendation') }}</p>
+									<p class="mt-1 text-xs leading-5 text-amber-900/90 dark:text-amber-200">{{ t('stockPolicyPage.recommendationHint') }}</p>
 								</div>
 
 								<div class="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-stone-700">
-									ปิดไว้ = ปรับสต็อกให้ติดลบไม่ได้ ถ้าปรับเกิน ระบบจะแจ้งเตือนทันที
+									{{ t('stockPolicyPage.preventNegativeNote') }}
 								</div>
 							</div>
 						</div>
@@ -343,7 +344,7 @@ onMounted(async () => {
 						:block="true"
 						@click="reloadAll"
 					>
-						{{ reloading ? "กำลังโหลด" : "รีโหลด" }}
+						{{ reloading ? t('stockPolicyPage.loading') : t('stockPolicyPage.reload') }}
 					</AppButton>
 					<AppButton
 						color="primary"
@@ -356,7 +357,7 @@ onMounted(async () => {
 						:block="true"
 						@click="savePolicy"
 					>
-						บันทึก
+						{{ t('stockPolicyPage.save') }}
 					</AppButton>
 				</div>
 			</div>
