@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { databaseLabel, runDatabaseSetup } from "./setup.mjs";
+import { checkDatabaseConnection, databaseLabel, runDatabaseSetup } from "./setup.mjs";
 
 const host = process.env.SETUP_UI_HOST || "127.0.0.1";
 const port = Number(process.env.SETUP_UI_PORT || 4178);
@@ -69,6 +69,7 @@ const page = String.raw`<!doctype html>
         <section class="rounded-2xl border border-brand-100 bg-brand-50 p-5">
           <h2 class="font-bold text-brand-900">ເລືອກການດຳເນີນງານ</h2><p class="mt-1 text-sm text-brand-900/70">ເລືອກໃຫ້ກົງກັບສະຖານະຖານຂໍ້ມູນ</p>
           <div class="mt-4 space-y-3"><label class="flex cursor-pointer gap-3 rounded-xl border border-brand-200 bg-white p-4"><input name="action" type="radio" value="init" checked class="mt-1"><span><b class="block text-sm">ຕັ້ງຄ່າຖານໃໝ່ / Deploy ໃໝ່</b><span class="mt-1 block text-xs text-stone-500">ສ້າງ schema ແລະ ບັນຊີທີ່ຍັງບໍ່ມີ ໂດຍບໍ່ລຶບຂໍ້ມູນເກົ່າ</span></span></label>
+          <label class="flex cursor-pointer gap-3 rounded-xl border border-emerald-200 bg-white p-4"><input name="action" type="radio" value="migrate" class="mt-1"><span><b class="block text-sm text-emerald-700">ອັບເດດ Database ເກົ່າ</b><span class="mt-1 block text-xs text-stone-500">ເພີ່ມ schema ລ່າສຸດ ໂດຍບໍ່ລຶບຂໍ້ມູນ ແລະ ບໍ່ສ້າງບັນຊີ</span></span></label>
           <label class="flex cursor-pointer gap-3 rounded-xl border border-red-200 bg-white p-4"><input name="action" type="radio" value="reset" class="mt-1"><span><b class="block text-sm text-red-700">Reset ເປັນ Starter Database</b><span class="mt-1 block text-xs text-stone-500">ລຶບຂໍ້ມູນທັງໝົດ ແລ້ວສ້າງ schema ແລະ ບັນຊີໃໝ່</span></span></label></div>
           <div id="confirmWrap" class="mt-4 hidden"><label class="block text-sm font-medium text-red-800">ພິມ <span id="confirmText" class="font-bold"></span> ເພື່ອຢືນຢັນ</label><input id="resetConfirm" class="mt-1 w-full rounded-xl border border-red-300 px-3 py-2.5" autocomplete="off"></div>
           <button id="runButton" class="mt-5 w-full rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white shadow-sm hover:bg-brand-500">ເລີ່ມຕັ້ງຄ່າຖານຂໍ້ມູນ</button>
@@ -79,7 +80,7 @@ const page = String.raw`<!doctype html>
   </main>
 <script>
 const $=id=>document.getElementById(id), result=$("result");
-const account=(key,title)=>"<div class=\"sm:col-span-2\"><p class=\"text-sm font-semibold\">"+title+"</p></div><label><span class=\"text-sm\">ຊື່ສະແດງ</span><input id=\""+key+"Name\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" value=\""+(key==="system"?"Platform Operator":"Store Owner")+"\"></label><label><span class=\"text-sm\">Username</span><input id=\""+key+"Username\" autocomplete=\"username\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" value=\""+(key==="system"?"ops":"owner")+"\"></label><label><span class=\"text-sm\">ອີເມວ</span><input id=\""+key+"Email\" type=\"email\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" placeholder=\"name@example.com\"></label><label><span class=\"text-sm\">ລະຫັດຜ່ານ (ຢ່າງໜ້ອຍ 12 ຕົວ)</span><div class=\"mt-1 flex gap-2\"><input id=\""+key+"Password\" type=\"password\" autocomplete=\"new-password\" class=\"min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2.5\"><button data-copy=\""+key+"Password\" class=\"rounded-xl border border-stone-300 px-3 text-xs\">ຄັດລອກ</button></div></label><label class=\"sm:col-span-2\"><span class=\"text-sm\">ພາສາ UI</span><select id=\""+key+"Locale\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\"><option value=\"lo\">ລາວ</option><option value=\"th\">ໄທ</option><option value=\"en\">ອັງກິດ</option></select></label>";
+const account=(key,title)=>"<div class=\"sm:col-span-2\"><p class=\"text-sm font-semibold\">"+title+"</p></div><label><span class=\"text-sm\">ຊື່ສະແດງ</span><input id=\""+key+"Name\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" value=\""+(key==="system"?"Platform Operator":"Store Owner")+"\"></label><label><span class=\"text-sm\">Username</span><input id=\""+key+"Username\" autocomplete=\"username\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" value=\""+(key==="system"?"ops":"owner")+"\"></label><label><span class=\"text-sm\">ອີເມວ</span><input id=\""+key+"Email\" type=\"email\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\" placeholder=\"name@example.com\"></label><label><span class=\"text-sm\">ລະຫັດຜ່ານ (ຢ່າງໜ້ອຍ 6 ຕົວ)</span><div class=\"mt-1 flex gap-2\"><input id=\""+key+"Password\" type=\"password\" autocomplete=\"new-password\" minlength=\"6\" class=\"min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2.5\"><button data-copy=\""+key+"Password\" class=\"rounded-xl border border-stone-300 px-3 text-xs\">ຄັດລອກ</button></div></label><label class=\"sm:col-span-2\"><span class=\"text-sm\">ພາສາ UI</span><select id=\""+key+"Locale\" class=\"mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5\"><option value=\"lo\">ລາວ</option><option value=\"th\">ໄທ</option><option value=\"en\">ອັງກິດ</option></select></label>";
 $("system").innerHTML=account("system","ຜູ້ດູແລແພລັດຟອມ · ເຂົ້າ /system-admin");
 $("super").innerHTML=account("super","ເຈົ້າຂອງທຸລະກິດ · ສ້າງ ແລະ ຈັດການຮ້ານ");
 function config(){const a=k=>({name:$(k+"Name").value,username:$(k+"Username").value,email:$(k+"Email").value,password:$(k+"Password").value,locale:$(k+"Locale").value});return{database:{url:$("databaseUrl").value,authToken:$("authToken").value},systemAdmin:a("system"),superadmin:a("super")}}
@@ -91,7 +92,7 @@ $("copyResult").onclick=()=>navigator.clipboard.writeText(result.textContent);
 $("databaseKind").onchange=()=>{const local=$("databaseKind").value==="sqlite";$("databaseUrl").placeholder=local?"file:./okhaidee.db":"libsql://your-database-org.turso.io";$("tokenGroup").classList.toggle("hidden",local)};
 document.querySelectorAll("[name=action]").forEach(x=>x.onchange=()=>{const reset=document.querySelector("[name=action]:checked").value==="reset";$("confirmWrap").classList.toggle("hidden",!reset);$("runButton").textContent=reset?"Reset ຂໍ້ມູນທັງໝົດ":"ເລີ່ມຕັ້ງຄ່າຖານຂໍ້ມູນ";$("confirmText").textContent="RESET "+($("databaseUrl").value||"DATABASE_URL")});
 $("databaseUrl").oninput=()=>{$("confirmText").textContent="RESET "+($("databaseUrl").value||"DATABASE_URL")};
-$("checkButton").onclick=async()=>{try{out("ກຳລັງກວດສອບ...");const d=await call("/api/check",{config:config()});out(["ເຊື່ອມຕໍ່ສຳເລັດ",...d.logs,JSON.stringify(d.summary,null,2)]);$("connectionBadge").textContent="ເຊື່ອມຕໍ່ແລ້ວ";$("connectionBadge").className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"}catch(e){out("ບໍ່ສຳເລັດ: "+e.message)}};
+$("checkButton").onclick=async()=>{try{out("ກຳລັງກວດສອບ...");const d=await call("/api/connect",{database:{url:$("databaseUrl").value,authToken:$("authToken").value}});out(["ເຊື່ອມຕໍ່ສຳເລັດ",JSON.stringify(d.connection,null,2)]);$("connectionBadge").textContent="ເຊື່ອມຕໍ່ແລ້ວ";$("connectionBadge").className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"}catch(e){out("ບໍ່ສຳເລັດ: "+e.message)}};
 $("runButton").onclick=async()=>{const action=document.querySelector("[name=action]:checked").value;const c=config();if(action==="reset"&&$("resetConfirm").value!==("RESET "+c.database.url)){out("ຍົກເລີກ: ຂໍ້ຄວາມຢືນຢັນບໍ່ຖືກຕ້ອງ");return}try{$("runButton").disabled=true;out("ກຳລັງດຳເນີນງານ...");const d=await call("/api/"+action,{config:c,confirmation:$("resetConfirm").value});out(["ສຳເລັດ",...d.logs])}catch(e){out("ບໍ່ສຳເລັດ: "+e.message)}finally{$("runButton").disabled=false}};
 </script></body></html>`;
 
@@ -120,7 +121,12 @@ const server = http.createServer(async (request, response) => {
 	try {
 		const body = await readJson(request);
 		const action = request.url.slice("/api/".length);
-		if (!["check", "init", "reset"].includes(action)) throw new Error("Unknown action");
+		if (!["connect", "check", "init", "migrate", "reset"].includes(action)) throw new Error("Unknown action");
+		if (action === "connect") {
+			const connection = await checkDatabaseConnection(body.database);
+			sendJson(response, 200, { ok: true, connection, requestId: randomUUID() });
+			return;
+		}
 		if (action === "reset" && body.confirmation !== `RESET ${String(body.config?.database?.url || "").trim()}`) {
 			throw new Error("ຂໍ້ຄວາມຢືນຢັນການ reset ບໍ່ຖືກຕ້ອງ");
 		}

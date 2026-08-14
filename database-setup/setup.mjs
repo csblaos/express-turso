@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { createClient } from "@libsql/client";
 import bcrypt from "bcryptjs";
+import { inspectLatestSchema, migrateDatabase } from "./migrations.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.join(directory, "config.json");
@@ -83,7 +84,7 @@ function normalizeAccounts(input) {
 			fail(`${key}.username ต้องมี 3-32 ตัว ใช้ได้เฉพาะ a-z, 0-9, . และ _ และต้องขึ้นต้นด้วยตัวอักษรหรือตัวเลข`);
 		}
 		if (!account.email.includes("@")) fail(`${key}.email ไม่ถูกต้อง`);
-		if (account.password.length < 12) fail(`${key}.password ต้องมีอย่างน้อย 12 ตัวอักษร`);
+		if (account.password.length < 6) fail(`${key}.password ต้องมีอย่างน้อย 6 ตัวอักษร`);
 		accounts.push(account);
 	}
 
@@ -100,6 +101,26 @@ export function databaseLabel(url) {
 		return new URL(url.replace(/^libsql:/, "https:")).hostname;
 	} catch {
 		return "remote-database";
+	}
+}
+
+export async function checkDatabaseConnection(input) {
+	const url = String(input?.url || "").trim();
+	const authToken = String(input?.authToken || "").trim();
+	if (!url) fail("database.url จำเป็นต้องระบุ");
+	if (!url.startsWith("file:") && !authToken) {
+		fail("database.authToken จำเป็นสำหรับ Database แบบ remote");
+	}
+
+	const client = createClient({
+		url,
+		...(url.startsWith("file:") ? {} : { authToken }),
+	});
+	try {
+		await client.execute("SELECT 1 AS ok");
+		return { database: databaseLabel(url), connected: true };
+	} finally {
+		client.close();
 	}
 }
 
@@ -145,7 +166,11 @@ async function applySchema(client) {
 	// Existing databases may predate username. Do this before schema.sql creates
 	// the username index, so init remains safe to run on an older database.
 	await ensureUsernameCompatibility(client);
+	// Upgrade existing tables first so indexes in schema.sql can be created safely.
+	await migrateDatabase(client);
 	await client.executeMultiple(await fs.readFile(schemaPath, "utf8"));
+	// A fresh database had no tables during the first pass.
+	await migrateDatabase(client);
 }
 
 function accountLabel(role) {
@@ -236,8 +261,10 @@ async function check(client, config, log) {
 		tables: Number(tables.rows[0]?.total || 0),
 		systemAdmins,
 		superadmins,
+		schema: await inspectLatestSchema(client),
 	};
 	log(`Database: ${summary.database}`);
+	log(summary.schema.ready ? `Schema ล่าสุด: ${summary.schema.version}` : `Schema ยังไม่ครบ: ${[...summary.schema.missingTables, ...summary.schema.missingColumns].join(", ")}`);
 	log(`Tables: ${summary.tables}`);
 	log(`System Admin accounts: ${summary.systemAdmins}`);
 	log(`Super Admin accounts: ${summary.superadmins}`);
@@ -248,7 +275,7 @@ async function check(client, config, log) {
 }
 
 export async function runDatabaseSetup(input, action, onLog = () => {}) {
-	if (!["init", "reset", "check"].includes(action)) {
+	if (!["init", "migrate", "reset", "check"].includes(action)) {
 		fail("คำสั่งไม่ถูกต้อง");
 	}
 
@@ -262,6 +289,11 @@ export async function runDatabaseSetup(input, action, onLog = () => {}) {
 	try {
 		await client.execute("SELECT 1");
 		if (action === "init") await initialize(client, config, onLog);
+		if (action === "migrate") {
+			onLog("กำลังอัปเดต Schema โดยไม่ลบข้อมูล...");
+			await applySchema(client);
+			onLog("อัปเดต Schema สำเร็จ");
+		}
 		if (action === "reset") await resetDatabase(client, config, onLog);
 		if (action === "check") return await check(client, config, onLog);
 		return null;
@@ -271,8 +303,8 @@ export async function runDatabaseSetup(input, action, onLog = () => {}) {
 }
 
 async function main() {
-	if (!["init", "reset", "check"].includes(command)) {
-		fail("ใช้คำสั่ง: node setup.mjs <init|reset|check>");
+	if (!["init", "migrate", "reset", "check"].includes(command)) {
+		fail("ใช้คำสั่ง: node setup.mjs <init|migrate|reset|check>");
 	}
 
 	const config = await loadConfig();
