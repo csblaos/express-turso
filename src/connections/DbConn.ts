@@ -93,7 +93,6 @@ export class DbConn {
 				out_stock_threshold INTEGER NOT NULL DEFAULT 0,
 				low_stock_threshold INTEGER NOT NULL DEFAULT 0,
 				allow_negative_stock INTEGER NOT NULL DEFAULT 0,
-				max_branches_override INTEGER,
 
 				pdf_show_logo INTEGER NOT NULL DEFAULT 1,
 				pdf_show_signature INTEGER NOT NULL DEFAULT 0,
@@ -110,6 +109,7 @@ export class DbConn {
 				receipt_show_change INTEGER NOT NULL DEFAULT 1,
 				receipt_show_payment_method INTEGER NOT NULL DEFAULT 1,
 				receipt_show_queue INTEGER NOT NULL DEFAULT 1,
+				kitchen_delivery_mode TEXT NOT NULL DEFAULT 'paper',
 				pickup_queue_enabled INTEGER NOT NULL DEFAULT 0,
 				business_day_start_minutes INTEGER NOT NULL DEFAULT 0,
 				business_day_start_confirmed_at TEXT,

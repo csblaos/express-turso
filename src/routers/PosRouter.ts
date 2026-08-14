@@ -21,6 +21,11 @@ export class PosRouter {
 		this.router.patch("/restaurant/products/:productId/availability", PermissionMiddleware.require("products.update"), RestaurantValidator.availability, RestaurantController.availability);
 		this.router.post("/restaurant/orders", PermissionMiddleware.require("pos.restaurant.open"), RestaurantValidator.open, RestaurantController.open);
 		this.router.get("/restaurant/orders/open", PermissionMiddleware.require("pos.restaurant.open"), RestaurantValidator.query, RestaurantController.openOrders);
+		// Kitchen-side, so it sits with the other till routes rather than with the
+		// settings ones: the people reading it are working a service, not configuring.
+		this.router.get("/restaurant/kitchen-queue", PermissionMiddleware.require("pos.create_order"), RestaurantController.kitchenQueue);
+		this.router.post("/restaurant/kitchen-queue/:id/done", PermissionMiddleware.require("pos.create_order"), RestaurantController.kitchenRoundDone);
+		this.router.post("/restaurant/kitchen-queue/:id/served", PermissionMiddleware.require("pos.create_order"), RestaurantController.kitchenRoundServed);
 		this.router.get("/restaurant/pickup-queue", PermissionMiddleware.require("pos.create_order"), RestaurantValidator.query, RestaurantController.pickupQueue);
 		this.router.get("/restaurant/pickup-queue/history", PermissionMiddleware.require("pos.create_order"), RestaurantValidator.query, RestaurantController.pickupQueueHistory);
 		this.router.post("/restaurant/pickup-queue/:id/collected", PermissionMiddleware.require("pos.create_order"), RestaurantController.pickupCollected);

@@ -52,6 +52,8 @@ export class PermissionMiddleware {
 			const keys = Object.keys(body);
 			const requiredPermissions = new Set<string>();
 			if (keys.some((key) => key.startsWith("receipt_"))) requiredPermissions.add("settings.printing.update");
+			// How the kitchen receives orders is a floor decision, not a paper one.
+			if (keys.includes("kitchen_delivery_mode")) requiredPermissions.add("settings.restaurant.update");
 			if (keys.some((key) => [ "currency", "supported_currencies", "vat_enabled", "vat_rate", "cost_method" ].includes(key))) requiredPermissions.add("settings.finance.update");
 			if (keys.includes("allow_negative_stock")) requiredPermissions.add("settings.stock_policy.update");
 			if (keys.some((key) => key.startsWith("customer_display_"))) requiredPermissions.add("settings.customer_display.update");

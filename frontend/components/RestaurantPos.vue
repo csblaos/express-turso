@@ -7,20 +7,22 @@ import { resolveStoredImageUrl } from "~/utils/image";
 import { findLaoBank } from "~/utils/lao-banks";
 import { encodeCode128Bits } from "~/utils/barcode";
 import type { CustomerDisplayLine, CustomerDisplayState } from "~/composables/useCustomerDisplay";
+import type { KitchenRound } from "~/composables/useKitchenQueue";
 
 type Envelope<T> = { data: T };
-type PosView = "quick" | "tables" | "open" | "pickupQueue";
+type PosView = "quick" | "tables" | "open" | "pickupQueue" | "kitchenQueue";
 type Zone = { id: string; name: string; sort_order: number; is_active: number };
 type DiningTable = { id: string; zone_id: string; zone_name: string; name: string; capacity: number; is_active: number; order_id?: string | null; order_status?: string | null; total?: number; guest_count?: number; guest_count_specified?: number; opened_at?: string; draft_count?: number };
-type Product = { id: string; name: string; sku: string; price_base: number; inventory_mode: "tracked" | "untracked"; manual_sold_out: number; stock_state: string; available_base: number; image_url?: string | null };
-type PosCatalog = { store: Record<string, unknown>; items: Product[] };
+type Product = { id: string; name: string; sku: string; price_base: number; inventory_mode: "tracked" | "untracked"; manual_sold_out: number; stock_state: string; available_base: number; image_url?: string | null; category_id?: string | null; category_name?: string | null; station_id?: string | null; station_name?: string | null; send_to_kitchen?: number };
+type ProductCategory = { id: string; name: string; count: number };
+type PosCatalog = { store: Record<string, unknown>; categories?: ProductCategory[]; items: Product[] };
 type OrderItem = { id: string; product_id: string; name: string; sku: string; qty: number; line_total: number; line_status: "draft" | "sent" | "cancelled"; is_gift: number; promotion_id?: string | null; note?: string | null; round_no?: number | null };
 type PromotionType = "buy_x_get_y" | "cart_total_gift" | "cart_discount" | "cart_threshold_discount";
 type Promotion = { promotion_id: string; name: string; type?: PromotionType; apply_mode: "automatic" | "manual"; qualifying_product_id?: string | null; qualifying_qty?: number | null; gift_product_id?: string | null; gift_product_name: string; gift_qty: number; discount_amount?: number; eligible: boolean; remaining_qty: number; remaining_amount: number };
 type Round = { id: string; round_no: number; dispatch_mode: "kitchen" | "direct"; sent_at: string };
 type Order = { id: string; order_no: string; status: string; version: number; service_mode: "pickup" | "dine-in"; queue_no?: string | null; table_name?: string | null; zone_name?: string | null; guest_count: number; guest_count_specified?: number; opened_at: string; subtotal: number; discount?: number; vat_amount: number; total: number; payment_method?: string; amount_tendered?: number; change_amount?: number; payment_currency?: string; payment_exchange_rate?: number; amount_tendered_foreign?: number | null; items: OrderItem[]; rounds: Round[]; promotions: Promotion[] };
 type OpenOrder = Pick<Order, "id" | "order_no" | "service_mode" | "queue_no" | "status" | "total" | "guest_count" | "guest_count_specified" | "opened_at" | "version" | "table_name" | "zone_name"> & { draft_count: number; sent_count: number };
-type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
+type PickupQueueOrder = { id:string;order_no:string;queue_no:string|null;total:number;payment_method:string;paid_at:string;created_at:string;kitchen_ready?:number;collected_at?:string|null;collected_by?:string|null;collected_by_name?:string|null;items:Array<{product_id:string;name:string;qty:number;line_total:number;is_gift:number}> };
 type LocalCartEntry = { product_id: string; qty: number; note?: string | null };
 type TableDraftEntry = { product_id: string; qty: number; note?: string | null; is_gift?: boolean; promotion_id?: string | null };
 type PaymentAccount = { id: string; display_name: string; is_active: number; bank_name?: string | null; currency?: string | null; qr_image_url?: string | null };
@@ -66,6 +68,23 @@ const pickupQueueDetailOpen = ref(false);
 const pickupQueueHistoryOpen = ref(false);
 const pickupQueueHistoryPending = ref(false);
 const collectingOrderId = ref("");
+// What the kitchen still owes the floor. Kept on the till as well as on the
+// kitchen's own screen, so the counter can answer "is it coming?" without
+// walking back there — and so it hears the moment a plate is ready to carry out.
+const kitchenChime = useKitchenChime();
+const kitchenStationId = ref("");
+// How this shop tells its kitchen what to cook: on paper, on a screen, both, or
+// neither. Everything the till does about the kitchen follows from it.
+const kitchenDeliveryMode = ref("paper");
+const kitchenPaper = computed(() => kitchenDeliveryMode.value === "paper" || kitchenDeliveryMode.value === "both");
+const kitchenScreen = computed(() => kitchenDeliveryMode.value === "screen" || kitchenDeliveryMode.value === "both");
+const { cooking: kitchenCooking, ready: kitchenReady, load: loadKitchenQueue } = useKitchenQueue(
+	computed(() => props.storeId),
+	// The till only wants a badge, so an empty kitchen costs it a look every half
+	// minute. The kitchen's own screen keeps the faster rhythm.
+	{ stationId: kitchenStationId, enabled: kitchenScreen, idleIntervalMs: 30_000, onReady: () => void kitchenChime.play(), onChanged: () => { if (pickupQueueEnabled.value) void loadPickupQueue(); } },
+);
+const kitchenRoundPendingId = ref("");
 const mobileTicketOpen = ref(false);
 const moreActionsOpen = ref(false);
 const tableActionsOpen = ref(false);
@@ -77,7 +96,12 @@ const catalogLoadedOnce = ref(false);
 const zones = ref<Zone[]>([]);
 const tables = ref<DiningTable[]>([]);
 const products = ref<Product[]>([]);
+const productCategories = ref<ProductCategory[]>([]);
 const openOrders = ref<OpenOrder[]>([]);
+const parkedBillsOpen = ref(false);
+// A parked quick-sale bill is an unpaid pickup order. Keep it separate from
+// table orders so the cashier can resume it without searching the full list.
+const parkedBills = computed(() => openOrders.value.filter((opened) => opened.service_mode === "pickup"));
 const order = ref<Order | null>(null);
 const completedOrder = ref<Order | null>(null);
 const localCart = ref<LocalCartEntry[]>([]);
@@ -88,6 +112,8 @@ const selectedPromotionIds = ref<string[]>([]);
 const selectedPromotionCounts = ref<Record<string, number>>({});
 const activeZone = ref("");
 const search = ref("");
+const allCategoriesValue = "__all__";
+const activeCategory = ref(allCategoriesValue);
 const storeName = ref("");
 const storeLogo = ref("");
 const customerDisplayEnabled = ref(false);
@@ -112,6 +138,9 @@ const receiptShowTendered = ref(true);
 const receiptShowChange = ref(true);
 const receiptShowPaymentMethod = ref(true);
 const receiptShowQueue = ref(true);
+// Set once the shop has a kitchen printer of its own: from then on the server
+// queues the slip and the till must not also open a browser print dialog for it.
+const kitchenServerPrinting = ref(false);
 const currency = ref("LAK");
 const vatEnabled = ref(false);
 const vatRate = ref(0);
@@ -145,10 +174,16 @@ const sentItemPanel = ref(false);
 const cancellingItem = ref<OrderItem | null>(null);
 const sentItemQty = ref(0);
 const sentItemReasonPreset = ref("");
-const printKind = ref<"kitchen" | "check" | "estimate" | "receipt">("kitchen");
+type PrintKind = "kitchen" | "void" | "check" | "estimate" | "receipt";
+const printKind = ref<PrintKind>("kitchen");
 const printRound = ref<number | null>(null);
 const printPreviewOpen = ref(false);
+// A cancellation slip is printed after the bill it belongs to has already been
+// closed or reloaded, so it carries its own copy of what the kitchen must undo
+// instead of reading an order that is no longer on screen.
+const voidTicket = ref<{ items: OrderItem[]; reason: string; label: string; orderNo: string } | null>(null);
 let sendKey = "";
+let quickOpenKey = "";
 let checkoutKey = "";
 let desktopMedia: MediaQueryList | null = null;
 let promotionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -165,9 +200,60 @@ const sentItemReasonPresets = computed(() => [
 	t("posPanels.reasonOther"),
 ]);
 
+const uncategorizedCategoryValue = "__uncategorized__";
+const categoryCopy = computed(() => locale.value === "th"
+	? { category: "หมวดสินค้า", all: "ทุกหมวด", uncategorized: "ไม่ระบุหมวด", allKitchens: "จอครัวทั้งหมด" }
+	: locale.value === "en"
+		? { category: "Product category", all: "All categories", uncategorized: "Uncategorized", allKitchens: "All kitchen screens" }
+		: { category: "ໝວດສິນຄ້າ", all: "ທຸກໝວດ", uncategorized: "ບໍ່ລະບຸໝວດ", allKitchens: "ຈໍຄົວລວມ" });
+const kitchenDispatchCopy = computed(() => locale.value === "th"
+	? { paper: "บันทึกและพิมพ์ใบครัว", screen: "บันทึกและส่งครัว", both: "บันทึก ส่งครัว และพิมพ์", save: "บันทึก" }
+	: locale.value === "en"
+		? { paper: "Save and print kitchen slip", screen: "Save and send to kitchen", both: "Save, send, and print", save: "Save" }
+		: { paper: "ບັນທຶກ ແລະ ພິມໃບຄົວ", screen: "ບັນທຶກ ແລະ ສົ່ງຄົວ", both: "ບັນທຶກ ສົ່ງຄົວ ແລະ ພິມ", save: "ບັນທຶກ" });
+const kitchenDispatchLabel = computed(() => kitchenDeliveryMode.value === "both"
+	? kitchenDispatchCopy.value.both
+	: kitchenDeliveryMode.value === "screen"
+		? kitchenDispatchCopy.value.screen
+		: kitchenDeliveryMode.value === "paper"
+			? kitchenDispatchCopy.value.paper
+			: kitchenDispatchCopy.value.save);
+const kitchenDispatchIcon = computed(() => kitchenScreen.value && !kitchenPaper.value
+	? "i-heroicons-computer-desktop"
+	: kitchenPaper.value ? "i-heroicons-printer" : "i-heroicons-check-circle");
+const kitchenFlowCopy = computed(() => locale.value === "th"
+	? { served: "เสิร์ฟแล้ว", cooking: "รอครัวยืนยันเมื่อทำเสร็จ", waitingKitchen: "ครัวยังทำไม่ครบ", readyPickup: "พร้อมให้ลูกค้ารับ", pickupAction: "ยืนยันรับที่คิวหน้าร้าน", awaitingPayment: "รอชำระเงินก่อนเข้าคิวหน้าร้าน", progress: (done: number, total: number) => `พร้อม ${done}/${total} สถานี` }
+	: locale.value === "en"
+		? { served: "Served", cooking: "Waiting for kitchen confirmation", waitingKitchen: "Kitchen still preparing", readyPickup: "Ready for pickup", pickupAction: "Confirm collection in pickup queue", awaitingPayment: "Awaiting payment before entering pickup queue", progress: (done: number, total: number) => `${done}/${total} stations ready` }
+		: { served: "ເສີບແລ້ວ", cooking: "ລໍຖ້າຄົວຢືນຢັນເມື່ອເຮັດແລ້ວ", waitingKitchen: "ຄົວຍັງເຮັດບໍ່ຄົບ", readyPickup: "ພ້ອມໃຫ້ລູກຄ້າຮັບ", pickupAction: "ຢືນຢັນຮັບຢູ່ຄິວໜ້າຮ້ານ", awaitingPayment: "ລໍຖ້າຊຳລະເງິນກ່ອນເຂົ້າຄິວໜ້າຮ້ານ", progress: (done: number, total: number) => `ພ້ອມ ${done}/${total} ສະຖານີ` });
+const categoryOptions = computed(() => {
+	const options = [
+		{ label: categoryCopy.value.all, value: allCategoriesValue },
+		...productCategories.value.map((category) => ({ label: `${category.name} (${category.count})`, value: category.id })),
+	];
+	if (products.value.some((product) => !product.category_id)) options.push({ label: categoryCopy.value.uncategorized, value: uncategorizedCategoryValue });
+	return options;
+});
 const filteredProducts = computed(() => {
 	const query = search.value.trim().toLowerCase();
-	return products.value.filter((product) => !query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query));
+	return products.value.filter((product) => {
+		const matchesCategory = activeCategory.value === allCategoriesValue
+			|| (activeCategory.value === uncategorizedCategoryValue ? !product.category_id : product.category_id === activeCategory.value);
+		const matchesSearch = !query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query);
+		return matchesCategory && matchesSearch;
+	});
+});
+const kitchenScreenLinks = computed(() => {
+	const stations = new Map<string, string>();
+	for (const product of products.value) {
+		if (Number(product.send_to_kitchen ?? 1) !== 0 && product.station_id && product.station_name) stations.set(product.station_id, product.station_name);
+	}
+	return [
+		{ id: "all", label: categoryCopy.value.allKitchens, to: "/kitchen" },
+		...[ ...stations.entries() ]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([ id, name ]) => ({ id, label: name, to: `/kitchen?station=${encodeURIComponent(id)}` })),
+	];
 });
 // A store with nothing in its catalog needs different wording from a search
 // that matched nothing, so the two empty states are tracked separately.
@@ -416,6 +502,9 @@ const sentGroups = computed(() => {
 	}
 	return [ ...groups.entries() ].sort((a, b) => b[0] - a[0]);
 });
+// The round a reprint means when nobody named one: the last lot sent, which is
+// the one the kitchen is missing if the paper jammed or ran out.
+const latestSentRound = computed(() => Number(sentGroups.value[0]?.[0] || 0));
 function displayQueueNo(queueNo: string | null | undefined) {
 	const normalized = String(queueNo || "").trim();
 	if (!normalized) return "-";
@@ -504,31 +593,77 @@ const receiptItems = computed<OrderItem[]>(() => checkoutReceipt.value?.receipt.
 	line_total: item.line_total, line_status: "sent", is_gift: item.is_gift ? 1 : 0,
 })) || []);
 const printOrder = computed(() => completedOrder.value || order.value);
-const printItems = computed(() => checkoutReceipt.value
-	? receiptItems.value
-	: printKind.value === "kitchen"
-		? printOrder.value?.items.filter((item) => item.line_status === "sent" && Number(item.round_no) === printRound.value) || []
-		: printOrder.value?.items.filter((item) => item.line_status !== "cancelled") || localItems.value);
+// Both slips go to the kitchen, so neither carries money: one says what to cook,
+// the other says what to stop cooking.
+const printIsKitchenSlip = computed(() => printKind.value === "kitchen" || printKind.value === "void");
+const printItems = computed(() => (printKind.value === "void"
+	? voidTicket.value?.items || []
+	: checkoutReceipt.value
+		? receiptItems.value
+		: printKind.value === "kitchen"
+			? printOrder.value?.items.filter((item) => item.line_status === "sent" && Number(item.round_no) === printRound.value) || []
+			: printOrder.value?.items.filter((item) => item.line_status !== "cancelled") || localItems.value));
+// A shop with no stations set up prints what it always printed: one slip for the
+// whole round. Once the menu is split between a grill and a bar, each of them
+// gets its own slip carrying only the lines it has to cook.
+const kitchenStationsConfigured = computed(() => products.value.some((product) => product.station_name));
+function stationNameForProduct(productId: string) {
+	return products.value.find((product) => product.id === productId)?.station_name || "";
+}
+// A bottle taken from the counter fridge is on the bill and out of stock like
+// anything else, but the kitchen has nothing to do with it. Mirrors the rule the
+// server applies when it queues a slip, so both routes print the same thing.
+function goesToKitchen(productId: string) {
+	return Number(products.value.find((product) => product.id === productId)?.send_to_kitchen ?? 1) !== 0;
+}
+const quickSaleUsesKitchen = computed(() => (kitchenScreen.value || kitchenPaper.value)
+	&& localItems.value.some((item) => goesToKitchen(item.product_id)));
+const printGroups = computed<Array<{ key: string; station: string; items: OrderItem[] }>>(() => {
+	const items = printIsKitchenSlip.value ? printItems.value.filter((item) => goesToKitchen(item.product_id)) : printItems.value;
+	if (!printIsKitchenSlip.value || !kitchenStationsConfigured.value) {
+		return [ { key: "all", station: "", items } ];
+	}
+	const groups = new Map<string, OrderItem[]>();
+	for (const item of items) {
+		const station = stationNameForProduct(item.product_id);
+		groups.set(station, [ ...(groups.get(station) || []), item ]);
+	}
+	// Nothing to split still has to render a sheet, or a mis-timed print would put
+	// blank paper through the printer instead of saying the round was empty.
+	if (!groups.size) return [ { key: "all", station: "", items: [] } ];
+	// Unassigned lines last: they are the ones nobody has decided about yet, and
+	// they must not push a named station's slip down the roll.
+	return [ ...groups.entries() ]
+		.sort((left, right) => (left[0] ? 0 : 1) - (right[0] ? 0 : 1) || left[0].localeCompare(right[0]))
+		.map(([ station, items ]) => ({ key: station || "unassigned", station, items }));
+});
 const orderLabel = computed(() => order.value?.service_mode === "pickup"
 	? `${t("posPanels.queue")} ${displayQueueNo(order.value.queue_no)}`
 	: `${order.value?.zone_name || ""} · ${order.value?.table_name || t("restaurantPos.table")}`);
-const printLabel = computed(() => checkoutReceipt.value
-	? `${pt("posPanels.queue")} ${displayQueueNo(checkoutReceipt.value.queue_no)} · ${pt("restaurantPos.takeaway")}`
-	: printOrder.value
-		? (printOrder.value.service_mode === "pickup"
-			? `${pt("posPanels.queue")} ${displayQueueNo(printOrder.value.queue_no)}`
-			: `${printOrder.value.zone_name || ""} · ${printOrder.value.table_name || pt("restaurantPos.table")}`)
-		: "");
+// Where the food is going, in the words the runner needs: a queue number for
+// takeaway, a zone and table for everything else.
+function orderPrintLabel(target: Pick<Order, "service_mode" | "queue_no" | "zone_name" | "table_name">) {
+	return target.service_mode === "pickup"
+		? `${pt("posPanels.queue")} ${displayQueueNo(target.queue_no)}`
+		: `${target.zone_name || ""} · ${target.table_name || pt("restaurantPos.table")}`;
+}
+const printLabel = computed(() => (printKind.value === "void"
+	? voidTicket.value?.label || ""
+	: checkoutReceipt.value
+		? `${pt("posPanels.queue")} ${displayQueueNo(checkoutReceipt.value.queue_no)} · ${pt("restaurantPos.takeaway")}`
+		: printOrder.value ? orderPrintLabel(printOrder.value) : ""));
 const printQueueText = computed(() => checkoutReceipt.value?.queue_no ? displayQueueNo(checkoutReceipt.value.queue_no) : (printOrder.value?.service_mode === "pickup" && printOrder.value.queue_no ? displayQueueNo(printOrder.value.queue_no) : ""));
 // A scannable copy of the order number, so staff can pull up an old bill with the
 // scanner already on the counter instead of typing it. An estimate has no order
 // number yet, and a value that cannot be encoded yields null so the bill simply
 // omits the barcode rather than printing something that scans as nonsense.
 const printBarcodeBits = computed(() => (
-	printKind.value === "estimate" ? null : encodeCode128Bits(printOrderNo.value || "")
+	printKind.value === "estimate" || printKind.value === "void" ? null : encodeCode128Bits(printOrderNo.value || "")
 ));
 
-const printOrderNo = computed(() => checkoutReceipt.value?.order_no || printOrder.value?.order_no || "");
+const printOrderNo = computed(() => (printKind.value === "void"
+	? voidTicket.value?.orderNo || ""
+	: checkoutReceipt.value?.order_no || printOrder.value?.order_no || ""));
 // A check or estimate is a projection of what will be owed, so every figure on
 // it is computed from the live cart. A receipt is a record of what was actually
 // charged, so it uses the figures stored on the order.
@@ -758,6 +893,12 @@ function beginItemMutation(itemId: string): boolean {
 function endItemMutation(itemId: string) { pendingItemIds.value = pendingItemIds.value.filter((id) => id !== itemId); }
 function applyCatalog(catalog: PosCatalog) {
 	products.value = catalog.items;
+	productCategories.value = catalog.categories || Array.from(
+		new Map(catalog.items
+			.filter((product) => product.category_id && product.category_name)
+			.map((product) => [ product.category_id as string, { id: product.category_id as string, name: product.category_name as string, count: 0 } ])).values(),
+	).map((category) => ({ ...category, count: catalog.items.filter((product) => product.category_id === category.id).length }));
+	if (activeCategory.value !== allCategoriesValue && activeCategory.value !== uncategorizedCategoryValue && !productCategories.value.some((category) => category.id === activeCategory.value)) activeCategory.value = allCategoriesValue;
 	const store = catalog.store || {};
 	storeName.value = String(store.name || t("restaurantPos.fallbackStoreName"));
 	storeLogo.value = String(store.logo_url || "");
@@ -789,6 +930,8 @@ function applyCatalog(catalog: PosCatalog) {
 	receiptShowTendered.value = Number(store.receipt_show_tendered ?? 1) !== 0;
 	receiptShowChange.value = Number(store.receipt_show_change ?? 1) !== 0;
 	receiptShowPaymentMethod.value = Number(store.receipt_show_payment_method ?? 1) !== 0;
+	kitchenDeliveryMode.value = String(store.kitchen_delivery_mode || "paper");
+	kitchenServerPrinting.value = Number(store.kitchen_server_printing ?? 0) !== 0;
 	pickupQueueEnabled.value = Number(store.pickup_queue_enabled ?? 0) !== 0;
 	receiptShowQueue.value = pickupQueueEnabled.value;
 	currency.value = String(store.currency || "LAK");
@@ -835,6 +978,32 @@ async function loadDashboard() {
 		loadError.value = localizedApiError(error);
 		toast.error({ title: t("restaurantPos.loadFailed"), description: loadError.value });
 	} finally { pending.value = false; }
+}
+
+async function markKitchenRoundDone(round: KitchenRound, done = true) {
+	if (kitchenRoundPendingId.value) return;
+	kitchenRoundPendingId.value = round.queue_id;
+	try {
+		await apiFetch(`/pos/restaurant/kitchen-queue/${encodeURIComponent(round.id)}/done`, { method: "POST", body: { store_id: props.storeId, done, station_id: round.station_id } });
+		await loadKitchenQueue(true);
+	} catch (error) { toast.error({ title: t("kitchenQueue.markFailed"), description: localizedApiError(error) }); }
+	finally { kitchenRoundPendingId.value = ""; }
+}
+
+async function markKitchenRoundServed(round: KitchenRound) {
+	if (kitchenRoundPendingId.value || round.service_mode !== "dine-in") return;
+	kitchenRoundPendingId.value = round.queue_id;
+	try {
+		await apiFetch(`/pos/restaurant/kitchen-queue/${encodeURIComponent(round.id)}/served`, { method: "POST", body: { store_id: props.storeId, station_id: round.station_id } });
+		await loadKitchenQueue(true);
+	} catch (error) { toast.error({ title: t("kitchenQueue.markFailed"), description: localizedApiError(error) }); }
+	finally { kitchenRoundPendingId.value = ""; }
+}
+
+function kitchenRoundLabel(round: KitchenRound) {
+	return round.service_mode === "pickup"
+		? `${t("posPanels.queue")} ${displayQueueNo(round.queue_no)}`
+		: `${round.zone_name || ""} · ${round.table_name || t("restaurantPos.table")}`;
 }
 
 async function loadPickupQueue() {
@@ -1328,12 +1497,48 @@ async function sendKitchen(options: { print: boolean; park: boolean; pay: boolea
 		clearTableDraft(response.data.id);
 		sendKey = "";
 		const round = Number(response.data.rounds.at(-1)?.round_no || 0);
-		if (options.print) printDocument("kitchen", round);
+		if (options.print && !kitchenServerPrinting.value) printDocument("kitchen", round, { immediate: true });
 		if (options.pay) openCheckout("existing");
 		else if (options.park) parkOrder();
 		else void loadDashboard();
 		toast.success({ title: options.park ? t("toastMessages.billParked") : t("toastMessages.billRoundSaved", { round }) });
 	} catch (error) { toast.error({ title: t("toastMessages.billSaveFailed"), description: `${localizedApiError(error)} · ${t("toastMessages.unsavedItemsRemain")}` }); }
+	finally { actionPending.value = false; }
+}
+
+// A quick sale had no way to reach the kitchen: the cart went straight to
+// payment, so anything cooked to order was only ever spoken across the counter.
+// This opens the takeaway order the queue number comes from and sends the cart
+// as its first round, leaving the bill open so it can still be added to and paid.
+async function sendQuickSaleKitchen() {
+	if (order.value || !localItems.value.length) return;
+	actionPending.value = true;
+	try {
+		const cart = localItems.value.map((item) => ({ product_id: item.product_id, qty: item.qty, note: item.note || null, is_gift: Boolean(item.is_gift), promotion_id: item.promotion_id || null }));
+		quickOpenKey ||= crypto.randomUUID();
+		const opened = await apiFetch<Envelope<Order>>("/pos/restaurant/orders", {
+			method: "POST", headers: { "Idempotency-Key": quickOpenKey },
+			body: { store_id: props.storeId, service_mode: "pickup" },
+		});
+		sendKey ||= crypto.randomUUID();
+		const sent = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${opened.data.id}/send`, {
+			method: "POST", headers: { "Idempotency-Key": sendKey },
+			body: { store_id: props.storeId, expected_version: opened.data.version, items: cart },
+		});
+		order.value = sent.data;
+		quickOpenKey = "";
+		sendKey = "";
+		localCart.value = [];
+		selectedPromotionIds.value = [];
+		selectedPromotionCounts.value = {};
+		moreActionsOpen.value = false;
+		const round = Number(sent.data.rounds.at(-1)?.round_no || 1);
+		if (kitchenPaper.value && !kitchenServerPrinting.value) printDocument("kitchen", round, { immediate: true });
+		toast.success({ title: sent.data.queue_no
+			? t("toastMessages.quickSaleSentKitchenQueue", { queue: displayQueueNo(sent.data.queue_no) })
+			: t("toastMessages.quickSaleSentKitchen") });
+		void loadDashboard();
+	} catch (error) { toast.error({ title: t("toastMessages.billSaveFailed"), description: localizedApiError(error) }); }
 	finally { actionPending.value = false; }
 }
 
@@ -1443,6 +1648,14 @@ function releaseCompletedOrder(completed: Order) {
 	void loadDashboard();
 }
 
+// The kitchen copy of a sale that was paid up front. A quick sale prints the
+// lines the receipt returned; a table paid with `direct` prints the round the
+// checkout itself dispatched.
+function printKitchenFromCheckout() {
+	const round = Number(completedOrder.value?.rounds.at(-1)?.round_no || 0);
+	printDocument("kitchen", checkoutReceipt.value ? undefined : round, { immediate: true });
+}
+
 function printReceiptAndFinish() {
 	if (!canPrintDocument("receipt")) return toast.error({ title: t("toastMessages.printForbidden") });
 	printKind.value = "receipt";
@@ -1468,6 +1681,7 @@ async function checkout() {
 				body: { store_id: props.storeId, service_mode: "pickup", payment_method: paymentMethod.value, items: localCart.value.map(({ product_id, qty }) => ({ product_id, qty })), promotion_ids: checkoutPromotionIds.value, amount_tendered: paymentMethod.value === "cash" && !isForeignPayment.value ? cashTendered.value : null, ...paymentCurrencyBody(), payment_account_id: paymentMethod.value === "qr_transfer" ? paymentAccountId.value : null },
 			});
 			checkoutReceipt.value = response.data;
+			printKind.value = "receipt";
 			if (pickupQueueEnabled.value) void loadPickupQueue();
 			checkoutKey = "";
 			localCart.value = [];
@@ -1504,19 +1718,62 @@ function parkOrder() {
 	void loadDashboard();
 }
 
+function showQuickSale() {
+	if (order.value) parkOrder();
+	else view.value = "quick";
+}
+
+// A quick-sale cart exists only in this browser session. Turn it into a real
+// open pickup order before clearing the cart, so the cashier can safely serve
+// the next customer and resume this bill from Open orders later.
+let parkQuickSaleKey = "";
+async function parkQuickSale() {
+	if (order.value || !localCart.value.length) return;
+	moreActionsOpen.value = false;
+	actionPending.value = true;
+	try {
+		parkQuickSaleKey ||= crypto.randomUUID();
+		const response = await apiFetch<Envelope<Order>>("/pos/restaurant/orders", {
+			method: "POST",
+			headers: { "Idempotency-Key": parkQuickSaleKey },
+			body: {
+				store_id: props.storeId,
+				service_mode: "pickup",
+				items: localCart.value.map(({ product_id, qty, note }) => ({ product_id, qty, note: note || null })),
+			},
+		});
+		parkQuickSaleKey = "";
+		localCart.value = [];
+		selectedPromotionIds.value = [];
+		selectedPromotionCounts.value = {};
+		persistLocalCart();
+		await loadDashboard();
+		toast.success({ title: t("toastMessages.billParked"), description: response.data.order_no });
+	} catch (error) {
+		toast.error({ title: t("toastMessages.billSaveFailed"), description: localizedApiError(error) });
+	} finally { actionPending.value = false; }
+}
+
 async function cancelOrder() {
 	if (!order.value) return;
 	const hasSent = order.value.items.some((item) => item.line_status === "sent");
 	if (hasSent && !cancelReason.value.trim()) return;
+	// Captured before the order leaves the screen: the slip has to name the dishes
+	// the kitchen is still cooking, and by then order.value is gone.
+	const cancelledItems = order.value.items.filter((item) => item.line_status === "sent");
+	const cancelledLabel = orderPrintLabel(order.value);
+	const cancelledOrderNo = order.value.order_no;
+	const reason = cancelReason.value.trim();
 	actionPending.value = true;
 	try {
 		await apiFetch(`/pos/restaurant/orders/${order.value.id}/${hasSent ? "cancel-sent" : "cancel"}`, {
-			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, reason: cancelReason.value.trim() || undefined },
+			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, reason: reason || undefined },
 		});
 		cancelPanel.value = false;
 		clearTableDraft(order.value.id);
 		order.value = null;
 		mobileTicketOpen.value = false;
+		if (cancelledItems.length) printVoidTicket(cancelledItems, reason, cancelledLabel, cancelledOrderNo);
 		await loadDashboard();
 		toast.success({ title: t("toastMessages.orderCancelled") });
 	} catch (error) { toast.error({ title: t("toastMessages.orderCancelFailed"), description: localizedApiError(error) }); }
@@ -1573,15 +1830,33 @@ function editSentItem(item: OrderItem) {
 	sentItemPanel.value = true;
 }
 
+// Cancelling on the till only ever changed the bill. The kitchen kept cooking,
+// because nothing told it to stop, so the slip carries the difference and the
+// reason back to the same place the order went.
+function printVoidTicket(items: OrderItem[], reason: string, label: string, orderNo: string) {
+	// The server queues this one itself once the shop has a kitchen printer, and
+	// it does so whatever the auto-print setting says: food already on the pass
+	// has to be stopped.
+	if (kitchenServerPrinting.value || !kitchenPaper.value || !items.length) return;
+	voidTicket.value = { items, reason, label, orderNo };
+	printDocument("void", undefined, { immediate: true });
+}
+
 async function adjustSentItem() {
 	if (!order.value || !cancellingItem.value || sentItemQty.value >= Number(cancellingItem.value.qty)) return;
+	const cancelledItem = cancellingItem.value;
+	const cancelledQty = Number(cancelledItem.qty) - sentItemQty.value;
+	const reason = (sentItemReasonPreset.value === t("posPanels.reasonOther") ? cancelReason.value : sentItemReasonPreset.value).trim();
+	const label = orderPrintLabel(order.value);
+	const orderNo = order.value.order_no;
 	actionPending.value = true;
 	try {
 		const response = await apiFetch<Envelope<Order>>(`/pos/restaurant/orders/${order.value.id}/items/${cancellingItem.value.id}/cancel`, {
-			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, qty: sentItemQty.value, reason: (sentItemReasonPreset.value === t("posPanels.reasonOther") ? cancelReason.value : sentItemReasonPreset.value).trim() || undefined },
+			method: "POST", body: { store_id: props.storeId, expected_version: order.value.version, qty: sentItemQty.value, reason: reason || undefined },
 		});
 		order.value = response.data;
 		sentItemPanel.value = false;
+		printVoidTicket([ { ...cancelledItem, qty: cancelledQty } ], reason, label, orderNo);
 		toast.success({ title: sentItemQty.value === 0 ? t("toastMessages.itemCancelled") : t("toastMessages.quantityUpdated") });
 	} catch (error) { toast.error({ title: t("toastMessages.quantityUpdateFailed"), description: localizedApiError(error) }); await refreshOrder(); }
 	finally { actionPending.value = false; }
@@ -1609,15 +1884,25 @@ function openEstimate() {
 }
 
 function refreshOrder() { if (order.value) return loadOrder(order.value.id); }
-function canPrintDocument(kind: "kitchen" | "check" | "estimate" | "receipt") {
+function canPrintDocument(kind: PrintKind) {
 	// Kitchen slips only contain order data already visible on this POS screen.
 	return kind !== "receipt" || can("pos.restaurant.print");
 }
-function printDocument(kind: "kitchen" | "check" | "estimate" | "receipt", round?: number) {
+// `immediate` is for the slips that follow an action the cashier has already
+// confirmed: a preview between the round and the paper is one tap of delay at
+// the busiest moment, and nothing on a kitchen slip is worth checking twice.
+function printDocument(kind: PrintKind, round?: number, options: { immediate?: boolean } = {}) {
 	if (!canPrintDocument(kind)) return toast.error({ title: t("toastMessages.printForbidden") });
 	printKind.value = kind;
 	printRound.value = round || null;
-	printPreviewOpen.value = true;
+	if (!options.immediate) {
+		printPreviewOpen.value = true;
+		return;
+	}
+	// A round of nothing but drinks has nothing for the kitchen to read, and
+	// feeding blank paper through the printer is worse than printing nothing.
+	if (!printGroups.value.some((group) => group.items.length)) return;
+	nextTick(() => window.print());
 }
 function confirmPrintDocument() {
 	printPreviewOpen.value = false;
@@ -1656,6 +1941,11 @@ function syncTicketScrollLock() {
 	document.body.style.overflow = mobileTicketOpen.value && !desktopMedia?.matches ? "hidden" : "";
 }
 
+// A shop that switches its kitchen back to paper loses the tab this view is
+// reached from, and would otherwise be stranded on a screen with no way out.
+watch(kitchenScreen, (enabled) => {
+	if (!enabled && view.value === "kitchenQueue") view.value = "quick";
+});
 watch(mobileTicketOpen, syncTicketScrollLock);
 watch(view, (nextView) => {
 	if (nextView !== "quick") mobileTicketOpen.value = false;
@@ -1681,12 +1971,29 @@ onBeforeUnmount(() => {
 			<div class="flex h-full min-h-0 flex-col gap-3">
 				<div class="relative flex items-center gap-2">
 					<div class="restaurant-pos-tab-scroll flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
-						<AppButton class="shrink-0" size="sm" :color="view === 'quick' ? 'primary' : 'neutral'" :variant="view === 'quick' ? 'solid' : 'soft'" icon="i-heroicons-bolt" @click="view = 'quick'">{{ t('restaurantPos.quickSale') }}</AppButton>
+						<AppButton class="shrink-0" size="sm" :color="view === 'quick' ? 'primary' : 'neutral'" :variant="view === 'quick' ? 'solid' : 'soft'" icon="i-heroicons-bolt" @click="showQuickSale">{{ t('restaurantPos.quickSale') }}</AppButton>
 						<AppButton class="shrink-0" size="sm" :color="view === 'tables' ? 'primary' : 'neutral'" :variant="view === 'tables' ? 'solid' : 'soft'" icon="i-heroicons-table-cells" @click="showTables">{{ t('restaurantPos.selectTable') }}</AppButton>
 						<AppButton class="shrink-0" size="sm" :color="view === 'open' ? 'primary' : 'neutral'" :variant="view === 'open' ? 'solid' : 'soft'" icon="i-heroicons-queue-list" @click="view = 'open'">{{ t('restaurantPos.openOrders') }} <span v-if="openOrders.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ openOrders.length }}</span></AppButton>
 						<AppButton v-if="pickupQueueEnabled" class="shrink-0" size="sm" :color="view === 'pickupQueue' ? 'primary' : 'neutral'" :variant="view === 'pickupQueue' ? 'solid' : 'soft'" icon="i-lucide-list-ordered" @click="view = 'pickupQueue'">{{ t('restaurantPos.pickupQueue') }} <span v-if="pickupQueue.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ pickupQueue.length }}</span></AppButton>
+						<!-- Next to the pickup queue because the two answer the same question
+						     from opposite ends: what the kitchen still owes, and what the
+						     customer is still waiting to collect. -->
+						<!-- Only for a shop whose kitchen works off a screen. One that cooks
+						     from paper has nobody to tick a round off, so a queue would only
+						     ever grow and mean nothing. -->
+						<AppButton v-if="kitchenScreen" class="shrink-0" size="sm" :color="view === 'kitchenQueue' ? 'primary' : 'neutral'" :variant="view === 'kitchenQueue' ? 'solid' : 'soft'" icon="i-lucide-chef-hat" @click="view = 'kitchenQueue'; loadKitchenQueue(true)">
+							{{ t('kitchenQueue.tab') }}
+							<!-- Green counts what the counter has to act on. Grey is just how
+							     much the kitchen still owes, which is nobody's cue to move. -->
+							<span v-if="kitchenReady.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-xs font-bold text-white">{{ kitchenReady.length }}</span>
+							<span v-else-if="kitchenCooking.length" class="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-current/10 px-1 text-xs">{{ kitchenCooking.length }}</span>
+						</AppButton>
 					</div>
 					<AppButton v-if="customerDisplayEnabled" class="shrink-0" size="sm" color="neutral" variant="soft" icon="i-heroicons-computer-desktop" :aria-label="t('restaurantPos.customerScreen')" :title="t('restaurantPos.customerScreen')" @click="openCustomerDisplay" />
+					<AppButton v-if="view === 'quick' && parkedBills.length" class="shrink-0 shadow-sm ring-1 ring-amber-700/10" size="sm" color="warning" variant="solid" icon="i-heroicons-bookmark" :aria-label="t('restaurantPos.parkOrder')" :title="t('restaurantPos.parkOrder')" @click="parkedBillsOpen = true">
+						<span class="hidden sm:inline">{{ t('restaurantPos.parkOrder') }}</span>
+						<span class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 text-[11px] font-bold tabular-nums">{{ parkedBills.length }}</span>
+					</AppButton>
 					<AppButton v-if="view === 'quick'" class="shrink-0 shadow-sm ring-1 ring-emerald-700/10" size="sm" color="success" variant="solid" icon="i-heroicons-gift" :aria-label="t('restaurantPos.promotions')" :title="t('restaurantPos.promotions')" @click="promotionPanelOpen = true">
 						<span class="hidden sm:inline">{{ t('restaurantPos.promotions') }}</span>
 						<span v-if="promotionOptionCount" class="ml-1 hidden min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold tabular-nums sm:inline-flex">{{ promotionOptionCount }}</span>
@@ -1752,8 +2059,18 @@ onBeforeUnmount(() => {
 								<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-800 hover:bg-amber-50" @click="tableActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark" class="size-4" />{{ t('restaurantPos.parkOrder') }}</button>
 							</div>
 						</div>
-						<div class="sticky top-0 z-20 -mx-1 bg-white/95 px-1 pb-2 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
-							<UInput v-model="search" class="w-full shrink-0" size="lg" icon="i-heroicons-magnifying-glass" :placeholder="t('restaurantPos.search')" />
+						<div v-else-if="order?.service_mode === 'pickup'" class="mb-2 rounded-md border border-amber-300 bg-amber-50/70 shadow-sm ring-1 ring-amber-100 lg:mb-3">
+							<div class="flex items-center justify-between gap-2 border-l-4 border-amber-500 px-2.5 py-2 lg:border-l-[6px] lg:px-3">
+								<div class="flex min-w-0 items-center gap-2.5">
+									<span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-500 text-white shadow-sm shadow-amber-900/10 lg:size-9"><UIcon name="i-heroicons-bookmark" class="size-4" /></span>
+									<div class="min-w-0"><div class="flex min-w-0 flex-wrap items-center gap-1.5"><p class="truncate text-sm font-bold text-amber-950">{{ t('restaurantPos.parkOrder') }} · {{ orderLabel }}</p><UBadge color="warning" variant="soft">{{ t('restaurantPos.open') }}</UBadge></div><p class="mt-0.5 text-xs text-amber-800">{{ t('restaurantPos.takeaway') }} · {{ elapsed(order.opened_at) }}</p></div>
+								</div>
+								<AppButton class="min-h-9 border border-sky-200 bg-sky-50 px-3 text-sky-800 shadow-sm hover:bg-sky-100" size="sm" color="neutral" variant="ghost" icon="i-heroicons-bolt" @click="parkOrder">{{ t('restaurantPos.quickSale') }}</AppButton>
+							</div>
+						</div>
+						<div class="sticky top-0 z-20 -mx-1 flex gap-2 bg-white/95 px-1 pb-2 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
+							<UInput v-model="search" class="min-w-0 flex-1" size="lg" icon="i-heroicons-magnifying-glass" :placeholder="t('restaurantPos.search')" />
+							<USelect v-model="activeCategory" class="w-[35%] shrink-0 sm:w-[28%] lg:w-1/5" size="lg" icon="i-heroicons-tag" :items="categoryOptions" :aria-label="categoryCopy.category" />
 						</div>
 						<div class="mt-1 grid content-start grid-cols-2 gap-2 overflow-y-auto sm:mt-3 sm:grid-cols-3 lg:min-h-0 lg:flex-1 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 							<div v-if="loadError && !products.length" class="col-span-full flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-amber-300 bg-amber-50/40 p-8 text-center">
@@ -1926,7 +2243,9 @@ onBeforeUnmount(() => {
 										</div>
 									<AppButton v-if="!item.is_gift" size="xs" color="primary" variant="soft" icon="i-heroicons-pencil-square" :aria-label="t('restaurantPos.editQty')" :title="t('restaurantPos.editQty')" @click="editSentItem(item)" />
 									</div>
-									<AppButton v-if="roundMode(round) === 'kitchen'" class="m-2" size="xs" color="neutral" variant="soft" icon="i-heroicons-printer" @click="printDocument('kitchen', round)">{{ t('restaurantPos.printRoundItems') }}</AppButton>
+									<!-- Printable for a direct sale too: those items are cooked like any
+									     other, and paying first does not tell the kitchen what to make. -->
+									<AppButton class="m-2" size="xs" color="neutral" variant="soft" icon="i-heroicons-printer" @click="printDocument('kitchen', round)">{{ t('restaurantPos.printRoundItems') }}</AppButton>
 								</div>
 							</section>
 						</div>
@@ -1947,10 +2266,11 @@ onBeforeUnmount(() => {
 									<strong class="text-xl tabular-nums">{{ money(displayTotal) }}</strong>
 								</div>
 								<template v-if="!order">
+									<AppButton block color="success" variant="solid" :loading="actionPending" @click="openCheckout('direct')">
+										<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ quickSaleUsesKitchen ? t('restaurantPos.sendAndPay') : t('restaurantPos.payDirect') }}</span>
+									</AppButton>
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
-										<AppButton class="w-full justify-center" color="primary" :loading="actionPending" @click="openCheckout('direct')">
-											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
-										</AppButton>
+										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-bookmark" :disabled="actionPending || !localCart.length" @click="parkQuickSale">{{ t('restaurantPos.parkOrder') }}</AppButton>
 										<AppButton class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-table-cells" :disabled="actionPending" @click="beginCartTable">{{ t('restaurantPos.openTableWithCart') }}</AppButton>
 										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
 									</div>
@@ -1960,11 +2280,11 @@ onBeforeUnmount(() => {
 										<UIcon name="i-heroicons-exclamation-circle" class="size-3.5 shrink-0" />
 										<p class="truncate text-[11px] font-medium leading-none">{{ t('restaurantPos.unsavedDraftShort') }}</p>
 									</div>
-									<AppButton v-if="!hasLocalTableDraft" block color="primary" :loading="actionPending" @click="openCheckout('direct')">
+									<AppButton v-if="!hasLocalTableDraft" block color="neutral" variant="soft" :loading="actionPending" @click="openCheckout('direct')">
 										<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.payDirect') }}</span>
 									</AppButton>
 									<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
-										<AppButton class="w-full justify-center" color="primary" variant="solid" icon="i-heroicons-check-circle" :loading="actionPending" @click="sendKitchen({ print: false, park: false, pay: false })">{{ t('restaurantPos.save') }}</AppButton>
+										<AppButton class="w-full justify-center" color="success" variant="solid" :icon="kitchenDispatchIcon" :loading="actionPending" @click="sendKitchen({ print: kitchenPaper, park: false, pay: false })">{{ kitchenDispatchLabel }}</AppButton>
 										<AppButton class="w-full justify-center" color="neutral" variant="soft" :disabled="hasLocalTableDraft" @click="openCheckout('existing')">
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
 										</AppButton>
@@ -1972,9 +2292,9 @@ onBeforeUnmount(() => {
 									</div>
 								</template>
 								<template v-else>
-									<div class="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_44px] gap-2">
+									<div class="grid gap-2" :class="order.service_mode === 'dine-in' ? 'grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_44px]' : 'grid-cols-[minmax(0,1fr)_44px]'">
 										<AppButton v-if="order.service_mode === 'dine-in'" class="w-full justify-center whitespace-nowrap" color="neutral" variant="soft" icon="i-heroicons-document-text" :loading="actionPending" @click="markReady">{{ t('restaurantPos.checkBill') }}</AppButton>
-										<AppButton class="w-full justify-center" color="primary" :loading="actionPending" @click="openCheckout('existing')">
+										<AppButton class="w-full justify-center" color="success" variant="solid" :loading="actionPending" @click="openCheckout('existing')">
 											<span class="inline-flex items-center justify-center gap-2"><Banknote class="size-5" />{{ t('restaurantPos.pay') }}</span>
 										</AppButton>
 										<AppButton color="neutral" variant="soft" icon="i-heroicons-ellipsis-horizontal" :aria-label="t('restaurantPos.additionalActions')" @click="moreActionsOpen = !moreActionsOpen" />
@@ -1993,6 +2313,9 @@ onBeforeUnmount(() => {
 									<button v-if="!order" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="openEstimate"><UIcon name="i-heroicons-document-text" class="size-4 text-stone-500" />{{ t('restaurantPos.printEstimate') }}</button>
 									<template v-else>
 									<button v-if="draftItems.length" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-amber-50 hover:text-amber-800" @click="moreActionsOpen = false; sendKitchen({ print: false, park: true, pay: false })"><UIcon name="i-heroicons-bookmark" class="size-4 text-amber-600" />{{ t('restaurantPos.saveAndPark') }}</button>
+									<!-- For the slip that never came out: the paper ran out, or the round
+									     was sent from another till. -->
+									<button v-if="latestSentRound" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; printDocument('kitchen', latestSentRound)"><UIcon name="i-heroicons-printer" class="size-4 text-stone-500" />{{ t('restaurantPos.printKitchenLatest', { round: latestSentRound }) }}</button>
 									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; parkOrder()"><UIcon name="i-heroicons-bookmark-square" class="size-4 text-stone-500" />{{ t('restaurantPos.parkOrder') }}</button>
 									<button class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-emerald-50 hover:text-emerald-800" @click="moreActionsOpen = false; beginMoveTable()"><UIcon name="i-heroicons-table-cells" class="size-4 text-emerald-600" />{{ order.service_mode === 'pickup' ? t('restaurantPos.selectTable') : t('restaurantPos.moveTable') }}</button>
 									<button v-if="order.service_mode === 'dine-in'" class="flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-neutral-50" @click="moreActionsOpen = false; changeToPickup()"><UIcon name="i-heroicons-shopping-bag" class="size-4 text-stone-500" />{{ t('restaurantPos.changeToTakeaway') }}</button>
@@ -2012,12 +2335,95 @@ onBeforeUnmount(() => {
 						<h2 class="mt-3 font-semibold text-stone-900">{{ t('restaurantPos.noPickupQueue') }}</h2><p class="mt-1 text-sm text-stone-500">{{ t('restaurantPos.noPickupQueueHint') }}</p>
 					</div>
 					<div v-else class="flex flex-wrap content-start items-stretch gap-2">
-						<article v-for="queued in pickupQueue" :key="queued.id" class="flex min-h-[190px] w-full flex-col overflow-hidden rounded-md border border-amber-200 bg-white shadow-sm sm:w-[340px]">
+						<article v-for="queued in pickupQueue" :key="queued.id" class="flex min-h-[190px] w-full flex-col overflow-hidden rounded-md bg-white shadow-sm sm:w-[340px]" :class="queued.kitchen_ready ? 'border-2 border-emerald-300' : 'border border-amber-200'">
 							<header class="flex items-start justify-between gap-3 border-b border-amber-100 bg-amber-50/60 px-3 py-2"><div><p class="text-[11px] font-medium text-amber-700">{{ t('restaurantPos.queueNumber') }}</p><p class="text-lg font-bold leading-tight tabular-nums text-stone-950">{{ displayQueueNo(queued.queue_no) }}</p></div><div class="text-right"><p class="text-[11px] text-stone-500">{{ t('restaurantPos.waitingFor', { time: elapsed(queued.paid_at || queued.created_at) }) }}</p><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ money(queued.total) }}</p></div></header>
+							<div class="px-3 pt-2"><UBadge :color="queued.kitchen_ready ? 'success' : 'warning'" variant="soft">{{ queued.kitchen_ready ? kitchenFlowCopy.readyPickup : kitchenFlowCopy.waitingKitchen }}</UBadge></div>
 							<div class="space-y-1 px-3 py-2"><div v-for="item in queued.items.slice(0, 3)" :key="item.product_id" class="flex items-start justify-between gap-3 text-sm"><span class="min-w-0 truncate">{{ item.name }}<span v-if="item.is_gift" class="ml-1 text-xs text-emerald-600">{{ t('restaurantPos.free') }}</span></span><strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong></div><button v-if="queued.items.length > 3" type="button" class="inline-flex min-h-7 items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800" @click="openPickupQueueDetail(queued)"><UIcon name="i-heroicons-eye" class="size-4" />{{ t('restaurantPos.viewBill') }} · {{ queued.items.length }}</button></div>
-						<footer class="mt-auto border-t border-neutral-100 p-3 sm:p-3.5"><AppButton block size="lg" class="min-h-12 touch-manipulation text-sm font-semibold sm:text-base" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === queued.id" :disabled="Boolean(collectingOrderId)" @click="markPickupCollected(queued.id)">{{ t('restaurantPos.customerCollected') }}</AppButton></footer>
+						<footer class="mt-auto border-t border-neutral-100 p-3 sm:p-3.5"><AppButton block size="lg" class="min-h-12 touch-manipulation text-sm font-semibold sm:text-base" color="success" variant="solid" icon="i-heroicons-check" :loading="collectingOrderId === queued.id" :disabled="Boolean(collectingOrderId) || !queued.kitchen_ready" @click="markPickupCollected(queued.id)">{{ t('restaurantPos.customerCollected') }}</AppButton></footer>
 						</article>
 					</div>
+				</div>
+
+				<div v-else-if="view === 'kitchenQueue'" class="min-h-0 flex-1 overflow-y-auto px-2 sm:px-3 lg:px-0">
+					<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+						<p class="text-sm text-stone-500">{{ t('kitchenQueue.hint') }}</p>
+						<div class="flex shrink-0 flex-wrap justify-end gap-2">
+							<AppButton size="sm" color="neutral" variant="soft" :icon="kitchenChime.enabled.value ? 'i-heroicons-speaker-wave' : 'i-heroicons-speaker-x-mark'" :aria-label="t('kitchenQueue.sound')" :title="t('kitchenQueue.sound')" @click="kitchenChime.setEnabled(!kitchenChime.enabled.value)" />
+							<AppButton size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-path" @click="loadKitchenQueue(true)">{{ t('restaurantPos.reload') }}</AppButton>
+							<AppButton v-for="screen in kitchenScreenLinks" :key="screen.id" size="sm" color="neutral" variant="soft" icon="i-heroicons-arrow-top-right-on-square" :to="screen.to" target="_blank">{{ screen.label }}</AppButton>
+						</div>
+					</div>
+					<div v-if="!kitchenCooking.length && !kitchenReady.length" class="flex min-h-72 flex-col items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white p-8 text-center">
+						<span class="flex size-11 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><UIcon name="i-heroicons-check-circle" class="size-6" /></span>
+						<h2 class="mt-3 font-semibold text-stone-900">{{ t('kitchenQueue.empty') }}</h2>
+						<p class="mt-1 text-sm text-stone-500">{{ t('kitchenQueue.emptyHint') }}</p>
+					</div>
+					<template v-else>
+						<!-- Ready first: it is the only part of this screen the counter has to
+						     do something about. What the kitchen is still cooking is below,
+						     to answer "is it coming?" and nothing more. -->
+						<section v-if="kitchenReady.length" class="mb-4">
+							<h2 class="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-800">
+								<UIcon name="i-heroicons-bell-alert" class="size-4" />
+								{{ t('kitchenQueue.readyTitle') }} ({{ kitchenReady.length }})
+							</h2>
+							<div class="flex flex-wrap content-start items-stretch gap-2">
+								<article v-for="round in kitchenReady" :key="round.queue_id" class="flex w-full flex-col overflow-hidden rounded-md border-2 border-emerald-300 bg-white shadow-sm sm:w-[340px]">
+									<header class="flex items-start justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-3 py-2">
+										<div class="min-w-0">
+											<p class="truncate text-sm font-bold text-stone-950">{{ kitchenRoundLabel(round) }}</p>
+											<p class="text-[11px] text-stone-500">{{ t('posPanels.round', { round: round.round_no }) }} · {{ round.order_no }}</p>
+											<p v-if="round.station_name" class="mt-0.5 text-[11px] font-semibold text-emerald-700">{{ round.station_name }}</p>
+											<p class="mt-0.5 text-[11px] text-stone-500">{{ kitchenFlowCopy.progress(round.station_done, round.station_total) }}</p>
+										</div>
+										<p class="shrink-0 text-[11px] font-semibold text-emerald-700">{{ t('kitchenQueue.readyAgo', { time: elapsed(round.kitchen_done_at || round.sent_at) }) }}</p>
+									</header>
+									<div class="space-y-1 px-3 py-2">
+										<div v-for="(item, index) in round.items" :key="index" class="flex items-start justify-between gap-3 text-sm">
+											<span class="min-w-0 font-medium">{{ item.name }}</span>
+											<strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong>
+										</div>
+									</div>
+									<footer class="mt-auto border-t border-neutral-100 p-3">
+										<AppButton v-if="round.service_mode === 'dine-in'" block size="lg" color="success" variant="solid" icon="i-heroicons-check" :loading="kitchenRoundPendingId === round.queue_id" :disabled="Boolean(kitchenRoundPendingId)" @click="markKitchenRoundServed(round)">{{ kitchenFlowCopy.served }}</AppButton>
+										<p v-else class="text-center text-xs font-medium" :class="round.payment_status === 'paid' ? 'text-emerald-700' : 'text-amber-700'">{{ round.payment_status === 'paid' ? kitchenFlowCopy.pickupAction : kitchenFlowCopy.awaitingPayment }}</p>
+									</footer>
+								</article>
+							</div>
+						</section>
+						<section v-if="kitchenCooking.length">
+							<h2 class="mb-2 flex items-center gap-2 text-sm font-bold text-orange-800">
+								<UIcon name="i-lucide-chef-hat" class="size-4" />
+								{{ t('kitchenQueue.cookingTitle') }} ({{ kitchenCooking.length }})
+							</h2>
+							<div class="flex flex-wrap content-start items-stretch gap-2">
+								<article v-for="round in kitchenCooking" :key="round.queue_id" class="flex min-h-[190px] w-full flex-col overflow-hidden rounded-md border border-orange-200 bg-white shadow-sm sm:w-[340px]">
+									<header class="flex items-start justify-between gap-3 border-b border-orange-100 bg-orange-50/60 px-3 py-2">
+										<div class="min-w-0">
+											<p class="truncate text-sm font-bold text-stone-950">{{ kitchenRoundLabel(round) }}</p>
+											<p class="text-[11px] text-stone-500">{{ t('posPanels.round', { round: round.round_no }) }} · {{ round.order_no }}</p>
+											<p v-if="round.station_name" class="mt-0.5 text-[11px] font-semibold text-orange-700">{{ round.station_name }}</p>
+											<p class="mt-0.5 text-[11px] text-stone-500">{{ kitchenFlowCopy.progress(round.station_done, round.station_total) }}</p>
+										</div>
+										<p class="shrink-0 text-[11px] text-orange-700">{{ elapsed(round.sent_at) }}</p>
+									</header>
+									<div class="space-y-1 px-3 py-2">
+										<div v-for="(item, index) in round.items" :key="index" class="flex items-start justify-between gap-3 text-sm">
+											<span class="min-w-0">
+												<span class="font-medium">{{ item.name }}</span>
+												<em v-if="item.station_name" class="ml-1 text-[11px] not-italic text-stone-400">{{ item.station_name }}</em>
+												<span v-if="item.note" class="block text-[11px] text-amber-700">{{ item.note }}</span>
+											</span>
+											<strong class="shrink-0 tabular-nums">× {{ item.qty }}</strong>
+										</div>
+									</div>
+									<footer class="mt-auto border-t border-neutral-100 p-3 text-center text-xs font-medium text-orange-700">
+										{{ kitchenFlowCopy.cooking }}
+									</footer>
+								</article>
+							</div>
+						</section>
+					</template>
 				</div>
 
 				<div v-else-if="view === 'tables'" class="space-y-3 px-2 sm:px-3 lg:px-0">
@@ -2149,6 +2555,18 @@ onBeforeUnmount(() => {
 			</div>
 		</template>
 	</AppSidebarShell>
+
+	<AppResponsivePanel v-model="parkedBillsOpen" :title="t('restaurantPos.parkOrder')" :description="t('restaurantPos.noOpenOrdersDescription')" desktop-width="520px" desktop-placement="center" mobile-max-height="80vh" content-class="px-0 py-0">
+		<div class="space-y-2 p-4">
+			<button v-for="parked in parkedBills" :key="parked.id" type="button" class="flex w-full items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-left transition hover:border-amber-300 hover:bg-amber-50" @click="parkedBillsOpen = false; loadOrder(parked.id)">
+				<span class="flex min-w-0 items-center gap-3">
+					<span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-white text-amber-600 shadow-sm ring-1 ring-amber-100"><UIcon name="i-heroicons-bookmark" class="size-4" /></span>
+					<span class="min-w-0"><span class="block truncate text-sm font-bold text-stone-900">{{ openOrderTitle(parked) }}</span><span class="mt-0.5 block truncate text-xs text-stone-500">{{ t('common.itemCount', { count: Number(parked.draft_count) + Number(parked.sent_count) }) }} · {{ elapsed(parked.opened_at) }}</span></span>
+				</span>
+				<span class="shrink-0 text-right"><span class="block text-sm font-bold tabular-nums text-stone-900">{{ money(parked.total) }}</span><span class="mt-0.5 block text-[11px] font-medium text-amber-700">{{ t('restaurantPos.viewBill') }}</span></span>
+			</button>
+		</div>
+	</AppResponsivePanel>
 
 	<AppResponsivePanel v-model="pickupQueueHistoryOpen" :title="t('pickupQueueHistory.title')" :description="t('pickupQueueHistory.hint')" desktop-width="680px" desktop-placement="center" mobile-max-height="90vh" fill-mobile-height panel-class="lg:h-[560px]" content-class="flex flex-col !overflow-hidden">
 		<div class="min-h-0 flex-1">
@@ -2466,6 +2884,10 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</div>
+			<!-- A sale paid before it was cooked has never been to the kitchen, so the
+			     slip is offered here rather than leaving the order to be shouted across
+			     the counter. -->
+			<AppButton v-if="checkoutDispatch === 'direct'" color="warning" variant="soft" size="lg" block icon="i-heroicons-fire" @click="printKitchenFromCheckout">{{ t('restaurantPos.printKitchen') }}</AppButton>
 			<div class="grid grid-cols-2 gap-2 md:gap-3">
 				<AppButton color="neutral" variant="soft" size="lg" block @click="finishCheckoutFlow">{{ t('posPanels.noPrint') }}</AppButton>
 				<AppButton color="primary" size="lg" block icon="i-heroicons-printer" @click="printReceiptAndFinish">{{ t('posPanels.printReceipt') }}</AppButton>
@@ -2753,40 +3175,45 @@ onBeforeUnmount(() => {
 	<AppResponsivePanel
 		v-model="printPreviewOpen"
 		:title="t('posPanels.printPreview')"
-		:description="printKind === 'kitchen' ? t('posPanels.round', { round: printRound || '-' }) : printKind === 'check' ? `${t('posPanels.checkBill')} · ${t('posPanels.unpaid')}` : printKind === 'estimate' ? `${t('posPanels.estimate')} · ${t('posPanels.unpaid')}` : t('posPanels.receipt')"
+		:description="printKind === 'kitchen' ? t('posPanels.round', { round: printRound || '-' }) : printKind === 'void' ? t('posPanels.voidTicket') : printKind === 'check' ? `${t('posPanels.checkBill')} · ${t('posPanels.unpaid')}` : printKind === 'estimate' ? `${t('posPanels.estimate')} · ${t('posPanels.unpaid')}` : t('posPanels.receipt')"
 		desktop-width="520px"
 		desktop-placement="center"
 		mobile-max-height="92vh"
 	>
 		<div class="flex min-h-0 flex-col gap-3">
-			<div class="scrollbar-soft max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
-				<div class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
+			<div class="scrollbar-soft max-h-[calc(100vh-260px)] space-y-3 overflow-y-auto rounded-md border border-neutral-200 bg-neutral-50 p-4">
+				<!-- Mirrors the paper: one card per slip, so the cashier sees before
+				     printing that the round is about to come out as two tickets. -->
+				<div v-for="group in printGroups" :key="group.key" class="receipt-preview-sheet mx-auto w-[80mm] max-w-full rounded-sm border border-neutral-200 bg-white px-[5mm] py-[6mm] text-[12px] leading-snug text-stone-900 shadow-sm">
 					<div class="text-center">
 						<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="mx-auto mb-2 size-14 object-contain">
 						<p v-if="receiptShowStoreName" class="text-[13px] font-bold text-stone-950">{{ storeName }}</p>
 						<p v-for="line in receiptStoreLines" :key="line" class="text-[11px] text-stone-500">{{ line }}</p>
 						<p v-if="printKind === 'kitchen' || printKind === 'receipt'" class="mt-1 font-semibold">{{ pt(printKind === 'kitchen' ? 'posPanels.billItems' : 'posPanels.receipt') }}</p>
+						<p v-if="printKind === 'void'" class="mt-1 text-[15px] font-bold text-stone-900">{{ pt('posPanels.voidTicket') }}</p>
 						<p v-if="printKind === 'check' || printKind === 'estimate'" class="mt-1 font-bold text-stone-900">{{ pt('posPanels.unpaid') }}</p>
+						<p v-if="printIsKitchenSlip && kitchenStationsConfigured" class="mt-1 text-[15px] font-bold uppercase text-stone-950">{{ group.station || pt('posPanels.noStation') }}</p>
 						<p v-if="printKind !== 'receipt' && printLabel" class="mt-1 text-[11px] text-stone-500">{{ printLabel }}</p>
 						<p v-if="printOrderNo || printRound" class="mt-0.5 text-[11px] text-stone-500">{{ printOrderNo }}<template v-if="printRound"> · {{ pt('posPanels.round', { round: printRound }) }}</template></p>
 					</div>
 					<div class="my-3 border-t border-dashed border-neutral-300" />
 					<div class="space-y-2">
-						<div v-for="item in printItems" :key="item.id" class="flex justify-between gap-3">
+						<div v-for="item in group.items" :key="item.id" class="flex justify-between gap-3">
 							<div class="min-w-0">
 								<p class="font-medium text-stone-900">{{ item.name }} <span v-if="item.is_gift" class="text-emerald-600">· {{ pt('posPanels.free') }}</span></p>
 								<!-- Quantity under the name so the amounts stack into a column the
 								     customer can add up, matching the receipt and the settings
 								     preview. A kitchen slip carries no amount, so its quantity keeps
 								     the right-hand column where it is the one thing to read. -->
-								<p v-if="printKind !== 'kitchen'" class="text-[11px] text-stone-500">× {{ item.qty }}</p>
+								<p v-if="!printIsKitchenSlip" class="text-[11px] text-stone-500">× {{ item.qty }}</p>
 								<p v-if="item.note" class="text-[10px] text-stone-500">{{ item.note }}</p>
 							</div>
-							<span class="shrink-0 font-mono tabular-nums">{{ printKind === 'kitchen' ? `× ${item.qty}` : money(item.line_total) }}</span>
+							<span class="shrink-0 font-mono tabular-nums">{{ printIsKitchenSlip ? `× ${item.qty}` : money(item.line_total) }}</span>
 						</div>
 					</div>
-					<p v-if="!printItems.length" class="py-5 text-center text-stone-500">{{ pt('posPanels.noRoundItems') }}</p>
-					<template v-if="printKind !== 'kitchen'">
+					<p v-if="!group.items.length" class="py-5 text-center text-stone-500">{{ pt('posPanels.noRoundItems') }}</p>
+					<p v-if="printKind === 'void' && voidTicket?.reason" class="mt-3 border-t border-dashed border-neutral-300 pt-2 text-[11px] text-stone-600">{{ pt('posPanels.reason') }}: {{ voidTicket.reason }}</p>
+					<template v-if="!printIsKitchenSlip">
 						<div class="my-3 border-t border-dashed border-neutral-300" />
 						<!-- The same four rows the paper prints, so the preview can actually
 						     be used to check the bill before it is handed over. -->
@@ -2808,24 +3235,30 @@ onBeforeUnmount(() => {
 	</AppResponsivePanel>
 
 	<div class="restaurant-print-root">
-		<div class="print-sheet">
+		<!-- One sheet per station: the grill must be able to tear off its own slip
+		     without reading the bar's drinks. Everything else prints a single group,
+		     so the loop leaves those documents exactly as they were. -->
+		<div v-for="group in printGroups" :key="group.key" class="print-sheet">
 			<img v-if="receiptShowStoreLogo && receiptStoreLogoUrl" :src="receiptStoreLogoUrl" alt="" class="print-store-logo">
 			<h1 v-if="receiptShowStoreName">{{ storeName }}</h1>
 			<p v-for="line in receiptStoreLines" :key="line">{{ line }}</p>
 			<p v-if="printKind === 'kitchen' || printKind === 'receipt'" class="print-kind">{{ pt(printKind === 'kitchen' ? 'posPanels.billItems' : 'posPanels.receipt') }}</p>
+			<p v-if="printKind === 'void'" class="print-unpaid">{{ pt('posPanels.voidTicket') }}</p>
 			<p v-if="printKind === 'check' || printKind === 'estimate'" class="print-unpaid">{{ pt('posPanels.unpaid') }}</p>
+			<p v-if="printIsKitchenSlip && kitchenStationsConfigured" class="print-station">{{ group.station || pt('posPanels.noStation') }}</p>
 			<p v-if="printKind !== 'receipt' && printLabel">{{ printLabel }}</p>
 			<p v-if="printOrderNo || printRound">{{ printOrderNo }}<template v-if="printRound"> · {{ pt('posPanels.round', { round: printRound }) }}</template></p>
 			<hr>
-			<div v-for="item in printItems" :key="item.id">
+			<div v-for="item in group.items" :key="item.id">
 				<div class="print-line">
 					<span>{{ item.name }} <b v-if="item.is_gift">({{ pt('posPanels.free') }})</b></span>
-					<span>{{ printKind === 'kitchen' ? `× ${item.qty}` : money(item.line_total) }}</span>
+					<span>{{ printIsKitchenSlip ? `× ${item.qty}` : money(item.line_total) }}</span>
 				</div>
-				<p v-if="printKind !== 'kitchen'" class="print-qty">× {{ item.qty }}</p>
+				<p v-if="!printIsKitchenSlip" class="print-qty">× {{ item.qty }}</p>
 				<p v-if="item.note" class="print-note">{{ pt('posPanels.note') }}: {{ item.note }}</p>
 			</div>
-			<template v-if="printKind !== 'kitchen'">
+			<p v-if="printKind === 'void' && voidTicket?.reason" class="print-note">{{ pt('posPanels.reason') }}: {{ voidTicket.reason }}</p>
+			<template v-if="!printIsKitchenSlip">
 				<hr>
 				<div class="print-line"><span>{{ pt('posPanels.productAmount') }}</span><span>{{ money(printSubtotal) }}</span></div>
 				<div v-if="printDiscount" class="print-line"><span>{{ pt('pos.discount') }}</span><span>-{{ money(printDiscount) }}</span></div>
@@ -2860,7 +3293,7 @@ onBeforeUnmount(() => {
 .checkout-success-burst{position:relative;display:grid;place-items:center;width:112px;height:112px;border-radius:999px;background:radial-gradient(circle,rgba(16,185,129,.24),rgba(16,185,129,0) 68%);animation:checkout-burst .85s ease-out both}.checkout-success-burst::before{content:"";position:absolute;inset:10px;border-radius:999px;background:rgba(16,185,129,.12);animation:checkout-pulse .85s ease-out both}.checkout-success-ring{position:relative;display:grid;place-items:center;width:76px;height:76px;border-radius:999px;background:#10b981;color:white;box-shadow:0 18px 36px rgba(16,185,129,.32);animation:checkout-pop .38s cubic-bezier(.2,1.35,.35,1) both}.checkout-success-check{width:42px;height:42px;stroke-width:3;animation:checkout-check .48s .18s ease-out both}
 @keyframes checkout-burst{0%{opacity:0;transform:scale(.72)}55%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}@keyframes checkout-pulse{0%{opacity:0;transform:scale(.35)}65%{opacity:1;transform:scale(1.18)}100%{opacity:0;transform:scale(1.55)}}@keyframes checkout-pop{0%{opacity:0;transform:scale(.42) rotate(-8deg)}100%{opacity:1;transform:scale(1) rotate(0)}}@keyframes checkout-check{0%{opacity:0;transform:scale(.5)}100%{opacity:1;transform:scale(1)}}
 .receipt-preview-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.receipt-preview-sheet .font-sans{font-family:inherit}
-.restaurant-print-root{display:none}.print-line,.print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.print-line span:last-child,.print-total strong:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}.print-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet h1{text-align:center;font-size:18px}.print-sheet>p{text-align:center;margin:3px 0}.print-kind{font-weight:700;margin-top:10px!important}.print-time,.print-unpaid{text-align:center;margin-top:16px;font-size:11px}.print-unpaid{font-size:14px;font-weight:700}.print-qty{margin:-4px 0 7px 12px;font-size:11px}.print-note{margin:-4px 0 7px 12px;font-size:11px}.print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.print-queue span{display:block;font-size:11px}.print-queue strong{display:block;font-size:20px;line-height:1.1}.print-powered{text-align:center;margin-top:8px!important;font-size:10px;color:#555}
+.restaurant-print-root{display:none}.print-line,.print-total{display:flex;justify-content:space-between;gap:12px;margin:7px 0}.print-line span:last-child,.print-total strong:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}.print-sheet{font-family:"Google Sans Lao","Avenir Next","Segoe UI",sans-serif}.print-sheet h1{text-align:center;font-size:18px}.print-sheet>p{text-align:center;margin:3px 0}.print-kind{font-weight:700;margin-top:10px!important}.print-time,.print-unpaid{text-align:center;margin-top:16px;font-size:11px}.print-unpaid{font-size:14px;font-weight:700}.print-qty{margin:-4px 0 7px 12px;font-size:11px}.print-note{margin:-4px 0 7px 12px;font-size:11px}.print-queue{border-top:1px dashed #000;margin-top:12px;padding-top:8px;text-align:center}.print-queue span{display:block;font-size:11px}.print-queue strong{display:block;font-size:20px;line-height:1.1}.print-powered{text-align:center;margin-top:8px!important;font-size:10px;color:#555}.print-station{font-size:16px;font-weight:700;margin-top:8px!important;text-transform:uppercase}
 
 </style>
 
@@ -2892,5 +3325,8 @@ onBeforeUnmount(() => {
 	.print-barcode { display: block; width: 46mm; height: 12mm; margin: 6px auto 0; }
 	.print-barcode-text { text-align: center; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .1em; margin-top: 1px; }
 	.print-sheet hr { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
+	/* Each station's slip starts its own length of paper, so the runner can tear
+	   them apart at the printer instead of cutting through someone's order. */
+	.print-sheet + .print-sheet { break-before: page; page-break-before: always; padding-top: 6mm; }
 }
 </style>

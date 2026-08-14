@@ -14,6 +14,7 @@
     "test:hybrid-pos": "node --import tsx script/hybrid-pos-smoke.mjs",
     "test:reports": "node --import tsx script/report-dashboard-smoke.mjs",
     "test:currency": "node --import tsx script/pos-multi-currency-smoke.mjs",
+    "test:print-queue": "node --import tsx script/print-queue-smoke.mjs",
     "test:cost-layers": "node --import tsx script/inventory-cost-layer-smoke.mjs",
     "build": "npm run build:api",
     "build:api": "tsc",
@@ -34,6 +35,7 @@
     "express": "^4.21.2",
     "module-alias": "^2.2.3",
     "redis": "^5.12.1",
+    "socket.io": "^4.8.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

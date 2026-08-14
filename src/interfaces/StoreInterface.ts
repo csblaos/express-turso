@@ -105,6 +105,18 @@ export class StoreInterface {
 				await db.execute("ALTER TABLE stores ADD COLUMN receipt_show_queue INTEGER NOT NULL DEFAULT 1");
 			}
 
+			// How the kitchen is told what to cook: on paper, on a screen, both, or
+			// neither. One answer decides whether slips print, whether the kitchen
+			// queue is shown, and whether anyone is expected to tick a round off.
+			if (!existingColumns.has("kitchen_delivery_mode")) {
+				await db.execute("ALTER TABLE stores ADD COLUMN kitchen_delivery_mode TEXT NOT NULL DEFAULT 'paper'");
+				// Carried over from the flag this replaces, so a shop that had turned
+				// automatic slips off does not start printing them again.
+				if (existingColumns.has("kitchen_auto_print")) {
+					await db.execute("UPDATE stores SET kitchen_delivery_mode='none' WHERE COALESCE(kitchen_auto_print,1)=0");
+				}
+			}
+
 			if (!existingColumns.has("pickup_queue_enabled")) {
 				await db.execute("ALTER TABLE stores ADD COLUMN pickup_queue_enabled INTEGER NOT NULL DEFAULT 0");
 			}

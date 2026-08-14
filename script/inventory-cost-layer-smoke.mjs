@@ -16,6 +16,15 @@ try {
 	const { DbConn } = await import("../src/connections/DbConn.ts");
 	await DbConn.connect();
 	const db = DbConn.getClient();
+	// Built before the cost module runs: it adds its own columns to
+	// inventory_movements, and a table that does not exist yet cannot be altered.
+	await db.execute("CREATE TABLE products (id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sku TEXT,barcode TEXT,image_url TEXT,location TEXT,category_id TEXT,base_unit_id TEXT,active INTEGER,inventory_mode TEXT,low_stock_threshold REAL,out_stock_threshold REAL,deleted_at TEXT,created_at TEXT)");
+	await db.execute("CREATE TABLE product_categories (id TEXT PRIMARY KEY,store_id TEXT,name TEXT)");
+	await db.execute("CREATE TABLE units (id TEXT PRIMARY KEY,name_th TEXT)");
+	await db.execute("CREATE TABLE product_units (id TEXT PRIMARY KEY,product_id TEXT,unit_id TEXT,multiplier_to_base REAL,is_base INTEGER,enabled_for_sale INTEGER DEFAULT 0)");
+	await db.execute("CREATE TABLE inventory_balances (store_id TEXT,product_id TEXT,on_hand_base REAL,reserved_base REAL,available_base REAL,updated_at TEXT,PRIMARY KEY(store_id,product_id))");
+	await db.execute("CREATE TABLE inventory_movements (id TEXT PRIMARY KEY,store_id TEXT,product_id TEXT,type TEXT,qty_base REAL,ref_type TEXT,ref_id TEXT,note TEXT,created_by TEXT,created_at TEXT)");
+
 	const { InventoryCostInterface } = await import("../src/interfaces/InventoryCostInterface.ts");
 	await InventoryCostInterface.ensureTables();
 
@@ -86,12 +95,6 @@ try {
 	assert.equal(missing.get("ghost").cost_base, 0);
 
 	// A write-off is not a sale, but it takes the same real goods off the shelf.
-	await db.execute("CREATE TABLE products (id TEXT PRIMARY KEY,store_id TEXT,name TEXT,sku TEXT,barcode TEXT,image_url TEXT,location TEXT,category_id TEXT,base_unit_id TEXT,active INTEGER,inventory_mode TEXT,low_stock_threshold REAL,out_stock_threshold REAL,deleted_at TEXT,created_at TEXT)");
-	await db.execute("CREATE TABLE product_categories (id TEXT PRIMARY KEY,store_id TEXT,name TEXT)");
-	await db.execute("CREATE TABLE units (id TEXT PRIMARY KEY,name_th TEXT)");
-	await db.execute("CREATE TABLE product_units (id TEXT PRIMARY KEY,product_id TEXT,unit_id TEXT,multiplier_to_base REAL,is_base INTEGER,enabled_for_sale INTEGER DEFAULT 0)");
-	await db.execute("CREATE TABLE inventory_balances (store_id TEXT,product_id TEXT,on_hand_base REAL,reserved_base REAL,available_base REAL,updated_at TEXT,PRIMARY KEY(store_id,product_id))");
-	await db.execute("CREATE TABLE inventory_movements (id TEXT PRIMARY KEY,store_id TEXT,product_id TEXT,type TEXT,qty_base REAL,ref_type TEXT,ref_id TEXT,note TEXT,created_by TEXT,created_at TEXT)");
 	await db.execute("INSERT INTO products(id,store_id,name,sku,base_unit_id,active,inventory_mode) VALUES('sugar','layer-store','Sugar','SUGAR','unit',1,'tracked')");
 	await db.execute("INSERT INTO inventory_balances VALUES('layer-store','sugar',6,0,6,'2026-01-05T00:00:00.000Z')");
 	await InventoryCostInterface.recordReceipt({
@@ -99,7 +102,9 @@ try {
 		source_type: "purchase_order", source_id: "po-sugar", received_at: "2026-01-05T00:00:00.000Z",
 	});
 	const { InventoryInterface } = await import("../src/interfaces/InventoryInterface.ts");
-	await InventoryInterface.adjustStock({ store_id: store, product_id: "sugar", mode: "decrement", qty_base: 2, note: "spoiled", created_by: "staff" });
+	// Reducing stock by hand has to say why: the reason is what the movement is
+	// audited on, and the interface refuses the write-off without one.
+	await InventoryInterface.adjustStock({ store_id: store, product_id: "sugar", mode: "decrement", qty_base: 2, adjustment_reason: "spoiled", note: "spoiled", created_by: "staff" });
 	const afterWriteOff = await InventoryCostInterface.getCostSummary(store, "sugar");
 	assert.equal(afterWriteOff.fifo_open_qty_base, 4, "a write-off draws the layers down");
 	assert.equal(afterWriteOff.qty_base_on_hand, 4);

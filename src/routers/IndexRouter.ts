@@ -12,6 +12,7 @@ import { PromotionRouter } from "@routers/PromotionRouter";
 import { ReportRouter } from "@routers/ReportRouter";
 import { RestaurantRouter } from "@routers/RestaurantRouter";
 import { PosRouter } from "@routers/PosRouter";
+import { PrintQueueRouter } from "@routers/PrintQueueRouter";
 import { RbacRouter } from "@routers/RbacRouter";
 import { StoreRouter } from "@routers/StoreRouter";
 import { SuperadminUserRouter } from "@routers/SuperadminUserRouter";
@@ -41,6 +42,7 @@ export class IndexRouter {
 		this.router.use("/promotions", PromotionRouter.getInstance().getRouter());
 		this.router.use("/reports", ReportRouter.getInstance().getRouter());
 		this.router.use("/restaurant", RestaurantRouter.getInstance().getRouter());
+		this.router.use("/print", PrintQueueRouter.getInstance().getRouter());
 		this.router.use("/product-units", ProductUnitRouter.getInstance().getRouter());
 		this.router.use("/units", UnitRouter.getInstance().getRouter());
 		this.router.use("/product-categories", ProductCategoryRouter.getInstance().getRouter());

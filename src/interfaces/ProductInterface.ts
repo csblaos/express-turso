@@ -87,6 +87,13 @@ const PRODUCT_OPTIONAL_COLUMNS = [
 		name: "manual_sold_out",
 		sql: "ALTER TABLE products ADD COLUMN manual_sold_out INTEGER NOT NULL DEFAULT 0",
 	},
+	{
+		// Nullable on purpose: unset means "whatever this product's category says",
+		// so a shop configures the kitchen once per category and only names the
+		// exceptions.
+		name: "send_to_kitchen",
+		sql: "ALTER TABLE products ADD COLUMN send_to_kitchen INTEGER",
+	},
 ] as const;
 
 function getInsertPayload(payload: CreateProductInput): Record<string, InValue> {

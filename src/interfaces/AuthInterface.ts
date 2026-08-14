@@ -156,8 +156,6 @@ function createDevelopmentUser(account: DevelopmentAuthAccount): User {
 		system_role: account.system_role,
 		can_create_stores: 1,
 		max_stores: null,
-		can_create_branches: 1,
-		max_branches_per_store: null,
 		created_by: null,
 		must_change_password: 0,
 		password_updated_at: new Date(0).toISOString(),
@@ -198,11 +196,11 @@ export class AuthInterface {
 					sql: `
 						INSERT INTO users (
 							id, email, name, password_hash, created_at, session_limit, system_role,
-							can_create_stores, max_stores, can_create_branches, max_branches_per_store,
+							can_create_stores, max_stores,
 							created_by, must_change_password, password_updated_at, ui_locale,
 							client_suspended, client_suspended_at, client_suspended_reason, client_suspended_by
 						)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					`,
 					args: [
 						account.id,

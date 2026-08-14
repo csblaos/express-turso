@@ -65,8 +65,19 @@ try {
 	assert.equal(afterRound.qty_base_on_hand, 4);
 	assert.equal(afterRound.average_unit_cost_base, 20, "issuing stock never moves the average");
 
+	// Parking a quick-sale cart keeps every scanned line as an unpaid pickup
+	// draft. It must appear with the ordinary open orders and take no stock.
+	const parked = await RestaurantInterface.createOrder("smoke-store", {
+		service_mode: "pickup", idempotency_key: "parked-quick-sale",
+		items: [{ product_id: "pizza", qty: 1 }, { product_id: "pizza", qty: 2, note: "No chili" }],
+	}, "cashier");
+	assert.equal(parked.items.length, 2);
+	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).some((opened) => opened.id === parked.id && opened.service_mode === "pickup"), true);
+	await RestaurantInterface.cancelOrder("smoke-store", parked.id, { expected_version: parked.version }, "cashier");
+	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
+
 	const second = await RestaurantInterface.createOrder("smoke-store", { service_mode: "pickup", idempotency_key: "open-2", initial_item: { product_id: "pizza", qty: 1 } }, "cashier");
-	assert.equal(second.queue_no, "Q002");
+	assert.equal(second.queue_no, "Q003");
 	const secondWithExtra = await RestaurantInterface.addItem("smoke-store", second.id, { product_id: "pizza", qty: 1, expected_version: second.version }, "cashier");
 	assert.equal(secondWithExtra.items.length, 2);
 	const zone = await RestaurantInterface.saveZone("smoke-store", { name: "Zone A", sort_order: 1 });
@@ -100,7 +111,7 @@ try {
 		items: [{ product_id: "beer", qty: 1 }], amount_tendered: 100,
 		idempotency_key: "quick-checkout-1", created_by: "cashier",
 	});
-	assert.equal(quick.queue_no, "Q003");
+	assert.equal(quick.queue_no, "Q004");
 	assert.equal(quick.receipt.lines[0].name, "Beer");
 	assert.equal(quick.receipt.lines[0].line_total, 100);
 	const quickRetry = await OrderInterface.checkout({
@@ -115,7 +126,7 @@ try {
 		store_id: "smoke-store", service_mode: "pickup", payment_method: "cash",
 		items: [{ product_id: "beer", qty: 1 }], amount_tendered: 100, idempotency_key: "quick-checkout-2", created_by: "cashier",
 	});
-	assert.equal(nextQuick.queue_no, "Q004");
+	assert.equal(nextQuick.queue_no, "Q005");
 	assert.equal((await RestaurantInterface.listOpenOrders("smoke-store")).length, 0);
 	// Quick sale takes stock too, and a retried checkout must not take it twice.
 	const afterQuick = await InventoryCostInterface.getCostSummary("smoke-store", "beer");

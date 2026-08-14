@@ -20,8 +20,6 @@ export type SuperadminQuotaRecord = {
 	status: "active" | "suspended";
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	owned_stores_count: number;
 	remaining_store_capacity: number | null;
 	created_at: string;
@@ -36,11 +34,9 @@ export type SuperadminQuotaListResult = {
 	summary: {
 		accounts_total: number;
 		store_quota_enabled: number;
-		branch_quota_enabled: number;
 		limited_store_capacity_total: number;
 		remaining_store_capacity_total: number;
 		unlimited_store_accounts: number;
-		unlimited_branch_accounts: number;
 		attention_accounts: number;
 		stores_total: number;
 		store_user_limit: number | null;
@@ -73,10 +69,6 @@ function mapRow(row: Record<string, unknown>): SuperadminQuotaRecord {
 		status: Number(row.client_suspended || 0) === 1 ? "suspended" : "active",
 		can_create_stores: Number(row.can_create_stores || 0),
 		max_stores: maxStores,
-		can_create_branches: Number(row.can_create_branches || 0),
-		max_branches_per_store: row.max_branches_per_store === null || row.max_branches_per_store === undefined
-			? null
-			: Number(row.max_branches_per_store),
 		owned_stores_count: ownedStoresCount,
 		remaining_store_capacity: maxStores === null ? null : Math.max(0, maxStores - ownedStoresCount),
 		created_at: String(row.created_at || new Date(0).toISOString()),
@@ -148,10 +140,8 @@ export class SuperadminQuotaInterface {
 					SELECT
 						COUNT(*) AS accounts_total,
 						SUM(CASE WHEN COALESCE(u.can_create_stores, 0) = 1 THEN 1 ELSE 0 END) AS store_quota_enabled,
-						SUM(CASE WHEN COALESCE(u.can_create_branches, 0) = 1 THEN 1 ELSE 0 END) AS branch_quota_enabled,
 						SUM(CASE WHEN COALESCE(u.can_create_stores, 0) = 1 AND u.max_stores IS NOT NULL THEN u.max_stores ELSE 0 END) AS limited_store_capacity_total,
 						SUM(CASE WHEN COALESCE(u.can_create_stores, 0) = 1 AND u.max_stores IS NULL THEN 1 ELSE 0 END) AS unlimited_store_accounts,
-						SUM(CASE WHEN COALESCE(u.can_create_branches, 0) = 1 AND u.max_branches_per_store IS NULL THEN 1 ELSE 0 END) AS unlimited_branch_accounts,
 						SUM(CASE WHEN COALESCE(u.can_create_stores, 0) = 1 AND u.max_stores IS NOT NULL AND (
 							SELECT COUNT(*)
 							FROM stores s
@@ -186,8 +176,6 @@ export class SuperadminQuotaInterface {
 						u.client_suspended,
 						u.can_create_stores,
 						u.max_stores,
-						u.can_create_branches,
-						u.max_branches_per_store,
 						u.created_at,
 						(
 							SELECT COUNT(*)
@@ -215,11 +203,9 @@ export class SuperadminQuotaInterface {
 			summary: {
 				accounts_total: Number(summaryRow.accounts_total || 0),
 				store_quota_enabled: Number(summaryRow.store_quota_enabled || 0),
-				branch_quota_enabled: Number(summaryRow.branch_quota_enabled || 0),
 				limited_store_capacity_total: Number(summaryRow.limited_store_capacity_total || 0),
 				remaining_store_capacity_total: Number(summaryRow.remaining_store_capacity_total || 0),
 				unlimited_store_accounts: Number(summaryRow.unlimited_store_accounts || 0),
-				unlimited_branch_accounts: Number(summaryRow.unlimited_branch_accounts || 0),
 				attention_accounts: Number(summaryRow.attention_accounts || 0),
 				stores_total: Number(summaryRow.stores_total || 0),
 				store_user_limit: systemConfig.default_max_users_per_store === null || systemConfig.default_max_users_per_store === undefined

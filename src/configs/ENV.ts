@@ -4,6 +4,10 @@ export class ENV {
 		PORT: Number(process.env.PORT || 3000),
 		HOST: process.env.HOST || "0.0.0.0",
 		SELF_CHECK_HOST: process.env.SERVER_SELF_CHECK_HOST || "127.0.0.1",
+		FRONTEND_ORIGINS: (process.env.FRONTEND_ORIGINS || "http://localhost:3001,https://okhaidee.pages.dev")
+			.split(",")
+			.map((origin) => origin.trim().replace(/\/$/u, ""))
+			.filter(Boolean),
 	};
 
 	static readonly TURSO = {

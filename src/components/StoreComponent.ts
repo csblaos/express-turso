@@ -46,7 +46,6 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"out_stock_threshold",
 	"low_stock_threshold",
 	"allow_negative_stock",
-	"max_branches_override",
 	"pdf_show_logo",
 	"pdf_show_signature",
 	"pdf_show_note",
@@ -61,6 +60,7 @@ const UPDATABLE_FIELDS: Array<keyof Store> = [
 	"receipt_show_change",
 	"receipt_show_payment_method",
 	"receipt_show_queue",
+	"kitchen_delivery_mode",
 	"pickup_queue_enabled",
 	"business_day_start_minutes",
 ];

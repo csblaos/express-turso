@@ -4,6 +4,7 @@ import { RestaurantInterface } from "@interfaces/RestaurantInterface";
 import { ApiError } from "@middlewares/ApiError";
 import { SyncFunction } from "@middlewares/SyncFunction";
 import { appendServerTiming } from "@utils/ServerTiming";
+import { kitchenRevision } from "@utils/KitchenDelivery";
 import { SuccessHandler } from "@utils/SuccessHandler";
 
 function storeId(req: Request): string {
@@ -21,6 +22,29 @@ export class RestaurantController {
 	static createZone = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.created(res,req.requestId,{data:await RestaurantInterface.saveZone(storeId(req),req.body)}));
 	static updateZone = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.saveZone(storeId(req),req.body,String(req.params.id))}));
 	static deleteZone = SyncFunction.handler(async (req: Request,res: Response)=>{await RestaurantInterface.deleteZone(storeId(req),String(req.params.id));SuccessHandler.send(res,req.requestId);});
+	static stations = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.listStations(storeId(req))}));
+	static createStation = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.created(res,req.requestId,{data:await RestaurantInterface.saveStation(storeId(req),req.body)}));
+	static updateStation = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.saveStation(storeId(req),req.body,String(req.params.id))}));
+	static deleteStation = SyncFunction.handler(async (req: Request,res: Response)=>{await RestaurantInterface.deleteStation(storeId(req),String(req.params.id));SuccessHandler.send(res,req.requestId);});
+	// Polled every few seconds by every till and kitchen screen, and almost every
+	// poll finds nothing new. A client that sends back the revision it last saw is
+	// answered from a counter held in memory, without a single database read.
+	static kitchenQueue = SyncFunction.handler(async (req: Request,res: Response)=>{
+		const id=storeId(req);
+		const revision=kitchenRevision(id);
+		const since=Number(req.query.since);
+		if(Number.isFinite(since)&&since===revision&&revision>0){
+			SuccessHandler.send(res,req.requestId,{data:{revision,unchanged:true,rounds:[]}});
+			return;
+		}
+		const rounds=await RestaurantInterface.kitchenQueue(id,{stationId:typeof req.query.station==="string"?req.query.station:""});
+		SuccessHandler.send(res,req.requestId,{data:{revision,unchanged:false,rounds}});
+	});
+	static kitchenRoundDone = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.markKitchenRound(storeId(req),String(req.params.id),req.body?.done!==false,actor(req),req.body?.station_id===undefined?undefined:(req.body.station_id||null))}));
+	static kitchenRoundServed = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.markKitchenServed(storeId(req),String(req.params.id),actor(req),req.body?.station_id||null)}));
+	static kitchenRouting = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.kitchenRouting(storeId(req),typeof req.query.search==="string"?req.query.search:"")}));
+	static categoryKitchen = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.setCategoryKitchen(storeId(req),String(req.params.id),req.body.send_to_kitchen!==false&&Number(req.body.send_to_kitchen)!==0)}));
+	static productKitchen = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.setProductKitchen(storeId(req),String(req.params.id),req.body.send_to_kitchen===null||req.body.send_to_kitchen===undefined?null:(req.body.send_to_kitchen!==false&&Number(req.body.send_to_kitchen)!==0))}));
 	static tables = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.listTables(storeId(req))}));
 	static createTable = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.created(res,req.requestId,{data:await RestaurantInterface.saveTable(storeId(req),req.body)}));
 	static updateTable = SyncFunction.handler(async (req: Request,res: Response)=>SuccessHandler.send(res,req.requestId,{data:await RestaurantInterface.saveTable(storeId(req),req.body,String(req.params.id))}));

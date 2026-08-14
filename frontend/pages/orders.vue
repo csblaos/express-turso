@@ -385,13 +385,18 @@ function receiptPaymentMethodLabel(method: string) {
 	return method || "-";
 }
 
-function statusColor(status: OrderStatus) {
-	if (status === "completed") return "success";
-	if (status === "open") return "info";
-	if (status === "ready_to_pay") return "warning";
-	if (status === "ready") return "info";
-	if (status === "cancelled") return "error";
-	if (status === "preparing") return "warning";
+function isParkedOrder(order: OrderRecord) {
+	return order.orderType === "quick-sale" && order.status === "open" && order.paymentStatus === "unpaid";
+}
+
+function statusColor(order: OrderRecord) {
+	if (isParkedOrder(order)) return "warning";
+	if (order.status === "completed") return "success";
+	if (order.status === "open") return "info";
+	if (order.status === "ready_to_pay") return "warning";
+	if (order.status === "ready") return "info";
+	if (order.status === "cancelled") return "error";
+	if (order.status === "preparing") return "warning";
 	return "neutral";
 }
 
@@ -406,16 +411,17 @@ function orderTypeLabel(orderType: OrderType) {
 	return orderType === "dine-in" ? t("orders.dineIn") : t("orders.quickSale");
 }
 
-function statusLabel(status: OrderStatus) {
-	if (status === "open") return t("orders.open");
-	if (status === "ready_to_pay") return t("orders.readyToPay");
-	if (status === "pending") return t("orders.pending");
-	if (status === "confirmed") return t("orders.confirmed");
-	if (status === "preparing") return t("orders.preparing");
-	if (status === "ready") return t("orders.ready");
-	if (status === "completed") return t("orders.completed");
-	if (status === "cancelled") return t("orders.cancelled");
-	return status;
+function statusLabel(order: OrderRecord) {
+	if (isParkedOrder(order)) return t("restaurantPos.parkOrder");
+	if (order.status === "open") return t("orders.open");
+	if (order.status === "ready_to_pay") return t("orders.readyToPay");
+	if (order.status === "pending") return t("orders.pending");
+	if (order.status === "confirmed") return t("orders.confirmed");
+	if (order.status === "preparing") return t("orders.preparing");
+	if (order.status === "ready") return t("orders.ready");
+	if (order.status === "completed") return t("orders.completed");
+	if (order.status === "cancelled") return t("orders.cancelled");
+	return order.status;
 }
 
 function paymentLabel(status: PaymentStatus) {
@@ -691,7 +697,7 @@ function confirmPrintReceipt() {
 													<p v-if="order.note" class="mt-1 text-xs text-stone-400">{{ order.note }}</p>
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top">
-													<UBadge :color="statusColor(order.status)" variant="soft" :label="statusLabel(order.status)" />
+											<UBadge :color="statusColor(order)" variant="soft" :label="statusLabel(order)" />
 												</td>
 												<td class="border-b border-[#f1ede6] px-4 py-3 align-top text-sm text-stone-500">
 												<p class="font-medium text-stone-800">{{ orderTypeLabel(order.orderType) }}</p>
@@ -767,7 +773,7 @@ function confirmPrintReceipt() {
 												<h3 class="truncate text-base font-semibold text-stone-950">{{ selectedOrder.orderNumber }}</h3>
 												<p class="mt-1 truncate text-sm text-stone-500">{{ selectedOrder.customerName }}</p>
 											</div>
-											<UBadge :color="statusColor(selectedOrder.status)" variant="soft" :label="statusLabel(selectedOrder.status)" />
+											<UBadge :color="statusColor(selectedOrder)" variant="soft" :label="statusLabel(selectedOrder)" />
 										</div>
 
 										<div class="mt-3 flex flex-wrap gap-2">

@@ -1,4 +1,5 @@
 const productionApiBase = "https://api.okhaidee.codesabai.com/api";
+const productionRealtimeBase = "https://api.okhaidee.codesabai.com";
 
 export default defineNuxtConfig({
 	devtools: { enabled: process.env.NODE_ENV !== "production" },
@@ -40,6 +41,9 @@ export default defineNuxtConfig({
 			apiBase: process.env.CF_PAGES
 				? productionApiBase
 				: process.env.NUXT_PUBLIC_API_BASE || (process.env.NODE_ENV === "production" ? productionApiBase : "http://localhost:3005/api"),
+			realtimeBase: process.env.CF_PAGES
+				? productionRealtimeBase
+				: process.env.NUXT_PUBLIC_REALTIME_BASE || (process.env.NODE_ENV === "production" ? productionRealtimeBase : "http://localhost:3005"),
 			r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || "https://cdn.codesabai.com",
 		},
 	},

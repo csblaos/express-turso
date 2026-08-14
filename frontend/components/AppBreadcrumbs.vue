@@ -40,7 +40,6 @@ const breadcrumbKeys: Record<string, string> = {
 	Security: "breadcrumbs.security",
 	"Account Overview": "breadcrumbs.accountOverview",
 	Quotas: "breadcrumbs.quotas",
-	"Branch Config": "breadcrumbs.branchConfig",
 	Integrations: "breadcrumbs.integrations",
 	"System Admin": "breadcrumbs.systemAdmin",
 	Dashboard: "breadcrumbs.dashboard",

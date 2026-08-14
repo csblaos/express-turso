@@ -21,8 +21,6 @@ type ClientRecord = {
 	ui_locale: string;
 	can_create_stores: number;
 	max_stores: number | null;
-	can_create_branches: number;
-	max_branches_per_store: number | null;
 	must_change_password: number;
 	client_suspended: number;
 	client_suspended_at: string | null;
@@ -46,17 +44,11 @@ type ClientListResponse = {
 	};
 };
 
-type ApiSystemConfig = {
-	default_can_create_branches: number;
-	default_max_branches_per_store: number | null;
-};
-
 type ClientDeleteCheck = {
 	client_id: string;
 	can_delete: boolean;
 	counts: {
 		stores: number;
-		branches: number;
 		store_memberships: number;
 		orders: number;
 		purchase_orders: number;
@@ -106,16 +98,10 @@ const resetPasswordSuccess = ref<CreatedClientCredential | null>(null);
 const deleteCheckPending = ref(false);
 const deleteCheck = ref<ClientDeleteCheck | null>(null);
 const deleteConfirmText = ref("");
-const systemDefaults = ref<ApiSystemConfig>({
-	default_can_create_branches: 1,
-	default_max_branches_per_store: 5,
-});
-// Branch creation is not supported yet, so both forms only draft the store
-// quota.
-const createBranchDraft = reactive({
+const createStoreQuotaDraft = reactive({
 	max_stores: "1",
 });
-const detailBranchDraft = reactive({
+const detailStoreQuotaDraft = reactive({
 	max_stores: "1",
 });
 
@@ -208,30 +194,30 @@ watch(selectedClient, (client) => {
 	detailForm.max_stores = client.max_stores === null ? "" : String(client.max_stores);
 	detailForm.must_change_password = Boolean(client.must_change_password);
 	detailForm.suspend_reason = client.client_suspended_reason || "";
-	detailBranchDraft.max_stores = detailForm.max_stores;
+	detailStoreQuotaDraft.max_stores = detailForm.max_stores;
 }, { immediate: true });
 
 watch(() => createForm.can_create_stores, (enabled, previous) => {
 	if (enabled) {
 		if (previous === false) {
-			createForm.max_stores = createBranchDraft.max_stores || "1";
+			createForm.max_stores = createStoreQuotaDraft.max_stores || "1";
 		}
 		return;
 	}
 
-	createBranchDraft.max_stores = createForm.max_stores;
+	createStoreQuotaDraft.max_stores = createForm.max_stores;
 	createForm.max_stores = "";
 });
 
 watch(() => detailForm.can_create_stores, (enabled, previous) => {
 	if (enabled) {
 		if (previous === false) {
-			detailForm.max_stores = detailBranchDraft.max_stores || "1";
+			detailForm.max_stores = detailStoreQuotaDraft.max_stores || "1";
 		}
 		return;
 	}
 
-	detailBranchDraft.max_stores = detailForm.max_stores;
+	detailStoreQuotaDraft.max_stores = detailForm.max_stores;
 	detailForm.max_stores = "";
 });
 
@@ -260,11 +246,6 @@ function statusTone(status: ClientRecord["status"]) {
 function storeQuotaLabel(client: ClientRecord) {
 	if (!client.can_create_stores) return "ປິດສິດ";
 	return client.max_stores ?? "ບໍ່ຈຳກັດ";
-}
-
-function branchQuotaLabel(client: ClientRecord) {
-	if (!client.can_create_stores || !client.can_create_branches) return "ປິດສິດ";
-	return client.max_branches_per_store ?? "ບໍ່ຈຳກັດ";
 }
 
 function openDetail(clientId: string) {
@@ -330,7 +311,7 @@ function resetCreateForm() {
 	createForm.can_create_stores = true;
 	createForm.max_stores = "1";
 	createForm.must_change_password = true;
-	createBranchDraft.max_stores = createForm.max_stores;
+	createStoreQuotaDraft.max_stores = createForm.max_stores;
 	showCreatePassword.value = false;
 	createSuccess.value = null;
 }
@@ -539,14 +520,8 @@ async function loadClients() {
 	}
 }
 
-async function loadCreateDefaults() {
-	try {
-		const response = await apiFetch<ApiEnvelope<ApiSystemConfig>>("/system-admin/config");
-		systemDefaults.value = response.data;
-		resetCreateForm();
-	} catch {
-		resetCreateForm();
-	}
+function loadCreateDefaults() {
+	resetCreateForm();
 }
 
 async function createClient() {
@@ -562,8 +537,6 @@ async function createClient() {
 				ui_locale: createForm.ui_locale,
 				can_create_stores: createForm.can_create_stores ? 1 : 0,
 				max_stores: createForm.can_create_stores ? toOptionalNumber(createForm.max_stores) : null,
-				max_branches_per_store: null,
-				can_create_branches: 0,
 				must_change_password: createForm.must_change_password,
 				created_by: currentUser.value?.id || null,
 			},
@@ -601,8 +574,6 @@ async function saveClient() {
 				ui_locale: detailForm.ui_locale,
 				can_create_stores: detailForm.can_create_stores ? 1 : 0,
 				max_stores: detailForm.can_create_stores ? toOptionalNumber(detailForm.max_stores) : null,
-				max_branches_per_store: null,
-				can_create_branches: 0,
 				must_change_password: detailForm.must_change_password,
 				actor_user_id: currentUser.value?.id || null,
 			},
@@ -816,7 +787,6 @@ onMounted(async () => {
 											<th class="border-b border-[#ece6dc] px-4 py-3">Super Admin</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">ສະຖານະ</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">ຮ້ານ</th>
-											<th class="border-b border-[#ece6dc] px-4 py-3">quota ສາຂາ</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">ພາສາ</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3">ສ້າງເມື່ອ</th>
 											<th class="border-b border-[#ece6dc] px-4 py-3 text-right">ຈັດການ</th>
@@ -839,7 +809,6 @@ onMounted(async () => {
 												<UBadge :color="statusTone(client.status)" variant="soft" :label="client.status === 'active' ? 'ພ້ອມໃຊ້ງານ' : 'ພັກບັນຊີ'" />
 											</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ storeQuotaLabel(client) }}</td>
-											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ branchQuotaLabel(client) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-600">{{ client.ui_locale.toUpperCase() }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-stone-500">{{ formatDate(client.created_at) }}</td>
 											<td class="border-b border-[#f1ede6] px-4 py-4 text-right">

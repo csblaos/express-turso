@@ -74,8 +74,6 @@ type LoginResponse = {
 		uiLocale: string;
 		canCreateStores: boolean;
 		maxStores: number | null;
-		canCreateBranches: boolean;
-		maxBranchesPerStore: number | null;
 		ownedStoresCount: number;
 	};
 	session: SessionRecord;
@@ -140,8 +138,6 @@ function buildUserSummary(user: User) {
 		uiLocale: user.ui_locale || "th",
 		canCreateStores: Boolean(user.can_create_stores),
 		maxStores: user.max_stores === null || user.max_stores === undefined ? null : Number(user.max_stores),
-		canCreateBranches: Boolean(user.can_create_branches),
-		maxBranchesPerStore: user.max_branches_per_store === null || user.max_branches_per_store === undefined ? null : Number(user.max_branches_per_store),
 	};
 }
 

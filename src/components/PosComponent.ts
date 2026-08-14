@@ -1,10 +1,13 @@
 import { ApiError } from "@middlewares/ApiError";
 import { ProductCategoryInterface } from "@interfaces/ProductCategoryInterface";
+import { PrintQueueInterface } from "@interfaces/PrintQueueInterface";
 import { ProductInterface } from "@interfaces/ProductInterface";
+import { RestaurantInterface } from "@interfaces/RestaurantInterface";
 import { StoreCurrencyRateInterface } from "@interfaces/StoreCurrencyRateInterface";
 import { StoreInterface } from "@interfaces/StoreInterface";
 import { UnitInterface } from "@interfaces/UnitInterface";
 import { InventoryComponent } from "@components/InventoryComponent";
+import { normalizeKitchenDeliveryMode } from "@utils/KitchenDelivery";
 
 type PosCatalogStore = {
 	id: string;
@@ -22,6 +25,8 @@ type PosCatalogStore = {
 	receipt_show_queue: number;
 	receipt_language: string;
 	receipt_show_powered_by: number;
+	kitchen_delivery_mode: string;
+	kitchen_server_printing: number;
 	pickup_queue_enabled: number;
 	customer_display_enabled: number;
 	customer_display_ads: string | null;
@@ -52,6 +57,9 @@ export type PosCatalogItem = {
 	location: string | null;
 	category_id: string | null;
 	category_name: string | null;
+	station_id: string | null;
+	station_name: string | null;
+	send_to_kitchen: number;
 	base_unit_id: string;
 	unit_name: string | null;
 	price_base: number;
@@ -103,7 +111,7 @@ export class PosComponent {
 			throw ApiError.BadRequestError("store_id is required");
 		}
 
-		const [products, balances, categories, units, store, currencyRates] = await Promise.all([
+		const [products, balances, categories, units, store, currencyRates, stations, serverPrinting] = await Promise.all([
 			ProductInterface.findAll(normalizedStoreId),
 			InventoryComponent.getBalances(requestId, { storeId: normalizedStoreId }),
 			ProductCategoryInterface.findAll(normalizedStoreId),
@@ -112,10 +120,19 @@ export class PosComponent {
 			// The till quotes the rate to the customer before taking their money, so
 			// it needs the table itself, not just the list of currencies.
 			StoreCurrencyRateInterface.findByStoreId(normalizedStoreId),
+			// Which kitchen cooks what. Resolved here so the till can split a round
+			// into station slips without a second lookup per line.
+			RestaurantInterface.listKitchenStations(normalizedStoreId),
+			// Once a kitchen printer exists the queue owns the slips, and the till
+			// must stop opening its own print dialog for them.
+			PrintQueueInterface.hasActivePrinters(normalizedStoreId),
 		]);
 
 		const balanceMap = new Map(balances.map((balance) => [balance.product_id, balance]));
 		const categoryMap = new Map(categories.map((category) => [category.id, category.name]));
+		const categoryStationMap = new Map(categories.map((category) => [category.id, category.station_id || null]));
+		const categoryKitchenMap = new Map(categories.map((category) => [category.id, Number(category.send_to_kitchen ?? 1) !== 0]));
+		const stationMap = new Map(stations.map((station: any) => [String(station.id), String(station.name)]));
 		const unitMap = new Map(units.map((unit) => [unit.id, unit.name_th || unit.code]));
 
 		const items = products
@@ -128,6 +145,12 @@ export class PosComponent {
 				const unitName = balance?.unit_name
 					|| unitMap.get(product.base_unit_id)
 					|| null;
+				const stationId = (categoryId ? categoryStationMap.get(categoryId) : null) || null;
+				// The product's own answer wins; unset means it follows its category,
+				// and a product with no category at all goes to the kitchen.
+				const sendToKitchen = product.send_to_kitchen === null || product.send_to_kitchen === undefined
+					? (categoryId ? categoryKitchenMap.get(categoryId) !== false : true)
+					: Number(product.send_to_kitchen) !== 0;
 				const availableBase = Number(balance?.available_base ?? 0);
 				const lowStockThreshold = product.low_stock_threshold ?? balance?.low_stock_threshold ?? null;
 				const inventoryMode: PosCatalogItem["inventory_mode"] = product.inventory_mode === "untracked" ? "untracked" : "tracked";
@@ -144,6 +167,9 @@ export class PosComponent {
 					location: product.location,
 					category_id: categoryId,
 					category_name: categoryName,
+					station_id: stationId,
+					station_name: stationId ? stationMap.get(stationId) || null : null,
+					send_to_kitchen: sendToKitchen ? 1 : 0,
 					base_unit_id: product.base_unit_id,
 					unit_name: unitName,
 					price_base: Number(product.price_base ?? 0),
@@ -217,6 +243,11 @@ export class PosComponent {
 				receipt_show_queue: Number(store?.receipt_show_queue ?? 1),
 				receipt_language: String(store?.receipt_language || ""),
 				receipt_show_powered_by: Number(store?.receipt_show_powered_by ?? 1),
+				// The till decides on its own whether a kitchen slip follows a round
+				// and whether to offer the kitchen queue at all, so the mode has to
+				// travel with the catalogue it already loads.
+				kitchen_delivery_mode: normalizeKitchenDeliveryMode(store?.kitchen_delivery_mode),
+				kitchen_server_printing: serverPrinting ? 1 : 0,
 				pickup_queue_enabled: Number(store?.pickup_queue_enabled ?? 0),
 				// The POS drives the customer screen, so it needs these here too;
 				// this payload is a whitelist and silently drops anything missing.

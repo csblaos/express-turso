@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import * as moduleAlias from "module-alias";
+import { createServer } from "http";
 import path from "path";
 
 const rootDir = __dirname;
@@ -15,6 +16,7 @@ moduleAlias.addAliases({
 	"@models": path.join(rootDir, "models"),
 	"@providers": path.join(rootDir, "providers"),
 	"@routers": path.join(rootDir, "routers"),
+	"@services": path.join(rootDir, "services"),
 	"@storage": path.join(rootDir, "storage"),
 	"@tstypes": path.join(rootDir, "tstypes"),
 	"@utils": path.join(rootDir, "utils"),
@@ -35,6 +37,7 @@ async function bootstrap(): Promise<void> {
 		const { PromotionInterface } = await import("@interfaces/PromotionInterface");
 		const { StoreCurrencyRateInterface } = await import("@interfaces/StoreCurrencyRateInterface");
 		const { StoreCurrencyRateHistoryInterface } = await import("@interfaces/StoreCurrencyRateHistoryInterface");
+		const { KitchenRealtime } = await import("@services/KitchenRealtime");
 		const { default: app } = await import("./App");
 
 	await DbConn.connect();
@@ -51,12 +54,20 @@ async function bootstrap(): Promise<void> {
 		await StoreCurrencyRateInterface.warmup();
 		await StoreCurrencyRateHistoryInterface.warmup();
 
-	const server = app.listen(ENV.SERVER.PORT, () => {
+	const server = createServer(app);
+	KitchenRealtime.attach(server);
+	server.listen(ENV.SERVER.PORT, ENV.SERVER.HOST, () => {
 		console.log(`Server running on http://localhost:${ENV.SERVER.PORT}`);
 	});
 
+	let shuttingDown = false;
 	const shutdown = async (signal: string) => {
+		if (shuttingDown) return;
+		shuttingDown = true;
 		console.log(`[shutdown] ${signal}`);
+		// Stop accepting persistent realtime connections first; otherwise the HTTP
+		// close callback can wait forever for open WebSockets.
+		await KitchenRealtime.close();
 		server.close(async () => {
 			await RedisConn.disconnect();
 			process.exit(0);
